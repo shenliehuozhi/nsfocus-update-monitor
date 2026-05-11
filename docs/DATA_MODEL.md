@@ -55,6 +55,7 @@ user_sessions               content_sources
               │ status                       │  active|rollback_pending|rollback
               │ rollback_confirmed_at        │
               │ page_hash                    │  页面内容哈希(检测改版)
+│ source_url                   │  详情页URL(quick模式HEAD检查)
               └──────────────────────────────┘
 
 subscription_rules            channels
