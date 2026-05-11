@@ -257,8 +257,24 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
 
 def _collect_delta(existing_sources: dict, emit) -> list:
-    """Delta collection: only check list pages, compare version links."""
+    """Delta collection: full traversal with package-level dedup.
+
+    Traverses all pages like full mode, but only collects packages that
+    don't already exist in the database (matched by product_name + file_name + md5_hash).
+    This ensures accurate detection without false rollbacks.
+    """
     from src.models.snapshot import get_active_snapshots
+
+    # Build known-package index: (product, file_name, md5) → exists
+    known_packages = set()
+    for src_name in existing_sources:
+        snaps = get_active_snapshots(existing_sources[src_name]['id'])
+        for s in snaps:
+            known_packages.add((
+                s.get('product_name', ''),
+                s.get('file_name', ''),
+                s.get('md5_hash', ''),
+            ))
 
     all_items = []
     products = list(PRODUCTS.items())
@@ -266,57 +282,32 @@ def _collect_delta(existing_sources: dict, emit) -> list:
 
     for name, url in products:
         done += 1
-        emit('collecting', product=name, version='list page')
+        emit('collecting', product=name)
+        if name not in existing_sources:
+            continue
+        src = existing_sources[name]
         try:
-            src = existing_sources.get(name)
-            if not src:
-                continue
-
-            # Fetch list page
-            html = _collector._fetch(url)
-            links = _collector._extract_content_links(html)
-            current_versions = {text: href for text, href in links
-                                if not _collector._is_sidebar_link(href)}
-
-            # Get known snapshots for this source
-            existing_snaps = get_active_snapshots(src['id'])
-            known_versions = set()
-            for s in existing_snaps:
-                known_versions.add(s.get('version_branch', ''))
-
-            new_versions = set(current_versions.keys()) - known_versions
-
-            if new_versions:
-                logger.info(f'Delta: {name} has {len(new_versions)} new version(s): {new_versions}')
-                for v_text in list(new_versions)[:3]:
-                    v_url = current_versions[v_text]
-                    try:
-                        ver_html = _collector._fetch(v_url)
-                        pkg_links = _collector._extract_content_links(ver_html)
-                        for p_text, p_url in pkg_links:
-                            if _collector._is_sidebar_link(p_url):
-                                continue
-                            try:
-                                pkg_html = _collector._fetch(p_url)
-                                items = _collector._extract_table_items(
-                                    pkg_html, src['id'], name,
-                                    _collector._clean_version(v_text),
-                                    _collector._clean_package_type(p_text))
-                                all_items.extend(items)
-                                emit('collecting', product=name,
-                                     version=v_text, items=len(items))
-                            except SessionExpiredError:
-                                raise
-                            except Exception as e:
-                                logger.warning(f'Delta drill {name} {v_text} {p_text}: {e}')
-                    except SessionExpiredError:
-                        raise
-                    except Exception as e:
-                        logger.warning(f'Delta {name} {v_text}: {e}')
+            # Full traversal (same as _collect_full)
+            if name in ('RSAS', 'NF'):
+                items = _collector._collect_recursive(src['id'], name, url, max_depth=4)
             else:
-                logger.debug(f'Delta: {name} no changes ({len(current_versions)} versions)')
+                items = _collector._collect_standard(src['id'], name, url)
 
-            _progress['products_done'] = done
+            # Filter: keep only genuinely new packages
+            new_items = []
+            for item in items:
+                key = (item.product_name, item.file_name, item.md5_hash)
+                if key not in known_packages:
+                    new_items.append(item)
+
+            skipped = len(items) - len(new_items)
+            if new_items:
+                logger.info(f'Delta: {name} has {len(new_items)} new packages (skipped {skipped} known)')
+            else:
+                logger.debug(f'Delta: {name} no new packages ({len(items)} known)')
+
+            all_items.extend(new_items)
+            emit('collecting', product=name, items=len(new_items))
             update_source_health(src['id'], 'ok', datetime.now().isoformat())
 
         except SessionExpiredError:
@@ -326,6 +317,8 @@ def _collect_delta(existing_sources: dict, emit) -> list:
         except Exception as e:
             logger.error(f'Delta {name}: {e}')
             _progress['errors'].append(f'{name}: {str(e)[:100]}')
+
+        _progress['products_done'] = done
 
     return all_items
 
