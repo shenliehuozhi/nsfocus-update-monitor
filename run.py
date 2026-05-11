@@ -22,4 +22,4 @@ app = create_app()
 if __name__ == '__main__':
     port = int(os.getenv('MONITOR_PORT', '9999'))
     debug = os.getenv('MONITOR_DEBUG', 'false').lower() == 'true'
-    app.run(host='0.0.0.0', port=port, debug=debug)
+    app.run(host='127.0.0.1', port=port, debug=debug)
