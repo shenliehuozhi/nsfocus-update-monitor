@@ -1,5 +1,8 @@
 """Notification router — orchestrates sending notifications through matched channels."""
 
+import os
+import time
+
 from src.core.logger import get_logger
 from src.notifiers.base import NotificationMessage, DeliveryResult
 from src.notifiers.wecom import WecomNotifier
@@ -19,6 +22,10 @@ NOTIFIERS = {
     'feishu': FeishuNotifier(),
     'email': EmailNotifier(),
 }
+
+# Rate-limit tracker: minimum seconds between sends to same channel type
+_RATE_LIMIT_INTERVAL = float(os.getenv('MONITOR_RATE_LIMIT_SEC', '3'))
+_last_send: dict[str, float] = {}
 
 
 def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = False):
@@ -115,6 +122,14 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         if not notifier:
             logger.warning(f'Unknown channel type: {channel["type"]}')
             continue
+
+        # Rate-limit IM channels to avoid API throttling
+        if channel['type'] in ('wecom', 'dingtalk', 'feishu'):
+            last = _last_send.get(channel['type'], 0)
+            elapsed = time.time() - last
+            if elapsed < _RATE_LIMIT_INTERVAL:
+                time.sleep(_RATE_LIMIT_INTERVAL - elapsed)
+            _last_send[channel['type']] = time.time()
 
         # Send
         result = notifier.send(message, channel['config'])
@@ -273,6 +288,15 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list):
         for i, part in enumerate(parts):
             if total > 1:
                 part = f'({i+1}/{total})\n{part}'
+
+            # Rate-limit IM channels
+            if channel['type'] in ('wecom', 'dingtalk', 'feishu'):
+                last = _last_send.get(channel['type'], 0)
+                elapsed = time.time() - last
+                if elapsed < _RATE_LIMIT_INTERVAL:
+                    time.sleep(_RATE_LIMIT_INTERVAL - elapsed)
+                _last_send[channel['type']] = time.time()
+
             try:
                 requests.post(webhook, json=payload_fn(part), timeout=15)
             except Exception as e:
