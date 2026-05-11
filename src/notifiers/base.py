@@ -1,0 +1,338 @@
+"""Base notifier + notification message format."""
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Optional
+
+
+@dataclass
+class NotificationMessage:
+    """Unified notification message format."""
+    title: str
+    product_name: str
+    version_branch: str
+    package_type: str
+    file_name: str
+    package_version: str
+    md5_hash: str
+    file_size: int = 0
+    description_summary: str = ''
+    description_full: str = ''
+    description_parsed: dict = field(default_factory=dict)
+    min_sys_version: str = ''
+    restart_required: bool = False
+    urgency: str = 'normal'  # normal | high | critical
+    download_url: str = ''
+    published_at: str = ''
+    is_rollback: bool = False
+
+    @property
+    def urgency_label(self) -> str:
+        return {'normal': 'ℹ️', 'high': '⚠️', 'critical': '🔴'}.get(self.urgency, 'ℹ️')
+
+    @property
+    def rollback_label(self) -> str:
+        return '⚠️ 软件包已撤回' if self.is_rollback else ''
+
+    @property
+    def size_display(self) -> str:
+        if self.file_size >= 1024 * 1024 * 1024:
+            return f'{self.file_size / 1024 / 1024 / 1024:.2f}G'
+        elif self.file_size >= 1024 * 1024:
+            return f'{self.file_size / 1024 / 1024:.2f}M'
+        elif self.file_size >= 1024:
+            return f'{self.file_size / 1024:.1f}K'
+        return f'{self.file_size}B'
+
+    @classmethod
+    def from_snapshot(cls, snap: dict, is_rollback: bool = False,
+                      download_base: str = 'https://update.nsfocus.com/update/downloads/id/') -> 'NotificationMessage':
+        parsed = snap.get('description_parsed', {})
+        if isinstance(parsed, str):
+            import json
+            try:
+                parsed = json.loads(parsed)
+            except (json.JSONDecodeError, TypeError):
+                parsed = {}
+
+        added = parsed.get('added', [])
+        modified = parsed.get('modified', [])
+        deleted = parsed.get('deleted', [])
+
+        summary_parts = []
+        if added:
+            summary_parts.append(f'新增{len(added)}条规则')
+        if modified:
+            summary_parts.append(f'修改{len(modified)}条规则')
+        if deleted:
+            summary_parts.append(f'删除{len(deleted)}条规则')
+
+        dl_url = f'{download_base}{snap.get("download_id", "")}' if snap.get('download_id') else ''
+
+        return cls(
+            title=f'{snap.get("product_name", "")} {snap.get("version_branch", "")} {snap.get("package_type", "")}更新',
+            product_name=snap.get('product_name', ''),
+            version_branch=snap.get('version_branch', ''),
+            package_type=snap.get('package_type', ''),
+            file_name=snap.get('file_name', ''),
+            package_version=snap.get('package_version', ''),
+            md5_hash=snap.get('md5_hash', ''),
+            file_size=snap.get('file_size', 0),
+            description_summary='; '.join(summary_parts) if summary_parts else (snap.get('description_raw', '') or '')[:200],
+            description_full=snap.get('description_raw', ''),
+            description_parsed=parsed,
+            min_sys_version=snap.get('min_sys_version', ''),
+            restart_required=bool(snap.get('restart_required', False)),
+            urgency=snap.get('urgency', 'normal'),
+            download_url=dl_url,
+            published_at=snap.get('published_at', ''),
+            is_rollback=is_rollback,
+        )
+
+
+@dataclass
+class DeliveryResult:
+    success: bool
+    channel_type: str
+    channel_name: str
+    error_message: str = ''
+
+
+class BaseNotifier(ABC):
+    """Abstract notifier."""
+    channel_type: str = 'unknown'
+
+    @abstractmethod
+    def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
+        ...
+
+    def send_confirmation(self, message: NotificationMessage,
+                          results: list[DeliveryResult], config: dict) -> DeliveryResult:
+        """Send a delivery confirmation message (for IM channels)."""
+        # Default: no-op, overridden by IM channels
+        return DeliveryResult(success=True, channel_type=self.channel_type, channel_name='')
+
+
+def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) -> str:
+    """Format a NotificationMessage as markdown for IM channels (single message)."""
+    icon = '⚠️' if for_rollback else msg.urgency_label
+
+    lines = [
+        f'{icon} **{msg.title}**',
+        '',
+    ]
+
+    if for_rollback:
+        lines.append(f'> ⚠️ 软件包已被撤回，请暂缓升级')
+        lines.append('')
+
+    lines.extend([
+        f'**产品**: {msg.product_name}',
+        f'**版本**: {msg.version_branch}',
+        f'**类型**: {msg.package_type}',
+        f'**文件**: {msg.file_name}',
+        f'**包版本**: {msg.package_version}',
+        f'**大小**: {msg.size_display}',
+        f'**MD5**: `{msg.md5_hash[:16]}...`',
+        f'**时间**: {msg.published_at}',
+    ])
+
+    if msg.description_summary:
+        lines.append('')
+        lines.append(f'📋 {msg.description_summary}')
+
+    if msg.min_sys_version:
+        lines.append('')
+        lines.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
+
+    if msg.restart_required:
+        lines.append(f'🔄 升级后需重启')
+
+    if msg.download_url:
+        lines.append('')
+        lines.append(f'[📥 下载]({msg.download_url})')
+
+    return '\n'.join(lines)
+
+
+def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
+                            max_bytes: int = 4000) -> list[str]:
+    """Format message as one or more markdown bodies, splitting at 4000-byte limit.
+    
+    Returns a list of body strings. Never truncates — splits into multiple messages.
+    Each message respects the WeCom/DingTalk 4096-byte hard limit.
+    """
+    full_body = _format_markdown_body(msg, for_rollback)
+    if len(full_body.encode('utf-8')) <= max_bytes:
+        return [full_body]
+
+    # Need to split. Strategy: header/metadata in part 1, description in part 2+
+    icon = '⚠️' if for_rollback else msg.urgency_label
+    total = 0  # will compute after building parts
+    parts = []
+
+    # Part 1: header + metadata
+    header_lines = [
+        f'{icon} **{msg.title}**',
+        '',
+    ]
+    if for_rollback:
+        header_lines.append('> ⚠️ 软件包已被撤回，请暂缓升级')
+        header_lines.append('')
+    header_lines.extend([
+        f'**产品**: {msg.product_name}',
+        f'**版本**: {msg.version_branch}',
+        f'**类型**: {msg.package_type}',
+        f'**文件**: {msg.file_name}',
+        f'**包版本**: {msg.package_version}',
+        f'**大小**: {msg.size_display}',
+        f'**MD5**: `{msg.md5_hash[:16]}...`',
+        f'**时间**: {msg.published_at}',
+    ])
+
+    extra_items = []
+    if msg.min_sys_version:
+        extra_items.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
+    if msg.restart_required:
+        extra_items.append('🔄 升级后需重启')
+    if msg.download_url:
+        extra_items.append(f'[📥 下载]({msg.download_url})')
+
+    part1 = '\n'.join(header_lines + extra_items)
+    parts.append(part1)
+
+    # Part 2+: description (split by paragraphs, then by byte chunks if needed)
+    if msg.description_summary:
+        desc_paragraphs = msg.description_summary.split('\n')
+        current = ''
+        for para in desc_paragraphs:
+            para = para.strip()
+            if not para:
+                continue
+            overhead = len('📋 (2/9)\n\n'.encode('utf-8'))
+            candidate = current + ('\n' if current else '') + para
+            if len(candidate.encode('utf-8')) + overhead > max_bytes:
+                # Current batch is full, save it
+                if current:
+                    parts.append(f'📋 (_{len(parts)+1}_)\n\n{current}')
+                # If this single para itself exceeds limit, chunk it
+                if len(para.encode('utf-8')) + overhead > max_bytes:
+                    chunks = _chunk_text(para, max_bytes - overhead)
+                    for chunk in chunks:
+                        parts.append(f'📋 (_{len(parts)+1}_)\n\n{chunk}')
+                    current = ''
+                else:
+                    current = para
+            else:
+                current = candidate
+        if current:
+            parts.append(f'📋 (_{len(parts)+1}_)\n\n{current}')
+
+    # Fill in the actual total
+    total = len(parts)
+    for i in range(len(parts)):
+        if i == 0:
+            parts[i] = parts[i] + f'\n\n(1/{total})'
+        else:
+            parts[i] = parts[i].replace(f' (_{i+1}_)', f' ({i+1}/{total})')
+            parts[i] += f'\n\n({i+1}/{total})'
+
+    return parts
+
+
+def _chunk_text(text: str, max_bytes: int) -> list[str]:
+    """Split a long text into chunks of at most max_bytes each (UTF-8 safe)."""
+    chunks = []
+    encoded = text.encode('utf-8')
+    offset = 0
+    while offset < len(encoded):
+        chunk = encoded[offset:offset + max_bytes]
+        # Try to cut at a natural boundary
+        try:
+            chunk_str = chunk.decode('utf-8')
+        except UnicodeDecodeError:
+            # Trim trailing partial multi-byte char
+            for trim in range(1, 4):
+                try:
+                    chunk_str = encoded[offset:offset + max_bytes - trim].decode('utf-8')
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                chunk_str = chunk.decode('utf-8', errors='ignore')
+        chunks.append(chunk_str)
+        offset += len(chunk_str.encode('utf-8'))
+    return chunks
+
+
+def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> str:
+    """Format a NotificationMessage as HTML for email."""
+    urgency_colors = {'normal': '#4a90d9', 'high': '#f5a623', 'critical': '#d0021b'}
+    color = urgency_colors.get(msg.urgency, '#4a90d9')
+
+    rollback_banner = ''
+    if for_rollback:
+        rollback_banner = '''
+        <tr><td style="background:#fff3cd;padding:12px;border-left:4px solid #f5a623;margin-bottom:16px">
+            <strong>⚠️ 软件包已被撤回</strong> — 请暂缓升级操作。如已升级，请联系绿盟技术支持。
+        </td></tr>
+        '''
+
+    # Build description section
+    desc_html = ''
+    parsed = msg.description_parsed
+    if parsed.get('added'):
+        ids = parsed['added'][:10]
+        more = f' ...等共{len(parsed["added"])}条' if len(parsed['added']) > 10 else ''
+        desc_html += f'<tr><td style="padding:4px 0"><strong>📋 新增规则</strong>: {", ".join(ids)}{more}</td></tr>'
+    if parsed.get('modified'):
+        ids = parsed['modified'][:5]
+        desc_html += f'<tr><td style="padding:4px 0"><strong>📝 修改规则</strong>: {", ".join(ids)}</td></tr>'
+    if parsed.get('deleted'):
+        ids = parsed['deleted'][:5]
+        desc_html += f'<tr><td style="padding:4px 0"><strong>🗑️ 删除规则</strong>: {", ".join(ids)}</td></tr>'
+
+    dep_html = ''
+    if msg.min_sys_version:
+        dep_html += f'<tr><td style="padding:4px 0"><strong>⚠️ 系统版本要求</strong>: ≥ {msg.min_sys_version} (64位)</td></tr>'
+
+    reboot = '无需重启' if not msg.restart_required else '需要重启'
+    dep_html += f'<tr><td style="padding:4px 0"><strong>重启要求</strong>: {reboot}</td></tr>'
+
+    dl_btn = ''
+    if msg.download_url:
+        dl_btn = f'''
+        <tr><td style="padding:16px 0 0 0">
+            <a href="{msg.download_url}" style="background:{color};color:#fff;padding:10px 24px;
+               text-decoration:none;border-radius:4px;font-weight:bold">📥 下载升级包</a>
+        </td></tr>
+        '''
+
+    return f'''<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">
+<table style="width:100%;border-collapse:collapse">
+<tr><td style="background:{color};padding:16px;border-radius:8px 8px 0 0">
+    <h2 style="color:#fff;margin:0">{msg.product_name} {msg.version_branch} 升级通知</h2>
+</td></tr>
+<tr><td style="padding:16px;border:1px solid #e0e0e0">
+    <table style="width:100%">
+        <tr><td style="padding:4px 0;width:80px;color:#666">产品</td><td>{msg.product_name}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">版本分支</td><td>{msg.version_branch}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">包类型</td><td>{msg.package_type}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件名</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:11px">{msg.md5_hash}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{msg.published_at}</td></tr>
+        {desc_html}
+        {dep_html}
+        {rollback_banner}
+        {dl_btn}
+    </table>
+</td></tr>
+<tr><td style="padding:12px 16px;background:#f5f5f5;border-radius:0 0 8px 8px;color:#999;font-size:12px">
+    此邮件由绿盟升级监控平台自动发送 | 如需调整订阅，请联系管理员
+</td></tr>
+</table>
+</body></html>'''

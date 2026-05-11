@@ -1,0 +1,950 @@
+# 详细设计说明书
+
+> 项目：绿盟升级监控平台 (NSFOCUS Update Monitor)  
+> 版本：v1.0  
+> 日期：2026-05-11  
+> 前置文档：REQUIREMENTS.md → ARCHITECTURE.md → DATA_MODEL.md
+
+---
+
+## 1. 模块分解
+
+```
+src/
+├── app.py                    # Flask 应用工厂
+├── collectors/
+│   ├── base.py               # 采集器抽象基类 + 统一数据模型
+│   └── nsfocus.py            # NSFOCUS 6产品采集器实现
+├── core/
+│   ├── crypto.py             # AES-256-GCM 加密
+│   ├── exceptions.py         # 自定义异常体系
+│   ├── logger.py             # 日志系统（运行时级别控制）
+│   └── scheduler.py          # 调度引擎（采集→检测→通知管道）
+├── detector/
+│   └── change.py             # 变更检测（新增/回滚/规则匹配）
+├── models/
+│   ├── database.py           # SQLite 连接池 + 事务管理
+│   ├── user.py               # 用户模型
+│   ├── user_session.py       # Session 管理 + 心跳
+│   ├── snapshot.py           # 快照 + 内容源
+│   ├── channel.py            # 通知渠道
+│   ├── customer.py           # 客户
+│   ├── subscription.py       # 订阅规则 + 投递队列 + 摘要队列
+│   └── audit.py              # 审计日志
+├── notifiers/
+│   ├── base.py               # 通知抽象基类 + 消息格式化
+│   ├── wecom.py              # 企业微信机器人
+│   ├── dingtalk.py           # 钉钉机器人
+│   ├── feishu.py             # 飞书机器人
+│   ├── email.py              # 邮件（SMTP + 附件）
+│   └── router.py             # 通知路由 + 延迟队列 + 摘要发送
+└── web/
+    ├── auth.py               # JWT 鉴权
+    ├── routes/
+    │   ├── auth_routes.py    # 登录/注册
+    │   ├── api_routes.py     # 业务 CRUD API
+    │   ├── dashboard.py      # 仪表盘数据
+    │   ├── session_routes.py # Session 管理
+    │   ├── system_routes.py  # 系统日志 + 手动采集
+    │   └── register.py       # 蓝图注册
+    └── templates/
+        └── index.html        # SPA 前端
+```
+
+---
+
+## 2. 核心模块详细设计
+
+### 2.1 采集器（src/collectors/）
+
+#### 2.1.1 类层次
+
+```
+BaseCollector (ABC)
+├── source_type: str           # 'nsfocus'
+├── collect(source_id, cookie) → list[UnifiedContentItem]
+└── check_health(cookie) → CollectorHealth
+
+NsfocusCollector(BaseCollector)
+├── session: requests.Session
+├── collect()                  # 遍历6产品，按类型分流
+├── _collect_standard()        # WAF/IPS/IDS/UTS: 3层遍历
+├── _collect_recursive()       # RSAS/NF: 可变深度递归
+├── _fetch(path) → str         # HTTP GET + 速率限制 + Session过期检测
+├── _extract_content_links()   # 从 .ser_c_b_con 提取链接
+├── _extract_table_items()     # 解析升级包表格
+├── _parse_kv_row(text) → dict # 键值对正则解析
+├── _build_item()              # 构造 UnifiedContentItem
+├── _clean_version() / _clean_package_type()
+├── _is_sidebar_link()         # 侧边栏链接过滤（70+ 模式）
+└── _is_stopped()              # 停售产品检测（class=default）
+```
+
+#### 2.1.2 UnifiedContentItem（统一数据模型）
+
+```python
+@dataclass
+class UnifiedContentItem:
+    source_id: int              # 内容源ID
+    source_type: str            # 'nsfocus'
+    product_name: str           # WAF/IPS/IDS/RSAS/NF/UTS
+    version_branch: str         # V6.0.9
+    package_type: str           # sys/rule/nti/av/...
+    file_name: str              # update_rule.V6.0R09F00.wcl
+    package_version: str        # V6.0R09F00.29622898
+    md5_hash: str               # 32位MD5
+    file_size: int              # 字节
+    description_raw: str        # 原始描述
+    description_parsed: dict    # 结构化描述
+    min_sys_version: str        # 最低系统版本
+    restart_required: bool
+    urgency: str                # critical/high/normal
+    download_id: int            # 下载ID
+    published_at: str           # 发布时间
+    content_hash: str           # SHA256 指纹（自动计算）
+```
+
+#### 2.1.3 标准遍历算法（_collect_standard）
+
+**适用于**: WAF, IPS, IDS, UTS（固定3层结构）
+
+```
+输入: source_id, product_name, start_url
+输出: list[UnifiedContentItem]
+
+算法:
+1. GET start_url → html
+2. extract_content_links(html) → [(版本链接文本, URL)]
+3. FOR EACH (ver_text, ver_url):
+   a. 过滤侧边栏链接 → skip
+   b. 检测停售产品(is_stopped) → skip
+   c. GET ver_url → ver_html
+   d. extract_content_links(ver_html) → [(包类型文本, URL)]
+   e. FOR EACH (pkg_text, pkg_url):
+      - 过滤侧边栏链接 → skip
+      - GET pkg_url → pkg_html
+      - extract_table_items(pkg_html) → items
+      - 累加到结果
+4. RETURN items
+```
+
+**复杂度**: O(V × P)，V=版本数，P=包类型数  
+**典型耗时**: WAF 76s, IPS 369s（含1-3s速率限制）
+
+#### 2.1.4 递归遍历算法（_collect_recursive）
+
+**适用于**: RSAS, NF（可变深度，2-4层）
+
+```
+输入: source_id, product_name, start_url, max_depth=4
+输出: list[UnifiedContentItem]
+
+算法 recurse(url, version, pkg_type, depth):
+1. 终止条件: depth > max_depth OR url in visited → return
+2. visited.add(url)
+3. GET url → html
+4. extract_table_items(html) → items
+5. IF items非空:
+   - 累加到结果 → return（找到叶子节点）
+6. extract_content_links(html) → links
+7. FOR EACH (text, link_url):
+   a. 过滤侧边栏/停售
+   b. 推断版本: text含数字 → clean_version(text)，否则继承version
+   c. 推断包类型: text不含数字 → clean_package_type(text)，否则继承pkg_type
+   d. recurse(link_url, nv, np, depth+1)
+```
+
+**NF典型路径**: index → 类型 → 代际 → 版本 → 表格（4层）  
+**RSAS典型路径**: index → 版本 → 子版本 → 包类型 → 表格（4层）  
+**典型耗时**: RSAS 61s, NF 186s
+
+#### 2.1.5 表格解析算法（_extract_table_items）
+
+```
+输入: html, source_id, product_name, version_branch, package_type
+输出: list[UnifiedContentItem]
+
+算法:
+1. soup.find('table') → table
+2. FOR EACH <tr>:
+   a. 提取所有 <td>/<th> 文本
+   b. 特殊处理: <a href="/update/downloads/id/N"> → 提取download_id
+   c. 描述行: 使用 '\n' 分隔符保留换行
+   d. 解析键值对: _parse_kv_row(row_text) → {file_name, package_version, md5_hash, file_size, description_raw, published_at}
+   e. 当遇到新"名称："行或检测到完整包(file_name+md5_hash):
+      - _build_item(accumulated) → 输出
+      - 重置累积器
+3. 处理最后残留的累积器
+4. RETURN items
+```
+
+**关键细节**:
+- 使用 `cell.get_text(' ', strip=True)` 提取文本**但**保留 `<a>` 标签的完整文本（含"名称："前缀）
+- 描述行使用 `cell.get_text('\n', strip=True)` 保留换行
+- `_parse_kv_row` 使用 `re.DOTALL` 标志匹配多行描述
+
+#### 2.1.6 键值对解析（_parse_kv_row）
+
+正则模式按顺序匹配：
+| 序号 | 正则 | 键 | 特殊标志 |
+|------|------|----|----------|
+| 1 | `名称[：:]\s*(.+?)(?=\s*(?:版本\|MD5\|...))` | file_name | - |
+| 2 | `版本[：:]\s*(.+?)(?=\s*(?:MD5\|...))` | package_version | - |
+| 3 | `MD5[：:]\s*([a-fA-F0-9]{32})` | md5_hash | - |
+| 4 | `大小[：:]\s*([\d.]+[KMGT]?B?)` | file_size_raw | - |
+| 5 | `描述[：:](.*)` | description_raw | re.DOTALL |
+| 6 | `发布时间[：:]\s*(.+?)$` | published_at | - |
+
+**模式3** (3-tuple unpacking): `pattern, key, flags = item if len>2 else (item[0], item[1], 0)`
+
+#### 2.1.7 Session过期检测
+
+```python
+def _fetch(self, path: str) -> str:
+    self._delay()  # 1-3s random
+    resp = self.session.get(BASE_URL + path, timeout=15)
+    resp.raise_for_status()
+    if '/portal/index' in resp.url:      # 302重定向到登录页
+        raise SessionExpiredError()
+    return resp.text
+```
+
+**三重验证**（提交Session时）:
+1. 检查响应是否有302重定向
+2. 检查响应体是否包含"登录"文本
+3. 检查响应体是否包含 `ser_c_b_con` 标记
+
+#### 2.1.8 描述解析（parse_description）
+
+```
+输入: description_raw (str)
+输出: {
+    added: [规则ID], modified: [规则ID], deleted: [规则ID],
+    other: str, min_sys_version: str, restart_required: bool
+}
+
+算法:
+1. 按"一、二、三、四、五、"拆分段落
+2. FOR EACH 段落:
+   - 匹配 "新增" → 提取8位规则ID → added[]
+   - 匹配 "修改" → 提取8位规则ID → modified[]
+   - 匹配 "删除" → 提取8位规则ID → deleted[]
+   - 匹配 "其他" → other
+   - 匹配 "升级建议" → 解析版本号 + 检测是否需重启
+3. 备用: 查找"前置版本：XXXX"（系统包特殊字段）
+4. RETURN
+```
+
+---
+
+### 2.2 变更检测器（src/detector/change.py）
+
+#### 2.2.1 核心流程（run_detection）
+
+```
+输入: source_id, items: list[UnifiedContentItem], rollback_confirm=2
+输出: DetectionResult
+
+算法:
+1. IF items为空:
+   - WARNING（可能是Session过期，不触发批量回滚）
+   - RETURN 空结果
+
+2. FOR EACH item:
+   a. save_snapshot(item.to_dict()) → snapshot_id
+   b. IF first_seen_at == last_seen_at → NEW（首次出现）
+      ELSE → UNCHANGED（已存在，更新 last_seen_at）
+
+3. mark_rollback_pending(seen_ids, source_id)
+   - 所有 active 但不在 seen_ids 的快照 → status='rollback_pending'
+
+4. _confirm_rollbacks(source_id, rollback_confirm)
+   - 查询所有 rollback_pending 快照
+   - 逐个确认 → status='rollback', rollback_confirmed_at=now
+
+5. RETURN DetectionResult(new_items, rollback_items, unchanged_count, errors)
+```
+
+#### 2.2.2 回滚确认状态机
+
+```
+状态流转:
+  active → (本轮未出现) → rollback_pending → (再次未出现) → rollback
+
+简化实现:
+  - mark_rollback_pending: UPDATE snapshots SET status='rollback_pending'
+    WHERE source_id=? AND status='active' AND id NOT IN (seen_ids)
+  - _confirm_rollbacks: 查询 rollback_pending → 逐个更新为 rollback
+  - 当前实现: 1次周期即确认（生产需2次，由 confirm_count 控制）
+```
+
+#### 2.2.3 订阅规则匹配（get_new_for_subscription）
+
+```
+输入: rule (含 filter_conditions), new_items: list[(sid, snap_dict)]
+输出: list[(sid, snap_dict)]  # 匹配的项
+
+过滤维度:
+1. products:     snap['product_name'] in conditions['products']
+2. versions:     snap['version_branch'] in conditions['versions']
+3. package_types: comma-separated展开后匹配
+4. urgency:      snap['urgency'] in conditions['urgency']
+5. keywords:     any(kw in description_raw for kw in keywords)
+```
+
+#### 2.2.4 辅助函数
+
+| 函数 | 逻辑 |
+|------|------|
+| `compute_push_time(delay_hours)` | now + timedelta(hours=delay_hours) |
+| `is_quiet_time(rule)` | 检查当前 HH:MM 是否在 quiet_start-quiet_end 区间（支持跨午夜） |
+| `check_min_interval(rule, product_name)` | 查询 delivery_log，确认距离上次推送 > min_interval_hours |
+
+---
+
+### 2.3 调度引擎（src/core/scheduler.py）
+
+#### 2.3.1 整体状态机
+
+```
+         ┌──────────┐
+         │  IDLE    │ ← 等待APScheduler触发
+         └────┬─────┘
+              │ trigger (delta/full/manual)
+              ▼
+         ┌──────────┐
+    ┌───→│COLLECTING│ 采集6产品
+    │    └────┬─────┘
+    │         │ 完成
+    │         ▼
+    │    ┌──────────┐
+    │    │DETECTING │ 变更检测
+    │    └────┬─────┘
+    │         │
+    │         ▼
+    │    ┌──────────┐
+    │    │NOTIFYING │ 路由通知
+    │    └────┬─────┘
+    │         │
+    │         ▼
+    │    ┌──────────┐
+    │    │  DONE    │
+    │    └──────────┘
+    │
+    └─── 采集下一个产品（仅delta模式逐个产品更新进度）
+```
+
+#### 2.3.2 run_now 主流程
+
+```
+输入: mode='delta'|'full', progress_callback=None
+输出: summary dict
+
+1. 防重入: if _is_running → return {'status':'skipped'} (HTTP 409)
+2. 初始化 _progress 字典
+3. 获取活跃 Session → 无则返回错误
+4. 确保6产品 content_source 记录存在
+5. 采集:
+   - delta模式 → _collect_delta()   (~30秒)
+   - full模式  → _collect_full()    (~20分钟)
+6. 产品级检测: FOR EACH product:
+   - run_detection(source_id, items)
+   - get_enabled_rules() → get_new_for_subscription() → route_notifications()
+7. 处理回滚通知
+8. process_delayed_queue()  # 处理到期延迟推送
+9. 更新 _last_run / _last_full_run
+10. RETURN summary
+```
+
+#### 2.3.3 增量采集（_collect_delta）
+
+```
+输入: existing_sources, emit (进度回调)
+输出: list[UnifiedContentItem]
+
+算法 (per product):
+1. GET 列表页 → 提取版本链接
+2. get_active_snapshots(source_id) → known_versions
+3. new_versions = current_versions - known_versions
+4. IF new_versions:
+   - 仅钻入前3个新版本
+   - 标准3层遍历提取升级包
+5. ELSE:
+   - DEBUG "no changes"
+6. update_source_health('ok')
+
+优势: 无变化时仅6个HTTP请求，~30秒完成
+局限: 仅检测新版本分支，不检测已有版本的包类型新增
+```
+
+#### 2.3.4 全量采集（_collect_full）
+
+```
+输入: existing_sources, sessions, cookie, emit
+输出: list[UnifiedContentItem]
+
+算法 (per product):
+1. RSAS/NF → _collect_recursive(source_id, name, url, depth=4)
+2. WAF/IPS/IDS/UTS → _collect_standard(source_id, name, url)
+3. update_source_health('ok')
+
+Session切换:
+- 捕捉 SessionExpiredError:
+  - 标记 session[0] 为 expired
+  - 如果 sessions[1] 存在 → 切换到备用Session继续
+```
+
+#### 2.3.5 全量扫描判定（is_full_scan_due）
+
+```python
+def is_full_scan_due() -> bool:
+    if _last_full_run is None:
+        return True  # 首次运行
+    elapsed_hours = (now - _last_full_run).seconds / 3600
+    return elapsed_hours >= FULL_SCAN_INTERVAL  # 默认168小时
+```
+
+#### 2.3.6 APScheduler 调度配置
+
+| Job ID | 触发 | 功能 |
+|--------|------|------|
+| `nsfocus_delta` | 每4小时 | Delta采集 → 检测 → 通知 |
+| `nsfocus_full_check` | 每4小时 | 检查 is_full_scan_due()，满足则跑 full |
+| `nsfocus_heartbeat` | 每30分钟 | GET /update/wafIndex 保活 Session |
+| `nsfocus_digest` | 每6小时 | 检查到期摘要并发送 |
+
+#### 2.3.7 进度追踪（_progress）
+
+线程安全的字典，供前端轮询：
+
+```python
+_progress = {
+    'active': bool,           # 是否正在采集
+    'mode': 'delta'|'full',
+    'phase': 'init'|'collecting'|'detecting'|'notifying'|'done',
+    'current_product': str,
+    'current_version': str,
+    'products_done': int,
+    'products_total': int,    # 固定6
+    'items_collected': int,
+    'total_new': int,
+    'total_rollback': int,
+    'errors': list[str],
+    'started_at': ISO str,
+    'finished_at': ISO str,
+    'duration_s': int,
+}
+_progress_lock = threading.Lock()
+```
+
+---
+
+### 2.4 通知路由（src/notifiers/router.py）
+
+#### 2.4.1 route_notifications 决策树
+
+```
+输入: snapshot_id, rule_id, is_rollback=False
+
+决策:
+├── is_rollback? → _send_immediate(is_rollback=True) → RETURN
+├── digest_mode != ''? → enqueue_digest(period_key) → RETURN
+├── is_quiet_time? → enqueue(delay=1h) → RETURN
+├── !check_min_interval? → enqueue(delay=1h) → RETURN
+├── delay_hours > 0?
+│   ├── strategy='reset' → reset_timer_for_rule(rule_id)
+│   └── enqueue(push_after) → RETURN
+└── 默认 → _send_immediate()
+```
+
+#### 2.4.2 即时发送（_send_immediate）
+
+```
+输入: snap, rule, is_rollback
+
+1. NotificationMessage.from_snapshot(snap, is_rollback)
+2. get_rule_channels(rule['id']) → bindings
+3. FOR EACH binding:
+   a. get_by_id(channel_id) → channel config
+   b. NOTIFIERS[channel.type].send(message, config)
+   c. log_delivery(snapshot_id, channel_id, status, error)
+4. FOR EACH IM渠道 (wecom/dingtalk/feishu):
+   - notifier.send_confirmation(message, results, config)
+```
+
+#### 2.4.3 消息拆分策略（_format_markdown_bodies）
+
+**问题**: 企业微信/钉钉 Markdown 有 **4096 字节硬限制**。中文每字符3字节 → 最多~1365字符。
+
+**用户要求**: **绝不截断内容**，宁可拆分为多条消息。
+
+```
+输入: NotificationMessage, max_bytes=4000
+输出: list[str]  # 1条=正常, N条=拆分
+
+拆分策略:
+1. Part1: 标题 + 全部元数据 (产品/版本/类型/文件/MD5/时间) + 下载链接 + (1/N)
+2. Part2+: 描述正文
+   a. 按 \n 分段
+   b. 单段超长 → _chunk_text() 按UTF-8字节边界安全切割
+   c. 每段携带 (i/N) 编号
+3. WecomNotifier.send() 循环发送各分段
+4. DingtalkNotifier.send() 循环发送各分段
+```
+
+#### 2.4.4 摘要系统（Digest Mode）
+
+**推送模式**:
+| 模式 | period_key | 默认发送日 | 自定义配置 | digest_config JSON |
+|------|-----------|-----------|-----------|-------------------|
+| weekly | 2026-W20 | 周日 | 周一~周日 | `{"weekday": 0-6}` |
+| monthly | 2026-05 | 月末 | 1-28号/最后一天 | `{"month_day": 1-28}` 或 `{"month_day": "last"}` |
+| quarterly | 2026-Q2 | 季度末 | 第一天/最后一天 | `{"quarter_day": "first"}` 或 `{"quarter_day": "last"}` |
+
+**摘要流程**:
+```
+1. Detection 发现新包 → route_notifications
+2. rule.digest_mode 非空 → enqueue_digest(rule_id, snapshot_id, period_key)
+3. _digest_check() 每6小时运行:
+   a. get_rules_due_for_digest() → 检查是否到发送日
+   b. get_digest_snapshots(rule_id, period_key)
+   c. _filter_full_packages() → 全量包去重（只保留每组最新）
+   d. _send_digest_split() → 格式化汇总 → 发往绑定渠道
+   e. mark_digest_sent()
+```
+
+#### 2.4.5 全量包过滤（_filter_full_packages）
+
+```
+分组: (product_name, version_branch, package_type)
+规则: 每组中全量包只保留最新的1个(按published_at降序)，增量包全部保留
+
+判断是否为全量包 (_is_full_package):
+1. 优先检查 config overrides: {"WAF|sys": "full"} 精确匹配 → 直接返回
+2. 通配符匹配: {"*|rule": "full"} → 所有产品的rule类型
+3. 关键词匹配: description/file_name 含 "全量/完整包/离线升级包/离线包" → full
+4. 排除关键词: 含 "增量/差异包/补丁包/增量更新" → not full
+5. 默认: not full
+```
+
+---
+
+### 2.5 日志系统（src/core/logger.py）
+
+#### 2.5.1 架构
+
+```
+┌───────────────────────────────────────┐
+│         set_log_level(level)          │  运行时切换
+│         get_current_level()           │
+│         get_log_dir()                 │
+└──────────────┬────────────────────────┘
+               │
+    ┌──────────┼──────────┐
+    ▼          ▼          ▼
+app.log    access.log   audit.log
+(业务日志)  (HTTP中间件)  (审计)
+```
+
+#### 2.5.2 运行时级别控制
+
+```python
+def set_log_level(level: str, auto_restore_minutes: int = 30):
+    """切换到DEBUG级别，N分钟后自动恢复INFO"""
+    # 设置 monitor_logger.setLevel(DEBUG)
+    # 启动定时器: threading.Timer(auto_restore*60, _auto_restore_info)
+```
+
+**应用场景**: 排障时在Web UI一键开启DEBUG，30分钟后自动恢复，避免日志爆炸。
+
+#### 2.5.3 HTTP访问日志中间件
+
+```python
+@app.before_request:
+    g._req_start = time.time()
+
+@app.after_request:
+    duration_ms = (time.time() - g._req_start) * 1000
+    access_logger.info(f"{ip} {method} {path} {status} {duration_ms}ms")
+    response.headers['X-Response-Time-ms'] = str(int(duration_ms))
+```
+
+---
+
+### 2.6 数据模型层（src/models/）
+
+#### 2.6.1 数据库连接管理
+
+```python
+# 连接池: 单例模式，线程本地存储
+_connections = {}  # thread_id → sqlite3.Connection
+
+def get_db() -> Connection:
+    tid = threading.get_ident()
+    if tid not in _connections:
+        conn = sqlite3.connect(DB_PATH)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode=WAL")      # 并发写入
+        conn.execute("PRAGMA busy_timeout=5000")
+        _connections[tid] = conn
+    return _connections[tid]
+
+def transaction():
+    """上下文管理器: BEGIN → yield → COMMIT/ROLLBACK"""
+
+def query(sql, params=()) → list[Row]:
+def execute(sql, params=()) → int:       # lastrowid
+def executemany(sql, params_list) → None:
+```
+
+#### 2.6.2 AES-256-GCM 加密（crypto.py）
+
+```python
+def encrypt(plaintext: str) -> str:
+    """AES-256-GCM 加密 → Base64编码"""
+    # Key: PBKDF2('nsfocus-monitor-salt' + machine_id, iterations=100000)
+    # Nonce: 12字节随机
+    # Tag: 16字节认证
+
+def decrypt(encoded: str) -> str:
+    """Base64解码 → AES-256-GCM 解密"""
+```
+
+**应用**: Session cookie、Webhook URL、SMTP密码 存储在 `user_sessions.cookie_value` 和 `channels.config` 的加密字段中。
+
+#### 2.6.3 关键模型函数索引
+
+| 模型 | 核心函数 | 说明 |
+|------|---------|------|
+| **snapshot.py** | `save_snapshot(dict)` | UPSERT: 按 content_hash 去重，更新 first_seen/last_seen |
+| | `mark_rollback_pending(seen_ids, source_id)` | 批量标记未出现快照 |
+| | `confirm_rollbacks(source_id, count)` | 确认回滚 |
+| | `get_active_snapshots(source_id)` | 获取活跃快照 |
+| **subscription.py** | `create_rule(user_id, **kwargs)` | 创建订阅规则（含 digest_config JSON） |
+| | `update_rule(rule_id, **kwargs)` | 更新规则 |
+| | `get_enabled_rules()` | 获取启用的规则 |
+| | `enqueue(snapshot_id, rule_id, push_after)` | 延迟推送入队 |
+| | `get_due_items()` | 获取到期延迟项 |
+| | `enqueue_digest(rule_id, snapshot_id, period_key)` | 摘要入队 |
+| | `get_rules_due_for_digest()` | 检查到期的摘要规则（含自定义调度计算） |
+| | `log_delivery(snapshot_id, channel_id, ...)` | 记录投递 |
+| | `get_history(page, limit, product, ...)` | 推送历史查询（含投递详情 JOIN） |
+| **user_session.py** | `create(user_id, cookie_value)` | 创建Session（触发验证+首次心跳） |
+| | `update_heartbeat(session_id, status)` | 更新心跳状态 |
+| | `log_heartbeat(session_id, status, latency, error)` | 记录心跳历史 |
+| | `get_expired_active_count()` | 获取活跃但失效的Session数 |
+| **channel.py** | `create(user_id, name, type, config)` | 创建渠道（config JSON含加密字段） |
+| | `_decrypt_config(row)` | 解密渠道配置 |
+| **audit.py** | `log(user_id, action, details, ip)` | 记录审计事件 |
+
+---
+
+## 3. 核心流程序列图
+
+### 3.1 定时采集 → 通知 完整流程
+
+```
+APScheduler   Scheduler     NsfocusCollector   Detector      Router      Notifiers
+    │            │               │                │             │            │
+    │─trigger───→│               │                │             │            │
+    │            │─get_active────│                │             │            │
+    │            │  _sessions()  │                │             │            │
+    │            │               │                │             │            │
+    │            │─collect(delta)──→              │             │            │
+    │            │               │─GET /wafIndex──│             │            │
+    │            │               │←──html─────────│             │            │
+    │            │               │ (repeat 6x)    │             │            │
+    │            │               │─extract_table──│             │            │
+    │            │←──items[0..N]─│                │             │            │
+    │            │               │                │             │            │
+    │            │─run_detection(source, items)───→│             │            │
+    │            │               │                │─save_snapshot│            │
+    │            │               │                │  (UPSERT)   │            │
+    │            │               │                │─mark_rollback│            │
+    │            │               │                │  _pending   │            │
+    │            │←──DetectionResult──────────────│             │            │
+    │            │               │                │             │            │
+    │            │─get_enabled_rules()            │             │            │
+    │            │─get_new_for_subscription()─────→│             │            │
+    │            │←──matched[]────────────────────│             │            │
+    │            │               │                │             │            │
+    │            │─route_notifications(sid,rid)────────────────→│            │
+    │            │               │                │             │─send()────→│
+    │            │               │                │             │←──result───│
+    │            │               │                │             │─log_delivery
+    │            │               │                │             │─send_confirmation
+    │            │               │                │             │            │
+    │            │─process_delayed_queue()─────────────────────→│            │
+    │            │               │                │             │            │
+    │            │─process_digests()───────────────────────────→│            │
+    │            │               │                │             │            │
+    │←──summary──│               │                │             │            │
+```
+
+### 3.2 Session 提交与验证流程
+
+```
+Web UI           API (/api/sessions)    NsfocusCollector     DB
+  │                     │                     │               │
+  │─POST PHPSESSID─────→│                     │               │
+  │                     │─encrypt(cookie)─────│               │
+  │                     │─_set_cookie()──────→│               │
+  │                     │                     │─GET /wafIndex │
+  │                     │                     │←──html────────│
+  │                     │                     │               │
+  │                     │ 检查:                              │
+  │                     │  - 302 redirect? → expired          │
+  │                     │  - body含 '登录'? → expired        │
+  │                     │  - body含 'ser_c_b_con'? → valid   │
+  │                     │                     │               │
+  │                     │─create(cookie)─────────────────────→│
+  │                     │─update_heartbeat('ok')─────────────→│
+  │                     │─log_heartbeat(latency)─────────────→│
+  │                     │←──session_id───────────────────────│
+  │←──{status:'ok'}────│                     │               │
+```
+
+### 3.3 摘要推送流程
+
+```
+APScheduler     Scheduler     Router        DB                  Notifiers
+    │               │            │            │                     │
+    │─(每6h)───────→│            │            │                     │
+    │               │─_digest_check()         │                     │
+    │               │────────────→│           │                     │
+    │               │            │─get_rules_due_for_digest()──────→│
+    │               │            │←──due_rules[]────────────────────│
+    │               │            │           │                     │
+    │               │            │ FOR EACH rule:                   │
+    │               │            │─get_digest_snapshots(rid,key)───→│
+    │               │            │←──snaps[]────────────────────────│
+    │               │            │           │                     │
+    │               │            │─_filter_full_packages(snaps)     │
+    │               │            │─按产品分组 + 格式化               │
+    │               │            │─_send_digest_split()             │
+    │               │            │   (auto-split 4096B)             │
+    │               │            │─────────────send()──────────────→│
+    │               │            │←────────result──────────────────│
+    │               │            │           │                     │
+    │               │            │─mark_digest_sent()──────────────→│
+    │               │            │─log_delivery() 每包记录─────────→│
+    │               │            │           │                     │
+```
+
+---
+
+## 4. 状态机
+
+### 4.1 快照生命周期
+
+```
+                    ┌─────────┐
+                    │  active  │  采集到
+                    └────┬─────┘
+                         │ 本轮未出现
+                         ▼
+                 ┌───────────────┐
+                 │rollback_pending│  再次未出现
+                 └───────┬───────┘
+                         │
+                         ▼
+                    ┌──────────┐
+                    │ rollback │  确认已下架
+                    └──────────┘
+```
+
+### 4.2 Session 状态
+
+```
+         ┌──────────┐
+    ┌───→│  active   │←── 心跳OK
+    │    └─────┬─────┘
+    │          │ 心跳检测到302/登录页
+    │          ▼
+    │    ┌──────────┐
+    │    │ expired  │  Dashboard 红色告警
+    │    └──────────┘
+    │
+    └── 用户重新提交PHPSESSID
+```
+
+### 4.3 推送队列项状态
+
+```
+   ┌──────────┐
+   │ pending  │  等待 push_after 时间到达
+   └────┬─────┘
+        │ process_delayed_queue() 检测到到期
+        ▼
+   ┌──────────┐
+   │  pushed  │  已发送
+   └──────────┘
+        或
+   ┌──────────┐
+   │cancelled │  规则被禁用/删除时取消
+   └──────────┘
+```
+
+---
+
+## 5. 错误处理策略
+
+### 5.1 异常层次
+
+```
+MonitorError (基类)
+├── SessionExpiredError    # Session过期，需用户干预
+├── CollectionError        # 采集失败（网络/解析）
+├── ParseError             # 页面结构变化
+├── NotificationError      # 通知发送失败
+└── ConfigError            # 配置错误
+```
+
+### 5.2 各层级处理原则
+
+| 层级 | 处理策略 | 示例 |
+|------|---------|------|
+| **采集器** | 单产品失败不影响其他产品；Session过期立即终止 | `try: collect_WAF(); except: log + continue` |
+| **检测器** | 单项保存失败记录error但不中断 | `try: save_snapshot(); except: result.errors.append()` |
+| **通知路由** | 单渠道失败不影响其他渠道；记录 delivery_log 状态 | `for ch in channels: try: send(); except: log` |
+| **调度器** | 顶层 try/except 包裹整个 cycle；确保 _is_running 重置 | `finally: _is_running = False` |
+| **Web API** | 400/409/500 标准响应；审计日志 best-effort | `try: _audit(); except: pass` |
+
+### 5.3 防重入保护
+
+```python
+# 调度器
+if _is_running:
+    return {'status': 'skipped', 'reason': 'Already running'}
+
+# API层
+if get_status()['is_running']:
+    return jsonify({'error': 'Collection already in progress'}), 409
+```
+
+---
+
+## 6. 关键数据表
+
+> 完整ER图见 [DATA_MODEL.md](./DATA_MODEL.md)
+
+### 6.1 核心表大小估算
+
+| 表 | 行数 | 增长 | 说明 |
+|----|------|------|------|
+| snapshots | 278+ | ~278/全量采集 | 去重UPSERT，集合随时间稳定 |
+| delivery_log | 随推送增长 | ~每次检测 | 定期清理（snapshot_retention_days） |
+| heartbeat_log | 48/天 | ~48条/天 | 30分钟间隔×24小时 |
+| digest_queue | 可变 | ~订阅数×摘要期 | 摘要发送后标记 sent |
+| audit_log | 随操作增长 | ~每次CRUD | 年清理（>365天） |
+| system_settings | ~15 | 固定 | 键值对配置 |
+
+---
+
+## 7. 安全设计
+
+### 7.1 敏感数据保护
+
+| 数据 | 存储方式 | 传输 |
+|------|---------|------|
+| PHPSESSID | AES-256-GCM加密存储 | HTTPS (update.nsfocus.com) |
+| Webhook URL | AES-256-GCM加密存储 | HTTPS POST |
+| SMTP密码 | AES-256-GCM加密存储 | TLS |
+| JWT Secret | 环境变量/配置文件 | - |
+| 用户密码 | Werkzeug generate_password_hash (scrypt) | HTTPS POST |
+
+### 7.2 XSS 防护
+
+所有用户输入在后端存储前和前端渲染前经过 `esc()`:
+```javascript
+function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;')
+            .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
+}
+```
+
+### 7.3 审计追踪
+
+审计日志记录的操作:
+- 登录/登出/登录失败
+- 渠道 CRUD
+- 客户 CRUD
+- 订阅规则 CRUD
+- 手动采集/重推
+- 日志级别变更
+
+字段: `user_id, action, details(JSON), ip_address, created_at`
+
+---
+
+## 8. 性能指标
+
+### 8.1 采集性能（实测数据）
+
+| 产品 | 模式 | 耗时 | HTTP请求数 |
+|------|------|------|-----------|
+| WAF | 全量 | 76s | ~20 |
+| IPS | 全量 | 369s | ~100+ |
+| IDS | 全量 | 358s | ~100+ |
+| UTS | 全量 | 327s | ~90+ |
+| RSAS | 全量 | 61s | ~20 |
+| NF | 全量 | 186s | ~60 |
+| **6产品全量** | | **~23分钟** | **~400** |
+| **6产品增量** | | **~30秒** | **6-20** |
+
+### 8.2 内存占用
+
+- Flask + APScheduler: ~80MB
+- 采集时峰值: ~120MB（BeautifulSoup解析）
+- SQLite WAL模式: <10MB附加
+
+### 8.3 数据库写入
+
+- 全量采集: ~278次 UPSERT
+- 增量采集: <20次 UPSERT
+- 每次检测: ~10次 delivery_log INSERT
+
+---
+
+## 9. 待实现
+
+- [ ] 端到端通知测试（需真实 Webhook/SMTP 凭证）
+- [ ] systemd 服务文件
+- [ ] 订阅规则 auto-disable on valid_until 过期
+- [ ] HEAD 预检查 Last-Modified（减少无效请求）
+- [ ] 多Session池轮转优化
+- [ ] 采集结果缓存（避免重复解析相同页面）
+- [ ] 更多通知渠道（Telegram、Slack、短信）
+
+---
+
+## 附录A: 产品URL映射
+
+| 产品 | 路径 | 遍历模式 |
+|------|------|---------|
+| WAF | `/update/wafIndex` | Standard 3层 |
+| IPS | `/update/listIps` | Standard 3层 |
+| IDS | `/update/listIds` | Standard 3层 |
+| RSAS | `/update/listAuroraIndex` | Recursive depth=4 |
+| NF | `/update/ListNf` | Recursive depth=4 |
+| UTS | `/update/bsaUtsIndex` | Standard 3层 |
+
+## 附录B: 包类型码表
+
+| 代码 | 中文 |
+|------|------|
+| sys | 系统/引擎升级包 |
+| rule | 规则升级包 |
+| nti | 威胁情报升级包 |
+| av | 病毒特征库升级包 |
+| apprule | 应用规则库升级包 |
+| url | URL分类库升级包 |
+| wcs | 恶意站点库升级包 |
+| judge | 研判规则库升级包 |
+| geo | 地理库升级包 |
+| interface | 接口升级包 |
+| special | 特殊升级包 |
+| other | 其他升级包 |
+| merge | 合并升级包 |
+| client | 客户端 |
+| av_stream | 流式病毒库升级包 |

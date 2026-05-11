@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+
+# Data (database is versioned for rollback safety — keep)
+# data/*.db
+
+# Logs
+logs/*.log
+
+# Environment
+.env
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

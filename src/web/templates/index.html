@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>绿盟升级监控</title>
+<style>
+:root{--bg:#f1f4f8;--card:#fff;--text:#1a2332;--muted:#6b7d95;--border:#e2e7ee;--primary:#4361ee;--danger:#e5484d;--success:#0ca678;--warn:#f08c00;--header:#111827}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:var(--bg);color:var(--text)}
+.header{background:var(--header);color:#fff;display:flex;align-items:center;height:58px;padding:0 24px;gap:24px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.header h1{font-size:16px;font-weight:700}
+.nav{display:flex;gap:2px}
+.nav a{color:#9ca3af;text-decoration:none;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:500;transition:.15s}
+.nav a:hover{color:#e5e7eb;background:rgba(255,255,255,.06)}
+.nav a.active{color:#fff;background:var(--primary)}
+.user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:#d1d5db}
+.user button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
+.user button:hover{background:rgba(255,255,255,.18)}
+.main{max-width:1280px;margin:0 auto;padding:20px}
+.card{background:var(--card);border-radius:10px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card-hd{padding:12px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;color:var(--text)}
+.card-bd{padding:16px 18px}.card-bd.pt0{padding-top:0}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.stat{text-align:center;padding:16px 12px;background:#f8fafc;border-radius:8px;border:1px solid var(--border)}
+.stat .num{font-size:26px;font-weight:800;color:var(--header);line-height:1.2}
+.stat .label{font-size:11px;color:var(--muted);margin-top:2px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.stat.green .num{color:var(--success)}.stat.red .num{color:var(--danger)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--muted);background:#f8fafc;border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.4px}
+td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
+tr:hover td{background:#fafbfc}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600;line-height:1.4}
+.badge-ok{background:#e6f7ed;color:var(--success)}.badge-warn{background:#fff8e6;color:#c27800}.badge-err{background:#fde8e8;color:var(--danger)}
+.btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:7px;font-size:12.5px;cursor:pointer;border:none;font-weight:500;transition:.12s}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{filter:brightness(1.08)}
+.btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
+.btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:5px}
+.btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:#f8fafc}
+.form-group{margin-bottom:10px}
+.form-group label{display:block;position:relative;font-size:12px;font-weight:600;color:#4a5568;margin-bottom:4px}.req::after{content:" *";color:var(--danger);font-weight:700}
+.form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;background:#fff;color:var(--text);transition:.12s;line-height:1.5;font-family:inherit}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(67,97,238,.1)}
+.form-group select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+select[multiple]{min-height:70px;background-image:none!important;padding-right:12px!important}
+select.ct[multiple]{min-height:56px;height:56px;font-size:11.5px}
+.form-group input[required]{border-left:2.5px solid var(--primary)}
+.form-group input::placeholder{color:#b0b8c1}
+.login-box{max-width:400px;margin:80px auto}.login-box h2{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
+.toast{position:fixed;top:16px;right:16px;padding:10px 20px;border-radius:8px;color:#fff;font-size:13px;z-index:9999;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:slideIn .25s}
+.toast-success{background:var(--success)}.toast-error{background:var(--danger)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.hidden{display:none!important}
+.step{display:flex;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:13px;gap:10px;border:1px solid var(--border)}
+.step-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
+.ver-bar{cursor:pointer;padding:7px 12px;background:#f8fafc;border-radius:6px;display:flex;align-items:center;margin-bottom:2px;font-size:12.5px;border:1px solid var(--border);user-select:none}
+.ver-bar:hover{background:#eef2f7}
+.ver-bar .arrow{font-size:10px;margin-right:6px;color:var(--muted)}
+.detail-row td{background:#fafdf7!important;padding:12px 16px!important;font-size:13px;border-bottom:2px solid #e6f0da}
+.mono{font-family:'SF Mono','Fira Code',monospace;font-size:12px:'SF Mono','Fira Code',monospace;font-size:11px}
+.desc-box{background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto;font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-all;color:#555}
+.info-bar{background:#eef4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#3a5080}
+a{color:var(--primary);text-decoration:none;font-weight:500}
+.flex{display:flex}.gap6{gap:6px}.gap8{gap:8px}.flex1{flex:1;min-width:0}.items-center{align-items:center}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}
+.empty{text-align:center;padding:28px;color:var(--muted);font-size:12.5px}
+.form-panel{padding:16px;background:#f8fafc;border-radius:8px;border:1px solid var(--border);margin-bottom:12px}
+</style>
+</head>
+<body>
+
+<header class="header" id="header" style="display:none">
+  <h1>🛡️ 绿盟升级监控</h1>
+  <nav class="nav">
+    <a href="#" class="active" data-page="dashboard">仪表盘</a>
+    <a href="#" data-page="sessions">Session</a>
+    <a href="#" data-page="channels">通知渠道</a>
+    <a href="#" data-page="subscriptions">订阅规则</a>
+    <a href="#" data-page="customers">客户</a>
+    <a href="#" data-page="data">采集数据</a>
+    <a href="#" data-page="history">推送历史</a>
+    <a href="#" data-page="settings">系统配置</a>
+    <a href="#" data-page="logs">系统日志</a>
+  </nav>
+  <div class="user"><span id="uname"></span><button onclick="logout()">退出</button></div>
+</header>
+<div class="main" id="app"></div>
+
+<script>
+const API='/api';
+let T=localStorage.getItem('token'),U=null;
+
+function api(path,opts={}){
+  const h={'Content-Type':'application/json'};
+  if(T)h['Authorization']='Bearer '+T;
+  return fetch(API+path,{...opts,headers:h}).then(r=>r.json());
+}
+
+function toast(m,s='success'){
+  const e=document.createElement('div');e.className=`toast toast-${s}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),2500);
+}
+
+// ── Auth ──
+function renderLogin(){
+  document.getElementById('header').style.display='none';
+  document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>🛡️ 绿盟升级监控</h2><div class="form-group"><label>用户名</label><input id="lu" placeholder="admin"></div><div class="form-group"><label>密码</label><input id="lp" type="password"></div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">登录</button><p style="text-align:center;margin-top:16px;font-size:13px;color:var(--muted)"><a href="#" onclick="renderRegister()">注册账号</a></p></div></div>`;
+}
+function renderRegister(){
+  document.getElementById('header').style.display='none';
+  document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>注册</h2><div class="form-group"><label>用户名</label><input id="ru"></div><div class="form-group"><label>密码(≥6位)</label><input id="rp" type="password"></div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doRegister()">注册</button><p style="text-align:center;margin-top:16px;font-size:13px;color:var(--muted)"><a href="#" onclick="renderLogin()">← 返回</a></p></div></div>`;
+}
+async function doLogin(){
+  const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
+  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
+}
+async function doRegister(){
+  const r=await api('/auth/register',{method:'POST',body:JSON.stringify({username:document.getElementById('ru').value,password:document.getElementById('rp').value})});
+  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
+}
+function logout(){T=null;U=null;localStorage.removeItem('token');renderLogin();}
+
+function showPage(n){
+  document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
+  const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
+  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,logs};
+  if(pages[n])pages[n]();
+}
+
+function typeCN(t){const m={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库'};return m[t]||t;}
+
+// ── Dashboard ──
+let _dashRange='7';
+async function dashboard(range){
+  if(range)_dashRange=range;
+  const rng=_dashRange||'7';
+  const[dR,sR,nR]=await Promise.all([
+    api('/dashboard?range='+rng),
+    fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
+    api('/latest/snapshots').catch(()=>({data:{}}))
+  ]);
+  dR._range=rng;
+  const d=dR.data||{},sch=sR.data||{},grp=nR.data||{};
+  const keys=Object.keys(grp);
+
+  // Session status line
+  let sesLine='';
+  if(d.session_detail&&d.session_detail.length){
+    sesLine=d.session_detail.map(s=>{
+      let hbIcon=s.heartbeat_status==='ok'?'💚':s.heartbeat_status==='expired'?'❤️‍🔥':'💛';
+      let hbTime=s.last_heartbeat_at?fmtTZ(s.last_heartbeat_at,true):'—';
+      return `${hbIcon} #${s.id} ${hbTime}(${s.heartbeat_count||0}次)`;
+    }).join(' · ');
+  }
+  let sesWarn='';
+  if(d.session_status?.active_but_expired){
+    sesWarn=`<div class="info-bar" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;margin-bottom:14px"><strong>⚠️ Session 过期</strong> — 有 ${d.session_status.active_but_expired} 个 Session 已失效，请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 重新添加</div>`;
+  }
+  if(!d.session_status?.active){
+    sesWarn=`<div class="info-bar" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;margin-bottom:14px"><strong>⚠️ 无活跃 Session</strong> — 请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 添加 PHPSESSID</div>`;
+  }
+
+  // Collect status
+  let nextCol='—';
+  if(sch.last_run){
+    let d2=new Date(sch.last_run+'Z');d2.setHours(d2.getHours()+8+sch.interval_hours);
+    nextCol=d2.toISOString().substring(0,16).replace('T',' ');
+  }
+  let lastCol=sch.last_run?new Date(sch.last_run+'Z').toISOString().substring(0,16).replace('T',' '):'—';
+
+  let cards='';
+  for(let[n,snaps]of Object.entries(grp)){
+    // Sort by published_at descending (newest first)
+    snaps.sort((a,b)=>(b.published_at||'').localeCompare(a.published_at||''));
+    cards+=`<div class="card"><div class="card-hd">📦 ${n} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包</span></div><div class="card-bd pt0"><table><tr><th>版本</th><th>类型</th><th style="width:40%">文件</th><th>紧急度</th></tr>`;
+    snaps.slice(0,4).forEach(s=>{cards+=`<tr><td>${s.version_branch||''}</td><td>${typeCN(s.package_type)}</td><td class="mono">${(s.file_name||'').substring(0,40)}</td><td><span class="badge badge-${s.urgency==='critical'?'err':s.urgency==='high'?'warn':'ok'}">${s.urgency||''}</span></td></tr>`;});
+    cards+=`</table></div></div>`;
+  }
+
+  document.getElementById('app').innerHTML=
+    sesWarn +
+    `<div class="grid3">
+      <div class="stat green"><div class="num">${d.session_status?.active||0}</div><div class="label">活跃 Session</div></div>
+      <div class="stat"><div class="num">${d.total_snapshots||keys.length}</div><div class="label">监控快照</div></div>
+      <div class="stat"><div class="num">${sch.is_running?'采集中':'就绪'}</div><div class="label">调度器</div></div>
+    </div>
+    <div class="grid3" style="margin-top:12px">
+      <div class="stat"><div class="num" style="color:var(--primary)">${d.push_today?.total||0}</div><div class="label">今日推送</div></div>
+      <div class="stat green"><div class="num">${d.push_today?.success||0}</div><div class="label">成功</div></div>
+      <div class="stat red"><div class="num">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
+    </div>
+    ${sesLine?`<div class="info-bar"><strong>💓 心跳</strong>: ${sesLine}</div>`:''}
+    <div class="info-bar" style="display:flex;gap:24px;flex-wrap:wrap">
+      <span>⏱️ 上次采集: ${lastCol}</span>
+      <span>⏭️ 下次采集: ${nextCol}</span>
+      <span>📊 本周推送: ${d.push_week?.total||0}次 (${d.push_week?.success||0}✅/${d.push_week?.failed||0}❌)</span>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-sm btn-primary" onclick="triggerCollect()" ${sch.is_running?'disabled':''}>🔄 手动采集</button><span style="font-size:12px;color:var(--muted);align-self:center">立即触发采集</span></div>
+    ${_renderRecentDeliveries(d.recent_deliveries||[],dR._range||'7')}
+    ${keys.length?`<div class="grid2" style="margin-top:16px">${cards}</div>`:`<div class="card mt16"><div class="card-bd"><div class="step"><span class="step-badge">1</span><strong>获取 Session</strong> — 登录 update.nsfocus.com → F12 → Cookies → 复制 PHPSESSID</div><div class="step"><span class="step-badge">2</span><strong>添加渠道</strong> — 配置企微/钉钉/飞书/邮件 Webhook</div><div class="step"><span class="step-badge">3</span><strong>创建规则</strong> — 选择产品+版本+类型+通知方式</div></div></div>`}`;
+}
+
+// ── Data ──
+
+function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t+'Z');d.setHours(d.getHours()+8);let s=d.toISOString();return full?s.substring(0,16).replace('T',' '):s.substring(0,10);}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
+async function dataPage(){
+  const r=await api('/latest/snapshots').catch(()=>({data:{}}));const grp=r.data||{};
+  if(!Object.keys(grp).length){document.getElementById('app').innerHTML='<div class="card"><div class="card-bd empty">暂无采集数据</div></div>';return;}
+  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let d=new Date();d.setHours(d.getHours()+8);base=d.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setHours(d.getHours()+8+sch.interval_hours);next=d.toISOString().substring(0,16).replace('T',' ');} let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span></div>';
+  for(let[n,snaps]of Object.entries(grp)){
+    let vers={};snaps.forEach(s=>{let v=s.version_branch||'?';if(!vers[v])vers[v]=[];vers[v].push(s);});
+    h+=`<div class="card"><div class="card-hd">📦 ${n} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包 / ${Object.keys(vers).length}版本</span></div><div class="card-bd" style="padding:8px 18px">`;
+    let vi=0;
+    for(let[ver,pkgs]of Object.entries(vers)){
+      let vid='v'+n.replace(/\W/g,'')+'_'+vi;
+      vi++;
+      h+=`<div class="ver-bar" onclick="let e=document.getElementById('${vid}');e.classList.toggle('hidden');this.querySelector('.arrow').textContent=e.classList.contains('hidden')?'▶':'▼'"><span class="arrow">▼</span><strong>${ver}</strong><span style="margin-left:8px;color:var(--muted);font-size:11px">${pkgs.length}个包</span></div><div id="${vid}" style="margin-bottom:8px"><table><tr style="background:#fafafa"><th>类型</th><th style="width:30%">文件</th><th style="width:11%">发布时间</th><th style="width:14%">最近采集</th><th style="width:6%">大小</th><th style="width:7%">紧急度</th><th style="width:7%">操作</th></tr>`;
+      pkgs.forEach(s=>{
+        let sz=s.file_size>1048576?(s.file_size/1048576).toFixed(1)+'M':(s.file_size/1024).toFixed(0)+'K',did='d'+s.id,pt=fmtTZ(s.published_at),ls=fmtTZ(s.last_seen_at,true);
+        h+=`<tr style="cursor:pointer" onclick="document.getElementById('${did}').classList.toggle('hidden')"><td>${typeCN(s.package_type)}</td><td class="mono" style="color:var(--primary)">${(s.file_name||'').substring(0,35)}</td><td>${pt.substring(0,10)}</td><td>${ls}</td><td>${sz}</td><td><span class="badge badge-${s.urgency==='critical'?'err':s.urgency==='high'?'warn':'ok'}">${s.urgency||''}</span></td><td><button class="btn btn-xs btn-success" onclick="event.stopPropagation();manualPush(${s.id})">推送</button></td></tr><tr id="${did}" class="hidden"><td colspan="7" class="detail-row"><div style="display:grid;grid-template-columns:auto 1fr;gap:3px 16px"><b>文件:</b><span class="mono">${s.file_name||''}</span><b>版本:</b><span>${s.package_version||''}</span><b>MD5:</b><span class="mono">${s.md5_hash||''}</span><b>大小:</b><span>${sz}</span>${s.min_sys_version?`<b>依赖:</b><span>≥ ${s.min_sys_version}</span>`:''}${s.published_at?`<b>发布:</b><span>${s.published_at}</span>`:''}${s.first_seen_at?`<b>发现:</b><span>${s.first_seen_at}</span>`:''}${s.download_id?`<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>`:''}</div>${s.description_raw?`<div class="desc-box mt12">${s.description_raw.substring(0,1500)}</div>`:''}</td></tr>`;
+      });
+      h+=`</table></div>`;}
+    h+=`</div></div>`;}
+  document.getElementById('app').innerHTML=h;
+}
+async function manualPush(sid){if(!confirm('确认推送?'))return;const r=await api('/history/'+sid+'/resend',{method:'POST'});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}
+
+async function resendTargeted(sid,cid,custid){
+  if(!confirm('确认重新推送到该客户?'))return;
+  const r=await api('/history/'+sid+'/resend-targeted',{method:'POST',body:JSON.stringify({channel_id:cid,customer_id:custid})});
+  toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');
+}
+
+// ── Sessions ──
+async function sessions(){
+  const r=await api('/sessions');const my=r.data?.my_sessions||[],pool=r.data?.pool_status||{};
+  let rows=my.map(s=>{
+    let hbInfo='—';
+    if(s.heartbeat_status){
+      const hbColor=s.heartbeat_status==='ok'?'ok':s.heartbeat_status==='expired'?'err':'warn';
+      hbInfo=`<span class="badge badge-${hbColor}" style="cursor:pointer" onclick="showHbHistory(${s.id})" title="点击查看心跳历史">${s.heartbeat_status}</span>`;
+    }
+    let hbTime=s.last_heartbeat_at?s.last_heartbeat_at.substring(0,16):'—';
+    return `<tr><td>${s.id}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status||'unknown'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td style="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" onclick="validateSes(${s.id})">验证</button> <button class="btn btn-danger btn-xs" onclick="delSes(${s.id})">删除</button></td></tr>`;
+  }).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span style="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span style="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span></div><div class="card-bd"><div class="form-group"><label>添加 PHPSESSID</label><div class="flex gap8"><input id="ci" placeholder="粘贴 Cookie 值" style="flex:1"><button class="btn btn-primary" onclick="addSes()">验证并添加</button></div><p style="font-size:11px;color:var(--muted);margin-top:4px">update.nsfocus.com → F12 → Application → Cookies → PHPSESSID</p></div><table><tr><th>ID</th><th>状态</th><th>心跳</th><th>最近心跳</th><th>次数</th><th>最后有效</th><th>过期</th><th>操作</th></tr>${rows||'<tr><td colspan="8" class="empty">暂无</td></tr>'}</table></div></div>
+  <div id="hbModal"></div>`;}
+async function addSes(){const v=document.getElementById('ci').value.trim();if(!v)return toast('请输入','error');const r=await api('/sessions',{method:'POST',body:JSON.stringify({cookie_value:v})});if(r.code===0){toast(r.data?.message||'添加成功');sessions();}else toast(r.message,'error');}
+async function validateSes(id){const r=await api('/sessions/'+id+'/validate',{method:'POST'});toast(r.code===0?r.message:r.message,r.code===0?'success':'error');sessions();}
+async function delSes(id){if(confirm('删除此Session?')){await api('/sessions/'+id,{method:'DELETE'});sessions();}}
+
+async function showHbHistory(sid){
+  const r=await api('/sessions/'+sid+'/heartbeat');
+  const history=r.data?.history||[];
+  let rows=history.map(h=>{
+    const stColor=h.status==='ok'?'ok':h.status==='expired'?'err':'warn';
+    return `<tr><td><span class="badge badge-${stColor}">${h.status}</span></td><td>${h.latency_ms||0}ms</td><td style="font-size:11px">${h.error_message||'—'}</td><td>${fmtTZ(h.created_at,true)||h.created_at||''}</td></tr>`;
+  }).join('');
+  document.getElementById('hbModal').innerHTML=`
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)document.getElementById('hbModal').innerHTML=''">
+      <div class="card" style="width:600px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
+        <div class="card-hd">💓 心跳历史 — Session #${sid} <button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="document.getElementById('hbModal').innerHTML=''">关闭</button></div>
+        <div class="card-bd pt0"><table><tr><th>状态</th><th>延迟</th><th>错误</th><th>时间</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无心跳记录</td></tr>'}</table></div>
+      </div>
+    </div>`;
+}
+
+// ── Channels ──
+async function channels(){
+  const r=await api('/channels');const list=r.data||[];
+  let rows=list.map(c=>`<tr><td>${c.name}</td><td>${c.type}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="testCh(${c.id})">测试</button> <button class="btn btn-danger btn-xs" onclick="delCh(${c.id})">删除</button></td></tr>`).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showChForm()">+ 添加渠道</button><div id="chf" class="form-panel hidden mt12"><div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">企业微信</option><option value="dingtalk">钉钉</option><option value="feishu">飞书</option><option value="email">邮件</option></select></div></div><div id="chcfg"></div><div class="flex gap8"><button class="btn btn-success btn-sm" onclick="addCh()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('chf').classList.add('hidden')">取消</button></div></div><table class="mt16"><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
+function chTypeCh(){const t=document.getElementById('cht').value,d=document.getElementById('chcfg');d.innerHTML=t==='email'?`<div class="grid2"><div class="form-group"><label>SMTP</label><input id="sh"></div><div class="form-group"><label>端口</label><input id="sp" value="465"></div></div><div class="grid2"><div class="form-group"><label>用户</label><input id="su"></div><div class="form-group"><label>密码</label><input id="sw" type="password"></div></div><div class="grid2"><div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div><div class="form-group"><label>收件人(逗号分隔)</label><input id="st" placeholder="a@x.com,b@x.com"></div></div>`:`<div class="form-group"><label>Webhook URL</label><input id="cw"></div><div class="form-group"><label>Secret (可选)</label><input id="cs"></div>`;}
+function showChForm(){document.getElementById('chf').classList.remove('hidden');chTypeCh();}
+async function addCh(){const t=document.getElementById('cht').value,n=document.getElementById('chn').value;let c={};if(t==='email')c={smtp_host:document.getElementById('sh')?.value||'',smtp_port:parseInt(document.getElementById('sp')?.value||'465'),smtp_user:document.getElementById('su')?.value||'',smtp_password:document.getElementById('sw')?.value||'',from_name:document.getElementById('sf')?.value||'',to_list:(document.getElementById('st')?.value||'').split(',').map(s=>s.trim()).filter(Boolean)};else c={webhook_url:document.getElementById('cw')?.value||'',secret:document.getElementById('cs')?.value||''};const r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c})});if(r.code===0){toast('已添加');channels();}else toast(r.message,'error');}
+async function testCh(id){const r=await api('/channels/'+id+'/test',{method:'POST'});toast(r.data?.success?'已发送':r.data?.error||'失败',r.data?.success?'success':'error');}
+async function delCh(id){await api('/channels/'+id,{method:'DELETE'});channels();}
+
+// ── Customers ──
+let custProdOpts='';
+async function customers(){
+  const r=await api('/customers');const list=r.data||[];
+  // Pre-load product options
+  const oR=await api('/options/products').catch(()=>({data:['WAF','IPS','IDS','RSAS','NF','UTS']}));
+  PROD=(oR.data||[]);if(!PROD.length)PROD=['WAF','IPS','IDS','RSAS','NF','UTS'];
+  custProdOpts=PROD.map(p=>`<option>${p}</option>`).join('');
+
+  let rows=list.map(c=>`<tr><td>${c.name}</td><td>${c.company||''}</td><td>${c.email||''}</td><td style="font-size:11px">${(c.owned_products||[]).join(', ')}</td><td>${c.warranty_start||''} ~ ${c.warranty_end||''}</td><td><button class="btn btn-xs btn-outline" onclick="editC(${c.id},'${c.name}','${c.company||''}','${c.email||''}','${c.phone||''}','${(c.owned_products||[]).join('|')}','${c.warranty_start||''}','${c.warranty_end||''}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showCForm()">+ 添加客户</button><div id="cf" class="form-panel hidden mt12"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>维保开始</label><input id="cws" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>维保截止</label><input id="cwe" type="date" onclick="this.showPicker()" style="min-width:140px"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt12" onclick="addCProd()">+ 添加产品</button></div><div class="flex gap8"><button class="btn btn-success btn-sm" onclick="saveC()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('cf').classList.add('hidden')">取消</button></div></div><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>维保</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
+
+function addCProd(p,v){
+  let c=document.getElementById('cprods');
+  let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
+  d.innerHTML=`<select class="cp2" style="flex:1;min-width:0" onchange="loadCV2(this)">${custProdOpts}</select><select class="cv2" style="flex:1;min-width:0"><option value="">全部版本</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  c.appendChild(d);
+  if(p){setTimeout(()=>{d.querySelector('.cp2').value=p;loadCV2(d.querySelector('.cp2'));},80);setTimeout(()=>{if(v)d.querySelector('.cv2').value=v;},300);}
+  else{setTimeout(()=>loadCV2(d.querySelector('.cp2')),50);}
+}
+
+async function loadCV2(s){let p=s.value,vs=s.parentElement.querySelector('.cv2');vs.innerHTML='<option value="">加载...</option>';let r=await api('/options/versions?product='+encodeURIComponent(p)).catch(()=>({data:[]}));vs.innerHTML='<option value="">全部版本</option>'+(r.data||[]).map(v=>`<option>${v}</option>`).join('');}
+
+function showCForm(){
+  ['cid','cnm','ccm','cem','cph','cws','cwe'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('cprods').innerHTML='';document.getElementById('cf').classList.remove('hidden');addCProd();
+}
+
+function editC(id,n,co,em,ph,pr,ws,we){
+  document.getElementById('cid').value=id;document.getElementById('cnm').value=n;document.getElementById('ccm').value=co;document.getElementById('cem').value=em;document.getElementById('cph').value=ph;document.getElementById('cws').value=ws;document.getElementById('cwe').value=we;
+  document.getElementById('cprods').innerHTML='';
+  let prods=(pr||'').split('|').filter(Boolean);
+  prods.forEach(x=>{let[p,v]=x.split(':');addCProd(p||'',v||'');});
+  if(!prods.length)addCProd();
+  document.getElementById('cf').classList.remove('hidden');
+}
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+async function saveC(){
+  const id=document.getElementById('cid').value;
+  const nm=document.getElementById('cnm').value.trim(),cm=document.getElementById('ccm').value.trim(),em=document.getElementById('cem').value.trim(),ph=document.getElementById('cph').value.trim(),ws=document.getElementById('cws').value,we=document.getElementById('cwe').value;
+  if(!nm)return toast('名称必填','error');
+  if(!cm)return toast('公司必填','error');
+  if(!em)return toast('邮箱必填','error');
+  if(!/^[^@]+@[^@]+$/.test(em))return toast('邮箱格式错误','error');
+  let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value,v=r.querySelector('.cv2')?.value;if(p)prods.push(v?esc(p)+':'+esc(v):esc(p));});
+  const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),warranty_start:ws,warranty_end:we,owned_products:prods};
+  const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
+  if(r.code===0){toast('已保存');customers();}else toast(r.message,'error');
+}
+async function delC(id){if(confirm('删除?')){await api('/customers/'+id,{method:'DELETE'});customers();}}
+
+// ── Subscriptions ──
+const PKG=[['sys','系统'],['rule','规则'],['nti','威胁情报'],['av','病毒库'],['apprule','应用规则'],['url','URL分类'],['wcs','恶意站点'],['judge','研判规则'],['geo','地理库'],['interface','接口'],['special','特殊'],['other','其他'],['merge','合并'],['client','客户端'],['av_stream','流式病毒库']];
+let PROD=[];
+async function subscriptions(){
+  const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
+  const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
+  PROD=(oR.data||[]);if(!PROD.length)PROD=['WAF','IPS','IDS','RSAS','NF','UTS'];
+  let pOpts=PROD.map(p=>`<option>${p}</option>`).join('');
+  let tOpts=PKG.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  let cOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
+  let custOpts=list.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join('');
+
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';return `<tr><td>${r.name}</td><td style="font-size:11px">${(f.products||[]).join(',')||'全部'}</td><td style="font-size:11px">${(f.package_types||[]).join(',')||'全部'}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editRule(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showRForm()">+ 创建规则</button><div id="rf" class="form-panel hidden mt12"><input type="hidden" id="rid"><div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
+    <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
+    <div class="form-group"><label>订阅条件</label><div id="rconds"></div><button class="btn btn-xs btn-outline mt12" onclick="addCond()">+ 添加条件</button></div>
+    <div class="grid3"><div class="form-group"><label>延迟(h)</label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略</label><select id="rst"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h)</label><input id="rin" type="number" value="0"></div></div>
+    <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select><p style="font-size:10px;color:var(--muted);margin-top:2px">汇总模式：新包不立即推送，到期后合并为一条摘要发送</p></div>
+    <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
+    <div class="grid2"><div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>通知渠道</label><select id="rch" multiple>${cOpts}</select></div></div>
+    <div class="flex gap8"><button class="btn btn-success btn-sm" onclick="saveRule()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('rf').classList.add('hidden')">取消</button></div></div>
+    <table class="mt16"><tr><th>名称</th><th>产品</th><th>类型</th><th>推送</th><th>有效期</th><th style="cursor:pointer">状态</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+
+  window._custs=list;}
+
+function onCustChange(){
+  let cid=document.getElementById('rcust').value;
+  if(!cid||!window._custs)return;
+  let c=window._custs.find(x=>x.id==cid);
+  if(c&&c.warranty_end)document.getElementById('rvu').value=c.warranty_end;
+}
+
+async function toggleRule(id){
+  const r=await api('/subscriptions/'+id+'/toggle',{method:'POST'});
+  if(r.code===0){toast(r.data?.enabled?'已启用':'已停用');subscriptions();}else toast(r.message,'error');
+}
+
+function addCond(p,v,t){
+  let c=document.getElementById('rconds');
+  let po=PROD.map(x=>`<option>${x}</option>`).join('');
+  let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center';
+  d.innerHTML=`<select class="cp" style="flex:1;min-width:0" onchange="loadCV(this)">${po}</select><select class="cv" style="flex:1;min-width:0" onchange="loadCT(this)"><option value="">全部版本</option></select><select class="ct" style="flex:1;min-width:0" multiple><option value="">全部类型</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  c.appendChild(d);
+  if(p){setTimeout(()=>{d.querySelector('.cp').value=p;loadCV(d.querySelector('.cp'));},80);setTimeout(()=>{if(v)d.querySelector('.cv').value=v;if(t){let ct=d.querySelector('.ct');let to=PKG.map(([x,l])=>`<option value="${x}">${l}</option>`).join('');ct.innerHTML='<option value="">全部类型</option>'+to;if(t){t.split(",").forEach(x=>{let o=ct.querySelector(`option[value="${x}"]`);if(o)o.selected=true;});}}},300);}
+  else{setTimeout(()=>loadCV(d.querySelector('.cp')),50);}
+}
+
+async function loadCV(s){
+  let p=s.value,row=s.parentElement,vs=row.querySelector('.cv'),ts=row.querySelector('.ct');
+  vs.innerHTML='<option value="">加载...</option>';ts.innerHTML='<option value="">加载...</option>';
+  let r=await api('/options/versions?product='+encodeURIComponent(p)).catch(()=>({data:[]}));
+  vs.innerHTML='<option value="">全部版本</option>'+(r.data||[]).map(v=>`<option>${v}</option>`).join('');
+  let r2=await api('/options/package-types?product='+encodeURIComponent(p)).catch(()=>({data:[]}));
+  let types=r2.data||[];
+  let selVals=Array.from(ts.selectedOptions).map(o=>o.value);ts.innerHTML='<option value="">全部类型</option>'+types.map(x=>{let l=PKG.find(([v])=>v===x);return `<option value="${x}">${l?l[1]:x}</option>`;}).join('');selVals.forEach(v=>{let o=ts.querySelector(`option[value="${v}"]`);if(o)o.selected=true;});
+}
+
+async function loadCT(s){
+  let v=s.value,row=s.parentElement,p=row.querySelector('.cp').value,ts=row.querySelector('.ct');
+  ts.innerHTML='<option value="">加载...</option>';
+  let url='/options/package-types?product='+encodeURIComponent(p);
+  if(v)url+='&version='+encodeURIComponent(v);
+  let r=await api(url).catch(()=>({data:[]}));
+  let types=r.data||[];
+  ts.innerHTML='<option value="">全部类型</option>'+types.map(x=>{let l=PKG.find(([k])=>k===x);return `<option value="${x}">${l?l[1]:x}</option>`;}).join('');
+}
+
+function showRForm(){document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rf').classList.remove('hidden');addCond();}
+
+function onDigestModeChange(){
+  const m=document.getElementById('rdm').value;
+  const d=document.getElementById('dcfg');
+  if(!m){d.classList.add('hidden');return;}
+  d.classList.remove('hidden');
+  if(m==='weekly'){
+    d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每周推送日</label><select id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;
+  }else if(m==='monthly'){
+    d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每月推送日</label><div style="display:flex;gap:8px;align-items:center"><select id="dc-month"><option value="last" selected>最后一天</option>${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}号</option>`).join('')}</select></div>`;
+  }else if(m==='quarterly'){
+    d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
+  }
+}
+
+async function editRule(id){
+  const rR=await api('/subscriptions');const r=(rR.data||[]).find(x=>x.id===id);if(!r)return;
+  document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;document.getElementById('rconds').innerHTML='';
+  document.getElementById('rcust').value=r.customer_id||'';
+  let f=r.filter_conditions||{},ps=f.products||[],vs=f.versions||[],ts=f.package_types||[];
+  for(let i=0;i<Math.max(ps.length||0,1);i++)addCond(ps[i]||'',vs[i]||'',ts[i]||'');
+  document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
+  onDigestModeChange();
+  // Populate digest config
+  const dc=r.digest_config||{};
+  if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
+  else if(r.digest_mode==='monthly'){setTimeout(()=>{if(document.getElementById('dc-month'))document.getElementById('dc-month').value=dc.month_day||'last';},100);}
+  else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
+  document.getElementById('rf').classList.remove('hidden');
+}
+
+async function saveRule(){
+  let id=document.getElementById('rid').value;
+  let chs=Array.from(document.getElementById('rch').selectedOptions).map(o=>parseInt(o.value));
+  let ps=[],vs=[],ts=[];
+  document.querySelectorAll('#rconds > div').forEach(r=>{
+    let p=r.querySelector('.cp')?.value,
+        v=r.querySelector('.cv')?.value,
+        t=Array.from(r.querySelector('.ct')?.selectedOptions||[]).map(o=>o.value).filter(Boolean).join(',');
+    if(p)ps.push(p);if(v)vs.push(v);if(t)ts.push(t);
+  });
+  let cid=parseInt(document.getElementById('rcust').value)||0;
+  if(!cid)return toast('请选择关联客户','error');
+  let d={name:document.getElementById('rnm').value,filter_conditions:{products:ps,versions:vs,package_types:ts},delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs};
+  // Build digest_config
+  const dm=d.digest_mode;
+  if(dm){
+    let dc={};
+    if(dm==='weekly'){const el=document.getElementById('dc-weekday');dc.weekday=el?parseInt(el.value):6;}
+    else if(dm==='monthly'){const el=document.getElementById('dc-month');dc.month_day=el?(el.value==='last'?'last':parseInt(el.value)):'last';}
+    else if(dm==='quarterly'){const el=document.getElementById('dc-quarter');dc.quarter_day=el?el.value:'last';}
+    d.digest_config=dc;
+  }
+  let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
+  if(r.code===0){toast('已保存');subscriptions();}else toast(r.message,'error');
+}
+async function delRule(id){if(confirm('删除?')){await api('/subscriptions/'+id,{method:'DELETE'});subscriptions();}}
+
+// ── History ──
+async function history(){
+  const r=await api('/history?limit=200');const list=r.data?.items||[];
+  // Group by time batch (minute-level) for aggregation
+  let batches={};
+  list.forEach(h=>{
+    let dels=h.deliveries||[];
+    let batchKey=(h.pushed_at||h.first_seen_at||'').substring(0,16); // YYYY-MM-DD HH:MM
+    if(!batches[batchKey])batches[batchKey]={time:batchKey,packages:[],customers:new Set(),channels:new Set(),totalOk:0,totalFail:0};
+    let b=batches[batchKey];
+    b.packages.push(h);
+    dels.forEach(d=>{
+      if(d.customer_name)b.customers.add(d.customer_name);
+      if(d.channel_name)b.channels.add(d.channel_name);
+      if(d.delivery_status==='sent')b.totalOk++;else b.totalFail++;
+    });
+  });
+  // Sort batches by time desc
+  let batchList=Object.values(batches).sort((a,b)=>b.time.localeCompare(a.time));
+  let html='';
+  batchList.forEach((b,i)=>{
+    let bid='batch'+i;
+    let custList=[...b.customers].join(', ')||'—';
+    let chList=[...b.channels].join(', ')||'—';
+    html+=`<tr style="cursor:pointer;background:#fafbfc" onclick="let e=document.getElementById('${bid}');e.classList.toggle('hidden');this.querySelector('.arrow').textContent=e.classList.contains('hidden')?'▶':'▼'">
+      <td><span class="arrow">▶</span> ${b.time}</td>
+      <td>${custList}</td>
+      <td colspan="3">📦 ${b.packages.length}个包</td>
+      <td></td><td></td>
+      <td><span class="badge badge-ok">${b.totalOk}成功</span>${b.totalFail?` <span class="badge badge-err">${b.totalFail}失败</span>`:''}</td>
+      <td>${chList}</td>
+      <td></td>
+    </tr>`;
+    html+=`<tbody id="${bid}" class="hidden">`;
+    b.packages.forEach(h=>{
+      let dels=h.deliveries||[];
+      if(!dels.length){
+        html+=`<tr style="background:#f8f8f8"><td></td><td>—</td><td>${h.product_name||''}</td><td>${h.version_branch||''}</td><td>${typeCN(h.package_type)}</td><td class="mono">${(h.file_name||'').substring(0,30)}</td><td class="mono">${(h.package_version||'').substring(0,15)}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td></tr>`;
+      }else{
+        dels.forEach(d=>{
+          html+=`<tr style="background:#f8f8f8">
+            <td></td>
+            <td>${d.customer_name||'—'}</td>
+            <td>${h.product_name||''}</td>
+            <td>${h.version_branch||''}</td>
+            <td>${typeCN(h.package_type)}</td>
+            <td class="mono">${(h.file_name||'').substring(0,30)}</td>
+            <td class="mono">${(h.package_version||'').substring(0,15)}</td>
+            <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
+            <td>${d.channel_name||d.channel_type||'—'} ${d.delivery_status==='sent'?'✅':'❌'}</td>
+            <td>${d.channel_id?`<button class="btn btn-xs btn-outline" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">重推</button>`:''}</td>
+          </tr>`;
+        });
+      }
+    });
+    html+=`</tbody>`;
+  });
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)"><a href="#" onclick="let all=document.querySelectorAll('#app tbody');let vis=all[0]?.classList.contains('hidden');all.forEach(t=>vis?t.classList.remove('hidden'):t.classList.add('hidden'));document.querySelectorAll('.arrow').forEach(a=>a.textContent=vis?'▼':'▶');return false">全部展开/折叠</a></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>版本</th><th>类型</th><th>文件名</th><th>包版本</th><th>紧急度</th><th>渠道/状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;}
+
+function _renderRecentDeliveries(deliveries,range){
+  if(!deliveries||!deliveries.length)return '';
+  const ranges={1:'1天',7:'7天',30:'1个月',365:'1年'};
+  let btns=Object.entries(ranges).map(([v,l])=>`<button class="btn btn-xs ${range===v?'btn-primary':'btn-outline'}" onclick="dashboard('${v}')">${l}</button>`).join('');
+  // Aggregate: group by customer+product+type
+  let agg={};
+  deliveries.forEach(d=>{
+    let key=`${d.customer_name||'—'}|${d.product_name}|${d.package_type}`;
+    if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:d.package_type,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
+    agg[key].count++;
+    agg[key].channels.add(d.channel_name||d.channel_type);
+    if(d.sent_at>agg[key].last)agg[key].last=d.sent_at;
+  });
+  let rows=Object.values(agg).sort((a,b)=>b.last.localeCompare(a.last)).slice(0,15).map(a=>{
+    let stIcon=a.status==='sent'?'✅':'❌';
+    return `<tr><td>${a.cust}</td><td>${a.prod}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${[...a.channels].join(', ')}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
+  }).join('');
+  return `<div class="card" style="margin-top:14px"><div class="card-hd">📨 最近推送明细 <span style="margin-left:auto;font-weight:400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
+}
+
+// ── Settings ──
+async function settings(){
+  const r=await api('/settings/config').catch(()=>({data:{}}));
+  const cfg=r.data||{};
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
+    <div class="grid2">
+      <div class="form-group"><label>采集间隔 (小时)</label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"></div>
+      <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"></div>
+      <div class="form-group"><label>速率下限 (秒)</label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"></div>
+      <div class="form-group"><label>速率上限 (秒)</label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"></div>
+      <div class="form-group"><label>附件上限 (MB)</label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"></div>
+      <div class="form-group"><label>快照保留 (天)</label><input id="cfg-retention" type="number" value="${cfg.snapshot_retention_days||180}" min="30" max="730"></div>
+      <div class="form-group"><label>静默开始</label><input id="cfg-quiet-start" value="${cfg.quiet_hours_start||'22:00'}"></div>
+      <div class="form-group"><label>静默结束</label><input id="cfg-quiet-end" value="${cfg.quiet_hours_end||'08:00'}"></div>
+      <div class="form-group"><label>全量扫描间隔 (小时)</label><input id="cfg-full-scan" type="number" value="${cfg.full_scan_interval||168}" min="24" max="720"><p style="font-size:10px;color:var(--muted);margin-top:2px">建议168(7天)，期间增量检查列表页</p></div>
+      <div class="form-group"><label>心跳间隔 (分钟)</label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p style="font-size:10px;color:var(--muted);margin-top:2px">Session保活间隔，默认30分钟</p></div>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin:8px 0">修改后下次采集生效</p>
+    <button class="btn btn-primary" onclick="saveSettings()">保存配置</button>
+  </div></div>
+  ${await _renderClassSettings()}`;
+
+  // Load classification config after render
+  _loadClassConfig();
+}
+async function saveSettings(){
+  const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value};
+  const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
+  toast(r.code===0?'配置已保存':'保存失败','error');}
+
+// ── Package Classification Settings ──
+async function _renderClassSettings(){
+  return `<div class="card"><div class="card-hd">📦 包类型分类 <span style="font-weight:400;font-size:12px;color:var(--muted)">全量/增量判定规则</span></div>
+    <div class="card-bd">
+      <div class="form-group"><label>全量包关键词 <span style="font-weight:400;font-size:10px;color:var(--muted)">(一行一个，包描述中包含即判定为全量)</span></label>
+        <textarea id="cls-keywords" rows="3" style="width:100%;border:1px solid #d1d5db;border-radius:7px;padding:8px 12px;font-size:13px;font-family:inherit"></textarea>
+      </div>
+      <div class="form-group"><label>类型覆盖规则 <span style="font-weight:400;font-size:10px;color:var(--muted)">(优先级高于关键词，'自动'=关键词判断)</span></label>
+        <div id="cls-overrides"></div>
+        <button class="btn btn-xs btn-outline mt8" onclick="addOverride()">+ 添加覆盖</button>
+      </div>
+      <button class="btn btn-primary" onclick="saveClassConfig()">保存分类配置</button>
+    </div></div>`;
+}
+
+let _knownTypes=[];
+async function _loadClassConfig(){
+  const r=await api('/settings/classification');
+  if(r.code!==0)return;
+  const cfg=r.data.config||{};
+  _knownTypes=r.data.known_types||[];
+
+  // Fill keywords
+  const kwEl=document.getElementById('cls-keywords');
+  if(kwEl)kwEl.value=(cfg.full_keywords||['全量','完整包','离线升级包','离线包']).join('\n');
+
+  // Fill overrides
+  const container=document.getElementById('cls-overrides');
+  if(!container)return;
+  const overrides=cfg.overrides||{};
+
+  // Group known types by product for dropdowns
+  let products=[...new Set(_knownTypes.map(t=>t.product))].sort();
+
+  container.innerHTML='';
+  Object.entries(overrides).forEach(([key,val])=>{
+    let [prod,type]=key.split('|');
+    addOverrideRow(prod,type,val);
+  });
+  // Add empty rows for known types without overrides
+  _knownTypes.forEach(t=>{
+    let key=`${t.product}|${t.type}`;
+    if(!overrides[key])addOverrideRow(t.product,t.type,'auto');
+  });
+}
+
+function addOverrideRow(prod,type,cls){
+  let products=[...new Set(_knownTypes.map(t=>t.product))].sort();
+  let prodOpts=products.map(p=>`<option value="${p}" ${p===prod?'selected':''}>${p}</option>`).join('');
+  let types=_knownTypes.filter(t=>t.product===prod).map(t=>t.type);
+  let typeOpts=types.map(t=>`<option value="${t}" ${t===type?'selected':''}>${typeCN(t)}(${t})</option>`).join('');
+  if(!typeOpts && type)typeOpts=`<option value="${type}">${typeCN(type)}(${type})</option>`;
+  let clsOpts=['auto','full','incremental'].map(c=>`<option value="${c}" ${c===cls?'selected':''}>${{auto:'自动',full:'全量',incremental:'增量'}[c]}</option>`).join('');
+  let row=document.createElement('div');
+  row.style.cssText='display:flex;gap:6px;margin-bottom:4px;align-items:center';
+  row.innerHTML=`<select class="cls-prod" onchange="onClsProdChange(this)" style="flex:1;min-width:0">${prodOpts}</select><select class="cls-type" style="flex:1;min-width:0">${typeOpts}</select><select class="cls-val" style="flex:0 0 100px">${clsOpts}</select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  document.getElementById('cls-overrides').appendChild(row);
+}
+
+function addOverride(){
+  let products=[...new Set(_knownTypes.map(t=>t.product))].sort();
+  let prodOpts=products.map(p=>`<option>${p}</option>`).join('');
+  let row=document.createElement('div');
+  row.style.cssText='display:flex;gap:6px;margin-bottom:4px;align-items:center';
+  row.innerHTML=`<select class="cls-prod" onchange="onClsProdChange(this)" style="flex:1;min-width:0">${prodOpts}</select><select class="cls-type" style="flex:1;min-width:0"></select><select class="cls-val" style="flex:0 0 100px"><option value="auto">自动</option><option value="full">全量</option><option value="incremental">增量</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  document.getElementById('cls-overrides').appendChild(row);
+  onClsProdChange(row.querySelector('.cls-prod'));
+}
+
+function onClsProdChange(sel){
+  let prod=sel.value;
+  let typeSel=sel.parentElement.querySelector('.cls-type');
+  let types=_knownTypes.filter(t=>t.product===prod).map(t=>t.type);
+  typeSel.innerHTML=types.map(t=>`<option value="${t}">${typeCN(t)}(${t})</option>`).join('');
+}
+
+async function saveClassConfig(){
+  let keywords=(document.getElementById('cls-keywords')?.value||'').split('\n').map(s=>s.trim()).filter(Boolean);
+  let overrides={};
+  document.querySelectorAll('#cls-overrides > div').forEach(row=>{
+    let prod=row.querySelector('.cls-prod')?.value;
+    let type=row.querySelector('.cls-type')?.value;
+    let cls=row.querySelector('.cls-val')?.value;
+    if(prod&&type&&cls&&cls!=='auto')overrides[prod+'|'+type]=cls;
+  });
+  let data={full_keywords:keywords,overrides};
+  let r=await api('/settings/classification',{method:'PUT',body:JSON.stringify(data)});
+  toast(r.code===0?'分类配置已保存':r.message||'保存失败',r.code===0?'success':'error');
+}
+
+// ── Manual Collect ──
+let _collectPollTimer=null;
+async function triggerCollect(){
+  // Show mode selection dialog
+  document.getElementById('app').insertAdjacentHTML('beforeend',`
+    <div id="collectModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeCollectModal()">
+      <div class="card" style="width:420px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
+        <div class="card-hd">🔄 手动采集</div>
+        <div class="card-bd" id="collectModalBody">
+          <p style="font-size:13px;margin-bottom:12px">选择采集模式：</p>
+          <div style="display:flex;gap:8px;margin-bottom:16px">
+            <button class="btn btn-sm btn-outline" style="flex:1" onclick="startCollect('delta')">
+              <div style="font-weight:600">⚡ 增量采集</div>
+              <div style="font-size:10px;color:var(--muted);margin-top:2px">仅检查列表页 ~30秒</div>
+            </button>
+            <button class="btn btn-sm btn-primary" style="flex:1" onclick="startCollect('full')">
+              <div style="font-weight:600">🔍 全量采集</div>
+              <div style="font-size:10px;color:rgba(255,255,255,.7);margin-top:2px">遍历所有详情页 ~20分钟</div>
+            </button>
+          </div>
+          <button class="btn btn-sm btn-outline" style="width:100%;justify-content:center" onclick="closeCollectModal()">取消</button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+function closeCollectModal(){
+  const m=document.getElementById('collectModal');if(m)m.remove();
+  if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
+}
+
+async function startCollect(mode){
+  const body=document.getElementById('collectModalBody');
+  body.innerHTML=`<div style="text-align:center;padding:12px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">正在启动${mode==='full'?'全量':'增量'}采集...</p></div>`;
+
+  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode})});
+  if(r.code===409){body.innerHTML=`<p style="color:var(--danger);text-align:center">采集正在进行中</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>`;return;}
+  if(r.code!==0){toast(r.message,'error');closeCollectModal();return;}
+
+  // Poll progress every 2 seconds
+  let lastPhase='';
+  function poll(){
+    api('/system/collect/progress').then(pr=>{
+      if(!pr.data)return;
+      const p=pr.data.progress||{};
+      let html='';
+      if(p.phase==='collecting'){
+        const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
+        html+=`<div style="margin-bottom:12px"><div style="background:#e2e7ee;border-radius:6px;height:8px;overflow:hidden"><div style="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">${p.products_done}/${p.products_total} 产品</div></div>`;
+        html+=`<div style="font-size:13px;text-align:center;margin-bottom:4px"><strong>📦 ${p.current_product||'...'}</strong></div>`;
+        if(p.current_version)html+=`<div style="font-size:11px;color:var(--muted);text-align:center">${p.current_version}</div>`;
+        html+=`<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px">已采集 ${p.items_collected||0} 项</div>`;
+      }else if(p.phase==='detecting'){
+        html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">🔍</div><p style="text-align:center;font-size:13px">正在检测变化...</p>`;
+      }else if(p.phase==='notifying'){
+        html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">📨</div><p style="text-align:center;font-size:13px">正在推送通知...</p>`;
+      }else if(p.phase==='done'){
+        const ok=p.errors&&p.errors.length>0?'warn':'ok';
+        html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">${ok==='ok'?'✅':'⚠️'}</div>`;
+        html+=`<p style="text-align:center;font-size:14px;font-weight:600">采集完成</p>`;
+        html+=`<div class="grid2" style="margin-top:10px"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
+        html+=`<p style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;
+        if(p.errors&&p.errors.length)html+=`<div style="margin-top:8px;font-size:11px;color:var(--danger)">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
+        html+=`<button class="btn btn-sm btn-primary" style="width:100%;margin-top:12px" onclick="closeCollectModal();dashboard()">刷新仪表盘</button>`;
+        clearInterval(_collectPollTimer);_collectPollTimer=null;
+      }
+      if(html!==lastPhase){body.innerHTML=html;lastPhase=html;}
+    }).catch(()=>{});
+  }
+  poll();
+  _collectPollTimer=setInterval(poll,2000);
+}
+
+// ── Debug Toggle ──
+async function toggleDebug(){
+  const lr=await api('/system/log-level');
+  const cur=lr.data?.level||'INFO';
+  const next=cur==='DEBUG'?'INFO':'DEBUG';
+  const r=await api('/system/log-level',{method:'POST',body:JSON.stringify({level:next,auto_restore_minutes:30})});
+  if(r.code===0)toast(r.message,'success');else toast(r.message,'error');
+}
+
+// ── System Logs ──
+let _logTimer=null;
+async function logs(){
+  if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
+
+  // Get log files and current level
+  const[fR,lR]=await Promise.all([
+    api('/system/log-files').catch(()=>({data:{files:[]}})),
+    api('/system/log-level').catch(()=>({data:{level:'INFO'}}))
+  ]);
+  const files=fR.data?.files||[],curLevel=lR.data?.level||'INFO';
+
+  let fOpts=files.map(f=>`<option value="${f.name}">${f.name} (${f.size_human||''})</option>`).join('');
+  if(!fOpts)fOpts='<option value="app.log">app.log</option><option value="access.log">access.log</option>';
+
+  document.getElementById('app').innerHTML=`
+    <div class="card"><div class="card-hd">📋 系统日志
+      <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)">
+        当前级别: <span class="badge badge-${curLevel==='DEBUG'?'warn':'ok'}">${curLevel}</span>
+        <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'}" onclick="toggleDebug()">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
+      </span>
+    </div><div class="card-bd">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+        <div class="form-group" style="margin-bottom:0;min-width:180px"><label>日志文件</label><select id="logFile">${fOpts}</select></div>
+        <div class="form-group" style="margin-bottom:0;min-width:120px"><label>级别</label><select id="logLevel"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
+        <div class="form-group" style="margin-bottom:0;min-width:80px"><label>行数</label><select id="logLines"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
+        <div class="form-group" style="margin-bottom:0"><label>&nbsp;</label><div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" onclick="loadLogs()">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" onclick="toggleAutoRefresh()">自动刷新</button></div></div>
+      </div>
+      <div id="logContent" style="background:#0d1117;color:#c9d1d9;border-radius:8px;padding:14px;font:12px/1.6 'SF Mono','Fira Code','Consolas',monospace;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">
+        点击「查询」加载日志...
+      </div>
+    </div></div>`;
+
+  // Load logs immediately
+  loadLogs();
+}
+
+async function loadLogs(){
+  const f=document.getElementById('logFile')?.value||'app.log';
+  const l=document.getElementById('logLevel')?.value||'';
+  const n=document.getElementById('logLines')?.value||'200';
+  const box=document.getElementById('logContent');
+  if(!box)return;
+  box.textContent='加载中...';
+  try{
+    const r=await api(`/system/logs?file=${encodeURIComponent(f)}&lines=${n}${l?'&level='+l:''}`);
+    if(r.code===0){
+      const lines=r.data.lines||[];
+      box.innerHTML=lines.map(l=>{
+        let cls='#8b949e';
+        if(l.includes('[ERROR]'))cls='#f85149';
+        else if(l.includes('[WARNING]'))cls='#d2991d';
+        else if(l.includes('[INFO]'))cls='#7ee787';
+        else if(l.includes('[DEBUG]'))cls='#8b949e';
+        return `<span style="color:${cls}">${l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+      }).join('\n');
+      if(!lines.length)box.textContent='(无匹配日志)';
+    }else{
+      box.textContent=r.message||'加载失败';
+    }
+  }catch(e){box.textContent='加载失败: '+e.message;}
+}
+
+function toggleAutoRefresh(){
+  const btn=document.getElementById('logAutoBtn');
+  if(_logTimer){
+    clearInterval(_logTimer);_logTimer=null;
+    btn.textContent='自动刷新';btn.classList.remove('btn-success');btn.classList.add('btn-outline');
+  }else{
+    _logTimer=setInterval(loadLogs,5000);
+    btn.textContent='停止刷新';btn.classList.remove('btn-outline');btn.classList.add('btn-success');
+  }
+}
+
+// Init
+document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showPage(a.dataset.page);}));
+if(T){api('/auth/me').then(r=>{if(r.code===0){U=r.data;document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');}else{T=null;renderLogin();}});}else renderLogin();
+</script>
+</body>
+</html>

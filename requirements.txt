@@ -1,0 +1,28 @@
+# Flask Web
+flask==3.0.0
+flask-cors==4.0.0
+
+# HTTP
+requests==2.31.0
+
+# Auth
+pyjwt==2.8.0
+bcrypt==4.1.2
+
+# Crypto
+cryptography==41.0.7
+
+# Scheduling
+apscheduler==3.10.4
+
+# Email
+# (stdlib smtplib+email)
+
+# Template
+jinja2==3.1.2  # bundled with flask
+
+# Database
+# (stdlib sqlite3)
+
+# Dev
+pytest==7.4.3
