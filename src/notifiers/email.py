@@ -7,10 +7,14 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+from email.utils import formataddr
 
 import requests
 
+from src.core.logger import get_logger
 from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_html_body
+
+logger = get_logger('email')
 
 
 ATTACHMENT_MAX_SIZE = int(os.getenv('MONITOR_ATTACHMENT_MAX_SIZE', '10485760'))
@@ -38,7 +42,7 @@ class EmailNotifier(BaseNotifier):
         # Build email
         msg = MIMEMultipart('mixed')
         msg['Subject'] = subject
-        msg['From'] = f'{from_name} <{smtp_user}>'
+        msg['From'] = formataddr((from_name, smtp_user))
         msg['To'] = ', '.join(to_list)
         msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
@@ -69,8 +73,26 @@ class EmailNotifier(BaseNotifier):
             server.sendmail(smtp_user, to_list, msg.as_string())
             server.quit()
 
+            logger.info(f'Email sent to {len(to_list)} recipients via {smtp_host}:{smtp_port}')
             return DeliveryResult(True, 'email', config.get('name', ''))
+        except smtplib.SMTPAuthenticationError as e:
+            err = f'SMTP认证失败，请检查邮箱地址和授权密码（非登录密码）'
+            logger.error(f'{err}: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), err)
+        except smtplib.SMTPConnectError as e:
+            err = f'无法连接 {smtp_host}:{smtp_port}，请检查SMTP服务器地址和端口'
+            logger.error(f'{err}: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), err)
+        except smtplib.SMTPServerDisconnected as e:
+            err = f'SMTP服务器断开连接，非SSL端口(非465)需服务器支持STARTTLS'
+            logger.error(f'{err}: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), err)
+        except smtplib.SMTPException as e:
+            err = f'SMTP错误: {e}'
+            logger.error(f'{err}')
+            return DeliveryResult(False, 'email', config.get('name', ''), str(e))
         except Exception as e:
+            logger.error(f'Email send failed: {e}')
             return DeliveryResult(False, 'email', config.get('name', ''), str(e))
 
     def _attach_file(self, msg: MIMEMultipart, message: NotificationMessage) -> bool:

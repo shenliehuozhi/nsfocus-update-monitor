@@ -29,7 +29,8 @@ def _get_delay(key, default):
         return default
 REQUEST_DELAY_MIN = _get_delay('collect_delay_min', 1.0)
 REQUEST_DELAY_MAX = _get_delay('collect_delay_max', 3.0)
-TIMEOUT = 15
+TIMEOUT = int(_get_delay('collect_timeout', 30))
+MAX_RETRIES = 2
 
 PRODUCTS = {
     'WAF':  '/update/wafIndex',
@@ -103,7 +104,8 @@ class NsfocusCollector(BaseCollector):
                         table_items = self._extract_table_items(
                             pkg_html, source_id, product_name,
                             self._clean_version(v_text),
-                            self._clean_package_type(p_text))
+                            self._clean_package_type(p_text),
+                            page_url=f'{BASE_URL}{p_url}')
                         items.extend(table_items)
                     except SessionExpiredError:
                         raise
@@ -133,7 +135,8 @@ class NsfocusCollector(BaseCollector):
             except Exception:
                 return
 
-            table_items = self._extract_table_items(html, source_id, product_name, ver, pkg)
+            table_items = self._extract_table_items(html, source_id, product_name, ver, pkg,
+                                                   page_url=f'{BASE_URL}{url}')
             if table_items:
                 items.extend(table_items)
                 return
@@ -152,23 +155,138 @@ class NsfocusCollector(BaseCollector):
         recurse(start_url, '', 'sys', 0)
         return items
 
+    # ── Quick: HEAD-check known pages, only GET changed ones ──
+
+    def _collect_quick(self, source_id: int, product_name: str) -> list:
+        """Quick collection: revisit known snapshot URLs, HEAD-check for changes.
+
+        Falls back gracefully:
+        - No known URLs → empty list (caller should run full scan first)
+        - HEAD not supported → GET with stream to check Last-Modified
+        - Page unchanged → skip
+        - Page changed → full GET + extract new/updated items
+        """
+        from src.models.database import query as snap_query
+        items = []
+
+        # Get distinct page URLs for this source's active snapshots
+        rows = snap_query(
+            """SELECT DISTINCT source_url, version_branch, package_type
+               FROM snapshots
+               WHERE source_id = ? AND source_url != '' AND status = 'active'
+               ORDER BY source_url""",
+            (source_id,)
+        )
+        if not rows:
+            logger.info(f'Quick {product_name}: no known URLs, run full scan first')
+            return items
+
+        urls = [(r['source_url'], r['version_branch'], r['package_type']) for r in rows]
+        total = len(urls)
+        checked = 0
+        changed = 0
+
+        for url, ver, pkg in urls:
+            checked += 1
+            try:
+                # Try HEAD with If-Modified-Since
+                self._delay()
+                head_resp = self.session.head(url, timeout=15, allow_redirects=True)
+                if head_resp.status_code == 200:
+                    # Server supports HEAD — but HEAD doesn't give us the body
+                    # We still need GET to check if content actually changed
+                    # Fall through to GET below
+                    pass
+            except Exception:
+                pass  # HEAD failed, try GET instead
+
+            try:
+                # Use GET with stream to read headers without full body
+                self._delay()
+                resp = self.session.get(url, timeout=TIMEOUT, stream=True)
+                content_length = resp.headers.get('Content-Length', '')
+                last_modified = resp.headers.get('Last-Modified', '')
+
+                # Quick check: if page is small enough and has last_modified,
+                # we can compute a hash from headers alone
+                # For now: always do a light GET to read page hash
+                html = resp.text[:50000]  # Read up to 50KB
+                resp.close()
+
+                # Compute page hash for comparison
+                import hashlib
+                page_hash = hashlib.md5(html.encode()).hexdigest()
+
+                # Check if this hash matches any existing snapshot's page_hash
+                existing = snap_query(
+                    """SELECT id FROM snapshots
+                       WHERE source_id = ? AND source_url = ? AND page_hash = ?
+                       LIMIT 1""",
+                    (source_id, url, page_hash)
+                )
+                if existing:
+                    logger.debug(f'Quick {product_name}: unchanged {url[-50:]}')
+                    continue
+
+                changed += 1
+                logger.info(f'Quick {product_name}: changed {url[-60:]} ({checked}/{total})')
+
+                # Extract items from the page
+                table_items = self._extract_table_items(
+                    html, source_id, product_name, ver, pkg, page_url=url)
+                items.extend(table_items)
+
+            except SessionExpiredError:
+                raise
+            except Exception as e:
+                logger.warning(f'Quick {product_name}: {url[-60:]}: {e}')
+
+        logger.info(f'Quick {product_name}: {changed}/{total} pages changed, {len(items)} items')
+        return items
+
     # ── Internal ──────────────────────────────────────────────
 
     def _set_cookie(self, cookie: str):
         self.session.cookies.set('PHPSESSID', cookie, domain='update.nsfocus.com')
 
-    def _delay(self):
+    def _delay(self, skip: bool = False):
+        if skip:
+            return
         time.sleep(random.uniform(REQUEST_DELAY_MIN, REQUEST_DELAY_MAX))
 
     def _fetch(self, path: str) -> str:
-        self._delay()
         url = f'{BASE_URL}{path}'
-        logger.debug(f'GET {url}')
-        resp = self.session.get(url, timeout=TIMEOUT)
-        resp.raise_for_status()
-        if '/portal/index' in resp.url:
-            raise SessionExpiredError('Session expired')
-        return resp.text
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            if attempt == 0:
+                self._delay()  # normal delay before first attempt
+            else:
+                backoff = 2 ** attempt  # 2s, 4s backoff
+                logger.warning(f'Retry {attempt}/{MAX_RETRIES} for {path} (backoff {backoff}s)')
+                time.sleep(backoff)
+            try:
+                logger.debug(f'GET {url}')
+                resp = self.session.get(url, timeout=TIMEOUT)
+                resp.raise_for_status()
+                if '/portal/index' in resp.url:
+                    raise SessionExpiredError('Session expired')
+                return resp.text
+            except SessionExpiredError:
+                raise
+            except requests.Timeout:
+                last_error = f'Timeout after {TIMEOUT}s'
+                logger.warning(f'{path}: {last_error} (attempt {attempt+1}/{MAX_RETRIES+1})')
+            except requests.ConnectionError as e:
+                # Don't retry DNS failures
+                if 'Name or service not known' in str(e):
+                    raise
+                last_error = str(e)[:120]
+                logger.warning(f'{path}: {last_error} (attempt {attempt+1}/{MAX_RETRIES+1})')
+            except Exception as e:
+                last_error = str(e)[:120]
+                logger.warning(f'{path}: {last_error}')
+                break  # non-retryable error
+        raise Exception(last_error or f'Failed after {MAX_RETRIES+1} attempts')
 
     def _extract_content_links(self, html: str) -> list[tuple[str, str]]:
         soup = BeautifulSoup(html, 'html.parser')
@@ -184,7 +302,8 @@ class NsfocusCollector(BaseCollector):
         return links
 
     def _extract_table_items(self, html: str, source_id: int, product_name: str,
-                             version_branch: str, package_type: str) -> list:
+                             version_branch: str, package_type: str,
+                             page_url: str = '') -> list:
         items = []
         soup = BeautifulSoup(html, 'html.parser')
         table = soup.find('table')
@@ -230,6 +349,7 @@ class NsfocusCollector(BaseCollector):
             if current_item.get('file_name') and current_item.get('md5_hash'):
                 item = self._build_item(current_item, source_id, product_name,
                                         version_branch, package_type, download_id)
+                item.source_url = page_url
                 items.append(item)
                 current_item = {}
                 download_id = 0

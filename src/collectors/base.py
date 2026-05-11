@@ -25,6 +25,7 @@ class UnifiedContentItem:
     download_id: int = 0
     published_at: str = ''
     page_hash: str = ''
+    source_url: str = ''          # detail page URL for quick-mode HEAD check
 
     def to_snapshot_dict(self) -> dict:
         return {
@@ -44,6 +45,7 @@ class UnifiedContentItem:
             'download_id': self.download_id,
             'published_at': self.published_at,
             'page_hash': self.page_hash,
+            'source_url': self.source_url,
         }
 
 

@@ -83,7 +83,8 @@ CREATE TABLE IF NOT EXISTS snapshots (
     last_seen_at TEXT DEFAULT (datetime('now')),
     status TEXT DEFAULT 'active' CHECK(status IN ('active', 'rollback_pending', 'rollback')),
     rollback_confirmed_at TEXT,
-    page_hash TEXT DEFAULT ''
+    page_hash TEXT DEFAULT '',
+    source_url TEXT DEFAULT ''
 )
 """
 
@@ -129,7 +130,7 @@ def save_snapshot(snap: dict) -> int:
                 description_raw = ?, description_parsed = ?,
                 min_sys_version = ?, restart_required = ?, urgency = ?,
                 download_id = ?, published_at = ?, last_seen_at = datetime('now'),
-                status = 'active', page_hash = ?
+                status = 'active', page_hash = ?, source_url = ?
             WHERE id = ?
         """, (
             snap.get('file_name', ''), snap.get('package_version', ''),
@@ -138,6 +139,7 @@ def save_snapshot(snap: dict) -> int:
             int(snap.get('restart_required', False)),
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
             snap.get('published_at', ''), snap.get('page_hash', ''),
+            snap.get('source_url', ''),
             sid
         ))
         return sid
@@ -147,8 +149,8 @@ def save_snapshot(snap: dict) -> int:
             (source_id, product_name, version_branch, package_type,
              file_name, package_version, md5_hash, file_size,
              description_raw, description_parsed, min_sys_version,
-             restart_required, urgency, download_id, published_at, page_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             restart_required, urgency, download_id, published_at, page_hash, source_url)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             snap['source_id'], snap['product_name'], snap['version_branch'],
             snap['package_type'], snap.get('file_name', ''),
@@ -157,7 +159,8 @@ def save_snapshot(snap: dict) -> int:
             desc_parsed, snap.get('min_sys_version', ''),
             int(snap.get('restart_required', False)),
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
-            snap.get('published_at', ''), snap.get('page_hash', '')
+            snap.get('published_at', ''), snap.get('page_hash', ''),
+            snap.get('source_url', '')
         ))
 
 

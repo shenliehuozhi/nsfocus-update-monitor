@@ -98,6 +98,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         return {'status': 'skipped', 'reason': 'Already running'}
 
     _is_running = True
+    logger.info(f'Collection starting: mode={mode}')
     start = time.time()
 
     # Initialize progress
@@ -145,6 +146,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             summary['status'] = 'error'
             summary['errors'].append('No active sessions')
             _is_running = False
+            _last_run = datetime.now()
+            logger.warning('Collection aborted: no active sessions')
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
@@ -164,8 +167,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         _emit('collecting', product='Starting...')
         all_items = []
 
-        if mode == 'delta':
-            all_items = _collect_delta(existing_sources, _emit)
+        if mode == 'quick':
+            all_items = _collect_quick(existing_sources, _emit)
+        elif mode == 'delta':
+            # Legacy: redirect delta to quick
+            all_items = _collect_quick(existing_sources, _emit)
         else:
             all_items = _collect_full(existing_sources, sessions, cookie, _emit)
 
@@ -256,16 +262,16 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         return summary
 
 
-def _collect_delta(existing_sources: dict, emit) -> list:
-    """Delta collection: full traversal with package-level dedup.
+def _collect_quick(existing_sources: dict, emit) -> list:
+    """Quick collection: revisit known snapshot URLs, only GET changed pages.
 
-    Traverses all pages like full mode, but only collects packages that
-    don't already exist in the database (matched by product_name + file_name + md5_hash).
-    This ensures accurate detection without false rollbacks.
+    Uses collector._collect_quick which does HEAD/page-hash checks on known detail pages.
+    Falls back gracefully if no known URLs exist (new installation).
+    Keeps the package-level dedup from delta mode as safety net.
     """
     from src.models.snapshot import get_active_snapshots
 
-    # Build known-package index: (product, file_name, md5) → exists
+    # Build known-package index for dedup safety net
     known_packages = set()
     for src_name in existing_sources:
         snaps = get_active_snapshots(existing_sources[src_name]['id'])
@@ -287,13 +293,10 @@ def _collect_delta(existing_sources: dict, emit) -> list:
             continue
         src = existing_sources[name]
         try:
-            # Full traversal (same as _collect_full)
-            if name in ('RSAS', 'NF'):
-                items = _collector._collect_recursive(src['id'], name, url, max_depth=4)
-            else:
-                items = _collector._collect_standard(src['id'], name, url)
+            # Quick mode: HEAD-check known URLs, GET only changed pages
+            items = _collector._collect_quick(src['id'], name)
 
-            # Filter: keep only genuinely new packages
+            # Dedup safety net
             new_items = []
             for item in items:
                 key = (item.product_name, item.file_name, item.md5_hash)
@@ -302,20 +305,21 @@ def _collect_delta(existing_sources: dict, emit) -> list:
 
             skipped = len(items) - len(new_items)
             if new_items:
-                logger.info(f'Delta: {name} has {len(new_items)} new packages (skipped {skipped} known)')
-            else:
-                logger.debug(f'Delta: {name} no new packages ({len(items)} known)')
+                logger.info(f'Quick: {name} has {len(new_items)} new packages (skipped {skipped} known)')
+            elif items:
+                logger.debug(f'Quick: {name} {len(items)} known, no changes')
+            # No log when items is empty (no known URLs or all unchanged)
 
             all_items.extend(new_items)
             emit('collecting', product=name, items=len(new_items))
             update_source_health(src['id'], 'ok', datetime.now().isoformat())
 
         except SessionExpiredError:
-            logger.error(f'Delta {name}: Session expired')
+            logger.error(f'Quick {name}: Session expired')
             emit('collecting', product=name, version='SESSION EXPIRED')
             _progress['errors'].append(f'{name}: Session expired')
         except Exception as e:
-            logger.error(f'Delta {name}: {e}')
+            logger.error(f'Quick {name}: {e}')
             _progress['errors'].append(f'{name}: {str(e)[:100]}')
 
         _progress['products_done'] = done
@@ -382,11 +386,11 @@ def start_scheduler(app=None):
 
         # Regular delta collection
         sched.add_job(
-            lambda: run_now(mode='delta'),
+            lambda: run_now(mode='quick'),
             'interval',
             hours=COLLECT_INTERVAL,
-            id='nsfocus_delta',
-            name='NSFOCUS Delta Collection',
+            id='nsfocus_quick',
+            name='NSFOCUS Quick Collection',
             next_run_time=datetime.now(),
         )
 
@@ -442,9 +446,14 @@ def _session_heartbeat():
 
     PHP default session.gc_maxlifetime is 24 min, so 30 min heartbeat
     should prevent server-side session expiry between collection cycles.
+    Skips heartbeat if collection is in progress to avoid cookie conflicts.
     """
     import time as _time
     from src.models.user_session import update_heartbeat, log_heartbeat
+
+    if _is_running:
+        logger.debug('Heartbeat skipped: collection in progress')
+        return
 
     sessions = get_active_sessions()
     if not sessions:

@@ -50,29 +50,8 @@ def login():
 
 @bp.route('/register', methods=['POST'])
 def register():
-    data = request.get_json() or {}
-    username = data.get('username', '')
-    password = data.get('password', '')
-
-    if not username or not password:
-        return jsonify({'code': 40001, 'message': '请输入用户名和密码'}), 400
-
-    if len(password) < 6:
-        return jsonify({'code': 40001, 'message': '密码至少6位'}), 400
-
-    existing = get_by_username(username)
-    if existing:
-        return jsonify({'code': 40001, 'message': '用户名已存在'}), 400
-
-    pw_hash = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-    uid = create_user_db(username, pw_hash)
-    token = create_token(uid, username)
-    _audit(uid, 'register', {'username': username})
-
-    return jsonify({
-        'code': 0,
-        'data': {'token': token, 'user': {'id': uid, 'username': username}}
-    })
+    """Registration disabled — single-user deployment."""
+    return jsonify({'code': 40300, 'message': '注册功能已关闭'}), 403
 
 
 @bp.route('/me', methods=['GET'])
