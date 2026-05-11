@@ -911,7 +911,7 @@ function esc(s) {
 - [ ] 端到端通知测试（需真实 Webhook/SMTP 凭证）
 - [ ] systemd 服务文件
 - [ ] 订阅规则 auto-disable on valid_until 过期
-- [ ] HEAD 预检查 Last-Modified（减少无效请求）
++ ✅ HEAD 预检查 Last-Modified → quick 采集模式已实现
 - [ ] 多Session池轮转优化
 - [ ] 采集结果缓存（避免重复解析相同页面）
 - [ ] 更多通知渠道（Telegram、Slack、短信）
