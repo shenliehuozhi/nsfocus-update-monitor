@@ -313,6 +313,9 @@ def _collect_quick(existing_sources: dict, emit) -> list:
             all_items.extend(new_items)
             emit('collecting', product=name, items=len(new_items))
             update_source_health(src['id'], 'ok', datetime.now().isoformat())
+            # Bump last_seen_at for unchanged packages too (reflects collection ran)
+            from src.models.snapshot import touch_active_snapshots
+            touch_active_snapshots(src['id'])
 
         except SessionExpiredError:
             logger.error(f'Quick {name}: Session expired')

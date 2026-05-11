@@ -53,6 +53,17 @@ def update_source_health(source_id: int, status: str, last_collected_at: str = N
         (status, last_collected_at, source_id)
     )
 
+def touch_active_snapshots(source_id: int):
+    """Update last_seen_at for all active snapshots of a source.
+    
+    Called after quick collection to reflect that collection ran,
+    even when pages were unchanged."""
+    from src.models.database import execute
+    execute(
+        "UPDATE snapshots SET last_seen_at = datetime('now') WHERE source_id = ? AND status = 'active'",
+        (source_id,)
+    )
+
 
 def set_source_active(source_id: int, active: bool):
     from src.models.database import execute
