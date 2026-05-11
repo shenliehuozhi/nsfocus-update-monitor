@@ -29,7 +29,7 @@ class DetectionResult:
 
 
 def run_detection(source_id: int, items: list[UnifiedContentItem],
-                  rollback_confirm: int = 2) -> DetectionResult:
+                  rollback_confirm: int = 2, check_rollback: bool = True) -> DetectionResult:
     """Main detection entry point.
 
     1. Save/update all collected items as snapshots
@@ -64,15 +64,14 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
             logger.error(f'Failed to save snapshot: {e}')
             result.errors.append(str(e))
 
-    # Step 2: Mark missing items as rollback_pending
-    snap_db.mark_rollback_pending(seen_ids, source_id)
+    # Step 2: Mark missing items as rollback_pending (only in full-scan mode)
+    if check_rollback:
+        snap_db.mark_rollback_pending(seen_ids, source_id)
 
-    # Step 3: Confirm rollbacks (this uses a simple approach:
-    # we track rollback cycles externally via a counter table or use
-    # a simpler heuristic: check rollback_pending items and move them
-    # to rollback if they were marked in a previous cycle)
-    confirmed = _confirm_rollbacks(source_id, rollback_confirm)
-    result.rollback_items = confirmed
+    # Step 3: Confirm rollbacks (only in full-scan mode)
+    if check_rollback:
+        confirmed = _confirm_rollbacks(source_id, rollback_confirm)
+        result.rollback_items = confirmed
 
     return result
 

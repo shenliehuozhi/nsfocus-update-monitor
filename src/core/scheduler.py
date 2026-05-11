@@ -193,7 +193,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             if not src_items:
                 continue
 
-            result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM)
+            result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
+                                  check_rollback=(mode == 'full'))
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
