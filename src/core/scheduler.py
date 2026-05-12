@@ -69,6 +69,8 @@ _progress = {
 }
 _progress_lock = threading.Lock()
 
+_scheduler = None  # APScheduler instance, for runtime rescheduling
+
 
 def get_progress() -> dict:
     """Return current collection progress (thread-safe)."""
@@ -77,12 +79,16 @@ def get_progress() -> dict:
 
 
 def get_status() -> dict:
+    # Read intervals dynamically from DB (user may have changed via settings page)
+    interval_hours = int(_get_setting('collect_interval', '4'))
+    full_interval_hours = int(_get_setting('full_scan_interval', '24'))
+    
     # Compute next mode
     next_mode = 'full' if is_full_scan_due() else 'quick'
     # Compute next full scan time
     next_full = None
     if _last_full_run:
-        next_full = (_last_full_run + timedelta(hours=FULL_SCAN_INTERVAL)).isoformat()
+        next_full = (_last_full_run + timedelta(hours=full_interval_hours)).isoformat()
     
     return {
         'last_run': _last_run.isoformat() if _last_run else None,
@@ -90,8 +96,8 @@ def get_status() -> dict:
         'last_mode': _last_mode,
         'is_running': _is_running,
         'current_mode': _progress.get('mode', ''),
-        'interval_hours': COLLECT_INTERVAL,
-        'full_scan_interval_hours': FULL_SCAN_INTERVAL,
+        'interval_hours': interval_hours,
+        'full_scan_interval_hours': full_interval_hours,
         'next_mode': next_mode,
         'next_full_scan': next_full,
     }
@@ -412,7 +418,8 @@ def is_full_scan_due() -> bool:
     if _last_full_run is None:
         return True
     elapsed = (datetime.utcnow() - _last_full_run).total_seconds() / 3600
-    return elapsed >= FULL_SCAN_INTERVAL
+    interval = int(_get_setting('full_scan_interval', '24'))
+    return elapsed >= interval
 
 
 def _load_last_full_scan() -> Optional[datetime]:
@@ -458,6 +465,7 @@ def start_scheduler(app=None):
         )
 
         sched.start()
+        _scheduler = sched
         logger.info(f'Scheduler started: collection every {COLLECT_INTERVAL}h, '
                     f'full scan every {FULL_SCAN_INTERVAL}h')
 
@@ -489,6 +497,17 @@ def start_scheduler(app=None):
     except ImportError:
         logger.warning('APScheduler not installed; using manual trigger only')
         return None
+
+
+def reschedule_collect():
+    """Reschedule the collection job with current interval from DB."""
+    global _scheduler
+    if _scheduler:
+        interval_hours = int(_get_setting('collect_interval', '4'))
+        job = _scheduler.get_job('nsfocus_collect')
+        if job:
+            _scheduler.reschedule_job('nsfocus_collect', trigger='interval', hours=interval_hours)
+            logger.info(f'Collection rescheduled: every {interval_hours}h')
 
 
 def _smart_collect():

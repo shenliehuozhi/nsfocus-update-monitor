@@ -677,6 +677,10 @@ def update_config():
         execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))",
                 (key, str(value)))
     _audit('settings_update', {'keys': list(data.keys())})
+    # Reschedule collector if interval changed
+    if 'collect_interval' in data:
+        from src.core.scheduler import reschedule_collect
+        reschedule_collect()
     return jsonify({'code': 0, 'message': '配置已保存'})
 
 
