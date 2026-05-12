@@ -259,11 +259,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         return summary
 
     except Exception as e:
-        logger.error(f'Collection failed: {e}')
+        import traceback
+        logger.error(f'Collection failed: {e}\n{traceback.format_exc()}')
         summary['status'] = 'error'
         summary['errors'].append(str(e)[:200])
         summary['duration_s'] = int(time.time() - start)
         _is_running = False
+        _last_run = datetime.utcnow()  # Prevent dashboard showing — forever
         with _progress_lock:
             _progress['active'] = False
             _progress['phase'] = 'done'
