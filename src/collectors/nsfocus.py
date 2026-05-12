@@ -28,6 +28,36 @@ def _get_delay(key, default):
         return float(_get_setting(key, str(default)))
     except Exception:
         return default
+
+
+def _cst_to_utc(raw_time: str) -> str:
+    """Convert CST (China Standard Time, UTC+8) string to UTC ISO format.
+
+    Handles:
+      '2026-05-12 17:05:51' -> '2026-05-12T09:05:51'
+      '2026-05-12 17:05'    -> '2026-05-12T09:05:00'
+      '2026-05-12'           -> '2026-05-12T00:00:00'
+    Returns empty string if unparseable.
+    """
+    if not raw_time or not raw_time.strip():
+        return ''
+    try:
+        from datetime import datetime, timedelta, timezone
+        cst = timezone(timedelta(hours=8))
+        # Try multiple formats
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                dt = datetime.strptime(raw_time.strip(), fmt)
+                dt = dt.replace(tzinfo=cst)
+                return dt.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%S')
+            except ValueError:
+                continue
+        # Fallback: return as-is (formats like '2024年12月')
+        return raw_time.strip()
+    except Exception:
+        return raw_time.strip() if raw_time else ''
+
+
 REQUEST_DELAY_MIN = _get_delay('collect_delay_min', 1.0)
 REQUEST_DELAY_MAX = _get_delay('collect_delay_max', 3.0)
 TIMEOUT = int(_get_delay('collect_timeout', 30))
@@ -448,7 +478,7 @@ class NsfocusCollector(BaseCollector):
             min_sys_version=description_parsed.get('min_sys_version', ''),
             restart_required=description_parsed.get('restart_required', False),
             urgency=urgency, download_id=download_id,
-            published_at=raw.get('published_at', ''),
+            published_at=_cst_to_utc(raw.get('published_at', '')),
             source_url=source_url,
         )
 
