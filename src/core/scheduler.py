@@ -41,7 +41,7 @@ def _get_setting(key: str, default: str) -> str:
 
 COLLECT_INTERVAL = int(_get_setting('collect_interval', '4'))
 ROLLBACK_CONFIRM = int(_get_setting('rollback_confirm', '2'))
-FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '168'))  # hours, default 7 days
+FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '24'))  # hours, default 1 day
 
 _collector = NsfocusCollector()
 _last_run: Optional[datetime] = None
@@ -200,7 +200,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 continue
 
             result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
-                                  check_rollback=(mode == 'full'))
+                                  check_rollback=True)
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})

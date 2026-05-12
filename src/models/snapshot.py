@@ -208,18 +208,6 @@ def mark_rollback_pending(seen_ids: set, source_id: int):
             )
 
 
-def confirm_rollbacks(source_id: int, confirm_count: int = 2):
-    """Confirm rollback_pending → rollback after N consecutive misses."""
-    from src.models.database import execute
-    # We track consecutive misses externally; here we just flip pending that have
-    # been pending for enough cycles (simplified: direct call when confirmed)
-    execute(
-        "UPDATE snapshots SET status = 'rollback', rollback_confirmed_at = datetime('now') "
-        "WHERE source_id = ? AND status = 'rollback_pending'",
-        (source_id,)
-    )
-
-
 def get_active_snapshots(source_id: int) -> list:
     from src.models.database import query
     return query(

@@ -6,6 +6,7 @@ RSAS/NF: variable depth recursion (up to 4 levels)
 """
 
 import re
+import json
 import hashlib
 import time
 import random
@@ -225,7 +226,38 @@ class NsfocusCollector(BaseCollector):
                     (source_id, url, page_hash)
                 )
                 if existing:
-                    logger.debug(f'Quick {product_name}: unchanged {url[-50:]}')
+                    # Page unchanged — reconstruct existing snapshots as items
+                    # so they are included in seen_ids for rollback detection
+                    existing_snaps = snap_query(
+                        """SELECT * FROM snapshots
+                           WHERE source_id = ? AND source_url = ? AND status = 'active'""",
+                        (source_id, url)
+                    )
+                    for s in existing_snaps:
+                        desc_parsed = s.get('description_parsed', '{}')
+                        if isinstance(desc_parsed, str):
+                            try: desc_parsed = json.loads(desc_parsed)
+                            except: desc_parsed = {}
+                        item = UnifiedContentItem(
+                            source_id=source_id, source_type='nsfocus',
+                            product_name=s['product_name'],
+                            version_branch=s['version_branch'],
+                            package_type=s['package_type'],
+                            file_name=s['file_name'],
+                            package_version=s.get('package_version', ''),
+                            md5_hash=s['md5_hash'],
+                            file_size=s.get('file_size', 0),
+                            description_raw=s.get('description_raw', ''),
+                            description_parsed=desc_parsed,
+                            min_sys_version=s.get('min_sys_version', ''),
+                            restart_required=bool(s.get('restart_required', 0)),
+                            urgency=s.get('urgency', 'normal'),
+                            download_id=s.get('download_id', 0),
+                            published_at=s.get('published_at', ''),
+                            page_hash=page_hash,
+                            source_url=url,
+                        )
+                        items.append(item)
                     continue
 
                 changed += 1
