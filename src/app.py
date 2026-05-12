@@ -60,8 +60,8 @@ def create_app(config_path=None):
             _access_logger.propagate = False
             fh = logging.handlers.RotatingFileHandler(
                 os.path.join(log_dir, 'access.log'),
-                maxBytes=10 * 1024 * 1024,
-                backupCount=3
+            maxBytes=10 * 1024 * 1024,
+            backupCount=10
             )
             fh.setFormatter(logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
             _access_logger.addHandler(fh)

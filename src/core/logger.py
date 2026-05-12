@@ -44,7 +44,7 @@ def get_logger(name: str = 'monitor') -> logging.Logger:
     _file_handler = logging.handlers.RotatingFileHandler(
         os.path.join(_log_dir, 'app.log'),
         maxBytes=10 * 1024 * 1024,
-        backupCount=5
+        backupCount=10
     )
     _file_handler.setLevel(default_level)
     _file_handler.setFormatter(fmt)
