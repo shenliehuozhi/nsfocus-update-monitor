@@ -425,12 +425,13 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let vers=(f.versions||[]).join(',')||'全部';let types=(f.package_types||[]).map(t=>PKG.find(([k])=>k===t)?.[1]||t).join(',')||'全部';return `<tr><td>${rb} ${r.name}</td><td style="font-size:11px">${(f.products||[]).join(',')||'全部'}</td><td style="font-size:11px">${vers}</td><td style="font-size:11px">${types}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editRule(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let isAll=!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let prodCell=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':((f.products||[]).join(',')||'全部');let vers=isAll?'<span style="color:var(--muted)">—</span>':((f.versions||[]).join(',')||'全部');let types=isAll?'<span style="color:var(--muted)">—</span>':((f.package_types||[]).map(t=>PKG.find(([k])=>k===t)?.[1]||t).join(',')||'全部');return `<tr><td>${rb} ${r.name}</td><td style="font-size:11px">${prodCell}</td><td style="font-size:11px">${vers}</td><td style="font-size:11px">${types}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editRule(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
 
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showRForm()">+ 创建规则</button><div id="rf" class="form-panel hidden mt12"><input type="hidden" id="rid"><div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
     <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
-    <div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">产品+版本+类型，可添加多组</span></label><div id="rconds"></div><button class="btn btn-xs btn-outline mt8" onclick="addCond()">+ 添加条件</button></div>
+    <div class="form-group"><label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="rall" onchange="toggleAllMode()"> 📡 订阅全部产品与类型 <span style="font-weight:400;color:var(--muted);font-size:11px">不设筛选条件，监控所有产品的全部升级包</span></label></div>
+    <div id="rcondsWrap"><div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">产品+版本+类型，可添加多组</span></label><div id="rconds"></div><button class="btn btn-xs btn-outline mt8" onclick="addCond()">+ 添加条件</button></div></div>
     <div class="grid3"><div class="form-group"><label>延迟(h)</label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略</label><select id="rst"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h)</label><input id="rin" type="number" value="0"></div></div>
     <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
@@ -446,6 +447,12 @@ function onCustChange(){
   if(!cid||!window._custs)return;
   let c=window._custs.find(x=>x.id==cid);
   if(c&&c.warranty_end)document.getElementById('rvu').value=c.warranty_end;
+}
+
+function toggleAllMode(){
+  const on=document.getElementById('rall').checked;
+  document.getElementById('rcondsWrap').style.display=on?'none':'';
+  if(on)document.getElementById('rconds').innerHTML='';
 }
 
 async function toggleRule(id){
@@ -482,7 +489,7 @@ async function loadCV(s,loadType){
   ts.innerHTML='<option value="">全部类型</option>'+types.map(x=>{let l=PKG.find(([v])=>v===x);return `<option value="${x}">${l?l[1]:x}</option>`;}).join('');
 }
 
-function showRForm(){document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rf').classList.remove('hidden');addCond();addChan();}
+function showRForm(){document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rf').classList.remove('hidden');addCond();addChan();}
 
 function onDigestModeChange(){
   const m=document.getElementById('rdm').value;
@@ -505,7 +512,13 @@ async function editRule(id){
   document.getElementById('remails').value=r.customer_emails||'';
   document.getElementById('ratt').value=r.attachment_max_mb||0;
   let f=r.filter_conditions||{},ps=f.products||[],vs=f.versions||[],ts=f.package_types||[];
+  // Detect "subscribe all" mode: all three filter arrays are empty
+  const isAll=!ps.length && !vs.length && !ts.length;
+  document.getElementById('rall').checked=isAll;
+  document.getElementById('rcondsWrap').style.display=isAll?'none':'';
+  if(!isAll){
   for(let i=0;i<Math.max(ps.length||0,1);i++)addCond(ps[i]||'',vs[i]||'',ts[i]||'');
+  }
   // Channels
   let chs=r.channels||[];chs.forEach(c=>addChan(c));
   document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
@@ -529,7 +542,9 @@ async function editRule(id){
   let cid=parseInt(document.getElementById('rcust').value)||0;
   if(!cid)return toast('请选择关联客户','error');
   let emails=document.getElementById('remails').value.trim();
-  let d={name:document.getElementById('rnm').value,filter_conditions:{products:ps,versions:vs,package_types:ts},delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:document.getElementById('rnr').checked?1:0,customer_emails:emails,attachment_max_mb:parseInt(document.getElementById('ratt').value)||0};
+  const isAll=document.getElementById('rall').checked;
+  const fc=isAll?{}:{products:ps,versions:vs,package_types:ts};
+  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:document.getElementById('rnr').checked?1:0,customer_emails:emails,attachment_max_mb:parseInt(document.getElementById('ratt').value)||0};
   const dm=d.digest_mode;
   if(dm){
     let dc={};
