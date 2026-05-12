@@ -141,7 +141,7 @@ def save_snapshot(snap: dict) -> int:
                 description_raw = ?, description_parsed = ?,
                 min_sys_version = ?, restart_required = ?, urgency = ?,
                 download_id = ?, published_at = ?, last_seen_at = datetime('now'),
-                status = 'active', page_hash = ?, source_url = ?
+                status = 'active', rollback_cycles = 0, page_hash = ?, source_url = ?
             WHERE id = ?
         """, (
             snap.get('file_name', ''), snap.get('package_version', ''),
@@ -176,7 +176,13 @@ def save_snapshot(snap: dict) -> int:
 
 
 def mark_rollback_pending(seen_ids: set, source_id: int):
-    """Mark snapshots not in seen_ids as rollback_pending (single miss)."""
+    """Mark snapshots not in seen_ids as rollback_pending.
+
+    Uses rollback_cycles to track consecutive misses.
+    First miss: status='rollback_pending', rollback_cycles=1
+    Subsequent miss: rollback_cycles += 1
+    Confirmation only when rollback_cycles >= ROLLBACK_CONFIRM.
+    """
     from src.models.database import execute, query
     active = query(
         "SELECT id FROM snapshots WHERE source_id = ? AND status = 'active'",
@@ -185,7 +191,19 @@ def mark_rollback_pending(seen_ids: set, source_id: int):
     for row in active:
         if row['id'] not in seen_ids:
             execute(
-                "UPDATE snapshots SET status = 'rollback_pending' WHERE id = ?",
+                "UPDATE snapshots SET status = 'rollback_pending', rollback_cycles = 1 WHERE id = ?",
+                (row['id'],)
+            )
+
+    # Increment rollback_cycles for already-pending snapshots (still missing)
+    pending = query(
+        "SELECT id FROM snapshots WHERE source_id = ? AND status = 'rollback_pending'",
+        (source_id,)
+    )
+    for row in pending:
+        if row['id'] not in seen_ids:
+            execute(
+                "UPDATE snapshots SET rollback_cycles = rollback_cycles + 1 WHERE id = ?",
                 (row['id'],)
             )
 

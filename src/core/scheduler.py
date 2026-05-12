@@ -108,7 +108,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             'current_product': '', 'current_version': '',
             'products_done': 0, 'products_total': len(PRODUCTS),
             'items_collected': 0, 'total_new': 0, 'total_rollback': 0,
-            'errors': [], 'started_at': datetime.now().isoformat(),
+            'errors': [], 'started_at': datetime.utcnow().isoformat(),
             'finished_at': None, 'duration_s': 0,
         })
 
@@ -133,7 +133,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
     summary = {
         'status': 'ok', 'mode': mode,
-        'started_at': datetime.now().isoformat(),
+        'started_at': datetime.utcnow().isoformat(),
         'products': {},
         'total_new': 0, 'total_rollback': 0, 'total_notified': 0,
         'errors': [],
@@ -146,7 +146,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             summary['status'] = 'error'
             summary['errors'].append('No active sessions')
             _is_running = False
-            _last_run = datetime.now()
+            _last_run = datetime.utcnow()
             logger.warning('Collection aborted: no active sessions')
             with _progress_lock:
                 _progress['active'] = False
@@ -182,14 +182,14 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             summary['status'] = 'warning' if summary['errors'] else 'ok'
             summary['duration_s'] = int(time.time() - start)
             _is_running = False
-            _last_run = datetime.now()
+            _last_run = datetime.utcnow()
             if mode == 'full':
-                _last_full_run = datetime.now()
+                _last_full_run = datetime.utcnow()
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
                 _progress['duration_s'] = summary['duration_s']
-                _progress['finished_at'] = datetime.now().isoformat()
+                _progress['finished_at'] = datetime.utcnow().isoformat()
             return summary
 
         # 4. Run detection per source
@@ -230,9 +230,9 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
         summary['duration_s'] = int(time.time() - start)
         _is_running = False
-        _last_run = datetime.now()
+        _last_run = datetime.utcnow()
         if mode == 'full':
-            _last_full_run = datetime.now()
+            _last_full_run = datetime.utcnow()
 
         # WAL checkpoint: prevent unlimited WAL file growth
         try:
@@ -248,7 +248,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['active'] = False
             _progress['phase'] = 'done'
             _progress['duration_s'] = summary['duration_s']
-            _progress['finished_at'] = datetime.now().isoformat()
+            _progress['finished_at'] = datetime.utcnow().isoformat()
             _progress['total_new'] = summary['total_new']
             _progress['total_rollback'] = summary['total_rollback']
 
@@ -265,7 +265,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['phase'] = 'done'
             _progress['errors'].append(str(e)[:200])
             _progress['duration_s'] = summary['duration_s']
-            _progress['finished_at'] = datetime.now().isoformat()
+            _progress['finished_at'] = datetime.utcnow().isoformat()
         return summary
 
 
@@ -319,7 +319,7 @@ def _collect_quick(existing_sources: dict, emit) -> list:
 
             all_items.extend(new_items)
             emit('collecting', product=name, items=len(new_items))
-            update_source_health(src['id'], 'ok', datetime.now().isoformat())
+            update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
             # Bump last_seen_at for unchanged packages too (reflects collection ran)
             from src.models.snapshot import touch_active_snapshots
             touch_active_snapshots(src['id'])
@@ -357,7 +357,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
 
             all_items.extend(items)
             emit('collecting', product=name, items=len(items))
-            update_source_health(src['id'], 'ok', datetime.now().isoformat())
+            update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
             # Bump last_seen_at for all active snapshots (reflects collection ran)
             from src.models.snapshot import touch_active_snapshots
             touch_active_snapshots(src['id'])
@@ -386,7 +386,7 @@ def is_full_scan_due() -> bool:
     global _last_full_run
     if _last_full_run is None:
         return True
-    elapsed = (datetime.now() - _last_full_run).total_seconds() / 3600
+    elapsed = (datetime.utcnow() - _last_full_run).total_seconds() / 3600
     return elapsed >= FULL_SCAN_INTERVAL
 
 
@@ -404,7 +404,7 @@ def start_scheduler(app=None):
             hours=COLLECT_INTERVAL,
             id='nsfocus_collect',
             name='NSFOCUS Smart Collection',
-            next_run_time=datetime.now(),
+            next_run_time=datetime.utcnow(),
         )
 
         sched.start()
@@ -422,7 +422,7 @@ def start_scheduler(app=None):
             minutes=hb_interval,
             id='nsfocus_heartbeat',
             name='Session Heartbeat',
-            next_run_time=datetime.now(),
+            next_run_time=datetime.utcnow(),
         )
 
         # Digest check: run daily to send weekly/monthly/quarterly summaries
@@ -432,7 +432,7 @@ def start_scheduler(app=None):
             hours=6,  # Check every 6 hours
             id='nsfocus_digest',
             name='Digest Summary Check',
-            next_run_time=datetime.now(),
+            next_run_time=datetime.utcnow(),
         )
 
         return sched

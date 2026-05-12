@@ -77,50 +77,37 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
 
 
 def _confirm_rollbacks(source_id: int, confirm_count: int) -> list:
-    """Check rollback_pending items and confirm those that have been
-    pending for enough cycles.
+    """Confirm rollback for snapshots that have been pending for N consecutive cycles.
 
-    Simplified approach: we use a separate tracking table or just flip
-    rollback_pending → rollback after confirm_count calls.
-
-    For Phase 1, we use a simple state machine:
-      - rollback_pending items are flipped to rollback on the NEXT call
-      - if confirm_count == 2, it takes 2 cycles
+    Only snapshots with rollback_cycles >= confirm_count are confirmed.
+    Pending snapshots with fewer cycles stay pending for the next check.
     """
-    # Get currently pending items
     from src.models.database import query, execute
-    
+
+    # Only confirm snapshots that have reached the threshold
     pending = query(
-        "SELECT id FROM snapshots WHERE source_id = ? AND status = 'rollback_pending'",
-        (source_id,)
+        """SELECT id FROM snapshots
+           WHERE source_id = ? AND status = 'rollback_pending'
+           AND rollback_cycles >= ?""",
+        (source_id, confirm_count)
     )
-    
+
     if not pending:
         return []
 
-    # We need a way to count consecutive misses. 
-    # Simple approach: store a rollback_cycle_count in a JSON file or
-    # use the fact that rollback_pending only gets set when an item is
-    # not in seen_ids. If it was pending before AND still not seen, confirm.
-    
-    # For now: use a global counter stored in memory (restarts reset counter)
-    # Better approach for production: add a rollback_cycle table
     confirmed = []
-    
     for row in pending:
         sid = row['id']
-        # Get snapshot to return it
         snap = snap_db.get_snapshot(sid)
         if snap:
-            snap_db.confirm_rollbacks(source_id, confirm_count)
-            # Actually execute individually
             execute(
                 "UPDATE snapshots SET status = 'rollback', rollback_confirmed_at = datetime('now') "
                 "WHERE id = ?",
                 (sid,)
             )
             confirmed.append((sid, dict(snap)))
-            logger.info(f'ROLLBACK confirmed: {snap.get("product_name")} {snap.get("file_name")}')
+            logger.info(f'ROLLBACK confirmed (cycles={snap.get("rollback_cycles",0)}/{confirm_count}): '
+                       f'{snap.get("product_name")} {snap.get("file_name")}')
 
     return confirmed
 

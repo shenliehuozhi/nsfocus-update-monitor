@@ -163,7 +163,7 @@ def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
     sent_at = None
     if status == 'sent':
         from datetime import datetime
-        sent_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     return execute(
         """INSERT INTO delivery_log (snapshot_id, channel_id, channel_type, channel_name,
            customer_id, delivery_status, error_message, sent_at)
@@ -250,7 +250,7 @@ def clear_history(older_than_days: int = None) -> int:
     from src.models.database import execute
     if older_than_days:
         return execute(
-            "DELETE FROM delivery_log WHERE sent_at < datetime('now', ?)",
+            "DELETE FROM delivery_log WHERE sent_at < datetime('now', ?) OR sent_at IS NULL",
             (f'-{older_than_days} days',)
         )
     else:
