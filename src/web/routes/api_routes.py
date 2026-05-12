@@ -606,18 +606,21 @@ bp_latest = Blueprint('latest', __name__, url_prefix='/api/latest')
 @bp_latest.route('/snapshots', methods=['GET'])
 @require_auth
 def get_latest_snapshots():
-    """Get latest snapshots grouped by product."""
+    """Get latest snapshots grouped by product. Add ?show_rollback=1 to include rollbacks."""
     from src.models.database import query
     product = request.args.get('product', '')
+    show_rollback = request.args.get('show_rollback', '0') == '1'
+    
+    status_filter = "status IN ('active'" + (",'rollback'" if show_rollback else "") + ")"
     
     if product:
         rows = query(
-            """SELECT * FROM snapshots WHERE product_name=? AND status='active'
+            f"""SELECT * FROM snapshots WHERE product_name=? AND {status_filter}
                ORDER BY last_seen_at DESC LIMIT 50""",
             (product,))
     else:
         rows = query(
-            """SELECT * FROM snapshots WHERE status='active'
+            f"""SELECT * FROM snapshots WHERE {status_filter}
                ORDER BY product_name, last_seen_at DESC""")
     
     # Group by product
