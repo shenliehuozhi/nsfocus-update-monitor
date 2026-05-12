@@ -330,6 +330,10 @@ def push_by_mode(sid: int):
     mode = data.get('mode', 'rule')
     target_id = data.get('target_id', 0)
 
+    from src.notifiers.router import _is_maintenance_mode
+    if _is_maintenance_mode():
+        return jsonify({'code': 40001, 'message': '维护模式已开启，所有推送已静默'}), 400
+
     if not target_id:
         return jsonify({'code': 40001, 'message': '缺少目标ID'}), 400
 

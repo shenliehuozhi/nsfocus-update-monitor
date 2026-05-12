@@ -620,6 +620,10 @@ async function settings(){
   const r=await api('/settings/config').catch(()=>({data:{}}));
   const cfg=r.data||{};
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
+    <div style="background:#fff8e6;border:1px solid #f5c842;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({maintenance_mode:v})}).then(r=>toast(r.code===0?(v==='1'?'🔇 维护模式已开启':'🔔 维护模式已关闭'):'失败',r.code===0?'success':'error'))"> 🔧 维护模式</label>
+      <span style="font-size:11px;color:var(--muted);flex:1">开启后所有推送静默（采集照常），调试时避免误发通知</span>
+    </div>
     <div class="grid2">
       <div class="form-group"><label>采集间隔 (小时)</label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"></div>
       <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"></div>

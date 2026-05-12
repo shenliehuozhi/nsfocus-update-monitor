@@ -28,11 +28,25 @@ _RATE_LIMIT_INTERVAL = float(os.getenv('MONITOR_RATE_LIMIT_SEC', '3'))
 _last_send: dict[str, float] = {}
 
 
+def _is_maintenance_mode() -> bool:
+    """Check if maintenance mode is enabled (suppress all notifications)."""
+    try:
+        from src.models.database import query
+        rows = query("SELECT value FROM system_settings WHERE key = 'maintenance_mode'")
+        return len(rows) > 0 and rows[0]['value'] == '1'
+    except Exception:
+        return False
+
+
 def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = False):
     """Route a snapshot through its matched channels.
 
     For delayed pushes, enqueue; for immediate (rollback or no delay), send now.
     """
+    if _is_maintenance_mode():
+        logger.info(f'Maintenance mode: suppressed notification for snapshot {snapshot_id}')
+        return
+
     snap = get_snapshot(snapshot_id)
     if not snap:
         logger.warning(f'Snapshot {snapshot_id} not found')
@@ -169,6 +183,8 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
 
 def process_delayed_queue():
     """Check delayed_queue for items ready to push."""
+    if _is_maintenance_mode():
+        return
     items = get_due_items()
     for item in items:
         _send_immediate(
@@ -181,6 +197,8 @@ def process_delayed_queue():
 
 def process_digests():
     """Check and send due digest summaries."""
+    if _is_maintenance_mode():
+        return
     from src.models.subscription import (
         get_rules_due_for_digest, get_digest_snapshots,
         mark_digest_sent, mark_digest_rule_sent,
