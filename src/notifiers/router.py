@@ -145,8 +145,16 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
                 time.sleep(_RATE_LIMIT_INTERVAL - elapsed)
             _last_send[channel['type']] = time.time()
 
+        # Build channel config with rule-level overrides
+        ch_config = dict(channel['config'])
+        if channel['type'] == 'email':
+            if rule.get('customer_emails'):
+                ch_config['rule_emails'] = rule['customer_emails']
+            if rule.get('attachment_max_mb'):
+                ch_config['attachment_max_mb'] = str(rule['attachment_max_mb'])
+
         # Send
-        result = notifier.send(message, channel['config'])
+        result = notifier.send(message, ch_config)
         results.append(result)
 
         if channel['type'] in ('wecom', 'dingtalk', 'feishu'):

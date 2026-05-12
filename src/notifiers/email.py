@@ -30,6 +30,14 @@ class EmailNotifier(BaseNotifier):
         smtp_password = config.get('smtp_password', '')
         from_name = config.get('from_name', '绿盟升级通知')
         to_list = config.get('to_list', [])
+        # Rule-level override: customer emails
+        rule_emails = config.get('rule_emails', '')
+        if rule_emails:
+            extra = [e.strip() for e in rule_emails.split(',') if e.strip()]
+            to_list = list(dict.fromkeys(to_list + extra))  # dedup preserving order
+        # Rule-level override: attachment size
+        rule_attach_mb = int(config.get('attachment_max_mb', 0))
+        max_attach = (rule_attach_mb * 1048576) if rule_attach_mb > 0 else ATTACHMENT_MAX_SIZE
 
         if not smtp_host or not to_list:
             return DeliveryResult(False, 'email', config.get('name', ''),
@@ -50,9 +58,9 @@ class EmailNotifier(BaseNotifier):
         attachment_downloaded = False
         if (not message.is_rollback
                 and message.file_size > 0
-                and message.file_size <= ATTACHMENT_MAX_SIZE
+                and message.file_size <= max_attach
                 and message.download_url):
-            attachment_downloaded = self._attach_file(msg, message)
+            attachment_downloaded = self._attach_file(msg, message, max_attach)
 
         # Note about large files
         if not attachment_downloaded and not message.is_rollback:
@@ -95,7 +103,7 @@ class EmailNotifier(BaseNotifier):
             logger.error(f'Email send failed: {e}')
             return DeliveryResult(False, 'email', config.get('name', ''), str(e))
 
-    def _attach_file(self, msg: MIMEMultipart, message: NotificationMessage) -> bool:
+    def _attach_file(self, msg: MIMEMultipart, message: NotificationMessage, max_size: int) -> bool:
         """Download the package file and attach to email. Returns True on success."""
         try:
             # Download with session cookie — for nsfocus downloads
@@ -104,7 +112,7 @@ class EmailNotifier(BaseNotifier):
                 return False
 
             content = resp.content
-            if len(content) > ATTACHMENT_MAX_SIZE:
+            if len(content) > max_size:
                 return False
 
             # Attach
