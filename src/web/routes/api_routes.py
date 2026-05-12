@@ -61,6 +61,15 @@ def update_channel(ch_id: int):
 @require_auth
 def delete_channel(ch_id: int):
     from src.models.channel import delete
+    from src.models.database import query
+    # Check if referenced by any subscription rules
+    ref_rules = query(
+        "SELECT sr.id, sr.name FROM subscription_rules sr "
+        "INNER JOIN rule_channels rc ON sr.id = rc.rule_id "
+        "WHERE rc.channel_id = ?", (ch_id,))
+    if ref_rules:
+        names = ', '.join(f'「{r["name"]}」' for r in ref_rules)
+        return jsonify({'code': 40900, 'message': f'该渠道被以下订阅规则引用，请先取消引用再删除：{names}'}), 409
     delete(ch_id)
     _audit('channel_delete', {'id': ch_id})
     return jsonify({'code': 0})
@@ -137,6 +146,18 @@ def update_customer(cid: int):
 @require_auth
 def delete_customer(cid: int):
     from src.models.customer import delete
+    from src.models.database import query
+    # Check if referenced by any subscription rules or rule_channels
+    ref_rules = query(
+        "SELECT id, name FROM subscription_rules WHERE customer_id = ?", (cid,))
+    ref_channels = query(
+        "SELECT sr.id, sr.name FROM subscription_rules sr "
+        "INNER JOIN rule_channels rc ON sr.id = rc.rule_id "
+        "WHERE rc.customer_id = ?", (cid,))
+    refs = list(ref_rules) + list(ref_channels)
+    if refs:
+        names = ', '.join(f'「{r["name"]}」' for r in refs)
+        return jsonify({'code': 40900, 'message': f'该客户被以下订阅规则引用，请先取消引用再删除：{names}'}), 409
     delete(cid)
     _audit('customer_delete', {'id': cid})
     return jsonify({'code': 0})
