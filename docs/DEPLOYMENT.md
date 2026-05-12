@@ -147,14 +147,14 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8800/api/health
 
 ```bash
 # 查看当前封禁状态
-curl -u admin:admin123 http://127.0.0.1:9999/api/system/rate-limits
+curl -u admin:<your_password> http://127.0.0.1:9999/api/system/rate-limits
 
 # 重置特定 key
-curl -u admin:admin123 -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
+curl -u admin:<your_password> -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
   -H 'Content-Type: application/json' -d '{"key":"user@example.com"}'
 
 # 重置全部（不传 key）
-curl -u admin:admin123 -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
+curl -u admin:<your_password> -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
   -H 'Content-Type: application/json' -d '{}'
 ```
 

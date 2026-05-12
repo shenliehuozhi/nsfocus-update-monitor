@@ -386,10 +386,10 @@ A: 两种方式：
 2. 管理员调用 API 立即重置：
 ```bash
 # 重置某个邮箱
-curl -u admin:admin123 -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
+curl -u admin:<your_password> -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
   -H 'Content-Type: application/json' -d '{"key":"user@example.com"}'
 # 重置全部
-curl -u admin:admin123 -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
+curl -u admin:<your_password> -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
   -H 'Content-Type: application/json' -d '{}'
 ```
 A: 使用天数筛选（默认30天），或点击「清空」按钮清理旧记录。

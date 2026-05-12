@@ -4,8 +4,12 @@ __pycache__/
 *.pyo
 venv/
 
-# Data (database is versioned for rollback safety — keep)
-# data/*.db
+# Data — exclude database files (contain encrypted credentials)
+data/*.db
+data/*.db-*
+
+# Backups
+*.bak
 
 # Logs
 logs/*.log
