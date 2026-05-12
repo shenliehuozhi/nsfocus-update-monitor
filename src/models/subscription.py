@@ -34,7 +34,8 @@ def create_rule(user_id: int, **kwargs) -> int:
     kwargs['user_id'] = user_id
     fields = ['user_id', 'name', 'enabled', 'filter_conditions', 'delay_hours',
               'delay_strategy', 'min_interval_hours', 'digest_mode', 'digest_config',
-              'customer_id', 'valid_until', 'quiet_start', 'quiet_end', 'notify_rollback']
+              'customer_id', 'valid_until', 'quiet_start', 'quiet_end', 'notify_rollback',
+              'customer_emails', 'attachment_max_mb']
     values = [kwargs.get(f, '') for f in fields]
     values[2] = int(values[2]) if values[2] != '' else 1
     values[4] = values[4] or 0
@@ -76,7 +77,11 @@ def list_rules(user_id: int = None) -> list:
         rows = query("SELECT * FROM subscription_rules WHERE user_id = ? ORDER BY name", (user_id,))
     else:
         rows = query("SELECT * FROM subscription_rules ORDER BY name")
-    return [_parse_rule(r) for r in rows]
+    rules = [_parse_rule(r) for r in rows]
+    for rule in rules:
+        ch_rows = query("SELECT channel_id FROM rule_channels WHERE rule_id = ?", (rule['id'],))
+        rule['channels'] = [r['channel_id'] for r in ch_rows if r.get('channel_id')]
+    return rules
 
 
 def delete_rule(rule_id: int) -> None:
