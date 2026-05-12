@@ -35,7 +35,7 @@ class EmailNotifier(BaseNotifier):
             return DeliveryResult(False, 'email', config.get('name', ''),
                                   'Missing SMTP config or recipient list')
 
-        subject = f'{"⚠️【撤回通知】" if message.is_rollback else "🔔【升级通知】"}{message.product_name} {message.version_branch} {message.package_version}'
+        subject = f'{"⚠️【撤回通知】" if message.is_rollback else "🔔【升级通知】"}{message.title}'
 
         html_body = _format_html_body(message, message.is_rollback)
 

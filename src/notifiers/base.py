@@ -78,7 +78,7 @@ class NotificationMessage:
             package_version=snap.get('package_version', ''),
             md5_hash=snap.get('md5_hash', ''),
             file_size=snap.get('file_size', 0),
-            description_summary='; '.join(summary_parts) if summary_parts else (snap.get('description_raw', '') or '')[:200],
+            description_summary='; '.join(summary_parts) if summary_parts else (snap.get('description_raw', '') or ''),
             description_full=snap.get('description_raw', ''),
             description_parsed=parsed,
             min_sys_version=snap.get('min_sys_version', ''),
@@ -137,9 +137,9 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
         f'**时间**: {msg.published_at}',
     ])
 
-    if msg.description_summary:
+    if msg.description_full:
         lines.append('')
-        lines.append(f'📋 {msg.description_summary}')
+        lines.append(f'📋 {msg.description_full}')
 
     if msg.min_sys_version:
         lines.append('')
@@ -202,8 +202,8 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     parts.append(part1)
 
     # Part 2+: description (split by paragraphs, then by byte chunks if needed)
-    if msg.description_summary:
-        desc_paragraphs = msg.description_summary.split('\n')
+    if msg.description_full:
+        desc_paragraphs = msg.description_full.split('\n')
         current = ''
         for para in desc_paragraphs:
             para = para.strip()
@@ -266,45 +266,68 @@ def _chunk_text(text: str, max_bytes: int) -> list[str]:
 
 
 def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> str:
-    """Format a NotificationMessage as HTML for email."""
+    """Format a NotificationMessage as HTML for email — aligned with WeCom/DingTalk markdown template."""
     urgency_colors = {'normal': '#4a90d9', 'high': '#f5a623', 'critical': '#d0021b'}
+    urgency_icons = {'normal': 'ℹ️', 'high': '⚠️', 'critical': '🔴'}
     color = urgency_colors.get(msg.urgency, '#4a90d9')
+    icon = urgency_icons.get(msg.urgency, 'ℹ️')
 
+    # Rollback banner (same as markdown)
     rollback_banner = ''
     if for_rollback:
-        rollback_banner = '''
-        <tr><td style="background:#fff3cd;padding:12px;border-left:4px solid #f5a623;margin-bottom:16px">
+        rollback_banner = f'''
+        <tr><td style="background:#fff3cd;padding:12px;border-left:4px solid #f5a623">
             <strong>⚠️ 软件包已被撤回</strong> — 请暂缓升级操作。如已升级，请联系绿盟技术支持。
         </td></tr>
+        <tr><td style="height:12px"></td></tr>
         '''
 
-    # Build description section
+    # Description: summary text first, then parsed rule details
     desc_html = ''
-    parsed = msg.description_parsed
-    if parsed.get('added'):
-        ids = parsed['added'][:10]
-        more = f' ...等共{len(parsed["added"])}条' if len(parsed['added']) > 10 else ''
-        desc_html += f'<tr><td style="padding:4px 0"><strong>📋 新增规则</strong>: {", ".join(ids)}{more}</td></tr>'
-    if parsed.get('modified'):
-        ids = parsed['modified'][:5]
-        desc_html += f'<tr><td style="padding:4px 0"><strong>📝 修改规则</strong>: {", ".join(ids)}</td></tr>'
-    if parsed.get('deleted'):
-        ids = parsed['deleted'][:5]
-        desc_html += f'<tr><td style="padding:4px 0"><strong>🗑️ 删除规则</strong>: {", ".join(ids)}</td></tr>'
+    if msg.description_full:
+        desc_text = msg.description_full.replace('\n', '<br>')
+        desc_html += f'''
+        <tr><td style="padding:8px 0;border-top:1px solid #e0e0e0;margin-top:8px">
+            <strong>📋 更新说明</strong>
+            <div style="color:#555;margin-top:4px">{desc_text}</div>
+        </td></tr>'''
 
+    # Parsed rule details (added/modified/deleted)
+    parsed = msg.description_parsed
+    if parsed.get('added') or parsed.get('modified') or parsed.get('deleted'):
+        rules_html = ''
+        if parsed.get('added'):
+            ids = parsed['added'][:10]
+            more = f' ...等共{len(parsed["added"])}条' if len(parsed['added']) > 10 else ''
+            rules_html += f'<div>📋 新增: {", ".join(ids)}{more}</div>'
+        if parsed.get('modified'):
+            ids = parsed['modified'][:5]
+            more = f' ...等共{len(parsed["modified"])}条' if len(parsed['modified']) > 5 else ''
+            rules_html += f'<div>📝 修改: {", ".join(ids)}{more}</div>'
+        if parsed.get('deleted'):
+            ids = parsed['deleted'][:5]
+            more = f' ...等共{len(parsed["deleted"])}条' if len(parsed['deleted']) > 5 else ''
+            rules_html += f'<div>🗑️ 删除: {", ".join(ids)}{more}</div>'
+        desc_html += f'''
+        <tr><td style="padding:8px 0">
+            <strong>规则变更详情</strong>
+            <div style="color:#555;margin-top:4px;font-size:13px">{rules_html}</div>
+        </td></tr>'''
+
+    # Dependencies (matching markdown template)
     dep_html = ''
     if msg.min_sys_version:
-        dep_html += f'<tr><td style="padding:4px 0"><strong>⚠️ 系统版本要求</strong>: ≥ {msg.min_sys_version} (64位)</td></tr>'
+        dep_html += f'<tr><td style="padding:4px 0"><strong>⚠️ 依赖</strong>: 系统版本 ≥ {msg.min_sys_version}</td></tr>'
+    if msg.restart_required:
+        dep_html += '<tr><td style="padding:4px 0"><strong>🔄 升级后需重启</strong></td></tr>'
 
-    reboot = '无需重启' if not msg.restart_required else '需要重启'
-    dep_html += f'<tr><td style="padding:4px 0"><strong>重启要求</strong>: {reboot}</td></tr>'
-
+    # Download button (matching markdown's download link)
     dl_btn = ''
     if msg.download_url:
         dl_btn = f'''
         <tr><td style="padding:16px 0 0 0">
             <a href="{msg.download_url}" style="background:{color};color:#fff;padding:10px 24px;
-               text-decoration:none;border-radius:4px;font-weight:bold">📥 下载升级包</a>
+               text-decoration:none;border-radius:4px;font-weight:bold">📥 下载</a>
         </td></tr>
         '''
 
@@ -313,21 +336,21 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
 <body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">
 <table style="width:100%;border-collapse:collapse">
 <tr><td style="background:{color};padding:16px;border-radius:8px 8px 0 0">
-    <h2 style="color:#fff;margin:0">{msg.product_name} {msg.version_branch} 升级通知</h2>
+    <h2 style="color:#fff;margin:0">{icon} {msg.title}</h2>
 </td></tr>
 <tr><td style="padding:16px;border:1px solid #e0e0e0">
+    {rollback_banner}
     <table style="width:100%">
         <tr><td style="padding:4px 0;width:80px;color:#666">产品</td><td>{msg.product_name}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">版本分支</td><td>{msg.version_branch}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">包类型</td><td>{msg.package_type}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">文件名</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">版本</td><td>{msg.version_branch}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">类型</td><td>{msg.package_type}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:11px">{msg.md5_hash}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{msg.published_at}</td></tr>
-        {desc_html}
+        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash[:16]}...</td></tr>
+        <tr><td style="padding:4px 0;color:#666">时间</td><td>{msg.published_at}</td></tr>
         {dep_html}
-        {rollback_banner}
+        {desc_html}
         {dl_btn}
     </table>
 </td></tr>
