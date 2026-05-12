@@ -196,7 +196,7 @@ def get_delivery_by_snapshot(snapshot_id: int) -> list:
 
 
 def get_history(page: int = 1, limit: int = 20, product: str = None,
-                customer_id: int = None) -> tuple:
+                customer_id: int = None, days: int = None) -> tuple:
     from src.models.database import query
     conditions = []
     params = []
@@ -206,6 +206,9 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
     if customer_id:
         conditions.append("dl.customer_id = ?")
         params.append(customer_id)
+    if days:
+        conditions.append("dl.sent_at >= datetime('now', ?)")
+        params.append(f'-{days} days')
     where = " AND ".join(conditions) if conditions else "1=1"
 
     total = query(
@@ -240,6 +243,18 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         row['deliveries'] = [dict(d) for d in deliveries]
 
     return rows, total
+
+
+def clear_history(older_than_days: int = None) -> int:
+    """Delete delivery_log entries. If older_than_days is set, only delete older entries."""
+    from src.models.database import execute
+    if older_than_days:
+        return execute(
+            "DELETE FROM delivery_log WHERE sent_at < datetime('now', ?)",
+            (f'-{older_than_days} days',)
+        )
+    else:
+        return execute("DELETE FROM delivery_log")
 
 
 # ── Delayed Queue ────────────────────────────────────────────

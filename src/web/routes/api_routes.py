@@ -217,11 +217,23 @@ bp_history = Blueprint('history', __name__, url_prefix='/api/history')
 def get_history():
     page = request.args.get('page', 1, type=int)
     limit = request.args.get('limit', 20, type=int)
+    days = request.args.get('days', type=int)
     product = request.args.get('product')
     customer_id = request.args.get('customer_id', type=int)
     from src.models.subscription import get_history as gh
-    rows, total = gh(page, limit, product, customer_id)
+    rows, total = gh(page, limit, product, customer_id, days=days)
     return jsonify({'code': 0, 'data': {'items': [dict(r) for r in rows], 'total': total, 'page': page}})
+
+@bp_history.route('', methods=['DELETE'])
+@require_auth
+def clear_history():
+    """Clear push history. Query: ?days=N to keep last N days."""
+    days = request.args.get('days', type=int)
+    from src.models.subscription import clear_history as ch
+    deleted = ch(older_than_days=days)
+    _audit('history_clear', {'days': days, 'deleted': deleted})
+    msg = f'已清空最近{days}天之前的 {deleted} 条推送记录' if days else f'已清空全部 {deleted} 条推送记录'
+    return jsonify({'code': 0, 'message': msg, 'data': {'deleted': deleted}})
 
 @bp_history.route('/<int:sid>/resend', methods=['POST'])
 @require_auth

@@ -525,7 +525,8 @@ async function delRule(id){if(confirm('删除?')){await api('/subscriptions/'+id
 
 // ── History ──
 async function history(){
-  const r=await api('/history?limit=200');const list=r.data?.items||[];
+  let days=new URLSearchParams(location.hash.split('?')[1]||'').get('days')||'30';
+  const r=await api('/history?limit=200&days='+days);const list=r.data?.items||[];
   // Group by time batch (minute-level) for aggregation
   let batches={};
   list.forEach(h=>{
@@ -580,7 +581,17 @@ async function history(){
     });
     html+=`</tbody>`;
   });
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)"><a href="#" onclick="let all=document.querySelectorAll('#app tbody');let vis=all[0]?.classList.contains('hidden');all.forEach(t=>vis?t.classList.remove('hidden'):t.classList.add('hidden'));document.querySelectorAll('.arrow').forEach(a=>a.textContent=vis?'▼':'▶');return false">全部展开/折叠</a></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>版本</th><th>类型</th><th>文件名</th><th>包版本</th><th>紧急度</th><th>渠道/状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;}
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px"><select onchange="let d=this.value;location.hash='history?days='+d;history()" style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px"><option value="7" ${days==='7'?'selected':''}>近7天</option><option value="30" ${days==='30'?'selected':''}>近30天</option><option value="90" ${days==='90'?'selected':''}>近90天</option><option value="365" ${days==='365'?'selected':''}>近1年</option><option value="0" ${days==='0'?'selected':''}>全部</option></select><a href="#" onclick="history()">刷新</a><a href="#" onclick="let all=document.querySelectorAll('#app tbody');let vis=all[0]?.classList.contains('hidden');all.forEach(t=>vis?t.classList.remove('hidden'):t.classList.add('hidden'));document.querySelectorAll('.arrow').forEach(a=>a.textContent=vis?'▼':'▶');return false">全部展开/折叠</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>版本</th><th>类型</th><th>文件名</th><th>包版本</th><th>紧急度</th><th>渠道/状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;}
+
+async function confirmClearHistory(){
+  let days=document.querySelector('#app select')?.value||'30';
+  let label=days==='0'?'全部':`最近${days}天之前的`;
+  if(!confirm(`⚠️ 确认清空${label}推送历史记录？此操作不可撤销。`))return;
+  if(!confirm(`再次确认：清空${label}推送历史？`))return;
+  const r=await api('/history?days='+(days==='0'?'':days),{method:'DELETE'});
+  toast(r.message||'已清空',r.code===0?'success':'error');
+  if(r.code===0)history();
+}
 
 function _renderRecentDeliveries(deliveries,range){
   if(!deliveries||!deliveries.length)return '';
