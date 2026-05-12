@@ -36,6 +36,12 @@ MONITOR_LOG_DIR=/root/nsfocus-monitor/logs
 MONITOR_COLLECT_INTERVAL=4  # 采集间隔(小时)
 MONITOR_ROLLBACK_CONFIRM=2   # 回退确认次数
 MONITOR_ATTACHMENT_MAX_SIZE=10485760  # 邮件附件上限(10MB)
+
+# 邮件频率限制（系统设置页配置，以下为默认值）
+# email_global_hourly_limit=100   # 全局每小时上限
+# email_global_daily_limit=500    # 全局每天上限
+# email_customer_hourly_limit=10  # 客户每小时上限
+# email_customer_daily_limit=50   # 客户每天上限
 ```
 
 ## 初始化
@@ -167,3 +173,7 @@ source venv/bin/activate
 python scripts/migrate.py  # 执行数据库迁移
 systemctl restart nsfocus-monitor
 ```
+
+> 自 v1.3 起，DB 迁移（新增表/列）在服务启动时自动执行（`models/__init__.py`），无需手动 `migrate.py`。包括：
+> - `channels` 表新增 `email_hourly_limit`、`email_daily_limit` 列
+> - `email_rate_counters` 表（邮件频率计数）

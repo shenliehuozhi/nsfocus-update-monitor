@@ -100,6 +100,10 @@
 ### POST /api/customers
 ### PUT /api/customers/:id
 ### DELETE /api/customers/:id
+删除前检查是否被订阅规则引用，有引用返回 `409`：
+```json
+{"code": 40900, "message": "该客户被以下订阅规则引用，请先取消引用再删除：「规则A」"}
+```
 
 ```json
 // REQUEST
@@ -242,12 +246,20 @@
     "smtp_password": "xxx",
     "from_name": "绿盟升级通知",
     "to_list": ["clientA@example.com", "clientB@example.com"]
-  }
+  },
+  "email_hourly_limit": 50,   // 可选，0=不限制
+  "email_daily_limit": 200    // 可选，0=不限制
 }
 ```
 
 ### PUT /api/channels/:id
+同 POST，支持更新 `email_hourly_limit` 和 `email_daily_limit`。
+
 ### DELETE /api/channels/:id
+删除前检查是否被订阅规则引用，有引用返回 `409`：
+```json
+{"code": 40900, "message": "该渠道被以下订阅规则引用，请先取消引用再删除：「规则A」「规则B」"}
+```
 ### POST /api/channels/:id/test
 发送测试消息到该渠道。
 
