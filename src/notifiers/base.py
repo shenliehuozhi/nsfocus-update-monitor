@@ -153,7 +153,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
         f'**文件**: {msg.file_name}',
         f'**包版本**: {msg.package_version}',
         f'**大小**: {msg.size_display}',
-        f'**MD5**: `{msg.md5_hash[:16]}...`',
+        f'**MD5**: `{msg.md5_hash}`',
         f'**时间**: {msg.published_at}',
     ])
 
@@ -206,7 +206,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         f'**文件**: {msg.file_name}',
         f'**包版本**: {msg.package_version}',
         f'**大小**: {msg.size_display}',
-        f'**MD5**: `{msg.md5_hash[:16]}...`',
+        f'**MD5**: `{msg.md5_hash}`',
         f'**时间**: {msg.published_at}',
     ])
 
@@ -347,7 +347,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         dl_btn = f'''
         <tr><td style="padding:16px 0 0 0">
             <a href="{msg.download_url}" style="background:{color};color:#fff;padding:10px 24px;
-               text-decoration:none;border-radius:4px;font-weight:bold">📥 下载</a>
+               text-decoration:none;border-radius:4px;font-weight:bold;white-space:nowrap;display:inline-block">📥 下载</a>
         </td></tr>
         '''
 
@@ -367,7 +367,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash[:16]}...</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
         <tr><td style="padding:4px 0;color:#666">时间</td><td>{msg.published_at}</td></tr>
         {dep_html}
         {desc_html}
