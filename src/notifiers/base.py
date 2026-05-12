@@ -172,10 +172,10 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
 
     if msg.download_url:
         lines.append('')
-        lines.append('下载地址:'); lines.append(f'[📥 下载]({msg.download_url})')
+        lines.append(f'📥 下载地址: [下载]({msg.download_url})')
 
     if msg.source_url:
-        lines.append('更新详情:请在线查看'); lines.append(f'🔗 [详情页]({msg.source_url})')
+        lines.append(f'🔗 更新详情:请在线查看 [详情页]({msg.source_url})')
 
     return '\n'.join(lines)
 
@@ -221,9 +221,9 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if msg.restart_required:
         extra_items.append('🔄 升级后需重启')
     if msg.download_url:
-        extra_items.append(f'下载地址: [📥 下载]({msg.download_url})')
+        extra_items.append(f'📥 下载地址: [下载]({msg.download_url})')
     if msg.source_url:
-        extra_items.append(f'更新详情:请在线查看 🔗 [详情页]({msg.source_url})')
+        extra_items.append(f'🔗 更新详情:请在线查看 [详情页]({msg.source_url})')
 
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
@@ -354,7 +354,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         dl_btn = f'''
         <tr><td style="padding:16px 0 0 0">
             <a href="{msg.download_url}" style="background:{color};color:#fff;padding:10px 24px;
-               text-decoration:none;border-radius:4px;font-weight:bold;white-space:nowrap;display:inline-block">📥 下载地址</a>
+               text-decoration:none;border-radius:4px;font-weight:bold;white-space:nowrap;display:inline-block">📥 下载地址: 下载</a>
         </td></tr>
         '''
 
@@ -363,7 +363,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     if msg.source_url:
         detail_link = f'''
         <tr><td style="padding:8px 0 0 0">
-            <a href="{msg.source_url}" style="color:{color};text-decoration:none;font-size:13px">更新详情:请在线查看</a>
+            <a href="{msg.source_url}" style="color:{color};text-decoration:none;font-size:13px">🔗 更新详情:请在线查看</a>
         </td></tr>
         '''
 
