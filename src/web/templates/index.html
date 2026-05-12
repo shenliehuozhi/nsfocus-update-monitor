@@ -167,11 +167,11 @@ async function dashboard(range){
   if(sch.is_running && !sch.last_run){
     lastCol='采集中…';
     let now=new Date();now.setUTCHours(now.getUTCHours()+sch.interval_hours);
-    nextCol=now.toISOString().substring(0,16).replace('T',' ');
+    nextCol=fmtTZ(now.toISOString().substring(0,19),true);
   } else if(sch.last_run){
     let d2=new Date(sch.last_run+'Z');d2.setUTCHours(d2.getUTCHours()+sch.interval_hours);
-    nextCol=d2.toISOString().substring(0,16).replace('T',' ');
-    lastCol=new Date(sch.last_run+'Z').toISOString().substring(0,16).replace('T',' ');
+    nextCol=fmtTZ(d2.toISOString().substring(0,19),true);
+    lastCol=fmtTZ(sch.last_run,true);
   }
 
   let cards='';
@@ -225,7 +225,7 @@ function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t+'Z');if(full){let y=d
 async function dataPage(){
   const r=await api('/latest/snapshots').catch(()=>({data:{}}));const grp=r.data||{};
   if(!Object.keys(grp).length){document.getElementById('app').innerHTML='<div class="card"><div class="card-bd empty">暂无采集数据</div></div>';return;}
-  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=d.toISOString().substring(0,16).replace('T',' ');} let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span></div>';
+  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=fmtTZ(d.toISOString().substring(0,19),true);} let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span></div>';
   for(let[n,snaps]of Object.entries(grp)){
     let vers={};snaps.forEach(s=>{let v=s.version_branch||'?';if(!vers[v])vers[v]=[];vers[v].push(s);});
     h+=`<div class="card"><div class="card-hd">📦 ${n} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包 / ${Object.keys(vers).length}版本</span></div><div class="card-bd" style="padding:8px 18px">`;
