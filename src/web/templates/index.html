@@ -540,7 +540,7 @@ async function editRule(id){
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');subscriptions();}else toast(r.message,'error');
-}async function delRule(id){if(confirm('删除?')){await api('/subscriptions/'+id,{method:'DELETE'});subscriptions();}}
+}async function delRule(id){if(confirm('删除?')){const r=await api('/subscriptions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');subscriptions();}else toast(r.message,'error');}}
 
 // ── History ──
 async function history(){

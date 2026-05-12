@@ -87,6 +87,8 @@ def list_rules(user_id: int = None) -> list:
 def delete_rule(rule_id: int) -> None:
     from src.models.database import execute
     execute("DELETE FROM rule_channels WHERE rule_id = ?", (rule_id,))
+    execute("DELETE FROM digest_queue WHERE rule_id = ?", (rule_id,))
+    execute("DELETE FROM delayed_queue WHERE rule_id = ?", (rule_id,))
     execute("DELETE FROM subscription_rules WHERE id = ?", (rule_id,))
 
 
