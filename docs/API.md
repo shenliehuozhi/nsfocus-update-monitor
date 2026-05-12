@@ -307,16 +307,60 @@
 
 ## 9. 手动推送
 
-### POST /api/manual-push
+### POST /api/history/{snapshot_id}/push
+
+对指定快照执行手动推送。推送前检查频率限制（同key 1分钟≤5次，超限10分钟禁用）。
+
+**模式**：
+
+| mode | body 参数 | 说明 |
+|------|----------|------|
+| `customer` | `target_id` (客户ID) | 推送至客户的邮箱（通过邮件渠道中继），客户须有邮箱 |
+| `channel` | `target_id` (渠道ID) | 推送到指定渠道（webhook/email等） |
+| `manual_email` | `email` (字符串) | 推送到手动填写的邮箱，多个逗号分隔 |
+
+**REQUEST (customer 模式)**:
 ```json
-// REQUEST
+{"mode": "customer", "target_id": 3}
+```
+
+**REQUEST (manual_email 模式)**:
+```json
+{"mode": "manual_email", "email": "a@163.com,b@qq.com"}
+```
+
+**RESPONSE (成功)**:
+```json
 {
-  "title": "紧急通知: WAF V6.0.9 规则包已撤回",
-  "content": "...",
-  "channels": [1, 2],
-  "customers": [1],
-  "urgency": "critical"
+  "code": 0,
+  "data": {
+    "results": [{"channel": "QQ邮箱 → t2", "success": true, "error": ""}],
+    "total": 1,
+    "success": 1
+  },
+  "message": "已推送到 1/1 个目标"
 }
+```
+
+**RESPONSE (频率超限)**:
+```json
+{
+  "code": 42900,
+  "message": "推送频率超限（1分钟内超过5次），功能已禁用10分钟",
+  "data": {"retry_after": 600}
+}
+```
+
+### 频率限制管理
+
+**GET /api/system/rate-limits** — 查看所有封禁中的 key
+
+**POST /api/system/rate-limits/reset** — 重置封禁
+```json
+// 重置单个
+{"key": "user@example.com"}
+// 重置全部
+{}
 ```
 
 ---

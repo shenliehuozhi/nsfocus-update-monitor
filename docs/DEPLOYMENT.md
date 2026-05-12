@@ -138,7 +138,25 @@ curl -s -o /dev/null -w "%{http_code}" http://localhost:8800/api/health
 | 内存超限 | 检查 `MemoryMax` 是否生效，调整附件下载策略 |
 | 采集失败 | `curl -b "PHPSESSID=xxx" https://update.nsfocus.com/update/wafIndex` 手动测试 |
 | 通知不发 | 检查订阅规则是否启用、延迟队列状态、渠道配置 |
+| 推送被频率限制 | 查看 `GET /api/system/rate-limits`，用 `POST /api/system/rate-limits/reset` 重置 |
 | 数据库锁定 | SQLite 单写，确保没有多个进程同时写入 |
+
+### 频率限制管理
+
+手动推送内置防滥用机制：同一邮箱/渠道 1 分钟内最多 5 次，超限封禁 10 分钟。
+
+```bash
+# 查看当前封禁状态
+curl -u admin:admin123 http://127.0.0.1:9999/api/system/rate-limits
+
+# 重置特定 key
+curl -u admin:admin123 -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
+  -H 'Content-Type: application/json' -d '{"key":"user@example.com"}'
+
+# 重置全部（不传 key）
+curl -u admin:admin123 -X POST http://127.0.0.1:9999/api/system/rate-limits/reset \
+  -H 'Content-Type: application/json' -d '{}'
+```
 
 ## 升级
 
