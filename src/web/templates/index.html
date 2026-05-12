@@ -226,7 +226,7 @@ async function dataPage(){
   const showRb=sessionStorage.getItem('dataShowRollback')==='1';
   const r=await api('/latest/snapshots?show_rollback='+(showRb?'1':'0')).catch(()=>({data:{}}));const grp=r.data||{};
   if(!Object.keys(grp).length){document.getElementById('app').innerHTML='<div class="card"><div class="card-bd empty">暂无采集数据</div></div>';return;}
-  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=fmtTZ(d.toISOString().substring(0,19),true);} let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span> <label style="cursor:pointer;font-size:11px;margin-left:12px"><input type="checkbox" id="cbRollback" onchange="let v=this.checked;sessionStorage.setItem('dataShowRollback',v?'1':'0');dataPage()" '+(showRb?'checked':'')+'> 显示已撤回</label></div>';
+  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=fmtTZ(d.toISOString().substring(0,19),true);} let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span> <label style="cursor:pointer;font-size:11px;margin-left:12px"><input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" '+(showRb?'checked':'')+'> 显示已撤回</label></div>';
   for(let[n,snaps]of Object.entries(grp)){
     let vers={};snaps.forEach(s=>{let v=s.version_branch||'?';if(!vers[v])vers[v]=[];vers[v].push(s);});
     h+=`<div class="card"><div class="card-hd">📦 ${n}${snaps.some(s=>s.status==='rollback')?' <span style="color:var(--danger);font-size:11px;font-weight:400">含已撤回</span>':''} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包 / ${Object.keys(vers).length}版本</span></div><div class="card-bd" style="padding:8px 18px">`;
@@ -243,6 +243,7 @@ async function dataPage(){
     h+=`</div></div>`;}
   document.getElementById('app').innerHTML=h;
 }
+function toggleRollback(v){sessionStorage.setItem('dataShowRollback',v?'1':'0');dataPage();}
 async function manualPush(sid){if(!confirm('确认推送?'))return;const r=await api('/history/'+sid+'/resend',{method:'POST'});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}
 
 // ── Push Modal ──
