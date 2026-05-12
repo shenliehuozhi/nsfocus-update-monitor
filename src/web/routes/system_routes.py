@@ -151,8 +151,8 @@ def trigger_collect():
 
     body = request.get_json(silent=True) or {}
     mode = body.get('mode', 'delta')
-    if mode not in ('delta', 'full'):
-        return {'code': 400, 'message': 'mode must be delta or full'}, 400
+    if mode not in ('delta', 'full', 'quick'):
+        return {'code': 400, 'message': 'mode must be delta, full, or quick'}, 400
 
     _audit('manual_collect', {'mode': mode})
 

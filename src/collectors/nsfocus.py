@@ -348,8 +348,8 @@ class NsfocusCollector(BaseCollector):
 
             if current_item.get('file_name') and current_item.get('md5_hash'):
                 item = self._build_item(current_item, source_id, product_name,
-                                        version_branch, package_type, download_id)
-                item.source_url = page_url
+                                        version_branch, package_type, download_id,
+                                        source_url=page_url)
                 items.append(item)
                 current_item = {}
                 download_id = 0
@@ -357,7 +357,8 @@ class NsfocusCollector(BaseCollector):
             if re.search(r'名称[：:]', row_text):
                 if current_item.get('file_name'):
                     item = self._build_item(current_item, source_id, product_name,
-                                            version_branch, package_type, download_id)
+                                            version_branch, package_type, download_id,
+                                            source_url=page_url)
                     items.append(item)
                 current_item = {}
 
@@ -367,7 +368,8 @@ class NsfocusCollector(BaseCollector):
 
         if current_item.get('file_name') and current_item.get('md5_hash'):
             item = self._build_item(current_item, source_id, product_name,
-                                    version_branch, package_type, download_id)
+                                    version_branch, package_type, download_id,
+                                    source_url=page_url)
             items.append(item)
 
         return items
@@ -394,7 +396,7 @@ class NsfocusCollector(BaseCollector):
 
     def _build_item(self, raw: dict, source_id: int, product_name: str,
                     version_branch: str, package_type: str,
-                    download_id: int) -> UnifiedContentItem:
+                    download_id: int, source_url: str = '') -> UnifiedContentItem:
         description_raw = raw.get('description_raw', '')
         description_parsed = parse_description(description_raw)
         urgency = 'normal'
@@ -415,6 +417,7 @@ class NsfocusCollector(BaseCollector):
             restart_required=description_parsed.get('restart_required', False),
             urgency=urgency, download_id=download_id,
             published_at=raw.get('published_at', ''),
+            source_url=source_url,
         )
 
     @staticmethod
