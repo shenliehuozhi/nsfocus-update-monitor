@@ -12,7 +12,7 @@ from email.utils import formataddr
 import requests
 
 from src.core.logger import get_logger
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_html_body
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_html_body, _pkg_type_label, _rollback_prefix
 
 logger = get_logger('email')
 
@@ -35,7 +35,7 @@ class EmailNotifier(BaseNotifier):
             return DeliveryResult(False, 'email', config.get('name', ''),
                                   'Missing SMTP config or recipient list')
 
-        subject = f'{"⚠️【撤回通知】" if message.is_rollback else "🔔【升级通知】"}{message.title}'
+        subject = f'{_rollback_prefix(message)}{message.product_name} {_pkg_type_label(message.package_type)} 发布了新版本'
 
         html_body = _format_html_body(message, message.is_rollback)
 

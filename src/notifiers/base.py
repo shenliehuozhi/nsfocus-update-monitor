@@ -5,6 +5,26 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
+# Package type Chinese name mapping
+_PKG_TYPE_CN = {
+    'sys': '系统包', 'rule': '规则包', 'nti': '威胁情报', 'av': '病毒库',
+    'apprule': '应用规则', 'url': 'URL分类', 'wcs': '恶意站点', 'judge': '研判规则',
+    'geo': '地理库', 'interface': '接口', 'special': '特殊', 'other': '其他',
+    'merge': '合并包', 'client': '客户端', 'av_stream': '流式病毒库',
+}
+
+
+def _pkg_type_label(pkg_type: str) -> str:
+    """Return Chinese+English label for a package type, e.g. '规则包 (rule)'."""
+    cn = _PKG_TYPE_CN.get(pkg_type, pkg_type)
+    return f'{cn} ({pkg_type})' if pkg_type and pkg_type != cn else cn
+
+
+def _rollback_prefix(msg) -> str:
+    """Return rollback prefix for email subject, empty string for normal."""
+    return '⚠️【已撤回】' if msg.is_rollback else '🔔'
+
+
 @dataclass
 class NotificationMessage:
     """Unified notification message format."""
@@ -129,7 +149,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
     lines.extend([
         f'**产品**: {msg.product_name}',
         f'**版本**: {msg.version_branch}',
-        f'**类型**: {msg.package_type}',
+        f'**类型**: {_pkg_type_label(msg.package_type)}',
         f'**文件**: {msg.file_name}',
         f'**包版本**: {msg.package_version}',
         f'**大小**: {msg.size_display}',
@@ -182,7 +202,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     header_lines.extend([
         f'**产品**: {msg.product_name}',
         f'**版本**: {msg.version_branch}',
-        f'**类型**: {msg.package_type}',
+        f'**类型**: {_pkg_type_label(msg.package_type)}',
         f'**文件**: {msg.file_name}',
         f'**包版本**: {msg.package_version}',
         f'**大小**: {msg.size_display}',
@@ -287,9 +307,9 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     if msg.description_full:
         desc_text = msg.description_full.replace('\n', '<br>')
         desc_html += f'''
-        <tr><td style="padding:8px 0;border-top:1px solid #e0e0e0;margin-top:8px">
+        <tr><td colspan="2" style="padding:8px 0;border-top:1px solid #e0e0e0;word-break:break-word">
             <strong>📋 更新说明</strong>
-            <div style="color:#555;margin-top:4px">{desc_text}</div>
+            <div style="color:#555;margin-top:4px;line-height:1.7">{desc_text}</div>
         </td></tr>'''
 
     # Parsed rule details (added/modified/deleted)
@@ -309,7 +329,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
             more = f' ...等共{len(parsed["deleted"])}条' if len(parsed['deleted']) > 5 else ''
             rules_html += f'<div>🗑️ 删除: {", ".join(ids)}{more}</div>'
         desc_html += f'''
-        <tr><td style="padding:8px 0">
+        <tr><td colspan="2" style="padding:8px 0">
             <strong>规则变更详情</strong>
             <div style="color:#555;margin-top:4px;font-size:13px">{rules_html}</div>
         </td></tr>'''
@@ -343,7 +363,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     <table style="width:100%">
         <tr><td style="padding:4px 0;width:80px;color:#666">产品</td><td>{msg.product_name}</td></tr>
         <tr><td style="padding:4px 0;color:#666">版本</td><td>{msg.version_branch}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">类型</td><td>{msg.package_type}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">类型</td><td>{_pkg_type_label(msg.package_type)}</td></tr>
         <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
