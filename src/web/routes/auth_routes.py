@@ -65,3 +65,33 @@ def me():
         'code': 0,
         'data': {'id': user['id'], 'username': user['username'], 'is_admin': bool(user['is_admin'])}
     })
+
+
+@bp.route('/password', methods=['PUT'])
+@require_auth
+def change_password():
+    """Change current user's password. Requires old password verification."""
+    data = request.get_json() or {}
+    old_pw = data.get('old_password', '')
+    new_pw = data.get('new_password', '')
+
+    if not old_pw or not new_pw:
+        return jsonify({'code': 40001, 'message': '请输入旧密码和新密码'}), 400
+    if len(new_pw) < 4:
+        return jsonify({'code': 40001, 'message': '新密码至少4位'}), 400
+    if old_pw == new_pw:
+        return jsonify({'code': 40001, 'message': '新密码不能与旧密码相同'}), 400
+
+    from src.models.user import get_by_id, update_password
+    user = get_by_id(g.user_id)
+    if not user:
+        return jsonify({'code': 40400, 'message': '用户不存在'}), 404
+
+    if not bcrypt.checkpw(old_pw.encode(), user['password_hash'].encode()):
+        _audit(g.user_id, 'password_change_failed', {'reason': 'wrong_old_password'})
+        return jsonify({'code': 40100, 'message': '旧密码错误'}), 401
+
+    new_hash = bcrypt.hashpw(new_pw.encode(), bcrypt.gensalt()).decode()
+    update_password(g.user_id, new_hash)
+    _audit(g.user_id, 'password_changed', {})
+    return jsonify({'code': 0, 'message': '密码已修改'})
