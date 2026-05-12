@@ -408,7 +408,7 @@ async function subscriptions(){
   let cOpts=channels.map(c=>`<label style="display:flex;align-items:center;gap:6px;padding:3px 0;cursor:pointer;font-size:13px"><input type="checkbox" value="${c.id}">${c.name} (${c.type})</label>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';return `<tr><td>${r.name}</td><td style="font-size:11px">${(f.products||[]).join(',')||'全部'}</td><td style="font-size:11px">${(f.package_types||[]).map(t=>PKG.find(([k])=>k===t)?.[1]||t).join(',')||'全部'}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editRule(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';return `<tr><td>${rb} ${r.name}</td><td style="font-size:11px">${(f.products||[]).join(',')||'全部'}</td><td style="font-size:11px">${(f.package_types||[]).map(t=>PKG.find(([k])=>k===t)?.[1]||t).join(',')||'全部'}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editRule(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
 
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showRForm()">+ 创建规则</button><div id="rf" class="form-panel hidden mt12"><input type="hidden" id="rid"><div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
@@ -417,6 +417,7 @@ async function subscriptions(){
     <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select><p style="font-size:10px;color:var(--muted);margin-top:2px">汇总模式：新包不立即推送，到期后合并为一条摘要发送</p></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
     <div class="grid2"><div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>通知渠道</label><div id="rch" class="multi-check" style="max-height:160px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;padding:4px 8px">${cOpts||'<span style="font-size:12px;color:var(--muted)">暂无渠道，请先添加</span>'}</div></div></div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rnr" checked> 📢 包回退通知</label><span style="font-size:11px;color:var(--muted)">绿盟下架升级包时通知该客户</span></div>
     <div class="flex gap8"><button class="btn btn-success btn-sm" onclick="saveRule()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('rf').classList.add('hidden')">取消</button></div></div>
     <table class="mt16"><tr><th>名称</th><th>产品</th><th>类型</th><th>推送</th><th>有效期</th><th style="cursor:pointer">状态</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
@@ -487,6 +488,7 @@ async function editRule(id){
   let f=r.filter_conditions||{},ps=f.products||[],vs=f.versions||[],ts=f.package_types||[];
   for(let i=0;i<Math.max(ps.length||0,1);i++)addCond(ps[i]||'',vs[i]||'',ts[i]||'');
   document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
+  document.getElementById('rnr').checked=r.notify_rollback!==0;
   onDigestModeChange();
   // Populate digest config
   const dc=r.digest_config||{};
@@ -508,7 +510,7 @@ async function saveRule(){
   });
   let cid=parseInt(document.getElementById('rcust').value)||0;
   if(!cid)return toast('请选择关联客户','error');
-  let d={name:document.getElementById('rnm').value,filter_conditions:{products:ps,versions:vs,package_types:ts},delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs};
+  let d={name:document.getElementById('rnm').value,filter_conditions:{products:ps,versions:vs,package_types:ts},delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:document.getElementById('rnr').checked?1:0};
   // Build digest_config
   const dm=d.digest_mode;
   if(dm){
@@ -641,7 +643,7 @@ async function settings(){
 async function saveSettings(){
   const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value};
   const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
-  toast(r.code===0?'配置已保存':'保存失败','error');}
+  toast(r.code===0?'配置已保存':'保存失败',r.code===0?'success':'error');}
 
 // ── Package Classification Settings ──
 async function _renderClassSettings(){

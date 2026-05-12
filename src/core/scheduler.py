@@ -219,10 +219,12 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                     for sid, snap in matched:
                         route_notifications(sid, rule['id'])
 
-            # 6. Handle rollbacks
+            # 6. Handle rollbacks (only for rules with notify_rollback enabled)
             for sid, snap in result.rollback_items:
                 rules = get_enabled_rules()
                 for rule in rules:
+                    if not rule.get('notify_rollback', 1):
+                        continue
                     route_notifications(sid, rule['id'], is_rollback=True)
 
         # 7. Process delayed queue
