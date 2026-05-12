@@ -214,7 +214,7 @@ async function dashboard(range){
 
 // ── Data ──
 
-function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t+'Z');let s=d.toISOString();return full?s.substring(0,16).replace('T',' '):s.substring(0,10);}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
+function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
 async function dataPage(){
   const r=await api('/latest/snapshots').catch(()=>({data:{}}));const grp=r.data||{};
   if(!Object.keys(grp).length){document.getElementById('app').innerHTML='<div class="card"><div class="card-bd empty">暂无采集数据</div></div>';return;}
@@ -265,7 +265,7 @@ async function loadPushTargets(){
   el.innerHTML='<div class="empty">加载中...</div>';
   try{
     let list=[];
-    if(_pushMode==='rule'){let r=await api('/rules');list=(r.data||[]).map(x=>({id:x.id,label:x.name||'规则#'+x.id,sub:`${x.product_filter||'全部'} → ${x.version_pattern||'全部'}`,active:x.is_enabled}));}
+    if(_pushMode==='rule'){let r=await api('/subscriptions');list=(r.data||[]).map(x=>{let f=x.filter_conditions||{};return {id:x.id,label:x.name||'规则#'+x.id,sub:`${(f.products||[]).join(',')||'全部'} / ${(f.package_types||[]).join(',')||'全部'}`,active:x.enabled};});}
     else if(_pushMode==='channel'){let r=await api('/channels');list=(r.data||[]).map(x=>({id:x.id,label:x.name||x.type,sub:x.type+(x.is_active?'':' (已停用)'),active:x.is_active}));}
     else if(_pushMode==='customer'){let r=await api('/customers');list=(r.data||[]).map(x=>({id:x.id,label:x.name,sub:x.company||'',active:true}));}
     if(!list.length){el.innerHTML='<div class="empty">暂无可用目标</div>';return;}
