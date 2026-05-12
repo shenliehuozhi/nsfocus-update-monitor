@@ -317,30 +317,37 @@ def resend_targeted(sid: int):
         'message': '已推送' if result.success else f'推送失败: {result.error_message}',
     })
 
-# ── Push by mode (rule/channel/customer) ─────────────────────
+# ── Push by mode (customer/channel/manual_email) ──────────────
 
 @bp_history.route('/<int:sid>/push', methods=['POST'])
 @require_auth
 def push_by_mode(sid: int):
-    """Push a snapshot through a specific rule, channel, or to a specific customer.
+    """Push a snapshot to a customer, channel, or manually entered email.
 
-    Body: {"mode": "rule"|"channel"|"customer", "target_id": <id>}
+    Body: {"mode": "customer"|"channel"|"manual_email", "target_id": <id>,
+           "email": "a@b.com,c@d.com"}  (email only for manual_email mode)
+
+    Rate limit: max 5 pushes per key (email or channel) per 1-minute window.
+    Exceeding triggers a 10-minute ban on that key.
     """
     data = request.get_json() or {}
-    mode = data.get('mode', 'rule')
+    mode = data.get('mode', '')
     target_id = data.get('target_id', 0)
+    manual_emails = data.get('email', '')
 
     from src.notifiers.router import _is_maintenance_mode
     if _is_maintenance_mode():
         return jsonify({'code': 40001, 'message': '维护模式已开启，所有推送已静默'}), 400
 
-    if not target_id:
-        return jsonify({'code': 40001, 'message': '缺少目标ID'}), 400
+    if mode not in ('customer', 'channel', 'manual_email'):
+        return jsonify({'code': 40001, 'message': f'不支持的推送模式: {mode}'}), 400
 
     from src.models.snapshot import get_snapshot
-    from src.notifiers.router import NOTIFIERS, route_notifications
+    from src.notifiers.router import NOTIFIERS
     from src.notifiers.base import NotificationMessage
     from src.models.subscription import log_delivery
+    from src.models.channel import get_by_id, list_active
+    from src.core.rate_limiter import check, record
 
     snap = get_snapshot(sid)
     if not snap:
@@ -349,36 +356,12 @@ def push_by_mode(sid: int):
     message = NotificationMessage.from_snapshot(snap)
     results = []
 
-    if mode == 'rule':
-        # Push through subscription rule (rule's bound channels + customers)
-        from src.models.subscription import get_rule, get_rule_channels
-        rule = get_rule(target_id)
-        if not rule:
-            return jsonify({'code': 40400, 'message': '规则不存在'}), 404
-        bindings = get_rule_channels(target_id)
-        if not bindings:
-            return jsonify({'code': 40001, 'message': '该规则未绑定任何渠道'}), 400
+    # ── Resolve target emails and rate-limit keys ──────────────
+    targets = []  # list of (rate_key, channel_config, to_emails, label)
 
-        from src.models.channel import get_by_id
-        for binding in bindings:
-            ch = get_by_id(binding.get('channel_id'))
-            if not ch or not ch.get('is_active'):
-                continue
-            notifier = NOTIFIERS.get(ch['type'])
-            if not notifier:
-                continue
-            result = notifier.send(message, ch['config'])
-            results.append({'channel': ch.get('name', ch['type']),
-                          'success': result.success, 'error': result.error_message})
-            log_delivery(snapshot_id=sid, channel_id=ch['id'],
-                        channel_type=ch['type'], channel_name=ch.get('name', ''),
-                        customer_id=binding.get('customer_id'),
-                        status='sent' if result.success else 'failed',
-                        error=result.error_message)
-
-    elif mode == 'channel':
-        # Push directly to a specific channel
-        from src.models.channel import get_by_id
+    if mode == 'channel':
+        if not target_id:
+            return jsonify({'code': 40001, 'message': '缺少渠道ID'}), 400
         ch = get_by_id(target_id)
         if not ch:
             return jsonify({'code': 40400, 'message': '渠道不存在'}), 404
@@ -386,51 +369,110 @@ def push_by_mode(sid: int):
             return jsonify({'code': 40001, 'message': '渠道已停用'}), 400
         notifier = NOTIFIERS.get(ch['type'])
         if not notifier:
-            cht = ch['type']
-            return jsonify({'code': 40001, 'message': f'不支持的渠道类型: {cht}'}), 400
-        result = notifier.send(message, ch['config'])
-        results.append({'channel': ch.get('name', ch['type']),
-                      'success': result.success, 'error': result.error_message})
-        log_delivery(snapshot_id=sid, channel_id=ch['id'],
-                    channel_type=ch['type'], channel_name=ch.get('name', ''),
-                    status='sent' if result.success else 'failed',
-                    error=result.error_message)
+            return jsonify({'code': 40001, 'message': f'不支持的渠道类型: {ch["type"]}'}), 400
+        # Rate-limit key: channel ID
+        rate_key = f'ch:{target_id}'
+        targets.append((rate_key, ch, notifier, ch.get('name', ch['type'])))
 
     elif mode == 'customer':
-        # Push to all active channels bound to this customer via rules
+        if not target_id:
+            return jsonify({'code': 40001, 'message': '缺少客户ID'}), 400
         from src.models.customer import get_by_id as get_cust
-        from src.models.channel import get_by_id
-        from src.models.subscription import get_enabled_rules, get_rule_channels
         cust = get_cust(target_id)
         if not cust:
             return jsonify({'code': 40400, 'message': '客户不存在'}), 404
+        cust_email = (cust.get('email') or '').strip()
+        if not cust_email:
+            return jsonify({'code': 40001, 'message': '该客户未设置邮箱，无法推送'}), 400
 
-        sent_channels = set()
-        for rule in get_enabled_rules():
-            for binding in get_rule_channels(rule['id']):
-                if binding.get('customer_id') != target_id:
-                    continue
-                ch_id = binding.get('channel_id')
-                if ch_id in sent_channels:
-                    continue
-                ch = get_by_id(ch_id)
-                if not ch or not ch.get('is_active'):
-                    continue
-                notifier = NOTIFIERS.get(ch['type'])
-                if not notifier:
-                    continue
-                result = notifier.send(message, ch['config'])
-                results.append({'channel': ch.get('name', ch['type']),
-                              'success': result.success, 'error': result.error_message})
-                sent_channels.add(ch_id)
-                log_delivery(snapshot_id=sid, channel_id=ch['id'],
-                            channel_type=ch['type'], channel_name=ch.get('name', ''),
-                            customer_id=target_id,
-                            status='sent' if result.success else 'failed',
-                            error=result.error_message)
+        # Find an active email channel to relay through
+        email_ch = None
+        for ch in list_active():
+            if ch['type'] == 'email':
+                email_ch = ch
+                break
+        if not email_ch:
+            return jsonify({'code': 40001, 'message': '没有可用的邮件渠道，请先在通知渠道中配置邮箱'}), 400
 
-    else:
-        return jsonify({'code': 40001, 'message': f'不支持的推送模式: {mode}'}), 400
+        # Build relay config: use channel's SMTP but override to_list
+        relay_config = dict(email_ch['config'])
+        relay_config['to_list'] = [cust_email]
+        relay_config['name'] = f'{email_ch.get("name", "email")} → {cust.get("name", cust_email)}'
+        rate_key = cust_email
+        targets.append((rate_key, email_ch, NOTIFIERS['email'], relay_config.get('name', '')))
+
+    elif mode == 'manual_email':
+        if not manual_emails.strip():
+            return jsonify({'code': 40001, 'message': '请输入邮箱地址'}), 400
+        # Find an active email channel
+        email_ch = None
+        for ch in list_active():
+            if ch['type'] == 'email':
+                email_ch = ch
+                break
+        if not email_ch:
+            return jsonify({'code': 40001, 'message': '没有可用的邮件渠道，请先在通知渠道中配置邮箱'}), 400
+
+        emails = [e.strip() for e in manual_emails.split(',') if e.strip()]
+        if not emails:
+            return jsonify({'code': 40001, 'message': '请输入有效的邮箱地址'}), 400
+
+        # Validate basic email format
+        import re
+        email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+        invalid = [e for e in emails if not email_re.match(e)]
+        if invalid:
+            return jsonify({'code': 40001, 'message': f'邮箱格式无效: {", ".join(invalid)}'}), 400
+
+        relay_config = dict(email_ch['config'])
+        relay_config['to_list'] = emails
+        relay_config['name'] = f'{email_ch.get("name", "email")} → 手动'
+        rate_key = emails[0] if len(emails) == 1 else f'manual:{",".join(sorted(emails))}'
+        targets.append((rate_key, email_ch, NOTIFIERS['email'], relay_config.get('name', '')))
+
+    # ── Rate limit check ───────────────────────────────────────
+    for rate_key, ch, notifier, label in targets:
+        allowed, err_msg, retry_after = check(rate_key)
+        if not allowed:
+            return jsonify({
+                'code': 42900,
+                'message': err_msg,
+                'data': {'retry_after': retry_after}
+            }), 429
+
+    # ── Execute pushes ─────────────────────────────────────────
+    for rate_key, ch, notifier, label in targets:
+        if mode == 'channel':
+            result = notifier.send(message, ch['config'])
+            results.append({
+                'channel': label,
+                'success': result.success,
+                'error': result.error_message
+            })
+            log_delivery(
+                snapshot_id=sid, channel_id=ch['id'],
+                channel_type=ch['type'], channel_name=label,
+                status='sent' if result.success else 'failed',
+                error=result.error_message
+            )
+        else:
+            # customer / manual_email: use relay config
+            result = notifier.send(message, relay_config)
+            results.append({
+                'channel': label,
+                'success': result.success,
+                'error': result.error_message
+            })
+            log_delivery(
+                snapshot_id=sid, channel_id=ch['id'],
+                channel_type='email', channel_name=label,
+                customer_id=target_id if mode == 'customer' else None,
+                status='sent' if result.success else 'failed',
+                error=result.error_message
+            )
+
+        # Record rate limit on success or failure (to prevent retry spam)
+        record(rate_key)
 
     if not results:
         return jsonify({'code': 40001, 'message': '没有找到可用的推送目标'}), 400
@@ -439,7 +481,7 @@ def push_by_mode(sid: int):
     return jsonify({
         'code': 0,
         'data': {'results': results, 'total': len(results), 'success': success_count},
-        'message': f'已推送到 {success_count}/{len(results)} 个渠道',
+        'message': f'已推送到 {success_count}/{len(results)} 个目标',
     })
 
 

@@ -245,50 +245,68 @@ async function dataPage(){
 async function manualPush(sid){if(!confirm('确认推送?'))return;const r=await api('/history/'+sid+'/resend',{method:'POST'});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}
 
 // ── Push Modal ──
-let _pushSid=0,_pushMode='rule',_pushTarget=0;
+let _pushSid=0,_pushMode='customer',_pushTarget=0,_pushEmail='',_banTimer=null;
 async function showPushModal(sid,product,version,pkgType){
-  _pushSid=sid;_pushMode='rule';_pushTarget=0;
+  _pushSid=sid;_pushMode='customer';_pushTarget=0;_pushEmail='';
+  if(_banTimer){clearInterval(_banTimer);_banTimer=null;}
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div id="pushModal" class="push-modal" onclick="if(event.target===this)closePushModal()">
       <div class="card" onclick="event.stopPropagation()">
         <div class="card-hd">📤 推送快照 #${sid} <span style="color:var(--muted);font-weight:400;font-size:11px">${product} ${version} ${pkgType}</span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="closePushModal()">×</button></div>
         <div class="card-bd">
           <div class="push-modes">
-            <label><input type="radio" name="pm" value="rule" checked onchange="switchPushMode('rule')"><span>📋 按订阅规则</span></label>
+            <label><input type="radio" name="pm" value="customer" checked onchange="switchPushMode('customer')"><span>👤 按客户</span></label>
             <label><input type="radio" name="pm" value="channel" onchange="switchPushMode('channel')"><span>📡 按通知渠道</span></label>
-            <label><input type="radio" name="pm" value="customer" onchange="switchPushMode('customer')"><span>👤 按客户</span></label>
+            <label><input type="radio" name="pm" value="manual_email" onchange="switchPushMode('manual_email')"><span>✉️ 手动填写邮箱</span></label>
           </div>
           <div id="pushTargets" class="push-target"><div class="empty">加载中...</div></div>
+          <div id="pushEmailInput" class="hidden" style="margin-top:8px">
+            <input id="pushEmail" type="text" placeholder="输入邮箱，多个用逗号分隔&#10;例如: a@163.com,b@qq.com" style="width:100%;box-sizing:border-box" oninput="onPushEmailChange()">
+            <div id="pushEmailHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+          </div>
           <div class="flex gap8 mt12"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" onclick="confirmPush()" disabled>确认推送</button><button class="btn btn-sm btn-outline" onclick="closePushModal()">取消</button></div>
         </div>
       </div>
     </div>`);
   loadPushTargets();
 }
-function closePushModal(){let m=document.getElementById('pushModal');if(m)m.remove();}
-async function switchPushMode(mode){_pushMode=mode;_pushTarget=0;document.getElementById('pushConfirmBtn').disabled=true;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));loadPushTargets();}
+function closePushModal(){let m=document.getElementById('pushModal');if(m){if(_banTimer){clearInterval(_banTimer);_banTimer=null;}m.remove();}}
+async function switchPushMode(mode){_pushMode=mode;_pushTarget=0;_pushEmail='';document.getElementById('pushConfirmBtn').disabled=true;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));let ei=document.getElementById('pushEmailInput');if(ei)ei.classList.toggle('hidden',mode!=='manual_email');if(mode==='manual_email'){loadPushTargets();}else{loadPushTargets();}}
+function onPushEmailChange(){let v=document.getElementById('pushEmail').value.trim();_pushEmail=v;let hint=document.getElementById('pushEmailHint');let btn=document.getElementById('pushConfirmBtn');if(!v){hint.textContent='';btn.disabled=true;return;}let emails=v.split(',').map(e=>e.trim()).filter(e=>e);let re=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;let bad=emails.filter(e=>!re.test(e));if(bad.length){hint.textContent='⚠️ 格式无效: '+bad.join(', ');hint.style.color='var(--danger)';btn.disabled=true;}else{hint.textContent='✅ '+emails.length+' 个邮箱';hint.style.color='var(--success)';btn.disabled=false;}}
 async function loadPushTargets(){
-  let el=document.getElementById('pushTargets');
+  let el=document.getElementById('pushTargets');if(_pushMode==='manual_email'){el.innerHTML='<div class="empty" style="color:var(--muted)">请在下方输入邮箱地址</div>';return;}
   el.innerHTML='<div class="empty">加载中...</div>';
   try{
     let list=[];
-    if(_pushMode==='rule'){let r=await api('/subscriptions');list=(r.data||[]).map(x=>{let f=x.filter_conditions||{};return {id:x.id,label:x.name||'规则#'+x.id,sub:`${(f.products||[]).join(',')||'全部'} / ${(f.package_types||[]).join(',')||'全部'}`,active:x.enabled};});}
-    else if(_pushMode==='channel'){let r=await api('/channels');list=(r.data||[]).map(x=>({id:x.id,label:x.name||x.type,sub:x.type+(x.is_active?'':' (已停用)'),active:x.is_active}));}
-    else if(_pushMode==='customer'){let r=await api('/customers');list=(r.data||[]).map(x=>({id:x.id,label:x.name,sub:x.company||'',active:true}));}
-    if(!list.length){el.innerHTML='<div class="empty">暂无可用目标</div>';return;}
+    if(_pushMode==='channel'){let r=await api('/channels');list=(r.data||[]).map(x=>({id:x.id,label:x.name||x.type,sub:x.type+(x.is_active?'':' (已停用)'),active:x.is_active}));}
+    else if(_pushMode==='customer'){let r=await api('/customers');list=(r.data||[]).filter(x=>(x.email||'').trim()).map(x=>({id:x.id,label:x.name,sub:(x.email||'')+(x.company?' · '+x.company:''),active:true}));}
+    if(!list.length){el.innerHTML='<div class="empty">'+( _pushMode==='customer'?'暂无有邮箱的客户，请先在客户管理中设置邮箱':'暂无可用目标')+'</div>';return;}
     el.innerHTML=list.map(x=>`<div class="item" data-id="${x.id}" onclick="selectPushTarget(${x.id})" style="${!x.active?'opacity:.4':''}"><span style="font-weight:500">${x.label}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${x.sub||''}</span></div>`).join('');
   }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
 }
 function selectPushTarget(id){_pushTarget=id;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));let sel=document.querySelector('#pushTargets .item[data-id="'+id+'"]');if(sel)sel.classList.add('selected');document.getElementById('pushConfirmBtn').disabled=false;}
 async function confirmPush(){
-  if(!_pushTarget)return toast('请选择推送目标','error');
-  document.getElementById('pushConfirmBtn').disabled=true;document.getElementById('pushConfirmBtn').textContent='推送中...';
+  let body={mode:_pushMode};
+  if(_pushMode==='manual_email'){
+    if(!_pushEmail)return toast('请输入邮箱地址','error');
+    body.email=_pushEmail;
+  }else{
+    if(!_pushTarget)return toast('请选择推送目标','error');
+    body.target_id=_pushTarget;
+  }
+  let btn=document.getElementById('pushConfirmBtn');btn.disabled=true;btn.textContent='推送中...';
   try{
-    let r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify({mode:_pushMode,target_id:_pushTarget})});
-    toast(r.message||'已推送',r.code===0?'success':'error');
-    if(r.code===0)closePushModal();
-  }catch(e){toast('推送失败','error');}
-  document.getElementById('pushConfirmBtn').disabled=false;document.getElementById('pushConfirmBtn').textContent='确认推送';
+    let r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify(body)});
+    if(r.code===0){toast(r.message||'已推送','success');closePushModal();}
+    else if(r.code===42900){let sec=r.data?.retry_after||600;toast(r.message,'error');startBanCountdown(sec);}
+    else{toast(r.message||'推送失败','error');btn.disabled=false;btn.textContent='确认推送';}
+  }catch(e){toast('推送失败','error');btn.disabled=false;btn.textContent='确认推送';}
+}
+function startBanCountdown(seconds){
+  let btn=document.getElementById('pushConfirmBtn');if(!btn)return;
+  btn.disabled=true;
+  function tick(){let m=Math.floor(seconds/60),s=seconds%60;btn.textContent=`已禁用 ${m}:${String(s).padStart(2,'0')}`;if(seconds<=0){btn.disabled=false;btn.textContent='确认推送';if(_banTimer){clearInterval(_banTimer);_banTimer=null;}return;}seconds--;}
+  tick();_banTimer=setInterval(tick,1000);
 }
 
 async function resendTargeted(sid,cid,custid){

@@ -195,6 +195,36 @@ def collect_status():
     return {'code': 0, 'data': sched_status()}
 
 
+# ── Rate Limit Admin ──────────────────────────────────────────────
+
+@bp.route('/rate-limits', methods=['GET'])
+@require_auth
+def list_rate_limits():
+    """List all currently banned keys with remaining time."""
+    from src.core.rate_limiter import get_all_bans
+    bans = get_all_bans()
+    return {'code': 0, 'data': {'bans': bans, 'total': len(bans)}}
+
+
+@bp.route('/rate-limits/reset', methods=['POST'])
+@require_auth
+def reset_rate_limit():
+    """Reset rate limit ban for a specific key, or all keys.
+
+    Body: {"key": "email@example.com"}  — reset specific key
+          {}                             — reset all
+    """
+    data = request.get_json() or {}
+    key = data.get('key', None)
+    from src.core.rate_limiter import clear_ban
+    affected = clear_ban(key)
+    _audit('rate_limit_reset', {'key': key, 'affected': affected})
+    if key:
+        return {'code': 0, 'message': f'已重置 {key} 的频率限制'}
+    else:
+        return {'code': 0, 'message': f'已重置全部频率限制 ({affected} 条)'}
+
+
 # ── Helpers ───────────────────────────────────────────────────────
 
 def _tail_file(filepath: str, n: int) -> list:

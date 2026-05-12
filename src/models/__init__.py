@@ -29,6 +29,9 @@ def init_all_tables():
     from src.models import audit
     audit.create_tables(db)
 
+    from src.core.rate_limiter import create_tables as create_rate_limit_table
+    create_rate_limit_table(db)
+
     # Initialize schema version
     rows = db.execute("SELECT MAX(version) as v FROM schema_version").fetchall()
     current = rows[0]['v'] if rows and rows[0]['v'] else 0
