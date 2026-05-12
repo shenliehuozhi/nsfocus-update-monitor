@@ -43,6 +43,7 @@ class NotificationMessage:
     restart_required: bool = False
     urgency: str = 'normal'  # normal | high | critical
     download_url: str = ''
+    source_url: str = ''          # detail page URL on update.nsfocus.com
     published_at: str = ''
     is_rollback: bool = False
 
@@ -105,6 +106,7 @@ class NotificationMessage:
             restart_required=bool(snap.get('restart_required', False)),
             urgency=snap.get('urgency', 'normal'),
             download_url=dl_url,
+            source_url=snap.get('source_url', ''),
             published_at=snap.get('published_at', ''),
             is_rollback=is_rollback,
         )
@@ -172,6 +174,9 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
         lines.append('')
         lines.append(f'[📥 下载]({msg.download_url})')
 
+    if msg.source_url:
+        lines.append(f'🔗 [详情页]({msg.source_url})')
+
     return '\n'.join(lines)
 
 
@@ -217,6 +222,8 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         extra_items.append('🔄 升级后需重启')
     if msg.download_url:
         extra_items.append(f'[📥 下载]({msg.download_url})')
+    if msg.source_url:
+        extra_items.append(f'🔗 [详情页]({msg.source_url})')
 
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
@@ -351,6 +358,15 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         </td></tr>
         '''
 
+    # Detail page link
+    detail_link = ''
+    if msg.source_url:
+        detail_link = f'''
+        <tr><td style="padding:8px 0 0 0">
+            <a href="{msg.source_url}" style="color:{color};text-decoration:none;font-size:13px">🔗 绿盟更新详情页</a>
+        </td></tr>
+        '''
+
     return f'''<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">
@@ -372,6 +388,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         {dep_html}
         {desc_html}
         {dl_btn}
+        {detail_link}
     </table>
 </td></tr>
 <tr><td style="padding:12px 16px;background:#f5f5f5;border-radius:0 0 8px 8px;color:#999;font-size:12px">
