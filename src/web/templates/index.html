@@ -60,6 +60,17 @@ select.ct[multiple]{display:none}
 .mono{font-family:'SF Mono','Fira Code',monospace;font-size:12px:'SF Mono','Fira Code',monospace;font-size:11px}
 .desc-box{background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto;font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-all;color:#555}
 .info-bar{background:#eef4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#3a5080}
+.push-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center}
+.push-modal .card{width:480px;max-height:75vh;overflow-y:auto}
+.push-modes{display:flex;gap:6px;margin-bottom:14px}
+.push-modes label{flex:1;text-align:center;padding:7px;border:1px solid var(--border);border-radius:7px;cursor:pointer;font-size:12.5px;font-weight:500;transition:.12s;background:#fff}
+.push-modes input[type=radio]{display:none}
+.push-modes input:checked+span{display:block;padding:7px;margin:-7px;border-radius:7px;background:var(--primary);color:#fff}
+.push-target{max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:7px}
+.push-target .item{padding:8px 12px;cursor:pointer;border-bottom:1px solid #f1f3f5;font-size:12.5px;display:flex;align-items:center;gap:8px}
+.push-target .item:hover{background:#f0f4ff}
+.push-target .item.selected{background:#e8eeff;border-left:3px solid var(--primary)}
+.push-target .item:last-child{border-bottom:none}
 a{color:var(--primary);text-decoration:none;font-weight:500}
 .flex{display:flex}.gap6{gap:6px}.gap8{gap:8px}.flex1{flex:1;min-width:0}.items-center{align-items:center}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}
 .empty{text-align:center;padding:28px;color:var(--muted);font-size:12.5px}
@@ -218,13 +229,60 @@ async function dataPage(){
       h+=`<div class="ver-bar" onclick="let e=document.getElementById('${vid}');e.classList.toggle('hidden');this.querySelector('.arrow').textContent=e.classList.contains('hidden')?'▶':'▼'"><span class="arrow">▼</span><strong>${ver}</strong><span style="margin-left:8px;color:var(--muted);font-size:11px">${pkgs.length}个包</span></div><div id="${vid}" style="margin-bottom:8px"><table><tr style="background:#fafafa"><th>类型</th><th style="width:30%">文件</th><th style="width:11%">发布时间</th><th style="width:14%">最近采集</th><th style="width:6%">大小</th><th style="width:7%">紧急度</th><th style="width:7%">操作</th></tr>`;
       pkgs.forEach(s=>{
         let sz=s.file_size>1048576?(s.file_size/1048576).toFixed(1)+'M':(s.file_size/1024).toFixed(0)+'K',did='d'+s.id,pt=fmtTZ(s.published_at),ls=fmtTZ(s.last_seen_at,true);
-        h+=`<tr style="cursor:pointer" onclick="document.getElementById('${did}').classList.toggle('hidden')"><td>${typeCN(s.package_type)}</td><td class="mono" style="color:var(--primary)">${(s.file_name||'').substring(0,35)}</td><td>${pt.substring(0,10)}</td><td>${ls}</td><td>${sz}</td><td><span class="badge badge-${s.urgency==='critical'?'err':s.urgency==='high'?'warn':'ok'}">${s.urgency||''}</span></td><td><button class="btn btn-xs btn-success" onclick="event.stopPropagation();manualPush(${s.id})">推送</button></td></tr><tr id="${did}" class="hidden"><td colspan="7" class="detail-row"><div style="display:grid;grid-template-columns:auto 1fr;gap:3px 16px"><b>文件:</b><span class="mono">${s.file_name||''}</span><b>版本:</b><span>${s.package_version||''}</span><b>MD5:</b><span class="mono">${s.md5_hash||''}</span><b>大小:</b><span>${sz}</span>${s.min_sys_version?`<b>依赖:</b><span>≥ ${s.min_sys_version}</span>`:''}${s.published_at?`<b>发布:</b><span>${s.published_at}</span>`:''}${s.first_seen_at?`<b>发现:</b><span>${s.first_seen_at}</span>`:''}${s.download_id?`<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>`:''}</div>${s.description_raw?`<div class="desc-box mt12">${s.description_raw.substring(0,1500)}</div>`:''}</td></tr>`;
+        h+=`<tr style="cursor:pointer" onclick="document.getElementById('${did}').classList.toggle('hidden')"><td>${typeCN(s.package_type)}</td><td class="mono" style="color:var(--primary)">${(s.file_name||'').substring(0,35)}</td><td>${pt.substring(0,10)}</td><td>${ls}</td><td>${sz}</td><td><span class="badge badge-${s.urgency==='critical'?'err':s.urgency==='high'?'warn':'ok'}">${s.urgency||''}</span></td><td><button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button></td></tr><tr id="${did}" class="hidden"><td colspan="7" class="detail-row"><div style="display:grid;grid-template-columns:auto 1fr;gap:3px 16px"><b>文件:</b><span class="mono">${s.file_name||''}</span><b>版本:</b><span>${s.package_version||''}</span><b>MD5:</b><span class="mono">${s.md5_hash||''}</span><b>大小:</b><span>${sz}</span>${s.min_sys_version?`<b>依赖:</b><span>≥ ${s.min_sys_version}</span>`:''}${s.published_at?`<b>发布:</b><span>${s.published_at}</span>`:''}${s.first_seen_at?`<b>发现:</b><span>${s.first_seen_at}</span>`:''}${s.download_id?`<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>`:''}</div>${s.description_raw?`<div class="desc-box mt12">${s.description_raw.substring(0,1500)}</div>`:''}</td></tr>`;
       });
       h+=`</table></div>`;}
     h+=`</div></div>`;}
   document.getElementById('app').innerHTML=h;
 }
 async function manualPush(sid){if(!confirm('确认推送?'))return;const r=await api('/history/'+sid+'/resend',{method:'POST'});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}
+
+// ── Push Modal ──
+let _pushSid=0,_pushMode='rule',_pushTarget=0;
+async function showPushModal(sid,product,version,pkgType){
+  _pushSid=sid;_pushMode='rule';_pushTarget=0;
+  document.getElementById('app').insertAdjacentHTML('beforeend',
+    `<div id="pushModal" class="push-modal" onclick="if(event.target===this)closePushModal()">
+      <div class="card" onclick="event.stopPropagation()">
+        <div class="card-hd">📤 推送快照 #${sid} <span style="color:var(--muted);font-weight:400;font-size:11px">${product} ${version} ${pkgType}</span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="closePushModal()">×</button></div>
+        <div class="card-bd">
+          <div class="push-modes">
+            <label><input type="radio" name="pm" value="rule" checked onchange="switchPushMode('rule')"><span>📋 按订阅规则</span></label>
+            <label><input type="radio" name="pm" value="channel" onchange="switchPushMode('channel')"><span>📡 按通知渠道</span></label>
+            <label><input type="radio" name="pm" value="customer" onchange="switchPushMode('customer')"><span>👤 按客户</span></label>
+          </div>
+          <div id="pushTargets" class="push-target"><div class="empty">加载中...</div></div>
+          <div class="flex gap8 mt12"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" onclick="confirmPush()" disabled>确认推送</button><button class="btn btn-sm btn-outline" onclick="closePushModal()">取消</button></div>
+        </div>
+      </div>
+    </div>`);
+  loadPushTargets();
+}
+function closePushModal(){let m=document.getElementById('pushModal');if(m)m.remove();}
+async function switchPushMode(mode){_pushMode=mode;_pushTarget=0;document.getElementById('pushConfirmBtn').disabled=true;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));loadPushTargets();}
+async function loadPushTargets(){
+  let el=document.getElementById('pushTargets');
+  el.innerHTML='<div class="empty">加载中...</div>';
+  try{
+    let list=[];
+    if(_pushMode==='rule'){let r=await api('/rules');list=(r.data||[]).map(x=>({id:x.id,label:x.name||'规则#'+x.id,sub:`${x.product_filter||'全部'} → ${x.version_pattern||'全部'}`,active:x.is_enabled}));}
+    else if(_pushMode==='channel'){let r=await api('/channels');list=(r.data||[]).map(x=>({id:x.id,label:x.name||x.type,sub:x.type+(x.is_active?'':' (已停用)'),active:x.is_active}));}
+    else if(_pushMode==='customer'){let r=await api('/customers');list=(r.data||[]).map(x=>({id:x.id,label:x.name,sub:x.company||'',active:true}));}
+    if(!list.length){el.innerHTML='<div class="empty">暂无可用目标</div>';return;}
+    el.innerHTML=list.map(x=>`<div class="item" data-id="${x.id}" onclick="selectPushTarget(${x.id})" style="${!x.active?'opacity:.4':''}"><span style="font-weight:500">${x.label}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${x.sub||''}</span></div>`).join('');
+  }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
+}
+function selectPushTarget(id){_pushTarget=id;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));let sel=document.querySelector('#pushTargets .item[data-id="'+id+'"]');if(sel)sel.classList.add('selected');document.getElementById('pushConfirmBtn').disabled=false;}
+async function confirmPush(){
+  if(!_pushTarget)return toast('请选择推送目标','error');
+  document.getElementById('pushConfirmBtn').disabled=true;document.getElementById('pushConfirmBtn').textContent='推送中...';
+  try{
+    let r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify({mode:_pushMode,target_id:_pushTarget})});
+    toast(r.message||'已推送',r.code===0?'success':'error');
+    if(r.code===0)closePushModal();
+  }catch(e){toast('推送失败','error');}
+  document.getElementById('pushConfirmBtn').disabled=false;document.getElementById('pushConfirmBtn').textContent='确认推送';
+}
 
 async function resendTargeted(sid,cid,custid){
   if(!confirm('确认重新推送到该客户?'))return;

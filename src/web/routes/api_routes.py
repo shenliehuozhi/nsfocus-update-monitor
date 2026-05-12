@@ -305,6 +305,128 @@ def resend_targeted(sid: int):
         'message': '已推送' if result.success else f'推送失败: {result.error_message}',
     })
 
+# ── Push by mode (rule/channel/customer) ─────────────────────
+
+@bp_history.route('/<int:sid>/push', methods=['POST'])
+@require_auth
+def push_by_mode(sid: int):
+    """Push a snapshot through a specific rule, channel, or to a specific customer.
+
+    Body: {"mode": "rule"|"channel"|"customer", "target_id": <id>}
+    """
+    data = request.get_json() or {}
+    mode = data.get('mode', 'rule')
+    target_id = data.get('target_id', 0)
+
+    if not target_id:
+        return jsonify({'code': 40001, 'message': '缺少目标ID'}), 400
+
+    from src.models.snapshot import get_snapshot
+    from src.notifiers.router import NOTIFIERS, route_notifications
+    from src.notifiers.base import NotificationMessage
+    from src.models.subscription import log_delivery
+
+    snap = get_snapshot(sid)
+    if not snap:
+        return jsonify({'code': 40400, 'message': '快照不存在'}), 404
+
+    message = NotificationMessage.from_snapshot(snap)
+    results = []
+
+    if mode == 'rule':
+        # Push through subscription rule (rule's bound channels + customers)
+        from src.models.subscription import get_rule, get_rule_channels
+        rule = get_rule(target_id)
+        if not rule:
+            return jsonify({'code': 40400, 'message': '规则不存在'}), 404
+        bindings = get_rule_channels(target_id)
+        if not bindings:
+            return jsonify({'code': 40001, 'message': '该规则未绑定任何渠道'}), 400
+
+        from src.models.channel import get_by_id
+        for binding in bindings:
+            ch = get_by_id(binding.get('channel_id'))
+            if not ch or not ch.get('is_active'):
+                continue
+            notifier = NOTIFIERS.get(ch['type'])
+            if not notifier:
+                continue
+            result = notifier.send(message, ch['config'])
+            results.append({'channel': ch.get('name', ch['type']),
+                          'success': result.success, 'error': result.error_message})
+            log_delivery(snapshot_id=sid, channel_id=ch['id'],
+                        channel_type=ch['type'], channel_name=ch.get('name', ''),
+                        customer_id=binding.get('customer_id'),
+                        status='sent' if result.success else 'failed',
+                        error=result.error_message)
+
+    elif mode == 'channel':
+        # Push directly to a specific channel
+        from src.models.channel import get_by_id
+        ch = get_by_id(target_id)
+        if not ch:
+            return jsonify({'code': 40400, 'message': '渠道不存在'}), 404
+        if not ch.get('is_active'):
+            return jsonify({'code': 40001, 'message': '渠道已停用'}), 400
+        notifier = NOTIFIERS.get(ch['type'])
+        if not notifier:
+            cht = ch['type']
+            return jsonify({'code': 40001, 'message': f'不支持的渠道类型: {cht}'}), 400
+        result = notifier.send(message, ch['config'])
+        results.append({'channel': ch.get('name', ch['type']),
+                      'success': result.success, 'error': result.error_message})
+        log_delivery(snapshot_id=sid, channel_id=ch['id'],
+                    channel_type=ch['type'], channel_name=ch.get('name', ''),
+                    status='sent' if result.success else 'failed',
+                    error=result.error_message)
+
+    elif mode == 'customer':
+        # Push to all active channels bound to this customer via rules
+        from src.models.customer import get_by_id as get_cust
+        from src.models.channel import get_by_id
+        from src.models.subscription import get_enabled_rules, get_rule_channels
+        cust = get_cust(target_id)
+        if not cust:
+            return jsonify({'code': 40400, 'message': '客户不存在'}), 404
+
+        sent_channels = set()
+        for rule in get_enabled_rules():
+            for binding in get_rule_channels(rule['id']):
+                if binding.get('customer_id') != target_id:
+                    continue
+                ch_id = binding.get('channel_id')
+                if ch_id in sent_channels:
+                    continue
+                ch = get_by_id(ch_id)
+                if not ch or not ch.get('is_active'):
+                    continue
+                notifier = NOTIFIERS.get(ch['type'])
+                if not notifier:
+                    continue
+                result = notifier.send(message, ch['config'])
+                results.append({'channel': ch.get('name', ch['type']),
+                              'success': result.success, 'error': result.error_message})
+                sent_channels.add(ch_id)
+                log_delivery(snapshot_id=sid, channel_id=ch['id'],
+                            channel_type=ch['type'], channel_name=ch.get('name', ''),
+                            customer_id=target_id,
+                            status='sent' if result.success else 'failed',
+                            error=result.error_message)
+
+    else:
+        return jsonify({'code': 40001, 'message': f'不支持的推送模式: {mode}'}), 400
+
+    if not results:
+        return jsonify({'code': 40001, 'message': '没有找到可用的推送目标'}), 400
+
+    success_count = sum(1 for r in results if r['success'])
+    return jsonify({
+        'code': 0,
+        'data': {'results': results, 'total': len(results), 'success': success_count},
+        'message': f'已推送到 {success_count}/{len(results)} 个渠道',
+    })
+
+
 # ── Options API (dynamic dropdowns) ──────────────────────────
 
 bp_options = Blueprint('options', __name__, url_prefix='/api/options')

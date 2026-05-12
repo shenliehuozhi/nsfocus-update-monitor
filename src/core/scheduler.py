@@ -234,6 +234,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if mode == 'full':
             _last_full_run = datetime.now()
 
+        # WAL checkpoint: prevent unlimited WAL file growth
+        try:
+            from src.models.database import get_db
+            get_db().execute('PRAGMA wal_checkpoint(PASSIVE)')
+        except Exception:
+            pass
+
         logger.info(f'Cycle complete ({mode}): {summary["total_new"]} new, '
                     f'{summary["total_rollback"]} rollbacks, {summary["duration_s"]}s')
 
@@ -351,6 +358,9 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
             all_items.extend(items)
             emit('collecting', product=name, items=len(items))
             update_source_health(src['id'], 'ok', datetime.now().isoformat())
+            # Bump last_seen_at for all active snapshots (reflects collection ran)
+            from src.models.snapshot import touch_active_snapshots
+            touch_active_snapshots(src['id'])
 
         except SessionExpiredError:
             if sessions:
@@ -387,28 +397,22 @@ def start_scheduler(app=None):
 
         sched = BackgroundScheduler()
 
-        # Regular delta collection
+        # Smart collection: checks if full scan is due, otherwise runs quick
         sched.add_job(
-            lambda: run_now(mode='quick'),
+            _smart_collect,
             'interval',
             hours=COLLECT_INTERVAL,
-            id='nsfocus_quick',
-            name='NSFOCUS Quick Collection',
+            id='nsfocus_collect',
+            name='NSFOCUS Smart Collection',
             next_run_time=datetime.now(),
         )
 
-        # Full scan check (runs with same interval, but only executes if due)
-        sched.add_job(
-            _check_full_scan,
-            'interval',
-            hours=COLLECT_INTERVAL,
-            id='nsfocus_full_check',
-            name='NSFOCUS Full Scan Check',
-        )
-
         sched.start()
-        logger.info(f'Scheduler started: delta every {COLLECT_INTERVAL}h, '
+        logger.info(f'Scheduler started: collection every {COLLECT_INTERVAL}h, '
                     f'full scan every {FULL_SCAN_INTERVAL}h')
+
+        # First-run check: if no snapshots have source_url populated, trigger immediate full scan
+        _check_first_run()
 
         # Session heartbeat: keep PHPSESSID alive (configurable interval)
         hb_interval = int(_get_setting('heartbeat_interval', '30'))
@@ -437,11 +441,29 @@ def start_scheduler(app=None):
         return None
 
 
-def _check_full_scan():
-    """Check if full scan is due and run it if so."""
+def _smart_collect():
+    """Smart collection: full scan if due, quick otherwise. Eliminates race condition."""
     if is_full_scan_due():
         logger.info('Full scan interval reached, running full collection')
         run_now(mode='full')
+    else:
+        run_now(mode='quick')
+
+
+def _check_first_run():
+    """Check if this is first run (no source_url populated) and trigger full scan."""
+    try:
+        from src.models.database import query
+        rows = query("SELECT COUNT(*) as cnt FROM snapshots WHERE source_url != '' AND status = 'active'")
+        if rows and rows[0]['cnt'] == 0:
+            active = query("SELECT COUNT(*) as cnt FROM snapshots WHERE status = 'active'")
+            if active and active[0]['cnt'] > 0:
+                logger.info('First run detected: no source_url populated, scheduling immediate full scan')
+                import threading
+                t = threading.Thread(target=lambda: run_now(mode='full'), daemon=True)
+                t.start()
+    except Exception as e:
+        logger.warning(f'First-run check failed: {e}')
 
 
 def _session_heartbeat():
