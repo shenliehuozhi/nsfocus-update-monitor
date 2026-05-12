@@ -8,7 +8,7 @@ Supports two modes:
 import os
 import time
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from src.core.logger import get_logger
@@ -46,6 +46,7 @@ FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '24'))  # hours, def
 _collector = NsfocusCollector()
 _last_run: Optional[datetime] = None
 _last_full_run: Optional[datetime] = None
+_last_mode: str = ''  # 'quick' or 'full'
 _is_running = False
 
 # ── Progress state (for async collection) ────────────────────────
@@ -76,12 +77,23 @@ def get_progress() -> dict:
 
 
 def get_status() -> dict:
+    # Compute next mode
+    next_mode = 'full' if is_full_scan_due() else 'quick'
+    # Compute next full scan time
+    next_full = None
+    if _last_full_run:
+        next_full = (_last_full_run + timedelta(hours=FULL_SCAN_INTERVAL)).isoformat()
+    
     return {
         'last_run': _last_run.isoformat() if _last_run else None,
         'last_full_run': _last_full_run.isoformat() if _last_full_run else None,
+        'last_mode': _last_mode,
         'is_running': _is_running,
+        'current_mode': _progress.get('mode', ''),
         'interval_hours': COLLECT_INTERVAL,
         'full_scan_interval_hours': FULL_SCAN_INTERVAL,
+        'next_mode': next_mode,
+        'next_full_scan': next_full,
     }
 
 
@@ -92,12 +104,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         mode: 'delta' (fast, list pages only) or 'full' (deep traversal)
         progress_callback: optional callable(phase, detail) for progress updates
     """
-    global _last_run, _last_full_run, _is_running, _progress
+    global _last_run, _last_full_run, _is_running, _progress, _last_mode
 
     if _is_running:
         return {'status': 'skipped', 'reason': 'Already running'}
 
     _is_running = True
+    _last_mode = mode
     logger.info(f'Collection starting: mode={mode}')
     start = time.time()
 
