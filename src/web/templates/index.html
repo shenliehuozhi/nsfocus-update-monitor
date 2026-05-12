@@ -214,6 +214,13 @@ async function dashboard(range){
 
 // ── Data ──
 
+// ═══════════════════════════════════════════════════════════════
+// TIMEZONE CONVENTION (DO NOT CHANGE):
+//   DB stores UTC (datetime('now') in SQLite = UTC).
+//   fmtTZ parses as UTC (`t+'Z'`) and converts to LOCAL time.
+//   Uses getHours()/getMinutes() — NOT toISOString() — by design.
+//   toISOString() would show UTC (8h behind CST). See commit 884a835.
+// ═══════════════════════════════════════════════════════════════
 function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
 async function dataPage(){
   const r=await api('/latest/snapshots').catch(()=>({data:{}}));const grp=r.data||{};
