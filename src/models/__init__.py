@@ -32,6 +32,11 @@ def init_all_tables():
     from src.core.rate_limiter import create_tables as create_rate_limit_table
     create_rate_limit_table(db)
 
+    from src.core.email_rate_limiter import create_tables as create_email_rate_table
+    # Migration: drop old single-key schema and recreate with composite PK
+    db.execute("DROP TABLE IF EXISTS email_rate_counters")
+    create_email_rate_table(db)
+
     # Initialize schema version
     rows = db.execute("SELECT MAX(version) as v FROM schema_version").fetchall()
     current = rows[0]['v'] if rows and rows[0]['v'] else 0

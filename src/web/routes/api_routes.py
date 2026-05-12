@@ -44,7 +44,9 @@ def create_channel():
     if not name or not ch_type:
         return jsonify({'code': 40001, 'message': '缺少参数'}), 400
     from src.models.channel import create
-    cid = create(g.user_id, name, ch_type, config)
+    cid = create(g.user_id, name, ch_type, config,
+                 email_hourly_limit=data.get('email_hourly_limit', 0),
+                 email_daily_limit=data.get('email_daily_limit', 0))
     _audit('channel_create', {'id': cid, 'name': name, 'type': ch_type})
     return jsonify({'code': 0, 'data': {'id': cid}})
 
@@ -419,6 +421,17 @@ def push_by_mode(sid: int):
         relay_config = dict(email_ch['config'])
         relay_config['to_list'] = [cust_email]
         relay_config['name'] = f'{email_ch.get("name", "email")} → {cust.get("name", cust_email)}'
+        relay_config['_channel_id'] = email_ch['id']
+        relay_config['_customer_id'] = target_id
+        relay_config['_email_hourly_limit'] = email_ch.get('email_hourly_limit', 0)
+        relay_config['_email_daily_limit'] = email_ch.get('email_daily_limit', 0)
+        # Inject global/customer limits from system_settings
+        from src.notifiers.router import _get_email_rate_settings
+        limits = _get_email_rate_settings()
+        relay_config['_cust_hourly_limit'] = limits['cust_hourly']
+        relay_config['_cust_daily_limit'] = limits['cust_daily']
+        relay_config['_global_hourly_limit'] = limits['global_hourly']
+        relay_config['_global_daily_limit'] = limits['global_daily']
         rate_key = cust_email
         targets.append((rate_key, email_ch, NOTIFIERS['email'], relay_config.get('name', '')))
 
@@ -448,6 +461,17 @@ def push_by_mode(sid: int):
         relay_config = dict(email_ch['config'])
         relay_config['to_list'] = emails
         relay_config['name'] = f'{email_ch.get("name", "email")} → 手动'
+        relay_config['_channel_id'] = email_ch['id']
+        relay_config['_customer_id'] = 0
+        relay_config['_email_hourly_limit'] = email_ch.get('email_hourly_limit', 0)
+        relay_config['_email_daily_limit'] = email_ch.get('email_daily_limit', 0)
+        # Inject global limits from system_settings
+        from src.notifiers.router import _get_email_rate_settings
+        limits = _get_email_rate_settings()
+        relay_config['_cust_hourly_limit'] = limits['cust_hourly']
+        relay_config['_cust_daily_limit'] = limits['cust_daily']
+        relay_config['_global_hourly_limit'] = limits['global_hourly']
+        relay_config['_global_daily_limit'] = limits['global_daily']
         rate_key = emails[0] if len(emails) == 1 else f'manual:{",".join(sorted(emails))}'
         targets.append((rate_key, email_ch, NOTIFIERS['email'], relay_config.get('name', '')))
 
@@ -464,7 +488,19 @@ def push_by_mode(sid: int):
     # ── Execute pushes ─────────────────────────────────────────
     for rate_key, ch, notifier, label in targets:
         if mode == 'channel':
-            result = notifier.send(message, ch['config'])
+            ch_cfg = dict(ch['config'])
+            ch_cfg['_channel_id'] = ch['id']
+            ch_cfg['_customer_id'] = 0
+            ch_cfg['_email_hourly_limit'] = ch.get('email_hourly_limit', 0)
+            ch_cfg['_email_daily_limit'] = ch.get('email_daily_limit', 0)
+            # Inject global/customer limits from system_settings
+            from src.notifiers.router import _get_email_rate_settings
+            limits = _get_email_rate_settings()
+            ch_cfg['_cust_hourly_limit'] = limits['cust_hourly']
+            ch_cfg['_cust_daily_limit'] = limits['cust_daily']
+            ch_cfg['_global_hourly_limit'] = limits['global_hourly']
+            ch_cfg['_global_daily_limit'] = limits['global_daily']
+            result = notifier.send(message, ch_cfg)
             results.append({
                 'channel': label,
                 'success': result.success,

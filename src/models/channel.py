@@ -15,16 +15,33 @@ CREATE TABLE IF NOT EXISTS channels (
 
 def create_tables(db):
     db.execute(SCHEMA_CHANNEL)
+    # Migration: add email rate limit columns (v2)
+    try:
+        db.execute("ALTER TABLE channels ADD COLUMN email_hourly_limit INTEGER DEFAULT 0")
+    except:
+        pass
+    try:
+        db.execute("ALTER TABLE channels ADD COLUMN email_daily_limit INTEGER DEFAULT 0")
+    except:
+        pass
 
 
-def create(user_id: int, name: str, channel_type: str, config: dict) -> int:
+def create(user_id: int, name: str, channel_type: str, config: dict, **kwargs) -> int:
     from src.models.database import execute
     from src.core.crypto import encrypt
     import json
     encrypted_config = encrypt(json.dumps(config, ensure_ascii=False))
+    extra_cols = []
+    extra_vals = []
+    for k in ('email_hourly_limit', 'email_daily_limit'):
+        if k in kwargs:
+            extra_cols.append(k)
+            extra_vals.append(kwargs[k])
+    cols = 'user_id, name, type, config' + (', ' + ', '.join(extra_cols) if extra_cols else '')
+    vals = (user_id, name, channel_type, encrypted_config) + tuple(extra_vals)
     return execute(
-        "INSERT INTO channels (user_id, name, type, config) VALUES (?, ?, ?, ?)",
-        (user_id, name, channel_type, encrypted_config)
+        f"INSERT INTO channels ({cols}) VALUES ({','.join('?' for _ in vals)})",
+        vals
     )
 
 

@@ -111,6 +111,19 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
     _send_immediate(snap, rule)
 
 
+def _get_email_rate_settings() -> dict:
+    """Read email rate limit settings from system_settings (with defaults)."""
+    from src.models.database import query
+    rows = query("SELECT key, value FROM system_settings WHERE key LIKE 'email_%'")
+    cfg = {r['key']: r['value'] for r in rows}
+    return {
+        'cust_hourly': int(cfg.get('email_customer_hourly_limit', 10)),
+        'cust_daily': int(cfg.get('email_customer_daily_limit', 50)),
+        'global_hourly': int(cfg.get('email_global_hourly_limit', 100)),
+        'global_daily': int(cfg.get('email_global_daily_limit', 500)),
+    }
+
+
 def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
     """Send notification immediately through all channels associated with the rule."""
     message = NotificationMessage.from_snapshot(snap, is_rollback=is_rollback)
@@ -152,6 +165,17 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
                 ch_config['rule_emails'] = rule['customer_emails']
             if rule.get('attachment_max_mb'):
                 ch_config['attachment_max_mb'] = str(rule['attachment_max_mb'])
+            # Inject rate-limit context
+            ch_config['_channel_id'] = channel_id
+            ch_config['_customer_id'] = binding.get('customer_id', 0)
+            ch_config['_email_hourly_limit'] = channel.get('email_hourly_limit', 0)
+            ch_config['_email_daily_limit'] = channel.get('email_daily_limit', 0)
+            # Inject global/customer limits from system_settings
+            limits = _get_email_rate_settings()
+            ch_config['_cust_hourly_limit'] = limits['cust_hourly']
+            ch_config['_cust_daily_limit'] = limits['cust_daily']
+            ch_config['_global_hourly_limit'] = limits['global_hourly']
+            ch_config['_global_daily_limit'] = limits['global_daily']
 
         # Send
         result = notifier.send(message, ch_config)
