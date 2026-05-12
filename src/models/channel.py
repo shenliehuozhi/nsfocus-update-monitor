@@ -58,6 +58,8 @@ def update(channel_id: int, **kwargs) -> None:
 
 def delete(channel_id: int) -> None:
     from src.models.database import execute
+    execute("DELETE FROM rule_channels WHERE channel_id = ?", (channel_id,))
+    execute("UPDATE delivery_log SET channel_id = NULL WHERE channel_id = ?", (channel_id,))
     execute("DELETE FROM channels WHERE id = ?", (channel_id,))
 
 

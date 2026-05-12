@@ -57,6 +57,9 @@ def list_all() -> list:
 
 def delete(customer_id: int) -> None:
     from src.models.database import execute
+    execute("DELETE FROM rule_channels WHERE customer_id = ?", (customer_id,))
+    execute("UPDATE subscription_rules SET customer_id = NULL WHERE customer_id = ?", (customer_id,))
+    execute("UPDATE delivery_log SET customer_id = NULL WHERE customer_id = ?", (customer_id,))
     execute("DELETE FROM customers WHERE id = ?", (customer_id,))
 
 

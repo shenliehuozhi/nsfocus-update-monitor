@@ -331,7 +331,7 @@ async function sessions(){
   <div id="hbModal"></div>`;}
 async function addSes(){const v=document.getElementById('ci').value.trim();if(!v)return toast('请输入','error');const r=await api('/sessions',{method:'POST',body:JSON.stringify({cookie_value:v})});if(r.code===0){toast(r.data?.message||'添加成功');sessions();}else toast(r.message,'error');}
 async function validateSes(id){const r=await api('/sessions/'+id+'/validate',{method:'POST'});toast(r.code===0?r.message:r.message,r.code===0?'success':'error');sessions();}
-async function delSes(id){if(confirm('删除此Session?')){await api('/sessions/'+id,{method:'DELETE'});sessions();}}
+async function delSes(id){if(confirm('删除此Session?')){const r=await api('/sessions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');sessions();}else toast(r.message,'error');}}
 
 async function showHbHistory(sid){
   const r=await api('/sessions/'+sid+'/heartbeat');
@@ -361,7 +361,7 @@ function showChForm(id){editingChId=id||0;document.getElementById('chf').classLi
 function editCh(id){showChForm(id);}
 async function saveCh(){const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();if(!n){toast('请输入渠道名称','error');return}let c={};if(t==='email'){const to_list=(document.getElementById('st')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);if(!to_list.length){toast('请填写至少一个收件人邮箱','error');return}let pw=document.getElementById('sw')?.value||'';c={smtp_host:document.getElementById('sh')?.value||'',smtp_port:parseInt(document.getElementById('sp')?.value||'465'),smtp_user:document.getElementById('su')?.value||'',smtp_password:pw||(_origChConfig.smtp_password||''),from_name:document.getElementById('sf')?.value||'绿盟升级通知',to_list}}else{let wu=document.getElementById('cw')?.value||'';c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}}let r;if(editingChId){r=await api('/channels/'+editingChId,{method:'PUT',body:JSON.stringify({name:n,config:c})})}else{r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c})})}if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;channels()}else toast(r.message,'error')}
 async function testCh(id){const r=await api('/channels/'+id+'/test',{method:'POST'});toast(r.data?.success?'已发送':r.data?.error||'失败',r.data?.success?'success':'error');}
-async function delCh(id){await api('/channels/'+id,{method:'DELETE'});channels();}
+async function delCh(id){if(confirm('删除此渠道?')){const r=await api('/channels/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');channels();}else toast(r.message,'error');}}
 // ── Customers ──
 let custProdOpts='';
 async function customers(){
@@ -412,7 +412,7 @@ async function saveC(){
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');customers();}else toast(r.message,'error');
 }
-async function delC(id){if(confirm('删除?')){await api('/customers/'+id,{method:'DELETE'});customers();}}
+async function delC(id){if(confirm('删除?')){const r=await api('/customers/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');customers();}else toast(r.message,'error');}}
 
 // ── Subscriptions ──
 const PKG=[['sys','系统'],['rule','规则'],['nti','威胁情报'],['av','病毒库'],['apprule','应用规则'],['url','URL分类'],['wcs','恶意站点'],['judge','研判规则'],['geo','地理库'],['interface','接口'],['special','特殊'],['other','其他'],['merge','合并'],['client','客户端'],['av_stream','流式病毒库']];
