@@ -71,6 +71,24 @@ def create_app(config_path=None):
     def _access_start():
         g._req_start = time.time()
 
+    @app.before_request
+    def _api_localhost_guard():
+        """If api_localhost_only is enabled, reject non-localhost /api/* requests.
+        
+        Uses request.remote_addr (TCP socket peer) — immune to Host/X-Forwarded-For forgery.
+        """
+        if not request.path.startswith('/api/'):
+            return
+        from src.models.database import query
+        rows = query("SELECT value FROM system_settings WHERE key = 'api_localhost_only'")
+        if not rows or rows[0]['value'] != '1':
+            return
+        # Check actual TCP peer address, not spoofable headers
+        remote = request.remote_addr
+        if remote not in ('127.0.0.1', '::1', 'localhost'):
+            from flask import jsonify
+            return jsonify({'code': 40300, 'message': 'API 仅限本地访问，当前已开启 localhost-only 模式'}), 403
+
     @app.after_request
     def _access_log(response):
         duration_ms = int((time.time() - g.get('_req_start', time.time())) * 1000)
