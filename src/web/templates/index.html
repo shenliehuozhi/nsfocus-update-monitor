@@ -17,7 +17,7 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',san
 .user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:#d1d5db}
 .user button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
 .user button:hover{background:rgba(255,255,255,.18)}
-.main{max-width:1280px;margin:0 auto;padding:20px}
+.main{max-width:100%;margin:0;padding:20px 24px}
 .card{background:var(--card);border-radius:10px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
 .card-hd{padding:12px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;color:var(--text)}
 .card-bd{padding:16px 18px}.card-bd.pt0{padding-top:0}
@@ -90,6 +90,7 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
     <a href="#" data-page="data">采集数据</a>
     <a href="#" data-page="history">推送历史</a>
     <a href="#" data-page="settings">系统配置</a>
+    <a href="#" data-page="products">产品管理</a>
     <a href="#" data-page="logs">系统日志</a>
   </nav>
   <div class="user"><span id="uname"></span><button onclick="showPwdModal()">改密</button><button onclick="logout()">退出</button></div>
@@ -124,7 +125,7 @@ function logout(){T=null;U=null;localStorage.removeItem('token');renderLogin();}
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
-  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,logs};
+  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs};
   if(pages[n])pages[n]();
 }
 
@@ -375,8 +376,8 @@ let custProdOpts='';
 async function customers(){
   const r=await api('/customers');const list=r.data||[];
   // Pre-load product options
-  const oR=await api('/options/products').catch(()=>({data:['WAF','IPS','IDS','RSAS','NF','UTS']}));
-  PROD=(oR.data||[]);if(!PROD.length)PROD=['WAF','IPS','IDS','RSAS','NF','UTS'];
+  const oR=await api('/options/products').catch(()=>({data:['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)']}));
+  PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   custProdOpts=PROD.map(p=>`<option>${p}</option>`).join('');
 
   let rows=list.map(c=>`<tr><td>${c.name}</td><td>${c.company||''}</td><td>${c.email||''}</td><td style="font-size:11px">${(c.owned_products||[]).join(', ')}</td><td>${c.warranty_start||''} ~ ${c.warranty_end||''}</td><td><button class="btn btn-xs btn-outline" onclick="editC(${c.id},'${c.name}','${c.company||''}','${c.email||''}','${c.phone||''}','${(c.owned_products||[]).join('|')}','${c.warranty_start||''}','${c.warranty_end||''}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
@@ -428,7 +429,7 @@ let PROD=[];
 async function subscriptions(){
   const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
-  PROD=(oR.data||[]);if(!PROD.length)PROD=['WAF','IPS','IDS','RSAS','NF','UTS'];
+  PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   let pOpts=PROD.map(p=>`<option>${p}</option>`).join('');
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join('');
@@ -700,6 +701,345 @@ async function settings(){
   // Load classification config after render
   _loadClassConfig();
 }
+
+// ── Product Management ──
+async function products(){
+  const r=await api('/system/products');
+  const allProds=r.data?.products||[];
+  window._allProducts=allProds; // store for filtering
+
+  // Stats
+  const total=allProds.length;
+  const enabled=allProds.filter(p=>p.is_active).length;
+  const disabled=allProds.filter(p=>!p.is_active).length;
+  const errors=allProds.filter(p=>p.health_status==='error').length;
+
+  let h=`<div class="card">
+    <div class="card-hd">🏭 产品管理
+      <div style="float:right">
+        <button class="btn btn-sm" onclick="discoverProducts()">🔍 自动发现</button>
+        <button class="btn btn-sm btn-primary" onclick="showProductForm()">+ 手动添加</button>
+      </div>
+    </div>
+    <div class="card-bd">
+
+      <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;align-items:center">
+        <span>共 <strong>${total}</strong> 个</span>
+        <span style="color:#16a34a">● 启用 <strong>${enabled}</strong></span>
+        <span style="color:#9ca3af">○ 禁用 <strong>${disabled}</strong></span>
+        ${errors>0?'<span style="color:#dc2626">● 异常 <strong>'+errors+'</strong></span>':''}
+
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <input id="prod-search" placeholder="搜索产品…" oninput="filterProducts()" style="padding:4px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:140px">
+          <select id="prod-filter" onchange="filterProducts()" style="padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+            <option value="all">全部</option>
+            <option value="enabled">仅启用</option>
+            <option value="disabled">仅禁用</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="overflow-x:auto">
+      <table class="table" style="min-width:700px">
+        <thead><tr>
+          <th style="width:36px">#</th>
+          <th style="width:64px">状态</th>
+          <th>产品名称</th>
+          <th>入口URL</th>
+          <th>策略</th>
+          <th>健康状态</th>
+          <th>最近采集</th>
+          <th style="width:180px">操作</th>
+        </tr></thead>
+        <tbody id="prod-tbody">`;
+  h+=_renderProductRows(allProds);
+  h+=`</tbody></table></div></div></div>`;
+
+  // Floating modal areas (outside the card, at app level)
+  h+=`<div id="disc-area"></div>`;
+  h+=`<div id="pform-area"></div>`;
+
+  document.getElementById('app').innerHTML=h;
+}
+
+// Floating modal shell
+function _showModal(id){
+  document.getElementById('app').insertAdjacentHTML('beforeend',
+    `<div id="${id}-overlay" onclick="if(event.target===this)closeModal('${id}')" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">`+
+    `<div id="${id}-box" style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto"></div>`+
+    `</div>`);
+}
+function closeModal(id){
+  const o=document.getElementById(id+'-overlay');
+  const b=document.getElementById(id+'-box');
+  if(o)o.remove();
+  if(b)b.remove();
+}
+function modalBody(id,h){const b=document.getElementById(id+'-box');if(b)b.innerHTML=h;}
+function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft" style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid #e5e7eb">${btns}</div>`);}}
+
+function _hlthColor(s){return{'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[s]||'#6b7280';}
+
+function _renderProductRows(prods){
+  if(!prods.length) return `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
+  let h='';
+  for(const p of prods){
+    const last=p.last_collected_at?fmtTZ(p.last_collected_at,true):'—';
+    const hlth=p.health_status||'unknown';
+    const hlthColor={'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[hlth]||'#6b7280';
+    const stratBadge=p.strategy==='recursive'
+      ?'<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:1px 6px;border-radius:10px">递归</span>'
+      :'<span style="background:#dbeafe;color:#1e40af;font-size:11px;padding:1px 6px;border-radius:10px">标准</span>';
+    const rowClass=p.is_active?'':'opacity:0.6';
+    h+=`<tr id="pr-${p.id}" style="${rowClass}">
+      <td>${p.id}</td>
+      <td>
+        <span class="active-badge" style="font-size:11px;color:${p.is_active?'#16a34a':'#dc2626'};cursor:pointer" onclick="confirmToggleActive(${p.id},${!p.is_active},'pr-${p.id}')">${p.is_active?'● 启用':'● 禁用'}</span>
+      </td>
+      <td><strong>${escHtml(p.name)}</strong></td>
+      <td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td>
+      <td>${stratBadge}</td>
+      <td><span class="hlth-badge" style="color:${p.is_active?(hlthColor):'#9ca3af'};font-size:12px">${p.is_active?'● '+hlth:'已禁用'}</span></td>
+      <td><span style="font-size:12px;color:#666">${last}</span></td>
+      <td>
+        <button class="btn btn-sm" onclick="editProduct(${p.id})" title="编辑">✏️</button>
+        <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="collectProduct(${p.id},'quick')" title="快速采集" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">▶</button>
+        <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="collectProduct(${p.id},'full')" title="全量采集" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">◉</button>
+        <button class="btn btn-sm" style="color:#dc2626" onclick="delProduct(${p.id},'${escHtml(p.name)}')" title="删除">🗑</button>
+      </td>
+    </tr>`;
+  }
+  return h;
+}
+
+function filterProducts(){
+  const search=(document.getElementById('prod-search')?.value||'').toLowerCase();
+  const filter=document.getElementById('prod-filter')?.value||'all';
+  const all=window._allProducts||[];
+  const filtered=all.filter(p=>{
+    const matchSearch=!search || p.name.toLowerCase().includes(search) || (p.display_name||'').toLowerCase().includes(search) || (p.entry_url||'').toLowerCase().includes(search);
+    const matchFilter=(filter==='all')||(filter==='enabled'&&p.is_active)||(filter==='disabled'&&!p.is_active);
+    return matchSearch&&matchFilter;
+  });
+  document.getElementById('prod-tbody').innerHTML=_renderProductRows(filtered);
+}
+
+async function discoverProducts(){
+  // Show modal shell immediately
+  _showModal('disc');
+  modalBody('disc',`<div style="padding:20px;text-align:center"><div class="spin"></div> 正在从绿盟站点发现产品…</div>`);
+  const r=await api('/system/products/discover',{method:'POST'});
+  if(r.code!==0){
+    modalBody('disc',`<div style="padding:24px"><div style="color:#dc2626;font-weight:600;margin-bottom:8px">发现失败</div><div style="color:#666;font-size:13px">${escHtml(r.message||'')}</div><div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div></div>`);
+    return;
+  }
+  const added=r.data?.added||[];
+  const unchanged=r.data?.unchanged||[];
+  const removed=r.data?.removed||[];
+  const total=r.data?.total||0;
+  if(total===0){
+    modalBody('disc',`<div style="padding:24px"><div style="color:#9ca3af">未发现产品</div><div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div></div>`);
+    return;
+  }
+
+  // Helper: collapsible section table
+  function sectionTable(label, color, icon, prods, key){
+    if(!prods.length) return `<div id="sec-${key}" style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:${color};cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0" onclick="toggleSection('${key}')"><span id="sec-icon-${key}">▸</span>${icon} ${label}<span style="background:${color}20;color:${color};padding:1px 7px;border-radius:10px;font-size:11px;margin-left:4px">${prods.length}</span></div></div>`;
+    let rows=prods.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    return `<div id="sec-${key}" style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f3f5;color:${color}" onclick="toggleSection('${key}')">
+        <span id="sec-icon-${key}">▾</span>${icon} ${label}<span style="background:${color}20;color:${color};padding:1px 7px;border-radius:10px;font-size:11px;margin-left:4px">${prods.length}</span>
+      </div>
+      <div id="sec-body-${key}" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:4px">
+        <table class="table" style="margin:0;font-size:13px">
+          <thead><tr><th>产品名称</th><th>入口URL</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }
+
+  let t=`<div style="padding:20px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:16px">🔍 发现结果 <span style="font-size:12px;font-weight:400;color:#9ca3af">共 ${total} 个</span></div>
+    <div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
+      <span style="color:#16a34a">🆕 新增 <b>${added.length}</b></span>
+      <span style="color:#dc2626">⛔ 下线 <b>${removed.length}</b></span>
+      <span style="color:#9ca3af">✔️ 未变 <b>${unchanged.length}</b></span>
+    </div>
+    ${sectionTable('新增产品', '#16a34a', '🆕', added, 'added')}
+    ${sectionTable('下线产品', '#dc2626', '⛔', removed, 'removed')}
+    ${sectionTable('未变化产品', '#9ca3af', '✔️', unchanged, 'unchanged')}
+    <div style="display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
+      <button class="btn btn-primary" onclick="saveDiscoveredProducts()">💾 确认变更</button>
+      <span style="font-size:12px;color:#9ca3af">新增产品默认禁用，下线产品将删除</span>
+      <button class="btn" style="margin-left:auto" onclick="closeModal('disc')">关闭</button>
+    </div>
+  </div>`;
+  modalBody('disc',t);
+  window._discoverResult={added,unchanged,removed};
+}
+
+async function saveDiscoveredProducts(){
+  const {added,unchanged,removed}=window._discoverResult||{};
+  if(!added?.length && !removed?.length){
+    toast('没有需要确认的变更','warn');
+    return;
+  }
+  const r=await api('/system/products/discover/save',{method:'PUT',body:JSON.stringify({added:added||[],removed:removed||[]})});
+  if(r.code===0){
+    toast(`已处理：新增 ${r.data?.saved?.length||0} 个，删除 ${r.data?.deleted?.length||0} 个`,'success');
+    closeModal('disc');
+  }else{
+    toast('保存失败: '+r.message,'error');
+  }
+  window._discoverResult=null;
+  await products();
+}
+
+function showProductForm(p){
+  // p is optional: if provided, we're editing (for manual products); otherwise creating
+  const isEdit=!!p;
+  const id=p?.id||'';
+  const name=p?.name||'';
+  const url=p?.entry_url||'';
+  const strat=p?.strategy||'standard';
+
+  _showModal('pform');
+  const isManual = p ? p.is_manual !== false : true; // default to true for new add
+  modalBody('pform',`<div style="padding:24px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:20px">${isEdit?'✏️ 编辑产品':'➕ 手动添加产品'}</div>
+    <div class="form-group"><label>产品名称 <span style="color:#dc2626">*</span></label>
+      <input id="pf-name" value="${escHtml(name)}" placeholder="如: WEB应用防护系统(WAF)" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
+    </div>
+    <div class="form-group" style="margin-top:14px"><label>入口URL <span style="color:#dc2626">*</span></label>
+      <input id="pf-url" value="${escHtml(url)}" placeholder="/update/wafIndex" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
+      <div style="font-size:11px;color:#9ca3af;margin-top:4px">绿盟升级站点相对路径，如 /update/wafIndex</div>
+    </div>
+    <div class="form-group" style="margin-top:14px"><label>采集策略</label>
+      <select id="pf-strat" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
+        <option value="standard" ${strat==='standard'?'selected':''}>标准（版本→包类型→升级包 3层）</option>
+        <option value="recursive" ${strat==='recursive'?'selected':''}>递归（自动发现深度，最多4层）</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button class="btn btn-primary" onclick="saveProductForm(${id})">💾 保存</button>
+      <button class="btn" onclick="closeModal('pform')">取消</button>
+    </div>
+  </div>`);
+}
+
+async function saveProductForm(id){
+  const name=document.getElementById('pf-name')?.value?.trim()||'';
+  const entry_url=document.getElementById('pf-url')?.value?.trim()||'';
+  const strategy=document.getElementById('pf-strat')?.value||'standard';
+  if(!name||!entry_url){toast('名称和URL不能为空','error');return;}
+  if(!entry_url.startsWith('/')){toast('URL必须以 / 开头','error');return;}
+  const body={name,entry_url,strategy,display_name:name};
+  const method=id?'PUT':'POST';
+  const path=id?`/system/products/${id}`:'/system/products';
+  const r=await api(path,{method,body:JSON.stringify(body)});
+  if(r.code===0){
+    toast(id?'已更新':'已添加','success');
+    closeModal('pform');
+    await products();
+  }else{
+    toast(r.message||'保存失败','error');
+  }
+}
+
+function cancelProductForm(){ closeModal('pform'); }
+function escHtml(s){
+  if(s==null)return'';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Inline product edit (row-level) ──────────────────────────────────────────
+let _editRowId = null; // currently editing row id
+
+function editProduct(id){
+  // Cancel any previous inline edit
+  if(_editRowId && _editRowId !== id){
+    cancelEditRow(_editRowId);
+  }
+  const row = document.getElementById('pr-' + id);
+  if(!row) return;
+  const products = window._allProducts || [];
+  const p = products.find(x => x.id === id);
+  if(!p) return;
+
+  _editRowId = id;
+  const isManual = p.is_manual;
+
+  row.innerHTML = `<td>${p.id}</td>
+    <td><span class="active-badge" style="font-size:11px;color:${p.is_active?'#16a34a':'#dc2626'}">${p.is_active?'● 启用':'● 禁用'}</span></td>
+    <td><input id="ef-name" value="${escHtml(p.name)}" ${isManual?'':'readonly'} style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;background:${isManual?'#fff':'#f3f4f6'}"></td>
+    <td><input id="ef-url" value="${escHtml(p.entry_url||'')}" ${isManual?'':'readonly'} style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;background:${isManual?'#fff':'#f3f4f6'}"></td>
+    <td>
+      <select id="ef-strat" style="padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
+        <option value="standard" ${p.strategy==='standard'?'selected':''}>标准</option>
+        <option value="recursive" ${p.strategy==='recursive'?'selected':''}>递归</option>
+      </select>
+    </td>
+    <td><span class="hlth-badge" style="color:${p.is_active?(_hlthColor(p.health_status||'unknown')):'#9ca3af'};font-size:12px">${p.is_active?'● '+(p.health_status||'unknown'):'已禁用'}</span></td>
+    <td><span style="font-size:12px;color:#666">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>
+    <td>
+      <button class="btn btn-sm btn-primary" onclick="saveEditRow(${id})">💾</button>
+      <button class="btn btn-sm" onclick="cancelEditRow(${id})">✕</button>
+    </td>`;
+  row.dataset.editing = '1';
+}
+
+function cancelEditRow(id){
+  _editRowId = null;
+  products(); // re-render full list
+}
+
+async function saveEditRow(id){
+  const name = document.getElementById('ef-name')?.value?.trim() || '';
+  const entry_url = document.getElementById('ef-url')?.value?.trim() || '';
+  const strategy = document.getElementById('ef-strat')?.value || 'standard';
+
+  if(!name || !entry_url){ toast('名称和URL不能为空','error'); return; }
+  if(!entry_url.startsWith('/')){ toast('URL必须以 / 开头','error'); return; }
+
+  const body = {strategy};
+  // Only include name/entry_url for manual products
+  const products = window._allProducts || [];
+  const p = products.find(x => x.id === id);
+  if(p?.is_manual){
+    body.name = name;
+    body.entry_url = entry_url;
+  }
+
+  const r = await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify(body)});
+  if(r.code === 0){
+    toast('已更新','success');
+    _editRowId = null;
+    await products();
+  } else {
+    toast(r.message || '保存失败','error');
+  }
+}
+
+// ── Settings ────────────────────────────────────────────────────────────────
+
+async function delProduct(id,name){
+  if(!confirm(`确定删除产品「${name}」？\n该操作将同时删除所有快照数据！`))return;
+  if(!confirm('再次确认：删除后无法恢复！'))return;
+  const r=await api(`/system/products/${id}`,{method:'DELETE'});
+  if(r.code===0){
+    toast('已删除','success');
+    await products();
+  }else{
+    toast(r.message||'删除失败','error');
+  }
+}
+
+async function collectProduct(id,mode){
+  const r=await api(`/system/products/${id}/collect`,{method:'POST',body:JSON.stringify({mode})});
+  toast(r.message||'已触发','success');
+}
+
 async function saveSettings(){
   const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
@@ -707,7 +1047,8 @@ async function saveSettings(){
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
     email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value};
   const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
-  toast(r.code===0?'配置已保存':'保存失败',r.code===0?'success':'error');}
+  toast(r.code===0?'配置已保存':'保存失败',r.code===0?'success':'error');
+}
 
 // ── Package Classification Settings ──
 async function _renderClassSettings(){
@@ -1046,6 +1387,41 @@ async function doChangePwd(){
   if(newPw!==cfm)return toast('两次新密码不一致','error');
   let r=await api('/auth/password',{method:'PUT',body:JSON.stringify({old_password:oldPw,new_password:newPw})});
   if(r.code===0){toast('密码已修改');closePwdModal();}else toast(r.message,'error');
+}
+function toggleSection(key){
+  const body=document.getElementById('sec-body-'+key);
+  const icon=document.getElementById('sec-icon-'+key);
+  if(!body)return;
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  icon.textContent=open?'▸':'▾';
+}
+
+async function confirmToggleActive(id,active,rowId){
+  if(!confirm(active?'确认要禁用该产品吗？':'确认要启用该产品吗？'))return;
+  const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});
+  if(r.code===0){
+    toast(active?'已启用':'已禁用','success');
+    // Update row in-place without full refresh
+    const row=document.getElementById('pr-'+id);
+    if(row){
+      row.style.opacity=active?'':'0.6';
+      // Update active badge
+      const badgeEl=row.querySelector('.active-badge');
+      if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'#16a34a':'#dc2626';}
+      // Update checkbox
+      const cb=row.querySelector('input[type="checkbox"]');
+      if(cb)cb.checked=active;
+      // Update health status
+      const hlthEl=row.querySelector('.hlth-badge');
+      if(hlthEl){hlthEl.textContent=active?'● ok':'已禁用';hlthEl.style.color=active?'#16a34a':'#9ca3af';}
+      // Update action buttons
+      const btns=row.querySelectorAll('[data-action]');
+      btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});
+    }
+  }else{
+    toast(r.message||'操作失败','error');
+  }
 }
 </script>
 </body>

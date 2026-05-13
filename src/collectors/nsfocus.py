@@ -72,6 +72,29 @@ PRODUCTS = {
     'UTS':  '/update/bsaUtsIndex',
 }
 
+# Legacy alias — all code imports PRODUCTS directly.
+# Replace with _get_products() from snapshot model for dynamic DB-driven lookup.
+def _get_products() -> dict:
+    """Return {name: entry_url} for all active nsfocus products from DB."""
+    from src.models.snapshot import list_sources
+    result = {}
+    for src in list_sources('nsfocus'):
+        if src.get('is_active') and src.get('entry_url'):
+            result[src['name']] = src['entry_url']
+    return result
+
+
+def _get_products_full() -> list[dict]:
+    """Return list of product dicts with all DB fields (id, name, entry_url, strategy, ...)."""
+    from src.models.snapshot import list_sources
+    return list_sources('nsfocus')
+
+
+def _get_source_config(product_name: str) -> dict | None:
+    """Return the DB row for a product by name, or None."""
+    from src.models.snapshot import get_source_by_name
+    return get_source_by_name(product_name)
+
 
 class NsfocusCollector(BaseCollector):
     source_type = 'nsfocus'
@@ -88,8 +111,10 @@ class NsfocusCollector(BaseCollector):
         items = []
         self._set_cookie(session_cookie)
         for name, url in PRODUCTS.items():
+            src = _get_source_config(name)
+            strategy = src.get('strategy', 'standard') if src else 'standard'
             try:
-                if name in ('RSAS', 'NF'):
+                if strategy == 'recursive':
                     p_items = self._collect_recursive(source_id, name, url, max_depth=4)
                 else:
                     p_items = self._collect_standard(source_id, name, url)

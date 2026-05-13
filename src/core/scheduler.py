@@ -12,7 +12,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from src.core.logger import get_logger
-from src.collectors.nsfocus import NsfocusCollector, SessionExpiredError, PRODUCTS
+from src.collectors.nsfocus import NsfocusCollector, SessionExpiredError, _get_products as _collector_products
 from src.detector.change import run_detection, get_new_for_subscription
 from src.notifiers.router import route_notifications, process_delayed_queue
 from src.models.user_session import get_active_sessions, update_status
@@ -21,6 +21,7 @@ from src.models.snapshot import (
     list_sources as list_content_sources,
     create_source as create_content_source,
     get_active_snapshots,
+    upsert_source,
 )
 from src.models.subscription import get_enabled_rules
 
@@ -58,7 +59,7 @@ _progress = {
     'current_product': '',
     'current_version': '',
     'products_done': 0,
-    'products_total': len(PRODUCTS),
+    'products_total': 0,   # updated dynamically at run time from DB
     'items_collected': 0,
     'total_new': 0,
     'total_rollback': 0,
@@ -125,7 +126,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         _progress.update({
             'active': True, 'mode': mode, 'phase': 'init',
             'current_product': '', 'current_version': '',
-            'products_done': 0, 'products_total': len(PRODUCTS),
+            'products_done': 0, 'products_total': len(_collector_products()),
             'items_collected': 0, 'total_new': 0, 'total_rollback': 0,
             'errors': [], 'started_at': datetime.utcnow().isoformat(),
             'finished_at': None, 'duration_s': 0,
@@ -145,7 +146,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 progress_callback(phase, {
                     'product': product, 'version': version,
                     'items': items, 'products_done': _progress['products_done'],
-                    'products_total': len(PRODUCTS),
+                    'products_total': len(_collector_products()),
                 })
             except Exception:
                 pass
@@ -200,11 +201,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 _last_run = datetime.utcnow()
                 return summary
 
-        # 2. Ensure content sources exist in DB
+        # 2. Ensure content sources exist in DB (bootstrap from PRODUCTS for backward compat)
         existing_sources = {s['name']: s for s in list_content_sources('nsfocus')}
-        for name in PRODUCTS:
+        for name, entry_url in _collector_products().items():
             if name not in existing_sources:
-                create_content_source(name, 'nsfocus', category='security')
+                upsert_source(name, 'nsfocus', entry_url, 'standard', category='security')
         existing_sources = {s['name']: s for s in list_content_sources('nsfocus')}
 
         # 3. Collect
@@ -220,7 +221,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             all_items = _collect_full(existing_sources, sessions, cookie, _emit)
 
         with _progress_lock:
-            _progress['products_done'] = len(PRODUCTS)
+            _progress['products_done'] = len(existing_sources)
 
         if not all_items:
             summary['status'] = 'warning' if summary['errors'] else 'ok'
@@ -340,7 +341,7 @@ def _collect_quick(existing_sources: dict, emit) -> list:
             ))
 
     all_items = []
-    products = list(PRODUCTS.items())
+    products = list(_collector_products().items())
     done = 0
 
     for name, url in products:
@@ -390,7 +391,7 @@ def _collect_quick(existing_sources: dict, emit) -> list:
 def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> list:
     """Full collection: traverse all detail pages for all products."""
     all_items = []
-    products = list(PRODUCTS.items())
+    products = list(_collector_products().items())
     done = 0
 
     for name, url in products:
@@ -399,8 +400,9 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         if name not in existing_sources:
             continue
         src = existing_sources[name]
+        strategy = src.get('strategy', 'standard')
         try:
-            if name in ('RSAS', 'NF'):
+            if strategy == 'recursive':
                 items = _collector._collect_recursive(src['id'], name, url, max_depth=4)
             else:
                 items = _collector._collect_standard(src['id'], name, url)

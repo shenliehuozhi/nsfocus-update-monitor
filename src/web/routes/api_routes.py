@@ -550,12 +550,12 @@ bp_options = Blueprint('options', __name__, url_prefix='/api/options')
 @bp_options.route('/products', methods=['GET'])
 @require_auth
 def get_products():
-    """Get list of monitored products from snapshots."""
+    """Get list of monitored products from content_sources."""
     from src.models.database import query
-    rows = query("SELECT DISTINCT product_name FROM snapshots WHERE status='active' ORDER BY product_name")
-    products = [r['product_name'] for r in rows]
+    rows = query("SELECT name FROM content_sources WHERE is_active=1 ORDER BY name")
+    products = [r['name'] for r in rows]
     if not products:
-        products = ['WAF', 'IPS', 'IDS', 'RSAS', 'NF', 'UTS']
+        products = ['WEB应用防护系统(WAF)', '网络入侵防护系统(IPS)', '网络入侵检测系统(IDS)', '远程安全评估系统(RSAS)', '下一代防火墙(NF/SG)', '绿盟综合威胁探针(UTS)']
     return jsonify({'code': 0, 'data': products})
 
 

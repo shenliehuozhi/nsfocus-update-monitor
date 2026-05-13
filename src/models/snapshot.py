@@ -39,11 +39,17 @@ def get_source_by_name(name: str) -> dict | None:
     return rows[0] if rows else None
 
 
+def get_source_by_url(entry_url: str) -> dict | None:
+    from src.models.database import query
+    rows = query("SELECT * FROM content_sources WHERE entry_url = ?", (entry_url,))
+    return rows[0] if rows else None
+
+
 def list_sources(source_type: str = None) -> list:
     from src.models.database import query
     if source_type:
-        return query("SELECT * FROM content_sources WHERE source_type = ? ORDER BY name", (source_type,))
-    return query("SELECT * FROM content_sources ORDER BY name")
+        return query("SELECT * FROM content_sources WHERE source_type = ? ORDER BY id", (source_type,))
+    return query("SELECT * FROM content_sources ORDER BY id")
 
 
 def update_source_health(source_id: int, status: str, last_collected_at: str = None):
@@ -68,6 +74,151 @@ def touch_active_snapshots(source_id: int):
 def set_source_active(source_id: int, active: bool):
     from src.models.database import execute
     execute("UPDATE content_sources SET is_active = ? WHERE id = ?", (int(active), source_id))
+
+
+def update_source(source_id: int, *, name: str = None, entry_url: str = None,
+                  strategy: str = None, is_active: bool = None, category: str = None,
+                  display_name: str = None):
+    """Update one or more fields of a content source. Only provided fields are updated."""
+    from src.models.database import execute
+    fields, vals = [], []
+    if name is not None:
+        fields.append("name = ?")
+        vals.append(name)
+    if entry_url is not None:
+        fields.append("entry_url = ?")
+        vals.append(entry_url)
+    if strategy is not None:
+        fields.append("strategy = ?")
+        vals.append(strategy)
+    if is_active is not None:
+        fields.append("is_active = ?")
+        vals.append(int(is_active))
+    if category is not None:
+        fields.append("category = ?")
+        vals.append(category)
+    if display_name is not None:
+        fields.append("display_name = ?")
+        vals.append(display_name)
+    if not fields:
+        return
+    vals.append(source_id)
+    execute(f"UPDATE content_sources SET {', '.join(fields)} WHERE id = ?", tuple(vals))
+
+
+def upsert_source(name: str, source_type: str, entry_url: str, strategy: str,
+                  created_by: int = None, category: str = 'security',
+                  display_name: str = None, is_active: bool = True,
+                  is_manual: bool = False) -> int:
+    """Insert or update a content source by name. Returns source id."""
+    from src.models.database import execute, query
+    existing = query("SELECT id FROM content_sources WHERE name = ?", (name,))
+    if existing:
+        source_id = existing[0]['id']
+        execute(
+            "UPDATE content_sources SET entry_url=?, strategy=?, source_type=?, category=?, display_name=?, is_active=?, is_manual=? WHERE id=?",
+            (entry_url, strategy, source_type, category, display_name, int(is_active), int(is_manual), source_id)
+        )
+        return source_id
+    return execute(
+        "INSERT INTO content_sources (name, source_type, entry_url, strategy, category, created_by, display_name, is_active, is_manual) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, source_type, entry_url, strategy, category, created_by, display_name, int(is_active), int(is_manual))
+    )
+
+
+def delete_source(source_id: int):
+    """Delete a content source and all its snapshots."""
+    from src.models.database import execute
+    execute("DELETE FROM snapshots WHERE source_id = ?", (source_id,))
+    execute("DELETE FROM content_sources WHERE id = ?", (source_id,))
+
+
+def discover_products_from_index() -> list[dict]:
+    """Fetch the NSFOCUS update index page and extract all product links.
+
+    Returns list of dicts: [{'name': str, 'entry_url': str, 'display_name': str}, ...]
+    The entry_url is the relative path (e.g. '/update/wafIndex').
+    The display_name is the Chinese name extracted from the page text.
+    """
+    import requests, re
+    from bs4 import BeautifulSoup
+
+    resp = requests.get('https://update.nsfocus.com/', timeout=30,
+                        headers={'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'})
+    resp.raise_for_status()
+    # Always decode as UTF-8, replacing broken chars; GBK fallback no longer needed
+    if resp.encoding != 'utf-8':
+        resp.encoding = 'utf-8'
+    soup = BeautifulSoup(resp.text, 'html.parser')
+
+    products = []
+    # The software upgrade section contains links in the format /update/[xxx]
+    for a in soup.find_all('a', href=True):
+        href = a['href']
+        if not href.startswith('/update/'):
+            continue
+        # Skip non-product paths (these are navigation/selector pages, not products)
+        path = href.split('?')[0].rstrip('/')
+        if path in ('/update', '/update/'):
+            continue
+        # Skip selector/navigation paths that are not actual products
+        seg = path.split('/')[-1].lower()
+        if seg in ('prolist', 'selectpro') or seg.startswith('selectpro'):
+            continue
+        raw_text = a.get_text(strip=True)
+        # Skip entries with empty text (these are UI fragments, not products)
+        if not raw_text:
+            continue
+        display_name = raw_text  # Chinese name from page text
+        if not display_name:
+            # Fallback: derive name from path
+            seg = path.split('/')[-1]
+            for prefix in ('list', 'index', 'detail', 'waf', 'ips', 'ids', 'nf', 'uts', 'bsa'):
+                if seg.lower().startswith(prefix):
+                    seg = seg[len(prefix):]
+            display_name = seg.strip('_/-').title()
+        products.append({'name': display_name, 'entry_url': path, 'display_name': display_name})
+
+    # Deduplicate by entry_url, keep first (longest text = most likely Chinese name)
+    seen, result = set(), []
+    for p in products:
+        if p['entry_url'] not in seen:
+            seen.add(p['entry_url'])
+            result.append(p)
+    return result
+
+
+def detect_product_strategy(session_cookie: str, entry_url: str) -> str:
+    """Detect whether a product uses 'standard' or 'recursive' strategy.
+
+    Fetches the product's start page and checks if it has a 3-level
+    structure (version → package type → table) or variable depth.
+    Returns 'standard' or 'recursive'.
+    """
+    import requests, re
+    from bs4 import BeautifulSoup
+
+    base = 'https://update.nsfocus.com'
+    full_url = base + entry_url
+
+    s = requests.Session()
+    s.cookies.set('PHPSESSID', session_cookie, domain='update.nsfocus.com')
+
+    resp = s.get(full_url, timeout=30)
+    html = resp.text
+
+    # Recursive products (RSAS/NF) have links that don't follow strict version→pkg hierarchy
+    # Standard products have distinct "package type" links (sys/rule/nti/...)
+    pkg_type_indicators = {'sys', 'rule', 'nti', 'av', 'apprule', 'url', 'wcs', 'judge', 'geo'}
+    link_texts = set()
+    for a in BeautifulSoup(html, 'html.parser').find_all('a', href=True):
+        link_texts.add(a.get_text(strip=True).lower())
+
+    matched = link_texts & pkg_type_indicators
+    if matched:
+        return 'standard'
+    return 'recursive'
 
 
 # ── Snapshot ─────────────────────────────────────────────────
