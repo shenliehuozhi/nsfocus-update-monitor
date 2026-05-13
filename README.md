@@ -22,7 +22,7 @@ python run.py
 # 访问 http://127.0.0.1:9999
 ```
 
-详细操作见 [用户手册](docs/USER_MANUAL.md)。
+详细操作见 [用户手册](docs/用户手册.md)。
 
 ## 技术栈
 
@@ -36,13 +36,13 @@ python run.py
 
 | 文档 | 说明 |
 |------|------|
-| [用户手册](docs/USER_MANUAL.md) | 功能说明 + 参数配置 + FAQ |
-| [需求说明](docs/REQUIREMENTS.md) | 业务需求 |
-| [架构设计](docs/ARCHITECTURE.md) | 系统架构 |
-| [数据模型](docs/DATA_MODEL.md) | 数据库表结构 |
-| [API 设计](docs/API.md) | REST API 接口 |
-| [详细设计](docs/DETAILED_DESIGN.md) | 函数级设计文档 |
-| [部署运维](docs/DEPLOYMENT.md) | 部署指南 |
+| [用户手册](docs/用户手册.md) | 功能说明 + 参数配置 + FAQ |
+| [需求说明](docs/需求说明.md) | 业务需求 |
+| [架构设计](docs/系统架构.md) | 系统架构 |
+| [数据模型](docs/数据模型.md) | 数据库表结构 |
+| [API 设计](docs/API接口文档.md) | REST API 接口 |
+| [详细设计](docs/详细设计.md) | 函数级设计文档 |
+| [部署运维](docs/部署运维.md) | 部署指南 |
 
 ## 环境变量
 
