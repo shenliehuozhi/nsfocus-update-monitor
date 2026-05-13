@@ -161,12 +161,13 @@ class UnifiedContentItem:
 #### 2.1.5 表格解析算法（_extract_table_items）
 
 ```
-输入: html, source_id, product_name, version_branch, package_type
-输出: list[UnifiedContentItem]
+输入: html, source_id, product_name, version_branch, package_type, page_url
+输出: list[UnifiedContentItem]（每个item已带page_hash）
 
 算法:
-1. soup.find('table') → table
-2. FOR EACH <tr>:
+1. 计算 page_hash = md5(html[:50000])  ← 入口统一计算，无论谁调用
+2. soup.find_all('table') → 找第一个含"名称"+"MD5"的table（跳过导航table）
+3. FOR EACH <tr>:
    a. 提取所有 <td>/<th> 文本
    b. 特殊处理: <a href="/update/downloads/id/N"> → 提取download_id
    c. 描述行: 使用 '\n' 分隔符保留换行
@@ -174,14 +175,38 @@ class UnifiedContentItem:
    e. 当遇到新"名称："行或检测到完整包(file_name+md5_hash):
       - _build_item(accumulated) → 输出
       - 重置累积器
-3. 处理最后残留的累积器
-4. RETURN items
+4. 出口: for it in items: it.page_hash = page_hash  ← 每个item打上hash
+5. RETURN items
 ```
 
 **关键细节**:
 - 使用 `cell.get_text(' ', strip=True)` 提取文本**但**保留 `<a>` 标签的完整文本（含"名称："前缀）
 - 描述行使用 `cell.get_text('\n', strip=True)` 保留换行
 - `_parse_kv_row` 使用 `re.DOTALL` 标志匹配多行描述
+- **page_hash 在入口统一计算、出口统一打标，full/quick 模式均自动生效**
+
+#### 2.1.6 page_hash 生命周期 🔴
+
+```
+┌─ 采集(any mode) ──────────────────────────────────────────┐
+│ _extract_table_items(html)                                │
+│   → page_hash = md5(html[:50000])                         │
+│   → items[i].page_hash = page_hash                        │
+│                                                           │
+│ quick scan "changed path":                                │
+│   UPDATE snapshots SET prev_page_hash=page_hash,          │
+│     page_hash=? WHERE source_url=?  ← 批量更新该URL全部快照│
+│                                                           │
+│ quick scan "unchanged path":                              │
+│   同上 UPDATE（保证prev始终有值）                           │
+│                                                           │
+│ 下次扫描:                                                  │
+│   SELECT ... WHERE page_hash = ?  ← 匹配→unchanged(快)     │
+│   不匹配→changed(慢，重新解析+更新hash)                     │
+└───────────────────────────────────────────────────────────┘
+```
+
+⚠️ **首次部署后 page_hash 全空，第一次扫描全部"changed"填充hash。第二次起unchanged路径生效，速度大幅提升。**
 
 #### 2.1.6 键值对解析（_parse_kv_row）
 
