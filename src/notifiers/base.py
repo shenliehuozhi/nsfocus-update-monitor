@@ -175,7 +175,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
         lines.append(f'📥 下载地址: [{msg.file_name}]({msg.download_url})')
 
     if msg.source_url:
-        lines.append(f'🔗 更新详情:请在线查看 [详情页]({msg.source_url})')
+        lines.append(f'🔗 原始页面:[详情页，需登录查看]({msg.source_url})')
 
     return '\n'.join(lines)
 
@@ -223,7 +223,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if msg.download_url:
         extra_items.append(f'📥 下载地址: [{msg.file_name}]({msg.download_url})')
     if msg.source_url:
-        extra_items.append(f'🔗 更新详情:请在线查看 [详情页]({msg.source_url})')
+        extra_items.append(f'🔗 原始页面:[详情页，需登录查看]({msg.source_url})')
 
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
@@ -363,7 +363,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     if msg.source_url:
         detail_link = f'''
         <tr><td style="padding:8px 0 0 0">
-            <a href="{msg.source_url}" style="color:{color};text-decoration:none;font-size:13px">🔗 更新详情:请在线查看</a>
+            <a href="{msg.source_url}" style="color:{color};text-decoration:none;font-size:13px">🔗 原始页面:[详情页，需登录查看]</a>
         </td></tr>
         '''
 

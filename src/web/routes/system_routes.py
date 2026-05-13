@@ -77,6 +77,9 @@ def tail_logs():
     if level_filter in ('DEBUG', 'INFO', 'WARNING', 'ERROR'):
         lines = [l for l in lines if f'[{level_filter}]' in l]
 
+    # Newest first for display
+    lines.reverse()
+
     # Get current log level for display
     from src.core.logger import get_current_level
     current_level = get_current_level()

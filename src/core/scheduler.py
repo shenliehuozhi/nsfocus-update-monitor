@@ -175,6 +175,31 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         cookie = sessions[0]['cookie_value']
         _collector._set_cookie(cookie)
 
+        # Pre-validate session before starting collection.
+        # Avoids the scenario where an expired session causes a product
+        # to collect 0 items → all its snapshots marked rollback.
+        if not _collector.verify_session():
+            logger.warning('Pre-flight session check failed, trying backup...')
+            update_status(sessions[0]['id'], 'expired')
+            if len(sessions) > 1:
+                cookie = sessions[1]['cookie_value']
+                _collector._set_cookie(cookie)
+                if not _collector.verify_session():
+                    logger.warning('Backup session also invalid')
+                    update_status(sessions[1]['id'], 'expired')
+                    summary['status'] = 'error'
+                    summary['errors'].append('All sessions expired — collection aborted')
+                    _is_running = False
+                    _last_run = datetime.utcnow()
+                    return summary
+                logger.info('Switched to backup session')
+            else:
+                summary['status'] = 'error'
+                summary['errors'].append('Session expired — collection aborted')
+                _is_running = False
+                _last_run = datetime.utcnow()
+                return summary
+
         # 2. Ensure content sources exist in DB
         existing_sources = {s['name']: s for s in list_content_sources('nsfocus')}
         for name in PRODUCTS:

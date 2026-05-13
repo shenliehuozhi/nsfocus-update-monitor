@@ -200,11 +200,12 @@ class NsfocusCollector(BaseCollector):
         from src.models.database import query as snap_query
         items = []
 
-        # Get distinct page URLs for this source's active snapshots
+        # Get distinct page URLs for this source's snapshots (all statuses).
         rows = snap_query(
             """SELECT DISTINCT source_url, version_branch, package_type
                FROM snapshots
-               WHERE source_id = ? AND source_url != '' AND status = 'active'
+               WHERE source_id = ? AND source_url != ''
+                 AND status IN ('active', 'rollback', 'rollback_pending')
                ORDER BY source_url""",
             (source_id,)
         )
@@ -288,6 +289,10 @@ class NsfocusCollector(BaseCollector):
                             source_url=url,
                         )
                         items.append(item)
+                    # Update prev_page_hash even for unchanged pages (user wants "旧→新" always)
+                    from src.models.database import execute
+                    execute("UPDATE snapshots SET prev_page_hash=page_hash, page_hash=? WHERE source_id=? AND source_url=?",
+                            (page_hash, source_id, url))
                     continue
 
                 changed += 1
@@ -297,6 +302,13 @@ class NsfocusCollector(BaseCollector):
                 table_items = self._extract_table_items(
                     html, source_id, product_name, ver, pkg, page_url=url)
                 items.extend(table_items)
+                # Also update page_hash on ALL snapshots for this URL,
+                # so the "unchanged path" works even if items don't match
+                # existing snapshots (due to md5 changes on the page).
+                from src.models.database import execute
+                execute("""UPDATE snapshots SET prev_page_hash = page_hash,
+                    page_hash = ? WHERE source_id=? AND source_url=?""",
+                        (page_hash, source_id, url))
 
             except SessionExpiredError:
                 raise
@@ -310,6 +322,13 @@ class NsfocusCollector(BaseCollector):
 
     def _set_cookie(self, cookie: str):
         self.session.cookies.set('PHPSESSID', cookie, domain='update.nsfocus.com')
+
+    def verify_session(self) -> bool:
+        try:
+            resp = self.session.get(f'{BASE_URL}/update/wafIndex', timeout=15, allow_redirects=True)
+            return '/portal/index' not in resp.url and resp.status_code == 200
+        except Exception:
+            return False
 
     def _delay(self, skip: bool = False):
         if skip:
@@ -366,6 +385,8 @@ class NsfocusCollector(BaseCollector):
     def _extract_table_items(self, html: str, source_id: int, product_name: str,
                              version_branch: str, package_type: str,
                              page_url: str = '') -> list:
+        import hashlib
+        page_hash = hashlib.md5(html[:50000].encode()).hexdigest()
         items = []
         soup = BeautifulSoup(html, 'html.parser')
         table = soup.find('table')
@@ -434,6 +455,8 @@ class NsfocusCollector(BaseCollector):
                                     source_url=page_url)
             items.append(item)
 
+        for it in items:
+            it.page_hash = page_hash
         return items
 
     def _parse_kv_row(self, text: str) -> Optional[dict]:
