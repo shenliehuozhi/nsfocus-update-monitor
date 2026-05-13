@@ -322,6 +322,8 @@ def update_product(source_id: int):
     is_active = body.get('is_active')
     category = body.get('category')
     display_name = body.get('display_name')
+    package_type = body.get('package_type')
+    force_type = body.get('force_type')
 
     if name is not None and not name.strip():
         return {'code': 400, 'message': '产品名称不能为空'}, 400
@@ -338,7 +340,9 @@ def update_product(source_id: int):
                   strategy=strategy,
                   is_active=bool(is_active) if is_active is not None else None,
                   category=category,
-                  display_name=display_name)
+                  display_name=display_name,
+                  package_type=package_type,
+                  force_type=force_type)
 
     _audit('product_update', {'source_id': source_id, 'fields': list(body.keys())})
     return {'code': 0, 'message': '已更新'}
@@ -440,14 +444,16 @@ def save_discovered_products():
         name = p.get('name', '').strip()
         entry_url = p.get('entry_url', '').strip()
         display_name = p.get('display_name', name)
+        pkg_type = p.get('package_type')  # may be a JSON string or list
         if not name or not entry_url:
             continue
         strategy = _auto_detect_strategy(entry_url)
         sid = upsert_source(name, 'nsfocus', entry_url, strategy,
                            created_by=g.user_id, display_name=display_name,
-                           is_active=False, is_manual=False)
+                           is_active=False, is_manual=False, package_type=pkg_type)
         saved.append({'id': sid, 'name': name, 'entry_url': entry_url,
-                      'strategy': strategy, 'display_name': display_name})
+                      'strategy': strategy, 'display_name': display_name,
+                      'package_type': pkg_type})
 
     for p in removed:
         entry_url = p.get('entry_url', '').strip()
@@ -521,6 +527,8 @@ def _product_safe(p: dict) -> dict:
         'category': p.get('category', ''),
         'is_active': bool(p.get('is_active', 1)),
         'is_manual': bool(p.get('is_manual', 1)),
+        'package_type': p.get('package_type') or '',
+        'force_type': p.get('force_type') or '',
         'health_status': p.get('health_status', 'unknown'),
         'last_collected_at': p.get('last_collected_at'),
         'created_at': p.get('created_at'),

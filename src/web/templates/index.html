@@ -696,10 +696,6 @@ async function settings(){
 
     <button class="btn btn-primary" onclick="saveSettings()">保存配置</button>
   </div></div>
-  ${await _renderClassSettings()}`;
-
-  // Load classification config after render
-  _loadClassConfig();
 }
 
 // ── Product Management ──
@@ -747,6 +743,7 @@ async function products(){
           <th>产品名称</th>
           <th>入口URL</th>
           <th>策略</th>
+          <th>包类型</th>
           <th>健康状态</th>
           <th>最近采集</th>
           <th style="width:180px">操作</th>
@@ -780,8 +777,88 @@ function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){c
 
 function _hlthColor(s){return{'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[s]||'#6b7280';}
 
+function fmtPkgTypes(v){
+  if(!v) return '';
+  try{const a=JSON.parse(v);return a.join(', ');}catch{return v;}
+}
+
+function editPkgType(id){
+  const prods=window._allProducts||[];
+  const p=prods.find(x=>x.id===id);
+  if(!p){toast('产品不存在','error');return;}
+  const types=fmtPkgTypes(p.package_type)||'';
+  _showModal('pkgtype');
+  modalBody('pkgtype',`<div style="padding:24px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span style="font-weight:400;font-size:12px;color:#666">「${escHtml(p.name)}」</span></div>
+    <div class="form-group"><label>包类型列表 <span style="color:#dc2626">*</span>
+      <div style="font-weight:400;font-size:11px;color:#9ca3af;margin-top:2px">采集时只跟踪这些类型的升级包，多个用逗号分隔。如：sys,rule,av,nti</div>
+    </label>
+      <input id="pt-types" value="${escHtml(types)}" placeholder="sys,rule,av,nti" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
+    </div>
+    <div class="form-group" style="margin-top:14px"><label>强制覆盖 <span style="color:#9ca3af;font-weight:400">(优先级高于关键词判断)</span></label>
+      <div id="pt-overrides"></div>
+      <button class="btn btn-xs btn-outline" style="margin-top:8px" onclick="addOverrideRow()">+ 添加覆盖规则</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:20px">
+      <button class="btn btn-primary" onclick="savePkgType(${id})">💾 保存</button>
+      <button class="btn" onclick="closeModal('pkgtype')">取消</button>
+    </div>
+  </div>`);
+  // Load existing overrides
+  try{
+    const ov=(JSON.parse(p.force_type||'{}'));
+    Object.entries(ov).forEach(([k,v])=>{addOverrideRow(k,v);});
+  }catch{e}
+  window._ptOverrides={};
+}
+
+let _ptOverrideIdx=0;
+function addOverrideRow(key,val){
+  key=key||'';
+  val=val||'auto';
+  const container=document.getElementById('pt-overrides');
+  if(!container)return;
+  const id='pto'+(_ptOverrideIdx++);
+  const div=document.createElement('div');
+  div.style='display:flex;gap:6px;align-items:center;margin-bottom:6px';
+  div.innerHTML=`<input value="${escHtml(key)}" placeholder="规则名称（如 IDS|rule）" style="flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px" onchange="updateOverride('${id}',this.value)">
+    <select style="padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
+      <option value="auto" ${val==='auto'?'selected':''}>自动</option>
+      <option value="full" ${val==='full'?'selected':''}>全量</option>
+      <option value="incremental" ${val==='incremental'?'selected':''}>增量</option>
+    </select>
+    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>`;
+  div.dataset.key=id;
+  window._ptOverrides[id]={key,val};
+  div.querySelector('select').onchange=function(){window._ptOverrides[id].val=this.value;};
+  container.appendChild(div);
+}
+
+function updateOverride(id,key){if(window._ptOverrides[id])window._ptOverrides[id].key=key;}
+
+async function savePkgType(id){
+  const types=document.getElementById('pt-types')?.value?.trim()||'';
+  const pkg_type=types?JSON.stringify(types.split(',').map(s=>s.trim()).filter(Boolean)):null;
+  // Build force_type
+  const ov={};
+  if(window._ptOverrides){
+    Object.values(window._ptOverrides).forEach(({key,val})=>{
+      if(key&&val&&val!=='auto')ov[key]=val;
+    });
+  }
+  const force_type=Object.keys(ov).length?JSON.stringify(ov):null;
+  const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({package_type:pkg_type,force_type})});
+  if(r.code===0){
+    toast('包类型已保存','success');
+    closeModal('pkgtype');
+    await products();
+  }else{
+    toast(r.message||'保存失败','error');
+  }
+}
+
 function _renderProductRows(prods){
-  if(!prods.length) return `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
+  if(!prods.length) return `<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
   let h='';
   for(const p of prods){
     const last=p.last_collected_at?fmtTZ(p.last_collected_at,true):'—';
@@ -799,6 +876,7 @@ function _renderProductRows(prods){
       <td><strong>${escHtml(p.name)}</strong></td>
       <td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td>
       <td>${stratBadge}</td>
+      <td><a href="javascript:void(0)" onclick="editPkgType(${p.id})" title="点击编辑包类型" style="color:#7c3aed;font-size:12px;text-decoration:none">${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
       <td><span class="hlth-badge" style="color:${p.is_active?(hlthColor):'#9ca3af'};font-size:12px">${p.is_active?'● '+hlth:'已禁用'}</span></td>
       <td><span style="font-size:12px;color:#666">${last}</span></td>
       <td>
@@ -980,6 +1058,7 @@ function editProduct(id){
         <option value="recursive" ${p.strategy==='recursive'?'selected':''}>递归</option>
       </select>
     </td>
+    <td><input id="ef-pkgtype" value="${escHtml(p.package_type||'')}" placeholder="sys,rule,av,nti..." style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12px"></td>
     <td><span class="hlth-badge" style="color:${p.is_active?(_hlthColor(p.health_status||'unknown')):'#9ca3af'};font-size:12px">${p.is_active?'● '+(p.health_status||'unknown'):'已禁用'}</span></td>
     <td><span style="font-size:12px;color:#666">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>
     <td>
@@ -998,15 +1077,16 @@ async function saveEditRow(id){
   const name = document.getElementById('ef-name')?.value?.trim() || '';
   const entry_url = document.getElementById('ef-url')?.value?.trim() || '';
   const strategy = document.getElementById('ef-strat')?.value || 'standard';
+  const package_type = document.getElementById('ef-pkgtype')?.value?.trim() || '';
 
   if(!name || !entry_url){ toast('名称和URL不能为空','error'); return; }
   if(!entry_url.startsWith('/')){ toast('URL必须以 / 开头','error'); return; }
 
-  const body = {strategy};
+  const body = {strategy, package_type};
   // Only include name/entry_url for manual products
-  const products = window._allProducts || [];
-  const p = products.find(x => x.id === id);
-  if(p?.is_manual){
+  const _prods = window._allProducts || [];
+  const _p = _prods.find(x => x.id === id);
+  if(_p?.is_manual){
     body.name = name;
     body.entry_url = entry_url;
   }
@@ -1048,96 +1128,6 @@ async function saveSettings(){
     email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value};
   const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
   toast(r.code===0?'配置已保存':'保存失败',r.code===0?'success':'error');
-}
-
-// ── Package Classification Settings ──
-async function _renderClassSettings(){
-  return `<div class="card"><div class="card-hd">📦 包类型分类 <span style="font-weight:400;font-size:12px;color:var(--muted)">全量/增量判定规则</span></div>
-    <div class="card-bd">
-      <div class="form-group"><label>全量包关键词 <span style="font-weight:400;font-size:10px;color:var(--muted)">(一行一个，包描述中包含即判定为全量)</span></label>
-        <textarea id="cls-keywords" rows="3" style="width:100%;border:1px solid #d1d5db;border-radius:7px;padding:8px 12px;font-size:13px;font-family:inherit"></textarea>
-      </div>
-      <div class="form-group"><label>类型覆盖规则 <span style="font-weight:400;font-size:10px;color:var(--muted)">(优先级高于关键词，'自动'=关键词判断)</span></label>
-        <div id="cls-overrides"></div>
-        <button class="btn btn-xs btn-outline mt8" onclick="addOverride()">+ 添加覆盖</button>
-      </div>
-      <button class="btn btn-primary" onclick="saveClassConfig()">保存分类配置</button>
-    </div></div>`;
-}
-
-let _knownTypes=[];
-async function _loadClassConfig(){
-  const r=await api('/settings/classification');
-  if(r.code!==0)return;
-  const cfg=r.data.config||{};
-  _knownTypes=r.data.known_types||[];
-
-  // Fill keywords
-  const kwEl=document.getElementById('cls-keywords');
-  if(kwEl)kwEl.value=(cfg.full_keywords||['全量','完整包','离线升级包','离线包']).join('\n');
-
-  // Fill overrides
-  const container=document.getElementById('cls-overrides');
-  if(!container)return;
-  const overrides=cfg.overrides||{};
-
-  // Group known types by product for dropdowns
-  let products=[...new Set(_knownTypes.map(t=>t.product))].sort();
-
-  container.innerHTML='';
-  Object.entries(overrides).forEach(([key,val])=>{
-    let [prod,type]=key.split('|');
-    addOverrideRow(prod,type,val);
-  });
-  // Add empty rows for known types without overrides
-  _knownTypes.forEach(t=>{
-    let key=`${t.product}|${t.type}`;
-    if(!overrides[key])addOverrideRow(t.product,t.type,'auto');
-  });
-}
-
-function addOverrideRow(prod,type,cls){
-  let products=[...new Set(_knownTypes.map(t=>t.product))].sort();
-  let prodOpts=products.map(p=>`<option value="${p}" ${p===prod?'selected':''}>${p}</option>`).join('');
-  let types=_knownTypes.filter(t=>t.product===prod).map(t=>t.type);
-  let typeOpts=types.map(t=>`<option value="${t}" ${t===type?'selected':''}>${typeCN(t)}(${t})</option>`).join('');
-  if(!typeOpts && type)typeOpts=`<option value="${type}">${typeCN(type)}(${type})</option>`;
-  let clsOpts=['auto','full','incremental'].map(c=>`<option value="${c}" ${c===cls?'selected':''}>${{auto:'自动',full:'全量',incremental:'增量'}[c]}</option>`).join('');
-  let row=document.createElement('div');
-  row.style.cssText='display:flex;gap:6px;margin-bottom:4px;align-items:center';
-  row.innerHTML=`<select class="cls-prod" onchange="onClsProdChange(this)" style="flex:1;min-width:0">${prodOpts}</select><select class="cls-type" style="flex:1;min-width:0">${typeOpts}</select><select class="cls-val" style="flex:0 0 100px">${clsOpts}</select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
-  document.getElementById('cls-overrides').appendChild(row);
-}
-
-function addOverride(){
-  let products=[...new Set(_knownTypes.map(t=>t.product))].sort();
-  let prodOpts=products.map(p=>`<option>${p}</option>`).join('');
-  let row=document.createElement('div');
-  row.style.cssText='display:flex;gap:6px;margin-bottom:4px;align-items:center';
-  row.innerHTML=`<select class="cls-prod" onchange="onClsProdChange(this)" style="flex:1;min-width:0">${prodOpts}</select><select class="cls-type" style="flex:1;min-width:0"></select><select class="cls-val" style="flex:0 0 100px"><option value="auto">自动</option><option value="full">全量</option><option value="incremental">增量</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
-  document.getElementById('cls-overrides').appendChild(row);
-  onClsProdChange(row.querySelector('.cls-prod'));
-}
-
-function onClsProdChange(sel){
-  let prod=sel.value;
-  let typeSel=sel.parentElement.querySelector('.cls-type');
-  let types=_knownTypes.filter(t=>t.product===prod).map(t=>t.type);
-  typeSel.innerHTML=types.map(t=>`<option value="${t}">${typeCN(t)}(${t})</option>`).join('');
-}
-
-async function saveClassConfig(){
-  let keywords=(document.getElementById('cls-keywords')?.value||'').split('\n').map(s=>s.trim()).filter(Boolean);
-  let overrides={};
-  document.querySelectorAll('#cls-overrides > div').forEach(row=>{
-    let prod=row.querySelector('.cls-prod')?.value;
-    let type=row.querySelector('.cls-type')?.value;
-    let cls=row.querySelector('.cls-val')?.value;
-    if(prod&&type&&cls&&cls!=='auto')overrides[prod+'|'+type]=cls;
-  });
-  let data={full_keywords:keywords,overrides};
-  let r=await api('/settings/classification',{method:'PUT',body:JSON.stringify(data)});
-  toast(r.code===0?'分类配置已保存':r.message||'保存失败',r.code===0?'success':'error');
 }
 
 // ── Manual Collect ──

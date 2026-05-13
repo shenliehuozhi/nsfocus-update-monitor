@@ -78,7 +78,8 @@ def set_source_active(source_id: int, active: bool):
 
 def update_source(source_id: int, *, name: str = None, entry_url: str = None,
                   strategy: str = None, is_active: bool = None, category: str = None,
-                  display_name: str = None):
+                  display_name: str = None, package_type: str = None,
+                  force_type: str = None):
     """Update one or more fields of a content source. Only provided fields are updated."""
     from src.models.database import execute
     fields, vals = [], []
@@ -100,6 +101,12 @@ def update_source(source_id: int, *, name: str = None, entry_url: str = None,
     if display_name is not None:
         fields.append("display_name = ?")
         vals.append(display_name)
+    if package_type is not None:
+        fields.append("package_type = ?")
+        vals.append(package_type)
+    if force_type is not None:
+        fields.append("force_type = ?")
+        vals.append(force_type)
     if not fields:
         return
     vals.append(source_id)
@@ -109,21 +116,22 @@ def update_source(source_id: int, *, name: str = None, entry_url: str = None,
 def upsert_source(name: str, source_type: str, entry_url: str, strategy: str,
                   created_by: int = None, category: str = 'security',
                   display_name: str = None, is_active: bool = True,
-                  is_manual: bool = False) -> int:
+                  is_manual: bool = False, package_type: str = None,
+                  force_type: str = None) -> int:
     """Insert or update a content source by name. Returns source id."""
     from src.models.database import execute, query
     existing = query("SELECT id FROM content_sources WHERE name = ?", (name,))
     if existing:
         source_id = existing[0]['id']
         execute(
-            "UPDATE content_sources SET entry_url=?, strategy=?, source_type=?, category=?, display_name=?, is_active=?, is_manual=? WHERE id=?",
-            (entry_url, strategy, source_type, category, display_name, int(is_active), int(is_manual), source_id)
+            "UPDATE content_sources SET entry_url=?, strategy=?, source_type=?, category=?, display_name=?, is_active=?, is_manual=?, package_type=?, force_type=? WHERE id=?",
+            (entry_url, strategy, source_type, category, display_name, int(is_active), int(is_manual), package_type, force_type, source_id)
         )
         return source_id
     return execute(
-        "INSERT INTO content_sources (name, source_type, entry_url, strategy, category, created_by, display_name, is_active, is_manual) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (name, source_type, entry_url, strategy, category, created_by, display_name, int(is_active), int(is_manual))
+        "INSERT INTO content_sources (name, source_type, entry_url, strategy, category, created_by, display_name, is_active, is_manual, package_type, force_type) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, source_type, entry_url, strategy, category, created_by, display_name, int(is_active), int(is_manual), package_type, force_type)
     )
 
 
