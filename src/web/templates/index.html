@@ -779,25 +779,59 @@ function _hlthColor(s){return{'ok':'#16a34a','error':'#dc2626','unknown':'#6b728
 
 function fmtPkgTypes(v){
   if(!v) return '';
-  try{const a=JSON.parse(v);return a.join(', ');}catch{return v;}
+  const MAP={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库'};
+  try{
+    const a=JSON.parse(v);
+    return a.map(t=>MAP[t]||t).join(', ');
+  }catch{return v;}
 }
+
+const PKG_TYPE_OPTIONS=[
+  {code:'sys',     label:'系统升级包'},
+  {code:'rule',    label:'规则升级包'},
+  {code:'nti',     label:'威胁情报升级包'},
+  {code:'av',      label:'病毒特征库升级包'},
+  {code:'apprule', label:'应用规则库升级包'},
+  {code:'url',     label:'URL分类库升级包'},
+  {code:'wcs',     label:'恶意站点库升级包'},
+  {code:'judge',   label:'研判规则库升级包'},
+  {code:'geo',     label:'地理库升级包'},
+  {code:'interface',label:'接口升级包'},
+  {code:'special', label:'特殊升级包'},
+  {code:'other',   label:'其他升级包'},
+  {code:'merge',   label:'合并升级包'},
+  {code:'client',  label:'客户端'},
+  {code:'av_stream',label:'流式病毒库升级包'},
+];
 
 function editPkgType(id){
   const prods=window._allProducts||[];
   const p=prods.find(x=>x.id===id);
   if(!p){toast('产品不存在','error');return;}
-  const types=fmtPkgTypes(p.package_type)||'';
+  let curTypes=[];
+  try{
+    if(Array.isArray(p.package_type)) curTypes=p.package_type;
+    else if(typeof p.package_type==='string') curTypes=JSON.parse(p.package_type||'[]');
+  }catch{}
   _showModal('pkgtype');
+  // Build checkbox list
+  let checkboxes=PKG_TYPE_OPTIONS.map(t=>{
+    let checked=curTypes.includes(t.code)?'checked':'';
+    return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;cursor:pointer;user-select:none">
+      <input type="checkbox" value="${t.code}" ${checked} onchange="togglePkgType(this)" style="width:15px;height:15px;cursor:pointer">
+      <span style="font-size:13px">${t.label}</span>
+    </label>`;
+  }).join('');
   modalBody('pkgtype',`<div style="padding:24px">
     <div style="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span style="font-weight:400;font-size:12px;color:#666">「${escHtml(p.name)}」</span></div>
-    <div class="form-group"><label>包类型列表 <span style="color:#dc2626">*</span>
-      <div style="font-weight:400;font-size:11px;color:#9ca3af;margin-top:2px">采集时只跟踪这些类型的升级包，多个用逗号分隔。如：sys,rule,av,nti</div>
-    </label>
-      <input id="pt-types" value="${escHtml(types)}" placeholder="sys,rule,av,nti" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
+    <div class="form-group">
+      <div style="font-size:12px;color:#6b7280;margin-bottom:8px">勾选该产品需要跟踪的包类型（可多选）</div>
+      <div id="pt-checkboxes" style="display:flex;flex-wrap:wrap;gap:4px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px">${checkboxes}</div>
     </div>
-    <div class="form-group" style="margin-top:14px"><label>强制覆盖 <span style="color:#9ca3af;font-weight:400">(优先级高于关键词判断)</span></label>
+    <div class="form-group" style="margin-top:14px">
+      <label style="font-weight:600;font-size:13px">强制覆盖 <span style="color:#9ca3af;font-weight:400">(优先级高于关键词判断)</span></label>
       <div id="pt-overrides"></div>
-      <button class="btn btn-xs btn-outline" style="margin-top:8px" onclick="addOverrideRow()">+ 添加覆盖规则</button>
+      <button class="btn btn-xs btn-outline" style="margin-top:8px" onclick="ptAddOverride('${escHtml(p.name)}')">+ 添加覆盖规则</button>
     </div>
     <div style="display:flex;gap:8px;margin-top:20px">
       <button class="btn btn-primary" onclick="savePkgType(${id})">💾 保存</button>
@@ -806,44 +840,69 @@ function editPkgType(id){
   </div>`);
   // Load existing overrides
   try{
-    const ov=(JSON.parse(p.force_type||'{}'));
-    Object.entries(ov).forEach(([k,v])=>{addOverrideRow(k,v);});
-  }catch{e}
+    const ov=JSON.parse(p.force_type||'{}');
+    Object.entries(ov).forEach(([k,v])=>{ptAddOverrideRow(k,v);});
+  }catch{}
   window._ptOverrides={};
 }
 
+function togglePkgType(cb){
+  // Just toggle - no extra logic needed, savePkgType reads all checked boxes
+}
+
 let _ptOverrideIdx=0;
-function addOverrideRow(key,val){
-  key=key||'';
+function ptAddOverride(prodName){
+  ptAddOverrideRow(prodName+'|', 'auto');
+}
+function ptAddOverrideRow(key, val){
   val=val||'auto';
+  // Parse key: "产品名|type" -> display as "产品名 | 中文类型"
+  let parsed={prod:'', type:'', typeCode:''};
+  if(key.includes('|')){
+    let [p,t]=key.split('|');
+    parsed.prod=p;
+    parsed.typeCode=t;
+    // Map type code to Chinese
+    let tObj=PKG_TYPE_OPTIONS.find(o=>o.code===t);
+    parsed.type=tObj?tObj.label:t;
+  }
   const container=document.getElementById('pt-overrides');
   if(!container)return;
   const id='pto'+(_ptOverrideIdx++);
   const div=document.createElement('div');
   div.style='display:flex;gap:6px;align-items:center;margin-bottom:6px';
-  div.innerHTML=`<input value="${escHtml(key)}" placeholder="规则名称（如 IDS|rule）" style="flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px" onchange="updateOverride('${id}',this.value)">
-    <select style="padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
+  // Product name input
+  div.innerHTML=`
+    <input value="${escHtml(parsed.prod)}" placeholder="产品名称" class="pt-ov-prod" style="flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
+    <span style="color:#9ca3af;font-size:12px">|</span>
+    <select class="pt-ov-type" style="flex:0 0 130px;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
+      ${PKG_TYPE_OPTIONS.map(t=>`<option value="${t.code}" ${t.code===parsed.typeCode?'selected':''}>${t.label}</option>`).join('')}
+    </select>
+    <select class="pt-ov-val" style="flex:0 0 80px;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
       <option value="auto" ${val==='auto'?'selected':''}>自动</option>
       <option value="full" ${val==='full'?'selected':''}>全量</option>
       <option value="incremental" ${val==='incremental'?'selected':''}>增量</option>
     </select>
     <button onclick="this.parentElement.remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>`;
   div.dataset.key=id;
-  window._ptOverrides[id]={key,val};
-  div.querySelector('select').onchange=function(){window._ptOverrides[id].val=this.value;};
+  window._ptOverrides[id]={prod:parsed.prod, typeCode:parsed.typeCode, val};
+  // Wire up onchange
+  div.querySelector('.pt-ov-prod').onchange=function(){window._ptOverrides[id].prod=this.value;};
+  div.querySelector('.pt-ov-type').onchange=function(){window._ptOverrides[id].typeCode=this.value;};
+  div.querySelector('.pt-ov-val').onchange=function(){window._ptOverrides[id].val=this.value;};
   container.appendChild(div);
 }
 
-function updateOverride(id,key){if(window._ptOverrides[id])window._ptOverrides[id].key=key;}
-
 async function savePkgType(id){
-  const types=document.getElementById('pt-types')?.value?.trim()||'';
-  const pkg_type=types?JSON.stringify(types.split(',').map(s=>s.trim()).filter(Boolean)):null;
+  // Read checked boxes
+  const checked=document.querySelectorAll('#pt-checkboxes input[type="checkbox"]:checked');
+  const types=Array.from(checked).map(cb=>cb.value);
+  const pkg_type=types.length?JSON.stringify(types):null;
   // Build force_type
   const ov={};
   if(window._ptOverrides){
-    Object.values(window._ptOverrides).forEach(({key,val})=>{
-      if(key&&val&&val!=='auto')ov[key]=val;
+    Object.values(window._ptOverrides).forEach(({prod,typeCode,val})=>{
+      if(prod&&typeCode&&val&&val!=='auto')ov[prod+'|'+typeCode]=val;
     });
   }
   const force_type=Object.keys(ov).length?JSON.stringify(ov):null;
