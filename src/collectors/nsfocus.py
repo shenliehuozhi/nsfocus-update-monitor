@@ -277,15 +277,20 @@ class NsfocusCollector(BaseCollector):
         current_paths = current.get('paths', []) if current else []
         discovered_paths = discovered.get('paths', []) if discovered else []
 
-        cur_urls = {p['url']: p for p in current_paths}
-        disc_urls = {p['url']: p for p in discovered_paths}
+        # Use chain+types as identity key — 'url' is just the page URL where it was
+        # discovered and may differ between old/new data for the same actual path.
+        def path_key(p):
+            return '|'.join(p.get('chain', []) + p.get('types', []))
 
-        all_urls = set(cur_urls.keys()) | set(disc_urls.keys())
+        cur_map = {path_key(p): p for p in current_paths}
+        disc_map = {path_key(p): p for p in discovered_paths}
+
+        all_keys = set(cur_map.keys()) | set(disc_map.keys())
 
         added, deleted, modified = [], [], []
-        for url in all_urls:
-            cur_p = cur_urls.get(url)
-            disc_p = disc_urls.get(url)
+        for key in all_keys:
+            cur_p = cur_map.get(key)
+            disc_p = disc_map.get(key)
             if disc_p and not cur_p:
                 added.append(disc_p)
             elif cur_p and not disc_p:

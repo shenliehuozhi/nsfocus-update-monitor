@@ -657,15 +657,18 @@ def refresh_pkg_type_single(source_id: int, session_cookie: str):
             log_fn(f'✅ 已保存，共 {len(types_dict["types"])} 种包类型，{len(types_dict["paths"])} 条路径')
             with _pkg_refresh_lock:
                 _pkg_refresh_state['phase'] = 'done'
+            update_source_health(source_id, 'ok', datetime.utcnow().isoformat())
         else:
             log_fn('⚠️ 未发现包类型（产品可能无独立升级页）')
             with _pkg_refresh_lock:
                 _pkg_refresh_state['phase'] = 'done'
+            update_source_health(source_id, 'ok', datetime.utcnow().isoformat())
 
     except Exception as e:
         log_fn(f'失败: {e}')
         with _pkg_refresh_lock:
             _pkg_refresh_state['phase'] = 'error'
+        update_source_health(source_id, 'error')
     finally:
         with _pkg_refresh_lock:
             _pkg_refresh_state['active'] = False

@@ -50,6 +50,9 @@ select.ct[multiple]{display:none}
 .toast{position:fixed;top:16px;right:16px;padding:10px 20px;border-radius:8px;color:#fff;font-size:13px;z-index:9999;font-weight:500;box-shadow:0 4px 12px rgba(0,0,0,.15);animation:slideIn .25s}
 .toast-success{background:var(--success)}.toast-error{background:var(--danger)}
 @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.tp{position:relative;display:inline-flex;align-items:center;cursor:pointer;color:#9ca3af;font-size:13px;margin-left:4px}
+.tp::after{content:attr(data-tip);position:absolute;bottom:calc(100%+6px);left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;font-size:12px;padding:6px 10px;border-radius:6px;white-space:pre-line;width:220px;text-align:left;line-height:1.5;pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2)}
+.tp:hover::after{opacity:1}
 .hidden{display:none!important}
 .step{display:flex;align-items:center;padding:10px 14px;background:#f8fafc;border-radius:8px;margin-bottom:6px;font-size:13px;gap:10px;border:1px solid var(--border)}
 .step-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
@@ -698,33 +701,156 @@ async function settings(){
   </div></div>
 `;}
 
-// ── Product Management ──
+// 自动发现 banner — 仅在产品管理页面显示，支持手动关闭/重新打开
+// 由 products() 和 MutationObserver 触发
+let _discObs;
+function _initDiscObserver(){
+  if(_discObs) return;
+  const app=document.getElementById('app');
+  if(!app) return;
+  _discObs=new MutationObserver(()=>{ _checkDiscBanner(); });
+  _discObs.observe(app,{childList:true});
+}
+function _checkDiscBanner(){
+  // 只在产品管理页面处理
+  const isProductsPage=document.getElementById('disc-area')||document.querySelector('[data-page="products"]');
+  if(!isProductsPage) return;
+  // 每次进入产品页都清除隐藏状态，保证切页回来能重新显示
+  window._discBannerHidden=false;
+  window._discTimer && clearInterval(window._discTimer);
+  api('/system/products/discover/status').then(s=>{
+    if(s.code===0 && s.data?.active){
+      _showDiscBanner(s.data);
+    } else if(s.code===0 && s.data?.phase==='done' && window._discLastDone){
+      showDiscoverResult(s.data.result);
+      window._discLastDone=null;
+    }
+  });
+}
+function _hideDiscBanner(){
+  clearInterval(window._discTimer);
+  const b=document.getElementById('disc-banner');
+  if(b) b.remove();
+  // 显示一个小悬浮按钮，点击恢复 banner
+  if(document.getElementById('disc-mini-btn')) return;
+  const mini=document.createElement('div');
+  mini.id='disc-mini-btn';
+  mini.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border-radius:24px;padding:8px 16px;box-shadow:0 4px 16px rgba(124,58,237,0.4);z-index:3000;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px';
+  mini.innerHTML='<span style="font-size:15px">🔍</span><span>自动发现进行中…</span>';
+  mini.onclick=async()=>{
+    mini.remove();
+    const s=await api('/system/products/discover/status');
+    if(s.code===0 && s.data?.active) _showDiscBanner(s.data);
+  };
+  document.body.appendChild(mini);
+}
+function _showDiscBanner(state){
+  const existing=document.getElementById('disc-banner');
+  if(existing) existing.remove();
+  const phaseNames={
+    'scanning_products':'🔍 扫描产品列表…',
+    'discovering_pkg_types':`📦 发现包类型 (${state.progress||0}/${state.total||0})…`,
+    'done':'✅ 发现完成',
+    'error':'❌ 发现出错',
+  };
+  const pct=state.phase==='scanning_products'?30:
+    state.phase==='discovering_pkg_types' && state.total?
+      Math.round((state.progress/state.total)*65)+30:0;
+  const banner=document.createElement('div');
+  banner.id='disc-banner';
+  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border-radius:10px;padding:10px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:320px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px';
+  banner.innerHTML=`
+    <div style="flex:1">
+      <div style="font-weight:600;margin-bottom:4px">🔍 自动发现任务进行中</div>
+      <div id="disc-banner-phase" style="opacity:0.9;font-size:12px">${phaseNames[state.phase]||state.phase||''}</div>
+      <div style="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:2px">
+        <div id="disc-banner-bar" style="height:100%;background:#fff;border-radius:2px;transition:width 0.4s;width:${pct}%"></div>
+      </div>
+    </div>
+    <div onclick="event.stopPropagation();_showDiscLogFloat()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">📋 日志</div>
+    <div onclick="event.stopPropagation();_reopenDiscModal()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">查看</div>
+    <div onclick="event.stopPropagation();_hideDiscBanner()" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
+  banner.onclick=_reopenDiscModal;
+  document.body.appendChild(banner);
+
+  let done=false;
+  window._discTimer=setInterval(async()=>{
+    if(done) return;
+    const s=await api('/system/products/discover/status');
+    if(s.code===0){
+      const phase=document.getElementById('disc-banner-phase');
+      const bar=document.getElementById('disc-banner-bar');
+      if(phase) phase.textContent=phaseNames[s.data.phase]||s.data.phase||'';
+      if(bar){
+        const p=s.data.phase==='scanning_products'?30:
+          s.data.phase==='discovering_pkg_types' && s.data.total?
+            Math.round((s.data.progress/s.data.total)*65)+30:100;
+        bar.style.width=p+'%';
+      }
+      // 更新浮窗日志（如果已创建）
+      const discLogId=window.__discLogId||'disc-float-log';
+      const logBody=document.getElementById(discLogId+'-body');
+      if(logBody && s.data.log_lines?.length){
+        const renderLogLine=l=>{
+          const txt=escHtml(l);
+          if(l.startsWith('🔍')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#4f46e5">${txt}</div>`;
+          if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#7c3aed;font-weight:600">${txt}</div>`;
+          if(l.startsWith('  →')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#0891b2">${txt}</div>`;
+          if(l.startsWith('✅')||l.startsWith('✔')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#16a34a;font-weight:600">${txt}</div>`;
+          if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#dc2626">${txt}</div>`;
+          if(l.startsWith('[')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#374151">${txt}</div>`;
+          return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#6b7280">${txt}</div>`;
+        };
+        logBody.innerHTML=s.data.log_lines.map(renderLogLine).join('');
+        logBody.scrollTop=logBody.scrollHeight;
+      }
+      if(s.data.phase==='done'){
+        done=true;clearInterval(window._discTimer);
+        const banner=document.getElementById('disc-banner');
+        if(banner){banner.querySelector('#disc-banner-phase').textContent='✅ 发现完成 — 点击查看结果';banner.querySelector('#disc-banner-bar').style.width='100%';banner.style.background='linear-gradient(135deg,#16a34a,#15803d)';}
+        window._discLastDone=s.data.result;
+        const mini=document.getElementById('disc-mini-btn');if(mini)mini.remove();
+        setTimeout(()=>{const b=document.getElementById('disc-banner');if(b)b.remove();_reopenDiscModal();},500);
+      } else if(s.data.phase==='error'){
+        done=true;clearInterval(window._discTimer);
+        toast('自动发现失败: '+(s.data.result?.error||''),'error');
+        const b=document.getElementById('disc-banner');if(b)b.remove();
+        const mini=document.getElementById('disc-mini-btn');if(mini)mini.remove();
+      }
+    }
+  },2000);
+}
+
 async function products(){
   const r=await api('/system/products');
   const allProds=r.data?.products||[];
-  window._allProducts=allProds; // store for filtering
+  window._allProducts=allProds;
 
-  // Stats
   const total=allProds.length;
   const enabled=allProds.filter(p=>p.is_active).length;
   const disabled=allProds.filter(p=>!p.is_active).length;
   const errors=allProds.filter(p=>p.health_status==='error').length;
 
   let h=`<div class="card">
-    <div class="card-hd">🏭 产品管理
-      <div style="float:right">
-        <button class="btn btn-sm" onclick="discoverProducts()">🔍 自动发现</button>
+    <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:4px">
+        🏭 产品管理
+        <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <button class="btn btn-sm" style="border-color:#d1d5db;color:#6b7280" onclick="discoverProducts()">🔍 自动发现</button>
+        <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
         <button class="btn btn-sm btn-primary" onclick="showProductForm()">+ 手动添加</button>
+        <span class="tp" data-tip="手动录入产品名称和入口URL添加产品">ⓘ</span>
       </div>
     </div>
     <div class="card-bd">
-
       <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;align-items:center">
         <span>共 <strong>${total}</strong> 个</span>
         <span style="color:#16a34a">● 启用 <strong>${enabled}</strong></span>
         <span style="color:#9ca3af">○ 禁用 <strong>${disabled}</strong></span>
         ${errors>0?'<span style="color:#dc2626">● 异常 <strong>'+errors+'</strong></span>':''}
-
+        <span class="tp" data-tip="采集状态反映上次刷新包类型的结果：正常=成功，异常=失败，未知=从未刷新过">ⓘ 采集状态</span>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
           <input id="prod-search" placeholder="搜索产品…" oninput="filterProducts()" style="padding:4px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:140px">
           <select id="prod-filter" onchange="filterProducts()" style="padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
@@ -734,7 +860,6 @@ async function products(){
           </select>
         </div>
       </div>
-
       <div style="overflow-x:auto">
       <table class="table" style="table-layout:auto;width:100%">
         <thead><tr>
@@ -743,19 +868,55 @@ async function products(){
           <th>产品名称</th>
           <th>入口URL</th>
           <th>包类型</th>
-          <th style="width:60px">健康状态</th>
+          <th style="width:76px" title="正常=上次采集成功，异常=上次采集失败，未知=从未采集">采集状态</th>
           <th style="width:100px">最近采集</th>
           <th>操作</th>
         </tr></thead>
         <tbody id="prod-tbody">`;
   h+=_renderProductRows(allProds);
   h+=`</tbody></table></div></div></div>`;
-
-  // Floating modal areas (outside the card, at app level)
   h+=`<div id="disc-area"></div>`;
   h+=`<div id="pform-area"></div>`;
-
   document.getElementById('app').innerHTML=h;
+  _initDiscObserver();
+}
+
+function _showDiscLogFloat(){
+  let discLogId=window.__discLogId||'disc-float-log';
+  let el=document.getElementById(discLogId);
+  if(!el){
+    // 动态创建（banner显示时disc-float-log可能还不存在）
+    el=document.createElement('div');
+    el.id=discLogId;
+    el.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
+    el.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:12px;font-weight:600;color:#374151;gap:8px"><span style="flex:1">📋 自动发现日志</span><button onclick="document.getElementById('${discLogId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;padding:0;line-height:1">×</button></div><div id="${discLogId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:#fafafa;font-family:monospace;font-size:11px;color:#374151"></div>`;
+    document.body.appendChild(el);
+    window.__discLogId=discLogId;
+  }
+  el.style.display='block';
+}
+
+function _reopenDiscModal(){
+  clearInterval(window._discTimer);
+  const b=document.getElementById('disc-banner');
+  if(b) b.remove();
+  api('/system/products/discover/status').then(s=>{
+    if(s.code===0 && (s.data.active||s.data.phase==='done')){
+      _showModal('disc');
+      const phaseNames={'scanning_products':'🔍 扫描产品列表…','discovering_pkg_types':`📦 发现包类型 (${s.data.progress||0}/${s.data.total||0})…`,'done':'✅ 发现完成','error':'❌ 发现出错'};
+      const logId=window.__discLogId||'disc-float-log';
+      modalBody('disc',`<div style="padding:24px;text-align:center;position:relative">
+        <div style="position:absolute;top:12px;right:16px;cursor:pointer;font-size:20px;color:#9ca3af;line-height:1" onclick="closeModal('disc')">×</div>
+        <div style="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${phaseNames[s.data.phase]||s.data.phase||''}</div>
+        <div style="font-size:13px;color:#666;margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
+        <div style="margin-top:10px"><button class="btn" onclick="document.getElementById('${logId}').style.display='block'" style="background:none;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button></div>
+        ${s.data.phase==='done'?'<div style="margin-top:12px"><button class="btn btn-primary" onclick="closeModal(\'disc\');showDiscoverResult(window._discLastDone||{})">查看结果</button></div>':''}
+      </div>`);
+      if(s.data.phase==='done'&&s.data.result){
+        setTimeout(()=>showDiscoverResult(s.data.result),100);
+      }
+    }
+  });
 }
 
 // Floating modal shell
@@ -774,7 +935,8 @@ function closeModal(id){
 function modalBody(id,h){const b=document.getElementById(id+'-box');if(b)b.innerHTML=h;}
 function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft" style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid #e5e7eb">${btns}</div>`);}}
 
-function _hlthColor(s){return{'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[s]||'#6b7280';}
+function _hlthColor(s){return{'正常':'#16a34a','异常':'#dc2626','未知':'#6b7280'}[s]||'#6b7280';}
+function _hlthLabel(s){return{'ok':'正常','error':'异常','unknown':'未知'}[s]||'未知';}
 
 // 从 typesObj.paths 统计所有唯一 type key，用 MAP 翻译显示
 // types.types 可能是 raw keys（如 ['sys','rule']）也可能是完整显示名（如 ['WAF V6.0.9系统升级包']）
@@ -1105,7 +1267,7 @@ function editPkgType(id){
     modalBody('pkgtype',`<div style="padding:24px">
       <div style="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span style="font-weight:400;font-size:12px;color:#666">「${escHtml(p.name)}」</span></div>
       <div style="color:#9ca3af;font-size:13px;text-align:center;padding:12px">
-        尚未发现包类型，请先对该产品进行<span style="color:#7c3aed;cursor:pointer" onclick="closeModal('pkgtype');collectProduct(${id},'full')">全量采集</span>
+        尚未发现包类型，请先对该产品进行<span style="color:#7c3aed;cursor:pointer" onclick="closeModal('pkgtype');refreshPkgType(${id})">全量采集</span>
       </div>
       <div style="display:flex;gap:8px;margin-top:20px">
         <button class="btn" onclick="closeModal('pkgtype')">关闭</button>
@@ -1302,7 +1464,7 @@ function _renderProductRows(prods){
   for(const p of prods){
     const last=p.last_collected_at?fmtTZ(p.last_collected_at,true):'—';
     const hlth=p.health_status||'unknown';
-    const hlthColor={'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[hlth]||'#6b7280';
+    const hlthColor={'正常':'#16a34a','异常':'#dc2626','未知':'#6b7280'}[_hlthLabel(hlth)]||'#6b7280';
     const rowClass=p.is_active?'':'opacity:0.6';
     h+=`<tr id="pr-${p.id}" style="${rowClass}">
       <td>${p.id}</td>
@@ -1312,14 +1474,11 @@ function _renderProductRows(prods){
       <td><strong>${escHtml(p.name)}</strong></td>
       <td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td>
       <td><a href="javascript:void(0)" onclick="editPkgType(${p.id})" title="点击编辑包类型" style="color:#7c3aed;font-size:12px;text-decoration:none">${p.package_type_changed?'⚠️ ':''}${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
-      <td><span class="hlth-badge" style="color:${p.is_active?(hlthColor):'#9ca3af'};font-size:12px;white-space:nowrap">${p.is_active?'● '+hlth:'已禁用'}</span></td>
+      <td><span class="hlth-badge" style="color:${p.is_active?(hlthColor):'#9ca3af'};font-size:12px;white-space:nowrap">${p.is_active?'● '+_hlthLabel(hlth):'已禁用'}</span></td>
       <td><span style="font-size:12px;color:#666;white-space:nowrap">${last}</span></td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="editProduct(${p.id})" title="编辑" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">✏️</button>
-        <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="collectProduct(${p.id},'quick')" title="快速采集" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">▶</button>
-        <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="collectProduct(${p.id},'full')" title="全量采集" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">◉</button>
         <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="refreshPkgType(${p.id})" title="刷新包类型" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">🔄</button>
-        <button class="btn btn-sm" ${p.is_active?'':'disabled'} style="color:#dc2626;${p.is_active?'':'opacity:0.35;cursor:not-allowed'}" onclick="delProduct(${p.id},'${escHtml(p.name)}')" title="删除">🗑</button>
       </td>
     </tr>`;
   }
@@ -1339,12 +1498,56 @@ function filterProducts(){
 }
 
 async function discoverProducts(){
+  // 清除隐藏状态，新任务开始
+  window._discBannerHidden=false;
   // 1. 触发后台发现任务
+  // 预建立日志窗口（隐藏，点击按钮显示）
+  const discLogId='disc-float-log';
+  if(!document.getElementById(discLogId)){
+    const logDiv=document.createElement('div');
+    logDiv.id=discLogId;
+    logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
+    logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:12px;font-weight:600;color:#374151;gap:8px"><span style="flex:1">📋 自动发现日志</span><button onclick="document.getElementById('${discLogId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;padding:0;line-height:1">×</button></div><div id="${discLogId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:#fafafa;font-family:monospace;font-size:11px;color:#374151"></div>`;
+    document.body.appendChild(logDiv);
+    window.__discLogId=discLogId; // expose globally for confirmDiscoverResult
+  }
+
+  // 渲染带颜色的日志行
+  function renderLogLine(l){
+    const txt=escHtml(l);
+    if(l.startsWith('🔍')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#4f46e5">${txt}</div>`;
+    if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#7c3aed;font-weight:600">${txt}</div>`;
+    if(l.startsWith('  →')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#0891b2">${txt}</div>`;
+    if(l.startsWith('✅')||l.startsWith('✔')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#16a34a;font-weight:600">${txt}</div>`;
+    if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#dc2626">${txt}</div>`;
+    if(l.startsWith('[')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#374151">${txt}</div>`;
+    return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#6b7280">${txt}</div>`;
+  }
+
   _showModal('disc');
-  modalBody('disc',`<div style="padding:24px;text-align:center"><div class="spin"></div><div id="disc-phase" style="margin-top:12px;color:#666">正在启动自动发现…</div><div id="disc-log" style="margin-top:8px;font-size:11px;color:#9ca3af;max-height:120px;overflow-y:auto;text-align:left"></div></div>`);
+  modalBody('disc',`<div style="padding:24px;text-align:center">
+    <div class="spin"></div>
+    <div id="disc-phase" style="margin-top:12px;color:#666;font-size:14px">正在启动自动发现…</div>
+    <div style="margin-top:10px">
+      <button onclick="document.getElementById('${discLogId}').style.display='block'" style="background:none;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button>
+    </div>
+  </div>`);
 
   const r=await api('/system/products/discover',{method:'POST'});
-  if(r.code!==0){
+  if(r.code===409){
+    // 已经在运行中——直接拉起进度 UI，不重复启动
+    const s=await api('/system/products/discover/status');
+    if(s.code===0 && s.data?.active){
+      // 直接进入轮询渲染
+    } else {
+      modalBody('disc',`<div style="padding:24px;text-align:center">
+        <div style="color:#f59e0b;font-size:14px;margin-bottom:8px">⚠️ 上次任务似乎已结束</div>
+        <div style="color:#666;font-size:13px">请关闭后重新点击自动发现</div>
+        <div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div>
+      </div>`);
+      return;
+    }
+  } else if(r.code!==0){
     modalBody('disc',`<div style="padding:24px"><div style="color:#dc2626;font-weight:600;margin-bottom:8px">启动失败</div><div style="color:#666;font-size:13px">${escHtml(r.message||'')}</div><div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div></div>`);
     return;
   }
@@ -1360,11 +1563,12 @@ async function discoverProducts(){
       'error':'❌ 发现出错',
     };
     const phaseEl=document.getElementById('disc-phase');
-    const logEl=document.getElementById('disc-log');
     if(phaseEl) phaseEl.textContent=phaseNames[state.phase]||state.phase||'';
-    if(logEl && state.log_lines?.length){
-      logEl.innerHTML=state.log_lines.map(l=>`<div style="padding:1px 0;border-bottom:1px solid #f5f5f5">${escHtml(l)}</div>`).join('');
-      logEl.scrollTop=logEl.scrollHeight;
+    // Feed floating log window
+    const logBody=document.getElementById(discLogId+'-body');
+    if(logBody && state.log_lines?.length){
+      logBody.innerHTML=state.log_lines.map(renderLogLine).join('');
+      logBody.scrollTop=logBody.scrollHeight;
     }
     return state.phase==='done'||state.phase==='error'||!state.active;
   }
@@ -1497,8 +1701,9 @@ function showDiscoverResult(result){
     <div style="max-height:420px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
       ${sectionsHtml}
     </div>
+    <div id="disc-confirm-phase" style="display:none;margin-top:10px;padding:8px 12px;background:#f5f3ff;border-radius:6px;font-size:13px;color:#7c3aed;text-align:center"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
-      <button class="btn btn-primary" onclick="confirmDiscoverResult()">💾 确认应用变更</button>
+      <button class="btn btn-primary" id="disc-confirm-btn" onclick="confirmDiscoverResult()">💾 确认应用变更</button>
       <span style="font-size:12px;color:#9ca3af">新增产品默认禁用，包类型变更将触发告警</span>
       <button class="btn" style="margin-left:auto" onclick="closeModal('disc')">关闭</button>
     </div>
@@ -1515,17 +1720,65 @@ function togglePkgDetail(entryUrl){
 async function confirmDiscoverResult(){
   const result=window._discoverResult;
   if(!result) return;
-  const btn=document.querySelector('#disc-box .btn-primary');
+  const btn=document.getElementById('disc-confirm-btn');
+  const phaseEl=document.getElementById('disc-confirm-phase');
   if(btn){btn.disabled=true;btn.textContent='处理中…';}
+  if(phaseEl){phaseEl.style.display='block';phaseEl.textContent='💾 正在启动…';}
+
   const r=await api('/system/products/discover/confirm',{method:'POST',body:JSON.stringify(result)});
   if(r.code===0){
-    toast(`已应用：产品新增${r.data?.saved?.length||0} 删除${r.data?.deleted?.length||0}，包类型更新${r.data?.pkg_updated?.length||0}`,'success');
-    window._discoverResult=null;
-    closeModal('disc');
-    await products();
+    // Reuse the floating log window
+    const logId=window.__discLogId||'disc-float-log';
+    const logBody=document.getElementById(logId+'-body');
+    if(logBody) logBody.innerHTML='';
+
+    let done=false;
+    let pollTimer=null;
+    function renderConfirmProgress(state){
+      const phaseNames={
+        'applying':'💾 正在应用变更…',
+        'updating_pkg':`📦 更新包类型…`,
+        'done':'✅ 应用完成',
+        'error':'❌ 应用出错',
+      };
+      const msg=phaseNames[state.phase]||state.phase||'';
+      if(phaseEl) phaseEl.textContent=msg;
+      if(logBody && state.log_lines?.length){
+        logBody.innerHTML=state.log_lines.map(renderLogLine).join('');
+        logBody.scrollTop=logBody.scrollHeight;
+      }
+      return state.phase==='done'||state.phase==='error'||!state.active;
+    }
+
+    async function pollConfirm(){
+      if(done) return;
+      try{
+        const s=await api('/system/products/discover/confirm/status');
+        if(s.code===0){
+          done=renderConfirmProgress(s.data);
+          if(done){
+            clearInterval(pollTimer);
+            if(s.data.phase==='done'){
+              const d=s.data.result||{};
+              toast(`已应用：产品新增${d.saved?.length||0} 删除${d.deleted?.length||0}，包类型更新${d.pkg_updated?.length||0}`,'success');
+              window._discoverResult=null;
+              closeModal('disc');
+              await products();
+            }else if(s.data.phase==='error'){
+              toast('应用出错: '+(s.data.error||'未知错误'),'error');
+              if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
+            }
+          }
+        }
+      }catch(e){}
+    }
+    pollConfirm();
+    pollTimer=setInterval(pollConfirm,2000);
+    setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);toast('应用超时，请重试','error');if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}}},300000);
   }else{
-    toast('保存失败: '+r.message,'error');
+    toast('启动失败: '+r.message,'error');
     if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
+    if(phaseEl){phaseEl.style.display='none';}
   }
 }
 
@@ -1551,11 +1804,6 @@ function showProductForm(p){
       <input id="pf-url" value="${escHtml(url)}" placeholder="/update/wafIndex" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
       <div style="font-size:11px;color:#9ca3af;margin-top:4px">绿盟升级站点相对路径，如 /update/wafIndex</div>
     </div>
-    <div class="form-group" style="margin-top:14px"><label>采集策略</label>
-      <select id="pf-strat" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
-        <option value="standard" selected>标准</option>
-      </select>
-    </div>
     <div style="display:flex;gap:8px;margin-top:20px">
       <button class="btn btn-primary" onclick="saveProductForm(${id})">💾 保存</button>
       <button class="btn" onclick="closeModal('pform')">取消</button>
@@ -1566,10 +1814,9 @@ function showProductForm(p){
 async function saveProductForm(id){
   const name=document.getElementById('pf-name')?.value?.trim()||'';
   const entry_url=document.getElementById('pf-url')?.value?.trim()||'';
-  const strategy=document.getElementById('pf-strat')?.value||'standard';
   if(!name||!entry_url){toast('名称和URL不能为空','error');return;}
   if(!entry_url.startsWith('/')){toast('URL必须以 / 开头','error');return;}
-  const body={name,entry_url,strategy,display_name:name};
+  const body={name,entry_url,strategy:'standard',display_name:name};
   const method=id?'PUT':'POST';
   const path=id?`/system/products/${id}`:'/system/products';
   const r=await api(path,{method,body:JSON.stringify(body)});
@@ -1577,6 +1824,9 @@ async function saveProductForm(id){
     toast(id?'已更新':'已添加','success');
     closeModal('pform');
     await products();
+    if(!id && r.data?.id && confirm('产品已添加，是否立即刷新包类型？')){
+      refreshPkgType(r.data.id);
+    }
   }else{
     toast(r.message||'保存失败','error');
   }
@@ -1592,7 +1842,6 @@ function escHtml(s){
 let _editRowId = null; // currently editing row id
 
 function editProduct(id){
-  // Cancel any previous inline edit
   if(_editRowId && _editRowId !== id){
     cancelEditRow(_editRowId);
   }
@@ -1607,16 +1856,9 @@ function editProduct(id){
 
   row.innerHTML = `<td>${p.id}</td>
     <td><span class="active-badge" style="font-size:11px;color:${p.is_active?'#16a34a':'#dc2626'}">${p.is_active?'● 启用':'● 禁用'}</span></td>
-    <td><input id="ef-name" value="${escHtml(p.name)}" ${isManual?'':'readonly'} style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;background:${isManual?'#fff':'#f3f4f6'}"></td>
+    <td><span style="font-size:13px;color:#374151">${escHtml(p.name)}</span></td>
     <td><input id="ef-url" value="${escHtml(p.entry_url||'')}" ${isManual?'':'readonly'} style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px;background:${isManual?'#fff':'#f3f4f6'}"></td>
-    <td>
-      <select id="ef-strat" style="padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:13px">
-        <option value="standard" ${p.strategy==='standard'?'selected':''}>标准</option>
-        <option value="recursive" ${p.strategy==='recursive'?'selected':''}>递归</option>
-      </select>
-    </td>
-    <td><input id="ef-pkgtype" value="${escHtml(p.package_type||'')}" placeholder="sys,rule,av,nti..." style="width:100%;padding:4px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12px"></td>
-    <td><span class="hlth-badge" style="color:${p.is_active?(_hlthColor(p.health_status||'unknown')):'#9ca3af'};font-size:12px">${p.is_active?'● '+(p.health_status||'unknown'):'已禁用'}</span></td>
+    <td><span class="hlth-badge" style="color:${p.is_active?(_hlthColor(_hlthLabel(p.health_status))):'#9ca3af'};font-size:12px">${p.is_active?'● '+_hlthLabel(p.health_status):'已禁用'}</span></td>
     <td><span style="font-size:12px;color:#666">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>
     <td>
       <button class="btn btn-sm btn-primary" onclick="saveEditRow(${id})">💾</button>
@@ -1631,28 +1873,27 @@ function cancelEditRow(id){
 }
 
 async function saveEditRow(id){
-  const name = document.getElementById('ef-name')?.value?.trim() || '';
   const entry_url = document.getElementById('ef-url')?.value?.trim() || '';
-  const strategy = document.getElementById('ef-strat')?.value || 'standard';
-  const package_type = document.getElementById('ef-pkgtype')?.value?.trim() || '';
-
-  if(!name || !entry_url){ toast('名称和URL不能为空','error'); return; }
+  if(!entry_url){ toast('URL不能为空','error'); return; }
   if(!entry_url.startsWith('/')){ toast('URL必须以 / 开头','error'); return; }
 
-  const body = {strategy, package_type};
-  // Only include name/entry_url for manual products
   const _prods = window._allProducts || [];
   const _p = _prods.find(x => x.id === id);
-  if(_p?.is_manual){
-    body.name = name;
-    body.entry_url = entry_url;
-  }
+  const wasManual = _p?.is_manual;
+  const oldUrl = _p?.entry_url || '';
+  const urlChanged = oldUrl && oldUrl !== entry_url;
+
+  const body = {};
+  if(wasManual) body.name = _p.name;
+  body.entry_url = entry_url;
 
   const r = await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify(body)});
   if(r.code === 0){
     toast('已更新','success');
     _editRowId = null;
     await products();
+    if(urlChanged && !confirm('⚠️ 入口URL已变更，是否立即刷新包类型？')) return;
+    if(urlChanged) refreshPkgType(id);
   } else {
     toast(r.message || '保存失败','error');
   }
@@ -1959,9 +2200,6 @@ async function confirmToggleActive(id,active,rowId){
       // Update checkbox
       const cb=row.querySelector('input[type="checkbox"]');
       if(cb)cb.checked=active;
-      // Update health status
-      const hlthEl=row.querySelector('.hlth-badge');
-      if(hlthEl){hlthEl.textContent=active?'● ok':'已禁用';hlthEl.style.color=active?'#16a34a':'#9ca3af';}
       // Update action buttons
       const btns=row.querySelectorAll('[data-action]');
       btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});
@@ -1970,6 +2208,7 @@ async function confirmToggleActive(id,active,rowId){
     toast(r.message||'操作失败','error');
   }
 }
+_initDiscObserver();
 </script>
 </body>
 </html>
