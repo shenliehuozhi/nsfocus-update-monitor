@@ -108,6 +108,7 @@ class NsfocusCollector(BaseCollector):
         })
 
     def collect(self, source_id: int, session_cookie: str) -> list[UnifiedContentItem]:
+        """Collect ALL active products (legacy behavior — limited to PRODUCTS dict)."""
         items = []
         self._set_cookie(session_cookie)
         for name, url in PRODUCTS.items():
@@ -123,6 +124,188 @@ class NsfocusCollector(BaseCollector):
             except Exception as e:
                 logger.error(f'{name}: {e}')
         return items
+
+    def collect_by_id(self, source_id: int, session_cookie: str) -> list[UnifiedContentItem]:
+        """Collect a single product by its DB source_id."""
+        from src.models.snapshot import get_source
+        src = get_source(source_id)
+        if not src:
+            logger.error(f'Source {source_id} not found')
+            return []
+        name = src['name']
+        url = src['entry_url']
+        strategy = src.get('strategy', 'standard')
+        self._set_cookie(session_cookie)
+        try:
+            if strategy == 'recursive':
+                items = self._collect_recursive(source_id, name, url, max_depth=4)
+            else:
+                items = self._collect_standard(source_id, name, url)
+            logger.info(f'[{source_id}] {name}: {len(items)} items')
+            return items
+        except Exception as e:
+            logger.error(f'[{source_id}] {name}: {e}')
+            raise
+
+    def discover_package_types(self, source_id: int, session_cookie: str, log_fn=None, progress_fn=None) -> dict:
+        """Fully recursive directory-tree traversal for package type discovery.
+
+        progress_fn: optional callback(phase: str) called when starting each top-level
+                      version branch, so the caller can update UI progress.
+        """
+        from src.models.snapshot import get_source
+        src = get_source(source_id)
+        if not src:
+            return {}
+        name = src['name']
+        url = src['entry_url']
+        self._set_cookie(session_cookie)
+        _log = lambda msg: log_fn(msg) if log_fn else None
+
+        all_types = []    # union list
+        paths = []        # list of {chain, types}
+        visited = set()  # prevent loops
+
+        try:
+            _log(f'入口: {url}')
+            html = self._fetch(url)
+
+            # Extract section titles from entry page (e.g. "WEB应用防护系统(WAF)列表")
+            # and map each top-level link to its containing section.
+            section_titles = {}
+            import re as _re
+            for sec_match in _re.finditer(r"ser_c_b_tit['\"]>\s*([^<]+?)\s*</div>", html):
+                sec_title = sec_match.group(1).strip()
+                if sec_title:
+                    # Find all links within this section (until next ser_c_b_tit or end)
+                    sec_start = sec_match.end()
+                    next_sec = html.find("ser_c_b_tit", sec_start)
+                    sec_html = html[sec_start:next_sec if next_sec > 0 else len(html)]
+                    for link_match in _re.finditer(r'<a href=["\']([^"\']+)["\']\s*>', sec_html):
+                        link_url = link_match.group(1).strip()
+                        if link_url and not link_url.startswith('#'):
+                            section_titles[link_url] = sec_title
+
+            # Top-level links exclude sidebar + stopped links
+            top_links = self._extract_content_links(html)
+            top_links = [(t.strip(), u) for t, u in top_links
+                         if not self._is_sidebar_link(u)
+                         and not self._is_stopped(u, html)]
+
+            if not top_links:
+                # Single-page product (no sub-links at top level)
+                items = self._extract_table_items(html, source_id, name, '', '', page_url=f'{BASE_URL}{url}')
+                if items:
+                    type_name = self._clean_version(name) or name
+                    all_types.append(type_name)
+                    paths.append({'chain': [name], 'types': [type_name], 'url': url})
+                _log(f'完成，共 {len(all_types)} 种包类型，{len(paths)} 条路径')
+                return {'types': sorted(all_types), 'paths': paths, 'modes': {t: 'auto' for t in all_types}}
+
+            def recurse(page_url: str, chain: list, depth: int):
+                if depth > 6 or page_url in visited:
+                    return
+                visited.add(page_url)
+
+                _log('  ' * (depth + 1) + f'{"└── " if chain else ""}{chain[-1] if chain else url} ({page_url})')
+                try:
+                    page_html = self._fetch(page_url)
+                except Exception as e:
+                    _log('  ' * (depth + 2) + f'访问失败: {e}')
+                    return
+
+                # Check if this is a final package page (has table/download items)
+                table_items = self._extract_table_items(page_html, source_id, name, '', '', page_url=f'{BASE_URL}{page_url}')
+                if table_items:
+                    type_name = chain[-1] if chain else self._clean_version(name) or name
+                    if type_name not in all_types:
+                        all_types.append(type_name)
+                    paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
+                    _log('  ' * (depth + 2) + f'  ► 最终页，包类型={type_name}，{len(table_items)} 条记录')
+                    return
+
+                # Not final — keep recursing into sub-links
+                sub_links = self._extract_content_links(page_html)
+                sub_links = [(t.strip(), u) for t, u in sub_links
+                              if not self._is_sidebar_link(u)
+                              and not self._is_stopped(u, page_html)]
+
+                if not sub_links:
+                    type_name = chain[-1] if chain else self._clean_version(name) or name
+                    if type_name not in all_types:
+                        all_types.append(type_name)
+                    paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
+                    return
+
+                for sub_text, sub_url in sub_links:
+                    new_chain = list(chain) + [sub_text]
+                    recurse(sub_url, new_chain, depth + 1)
+
+            # Start recursion from top-level links
+            total = len(top_links)
+            for idx, (top_text, top_url) in enumerate(top_links):
+                # Notify progress: which version we're starting
+                if progress_fn:
+                    progress_fn(f'fetching_ver', idx + 1, total)
+                # section_title is extracted from entry page ser_c_b_tit markers
+                sec_title = section_titles.get(top_url, '')
+                initial_chain = [sec_title, top_text] if sec_title else [top_text]
+                recurse(top_url, initial_chain, depth=1)
+
+            _log(f'完成，共 {len(all_types)} 种包类型，{len(paths)} 条最终路径')
+            logger.debug(f'[{source_id}] {name}: discovered types={all_types}, paths={paths}')
+            return {'types': sorted(all_types), 'paths': paths, 'modes': {t: 'auto' for t in all_types}}
+
+        except Exception as e:
+            _log(f'错误: {e}')
+            logger.error(f'[{source_id}] {name} discover: {e}')
+            return {'types': [], 'paths': [], 'modes': {}}
+
+    @staticmethod
+    def diff_package_types(current: dict, discovered: dict) -> dict:
+        """
+        Compare current stored package_type JSON with newly discovered result.
+
+        Returns change structure:
+        {
+            'added_paths':    [{chain, types, url}, ...],   # new paths
+            'deleted_paths':  [{chain, types, url}, ...],   # removed paths
+            'modified_paths': [{chain, types, url, old_types, new_types}, ...],
+        }
+        All comparison by URL as primary key.
+        """
+        current_paths = current.get('paths', []) if current else []
+        discovered_paths = discovered.get('paths', []) if discovered else []
+
+        cur_urls = {p['url']: p for p in current_paths}
+        disc_urls = {p['url']: p for p in discovered_paths}
+
+        all_urls = set(cur_urls.keys()) | set(disc_urls.keys())
+
+        added, deleted, modified = [], [], []
+        for url in all_urls:
+            cur_p = cur_urls.get(url)
+            disc_p = disc_urls.get(url)
+            if disc_p and not cur_p:
+                added.append(disc_p)
+            elif cur_p and not disc_p:
+                deleted.append(cur_p)
+            else:
+                # Both exist — compare types
+                old_types = set(cur_p.get('types', []))
+                new_types = set(disc_p.get('types', []))
+                if old_types != new_types:
+                    modified.append({
+                        **disc_p,
+                        'old_types': sorted(old_types),
+                        'new_types': sorted(new_types),
+                    })
+
+        return {
+            'added_paths': added,
+            'deleted_paths': deleted,
+            'modified_paths': modified,
+        }
 
     def check_health(self, session_cookie: str) -> CollectorHealth:
         start = time.time()
@@ -550,25 +733,26 @@ class NsfocusCollector(BaseCollector):
     def _is_sidebar_link(url: str) -> bool:
         patterns = [
             r'/bmgIndex$', r'/cdgIndex$', r'/bsaIndex$', r'/bsaUtsIndex$',
-            r'/listEspcL', r'/listDms', r'/DsitIndex', r'/DsdbIndex',
+            r'/listEspcL$', r'/listDms$', r'/DsitIndex$', r'/DsdbIndex$',
             r'/DsesIndex', r'/ertIndex', r'/nespIndex', r'/isopRaIndex',
             r'/isopIndex$', r'/isopHIndex', r'/uesIndex', r'/basIndex',
             r'/csspIndex', r'/isgIndex', r'/esphIndex', r'/ncssi',
             r'/cnspIndex', r'/nissIndex', r'/tsaIndex', r'/tatIndex',
             r'/listIds$', r'/listIps$', r'/listTac', r'/listScm',
-            r'/listSas', r'/idrIndex', r'/listSasL', r'/listSasICS',
-            r'/listIdsICS', r'/listDas', r'/listSash', r'/wafIndex$',
-            r'/listHwaf', r'/listNfSse', r'/ListNf$', r'/ListNfVpn',
-            r'/ListNfWan', r'/ListNfOEM', r'/ListAIUtm', r'/sgIndex',
-            r'/DsgIndex', r'/listAuroraIndex$', r'/tvmIndex', r'/listICSScan',
-            r'/iscatIndex', r'/bvsIndex', r'/listWsms', r'/listWvss',
-            r'/listApiScan', r'/websafeIndex', r'/uipIndex', r'/sagIndex',
-            r'/CSSIndex', r'/adsIndex', r'/adsmIndex', r'/AdbosIndex',
-            r'/ntaIndex', r'/mfIndex', r'/listEspc', r'/listEspcM',
-            r'/listMatrix', r'/listEps', r'/apolloIndex', r'/saswIndex',
-            r'/iotapIndex', r'/tdcIndex', r'/inspIndex', r'/sdaIndex',
-            r'/listLas', r'/mdpsIndex', r'/rsasmIndex', r'/sgecIndex',
-            r'/siesIndex', r'/isidIndex', r'/naptIndex',
+            r'/listTac$', r'/listScm$', r'/listSas$', r'/idrIndex$',
+            r'/listSasL$', r'/listSasICS$', r'/listIdsICS$', r'/listDas$',
+            r'/listSash$', r'/wafIndex$',
+            r'/listHwaf$', r'/listNfSse$', r'/ListNf$', r'/ListNfVpn$',
+            r'/ListNfWan$', r'/ListNfOEM$', r'/ListAIUtm$', r'/sgIndex$',
+            r'/DsgIndex$', r'/listAuroraIndex$', r'/tvmIndex$', r'/listICSScan$',
+            r'/iscatIndex$', r'/bvsIndex$', r'/listWsms$', r'/listWvss$',
+            r'/listApiScan$', r'/websafeIndex$', r'/uipIndex$', r'/sagIndex$',
+            r'/CSSIndex$', r'/adsIndex$', r'/adsmIndex$', r'/AdbosIndex$',
+            r'/ntaIndex$', r'/mfIndex$', r'/listEspc$', r'/listEspcM$',
+            r'/listMatrix$', r'/listEps$', r'/apolloIndex$', r'/saswIndex$',
+            r'/iotapIndex$', r'/tdcIndex$', r'/inspIndex$', r'/sdaIndex$',
+            r'/listLas$', r'/mdpsIndex$', r'/rsasmIndex$', r'/sgecIndex$',
+            r'/siesIndex$', r'/isidIndex$', r'/naptIndex$',
         ]
         return any(re.search(p, url) for p in patterns)
 

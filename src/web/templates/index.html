@@ -129,7 +129,7 @@ function showPage(n){
   if(pages[n])pages[n]();
 }
 
-function typeCN(t){const m={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库'};return m[t]||t;}
+function typeCN(t){const m={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试'};return m[t]||t;}
 
 // ── Dashboard ──
 let _dashRange='7';
@@ -736,17 +736,16 @@ async function products(){
       </div>
 
       <div style="overflow-x:auto">
-      <table class="table" style="min-width:700px">
+      <table class="table" style="table-layout:auto;width:100%">
         <thead><tr>
           <th style="width:36px">#</th>
           <th style="width:64px">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
-          <th>策略</th>
           <th>包类型</th>
-          <th>健康状态</th>
-          <th>最近采集</th>
-          <th style="width:180px">操作</th>
+          <th style="width:60px">健康状态</th>
+          <th style="width:100px">最近采集</th>
+          <th>操作</th>
         </tr></thead>
         <tbody id="prod-tbody">`;
   h+=_renderProductRows(allProds);
@@ -777,13 +776,124 @@ function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){c
 
 function _hlthColor(s){return{'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[s]||'#6b7280';}
 
+// 从 typesObj.paths 统计所有唯一 type key，用 MAP 翻译显示
+// types.types 可能是 raw keys（如 ['sys','rule']）也可能是完整显示名（如 ['WAF V6.0.9系统升级包']）
+// 统一策略：统计 paths.types 中所有原始 key，按出现次数排序，MAP 翻译
+function _groupPkgTypes(typesObj) {
+  const MAP = {sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试'};
+  const {types, paths} = typesObj;
+  if (!types || !types.length) return '';
+
+  // 统计 paths.types 中每个 type key 的出现次数
+  const cnt = {};
+  if (paths && paths.length > 0) {
+    paths.forEach(p => { (p.types || []).forEach(t => { cnt[t] = (cnt[t]||0) + 1; }); });
+  }
+
+  // 如果 paths.types 全是完整显示名（不在 MAP 中），则统计 types.types 自身
+  const hasRawKeys = Object.keys(cnt).some(k => k in MAP);
+  if (hasRawKeys) {
+    const sorted = Object.keys(cnt).filter(k => k in MAP).sort((a,b) => (cnt[b]||0) - (cnt[a]||0));
+    return sorted.map(k => `${MAP[k]||k}(${cnt[k]})`).join(', ');
+  }
+
+  // 降级：paths.types 全是完整显示名，直接统计 types.types 各 key 的路径数
+  // 同时用完整显示名做 key（取 types.types 本身）
+  if (paths && paths.length > 0) {
+    const seen = new Set(types);
+    const fullCnt = {};
+    paths.forEach(p => {
+      (p.types || []).forEach(t => {
+        if (seen.has(t)) fullCnt[t] = (fullCnt[t]||0) + 1;
+      });
+    });
+    const sorted = [...types].sort((a,b) => (fullCnt[b]||0) - (fullCnt[a]||0));
+    return sorted.map(t => `${t}(${fullCnt[t]||0})`).join(', ');
+  }
+
+  return types.map(t => MAP[t] || t).join(', ');
+}
+
 function fmtPkgTypes(v){
   if(!v) return '';
-  const MAP={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库'};
-  try{
-    const a=JSON.parse(v);
-    return a.map(t=>MAP[t]||t).join(', ');
-  }catch{return v;}
+  let types = v;
+  try { types = JSON.parse(v); } catch {}
+  if (!types) return '';
+  // 新格式: {types:[...], paths:[...], modes:{}}
+  if (types.types) return _groupPkgTypes(types);
+  // 旧格式: [...]
+  if (Array.isArray(types)) return _fmtOldTypes(types);
+  return '';
+}
+
+// ── 缩写→中文映射（同时支持 raw key 和完整中文名）────────────────────────────
+const PKGMAP = {
+  // 缩写 key
+  sys:'系统', rule:'规则', nti:'威胁情报', av:'病毒库', apprule:'应用规则',
+  url:'URL库', wcs:'恶意站点', judge:'研判', geo:'地理库', interface:'接口',
+  special:'特殊', other:'其他', merge:'合并', client:'客户端',
+  av_stream:'流式病毒库', test:'测试', engine:'引擎',
+  // 完整中文名（WAF 等产品的 chain[-1] 格式）
+  '系统升级包':'系统', '规则升级包':'规则', '威胁情报升级包':'威胁情报',
+  '病毒库升级包':'病毒库', '应用规则库升级包':'应用规则', 'URL分类库升级包':'URL库',
+  '恶意站点库升级包':'恶意站点', '研判规则库升级包':'研判', '地理库升级包':'地理库',
+  '接口升级包':'接口', '特殊升级包':'特殊', '其他升级包':'其他',
+  '合并升级包':'合并', '客户端':'客户端', '流式病毒库升级包':'流式病毒库',
+  '测试升级包':'测试', '引擎升级包':'引擎',
+};
+
+function _mapType(t) {
+  // 先精确匹配
+  if (t in PKGMAP) return PKGMAP[t];
+  // 后缀匹配（处理 WAF V6.0.9系统升级包 → 系统）
+  for (const [suffix, label] of Object.entries(PKGMAP)) {
+    if (t.endsWith(suffix)) return label;
+  }
+  // 前缀+关键词归约（处理 WAF规则包、海光系列 V6.0.9系统升级等）
+  if (t.includes('规则')) return '规则';
+  if (t.includes('系统升级') || t.endsWith('系统')) return '系统';
+  if (t.includes('引擎升级') || t.includes('引擎')) return '引擎';
+  if (t.includes('威胁情报')) return '威胁情报';
+  if (t.includes('合并升级') || t.includes('合并')) return '合并';
+  // 纯版本号类（如 WAF V6.0.3）归为其他
+  if (/V?\d+\.\d+/.test(t) && !t.includes('升级')) return '其他';
+  return t;
+}
+
+// 旧格式 raw key 列表
+const _rawKeys = new Set(['sys','rule','nti','av','apprule','url','wcs','judge','geo','interface','special','other','merge','client','av_stream','test','engine']);
+
+// 从 typesObj.paths 归约统计
+// 核心：直接从 paths.types 计数，用 PKGMAP 归约分组
+function _groupPkgTypes(typesObj) {
+  const {types, paths} = typesObj;
+  if (!paths || !paths.length) return types ? types.map(_mapType).join(', ') : '';
+
+  // 统计 paths.types 中每个 type 的出现次数
+  const cnt = {};
+  paths.forEach(p => { (p.types || []).forEach(t => { cnt[t] = (cnt[t]||0) + 1; }); });
+
+  // 判断是 raw key 模式还是完整中文名模式
+  const rawKeysInCnt = Object.keys(cnt).filter(k => _rawKeys.has(k));
+  if (rawKeysInCnt.length > 0) {
+    // raw key 模式（如 sys/rule/nti）
+    const sorted = rawKeysInCnt.sort((a,b) => (cnt[b]||0) - (cnt[a]||0));
+    return sorted.map(k => `${_mapType(k)}(${cnt[k]})`).join(', ');
+  }
+
+  // 完整中文名模式：用 PKGMAP 归约分组
+  const merged = {};
+  Object.keys(cnt).forEach(t => {
+    const base = _mapType(t); // "WAF V6.0.9系统升级包" → "系统"
+    merged[base] = (merged[base]||0) + cnt[t];
+  });
+
+  const sorted = Object.keys(merged).sort((a,b) => merged[b]-merged[a]);
+  return sorted.map(k => `${k}(${merged[k]})`).join(', ');
+}
+
+function _fmtOldTypes(arr) {
+  return arr.map(t => _mapType(t)).join(', ');
 }
 
 const PKG_TYPE_OPTIONS=[
@@ -802,111 +912,259 @@ const PKG_TYPE_OPTIONS=[
   {code:'merge',   label:'合并升级包'},
   {code:'client',  label:'客户端'},
   {code:'av_stream',label:'流式病毒库升级包'},
+  {code:'test',    label:'测试包'},
 ];
+
+
+// 从 paths 数组构建可折叠目录树 HTML
+function buildTreeHtml(pt, MAP) {
+  const paths = pt.paths || [];
+  if (paths.length === 0) return '<span style="color:#9ca3af">无路径数据</span>';
+
+  const root = {};
+  paths.forEach(p => {
+    const chain = p.chain || [];
+    if (chain.length === 0) return;
+    let node = root;
+    chain.forEach((name, idx) => {
+      if (!node._children) node._children = {};
+      if (!node._children[name]) node._children[name] = { _children: {}, _types: [], _isPkg: false };
+      node = node._children[name];
+      if (idx === chain.length - 1) { node._isPkg = true; node._types = p.types || []; }
+    });
+  });
+
+  function renderNode(node, name, depth) {
+    const indent = depth * 16;
+    const children = node._children ? Object.entries(node._children) : [];
+    const hasChildren = children.length > 0;
+    const isPkg = node._isPkg;
+    const types = node._types || [];
+
+    let html = `<div class="tree-node" style="padding-left:${indent}px;display:flex;align-items:center;gap:4px;padding-top:4px;padding-bottom:4px;min-height:28px">`;
+
+    if (hasChildren) {
+      html += `<span class="tree-toggle" onclick="treeToggle(this)" style="cursor:pointer;color:#94a3b8;font-size:14px;margin-right:4px;user-select:none;flex-shrink:0">&#9658;</span>`;
+    } else {
+      html += `<span style="width:18px;flex-shrink:0"></span>`;
+    }
+
+    const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
+    const label = MAP[name] || name;
+    const childCount = hasChildren ? ` <span style="color:#94a3b8;font-size:11px">(${children.length})</span>` : '';
+    html += `<span style="font-size:13px;color:#334155;flex-shrink:0">${icon} ${escHtml(label)}${childCount}</span>`;
+
+    if (isPkg && types.length > 0) {
+      const badges = types.map(t => `<span style="background:#ede9fe;color:#5b21b6;font-size:10px;padding:1px 6px;border-radius:8px;margin-left:2px;flex-shrink:0">${MAP[t]||escHtml(t)}</span>`).join('');
+      html += badges;
+      const modeKey = types[0];
+      const mode = (pt.modes && pt.modes[modeKey]) || 'auto';
+      html += `<select data-type="${escHtml(modeKey)}" onchange="window._ptModes['${escHtml(modeKey)}']=this.value" style="margin-left:auto;flex:0 0 80px;padding:2px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:11px;cursor:pointer">
+        <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
+        <option value="full" ${mode==='full'?'selected':''}>全量</option>
+        <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
+      </select>`;
+    } else if (!hasChildren) {
+      html += `<span style="margin-left:auto;color:#94a3b8;font-size:11px;flex-shrink:0">—</span>`;
+    } else {
+      html += `<span style="margin-left:auto;color:#94a3b8;font-size:11px;flex-shrink:0">&#9658;</span>`;
+    }
+    html += `</div>`;
+
+    if (hasChildren) {
+      html += `<div class="tree-children" style="display:none">`;
+      children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
+      html += `</div>`;
+    }
+    return html;
+  }
+
+  let treeHtml = '<div style="font-family:system-ui">';
+  const rootChildren = root._children ? Object.entries(root._children).sort(([a],[b]) => {
+    const aV = /\d/.test(a); const bV = /\d/.test(b);
+    if (aV && !bV) return -1; if (!aV && bV) return 1;
+    return a.localeCompare(b, 'zh');
+  }) : [];
+  rootChildren.forEach(([name, node]) => { treeHtml += renderNode(node, name, 0); });
+  treeHtml += '</div>';
+  return treeHtml;
+}
+
+function treeToggle(el) {
+  var node = el.closest('.tree-node');
+  // .tree-children 是 .tree-node 的下一个兄弟节点（不是 child）
+  var ch = node.nextElementSibling;
+  if (!ch || !ch.classList.contains('tree-children')) return;
+  var isOpen = ch.style.display !== 'none';
+  ch.style.display = isOpen ? 'none' : 'block';
+  el.innerHTML = isOpen ? '&#9658;' : '&#9660;';
+}
 
 function editPkgType(id){
   const prods=window._allProducts||[];
   const p=prods.find(x=>x.id===id);
   if(!p){toast('产品不存在','error');return;}
-  let curTypes=[];
+
+  const MAP={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试'};
+
+  // 解析 package_type（新格式 {types:[], paths:[], modes:{}} 或旧格式 [...]）
+  let pt={types:[], paths:[], modes:{}};
   try{
-    if(Array.isArray(p.package_type)) curTypes=p.package_type;
-    else if(typeof p.package_type==='string') curTypes=JSON.parse(p.package_type||'[]');
+    if(typeof p.package_type==='string'){
+      const parsed=JSON.parse(p.package_type);
+      if(parsed.types){pt=parsed;}
+      else if(Array.isArray(parsed)){pt.types=parsed; pt.paths=[]; pt.modes={};} // 旧格式
+    }
   }catch{}
+
+  // 如果有未确认的包类型变化 → 显示 diff 确认弹窗
+  if(p.package_type_changed==1 && p.package_type_discovered){
+    let disc={types:[], paths:[], modes:{}};
+    try{const r=JSON.parse(p.package_type_discovered);if(r.types){disc=r;}}catch{}
+    const currentSet=new Set(pt.types);
+    const discSet=new Set(disc.types);
+    const added=[...discSet].filter(x=>!currentSet.has(x));
+    const removed=[...currentSet].filter(x=>!discSet.has(x));
+
+    let diffRows='';
+    if(added.length){
+      diffRows+=added.map(t=>`<span style="background:#d1fae5;color:#065f46;font-size:12px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">+${MAP[t]||t}</span>`).join(' ');
+    }
+    if(removed.length){
+      diffRows+=removed.map(t=>`<span style="background:#fee2e2;color:#991b1b;font-size:12px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block;text-decoration:line-through">-${MAP[t]||t}</span>`).join(' ');
+    }
+    if(!added.length && !removed.length){
+      diffRows=`<span style="color:#9ca3af;font-size:13px">包类型集合无变化，但采集时检测到差异</span>`;
+    }
+
+    // diff 模式下的 modes 编辑
+    let modeRows='';
+    disc.types.forEach(t=>{
+      const label=MAP[t]||t;
+      const mode=disc.modes[t]||'auto';
+      modeRows+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:#f9fafb;border:1px solid #e5e7eb;margin-bottom:4px">
+        <span style="flex:1;font-size:13px;color:#374151">${label}</span>
+        <select data-type="${escHtml(t)}" style="flex:0 0 90px;padding:3px 6px;border:1px solid #d1d5db;border-radius:5px;font-size:12px;cursor:pointer">
+          <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
+          <option value="full" ${mode==='full'?'selected':''}>全量</option>
+          <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
+        </select>
+      </div>`;
+    });
+
+    // 目录树展示 disc.paths（复用新的树形渲染）
+    let pathTreeHtml = '';
+    if (disc.paths && disc.paths.length) {
+      // 用 disc 的 modes 渲染树
+      const discPt = { types: disc.types, paths: disc.paths, modes: disc.modes || {} };
+      const discTreeHtml = buildTreeHtml(discPt, MAP);
+      pathTreeHtml = `<div style="margin-top:12px;font-size:11px;color:#64748b;margin-bottom:6px">📂 采集到的目录结构</div><div style="border:1px solid #e2e8f0;border-radius:8px;max-height:240px;overflow-y:auto;padding:8px 4px">${discTreeHtml}</div>`;
+    }
+
+    // 智能警告
+    let rulesWarning='';
+    if(removed.length && disc.affected_rules && disc.affected_rules.length){
+      const ruleItems=disc.affected_rules.map(r=>
+        `<div style="margin-top:4px">
+          <span style="color:#7c3aed;font-weight:600">${escHtml(r.name)}</span>
+          <span style="color:#991b1b;font-size:12px;margin-left:6px">
+            ${(r.removed_types||[]).map(t=>MAP[t]||t).join(', ')}
+          </span>
+        </div>`
+      ).join('');
+      rulesWarning=`<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px;margin-top:12px">
+        <div style="font-size:12px;color:#991b1b;font-weight:600;margin-bottom:6px">⚠️ 以下订阅规则引用了将被删除的包类型，采纳后这些规则对此产品将不再推送：</div>
+        ${ruleItems}
+      </div>`;
+    }
+
+    _showModal('pkgtype');
+    modalBody('pkgtype',`<div style="padding:24px;max-height:80vh;overflow-y:auto">
+      <div style="font-size:15px;font-weight:600;margin-bottom:16px">⚠️ 包类型检测到变化 <span style="font-weight:400;font-size:12px;color:#666">「${escHtml(p.name)}」</span></div>
+      <div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:14px;margin-bottom:16px">
+        <div style="font-size:12px;color:#92400e;font-weight:600;margin-bottom:8px">📊 变更明细</div>
+        <div>${diffRows}</div>
+      </div>
+      ${rulesWarning}
+      ${pathTreeHtml}
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn btn-primary" onclick="confirmPkgTypeChange(${id},'apply')">✅ 采纳变化</button>
+        <button class="btn" onclick="confirmPkgTypeChange(${id},'keep')">保留原样</button>
+        <button class="btn" style="margin-left:auto" onclick="closeModal('pkgtype')">取消</button>
+      </div>
+    </div>`);
+    window._ptModes={};
+    disc.types.forEach(t=>{ window._ptModes[t]=disc.modes[t]||'auto'; });
+    window._ptDiscovered=disc;
+    return;
+  }
+
+  // ── 正常编辑模式 ────────────────────────────────────────────
+  if(pt.types.length===0){
+    _showModal('pkgtype');
+    modalBody('pkgtype',`<div style="padding:24px">
+      <div style="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span style="font-weight:400;font-size:12px;color:#666">「${escHtml(p.name)}」</span></div>
+      <div style="color:#9ca3af;font-size:13px;text-align:center;padding:12px">
+        尚未发现包类型，请先对该产品进行<span style="color:#7c3aed;cursor:pointer" onclick="closeModal('pkgtype');collectProduct(${id},'full')">全量采集</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:20px">
+        <button class="btn" onclick="closeModal('pkgtype')">关闭</button>
+      </div>
+    </div>`);
+    return;
+  }
+
+  // 计算每种类型的路径覆盖数
+  const pathCount={};
+  pt.types.forEach(t=>{ pathCount[t]=0; });
+  (pt.paths||[]).forEach(p=>{
+    (p.types||[]).forEach(t=>{ if(t in pathCount) pathCount[t]++; });
+  });
+  const sortedTypes=[...pt.types].sort((a,b)=>(pathCount[b]||0)-(pathCount[a]||0));
+
+  // 构建目录树（使用独立函数）
+  const treeHtml = buildTreeHtml(pt, MAP);
+
+  // 弹窗内容：目录树 + mode 选择 + 保存/取消
   _showModal('pkgtype');
-  // Build checkbox list
-  let checkboxes=PKG_TYPE_OPTIONS.map(t=>{
-    let checked=curTypes.includes(t.code)?'checked':'';
-    return `<label style="display:flex;align-items:center;gap:6px;padding:5px 8px;border-radius:6px;cursor:pointer;user-select:none">
-      <input type="checkbox" value="${t.code}" ${checked} onchange="togglePkgType(this)" style="width:15px;height:15px;cursor:pointer">
-      <span style="font-size:13px">${t.label}</span>
-    </label>`;
-  }).join('');
-  modalBody('pkgtype',`<div style="padding:24px">
+  modalBody('pkgtype',`<div style="padding:24px;max-height:80vh;overflow-y:auto">
     <div style="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span style="font-weight:400;font-size:12px;color:#666">「${escHtml(p.name)}」</span></div>
-    <div class="form-group">
-      <div style="font-size:12px;color:#6b7280;margin-bottom:8px">勾选该产品需要跟踪的包类型（可多选）</div>
-      <div id="pt-checkboxes" style="display:flex;flex-wrap:wrap;gap:4px;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:10px">${checkboxes}</div>
+    <div style="margin-bottom:14px;font-size:12px;color:#7c3aed;background:#f5f3ff;padding:8px 12px;border-radius:6px">
+      共 ${pt.types.length} 种包类型，${(pt.paths||[]).length} 条路径
     </div>
-    <div class="form-group" style="margin-top:14px">
-      <label style="font-weight:600;font-size:13px">强制覆盖 <span style="color:#9ca3af;font-weight:400">(优先级高于关键词判断)</span></label>
-      <div id="pt-overrides"></div>
-      <button class="btn btn-xs btn-outline" style="margin-top:8px" onclick="ptAddOverride('${escHtml(p.name)}')">+ 添加覆盖规则</button>
+    <div style="border:1px solid #e2e8f0;border-radius:8px;max-height:320px;overflow-y:auto;padding:8px 4px">
+      ${treeHtml}
     </div>
-    <div style="display:flex;gap:8px;margin-top:20px">
+    <div style="display:flex;gap:8px;margin-top:16px">
       <button class="btn btn-primary" onclick="savePkgType(${id})">💾 保存</button>
       <button class="btn" onclick="closeModal('pkgtype')">取消</button>
     </div>
   </div>`);
-  // Load existing overrides
-  try{
-    const ov=JSON.parse(p.force_type||'{}');
-    Object.entries(ov).forEach(([k,v])=>{ptAddOverrideRow(k,v);});
-  }catch{}
-  window._ptOverrides={};
+
+  // 初始化 modes
+  window._ptModes = {};
+  window._ptPaths = pt.paths || [];
+  pt.types.forEach(t => { window._ptModes[t] = pt.modes && pt.modes[t] || 'auto'; });
 }
 
 function togglePkgType(cb){
-  // Just toggle - no extra logic needed, savePkgType reads all checked boxes
-}
-
-let _ptOverrideIdx=0;
-function ptAddOverride(prodName){
-  ptAddOverrideRow(prodName+'|', 'auto');
-}
-function ptAddOverrideRow(key, val){
-  val=val||'auto';
-  // Parse key: "产品名|type" -> display as "产品名 | 中文类型"
-  let parsed={prod:'', type:'', typeCode:''};
-  if(key.includes('|')){
-    let [p,t]=key.split('|');
-    parsed.prod=p;
-    parsed.typeCode=t;
-    // Map type code to Chinese
-    let tObj=PKG_TYPE_OPTIONS.find(o=>o.code===t);
-    parsed.type=tObj?tObj.label:t;
-  }
-  const container=document.getElementById('pt-overrides');
-  if(!container)return;
-  const id='pto'+(_ptOverrideIdx++);
-  const div=document.createElement('div');
-  div.style='display:flex;gap:6px;align-items:center;margin-bottom:6px';
-  // Product name input
-  div.innerHTML=`
-    <input value="${escHtml(parsed.prod)}" placeholder="产品名称" class="pt-ov-prod" style="flex:1;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-    <span style="color:#9ca3af;font-size:12px">|</span>
-    <select class="pt-ov-type" style="flex:0 0 130px;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-      ${PKG_TYPE_OPTIONS.map(t=>`<option value="${t.code}" ${t.code===parsed.typeCode?'selected':''}>${t.label}</option>`).join('')}
-    </select>
-    <select class="pt-ov-val" style="flex:0 0 80px;padding:4px 8px;border:1px solid #d1d5db;border-radius:5px;font-size:12px">
-      <option value="auto" ${val==='auto'?'selected':''}>自动</option>
-      <option value="full" ${val==='full'?'selected':''}>全量</option>
-      <option value="incremental" ${val==='incremental'?'selected':''}>增量</option>
-    </select>
-    <button onclick="this.parentElement.remove()" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:14px">✕</button>`;
-  div.dataset.key=id;
-  window._ptOverrides[id]={prod:parsed.prod, typeCode:parsed.typeCode, val};
-  // Wire up onchange
-  div.querySelector('.pt-ov-prod').onchange=function(){window._ptOverrides[id].prod=this.value;};
-  div.querySelector('.pt-ov-type').onchange=function(){window._ptOverrides[id].typeCode=this.value;};
-  div.querySelector('.pt-ov-val').onchange=function(){window._ptOverrides[id].val=this.value;};
-  container.appendChild(div);
+  // Deprecated - no-op
 }
 
 async function savePkgType(id){
-  // Read checked boxes
-  const checked=document.querySelectorAll('#pt-checkboxes input[type="checkbox"]:checked');
-  const types=Array.from(checked).map(cb=>cb.value);
-  const pkg_type=types.length?JSON.stringify(types):null;
-  // Build force_type
-  const ov={};
-  if(window._ptOverrides){
-    Object.values(window._ptOverrides).forEach(({prod,typeCode,val})=>{
-      if(prod&&typeCode&&val&&val!=='auto')ov[prod+'|'+typeCode]=val;
-    });
-  }
-  const force_type=Object.keys(ov).length?JSON.stringify(ov):null;
-  const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({package_type:pkg_type,force_type})});
+  const modes = window._ptModes || {};
+  // types 来自 modes 的 key（由树形控件的 mode selector 更新）
+  const types = Object.keys(modes);
+
+  // 构建新格式: {types:[...], paths:[...], modes:{...}}
+  const finalModes = {};
+  types.forEach(t => {
+    const m = modes[t] || 'auto';
+    if (m !== 'auto') finalModes[t] = m;
+  });
+  const pkg_type = { types, paths: window._ptPaths || [], modes: finalModes };
+
+  const r = await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({package_type:JSON.stringify(pkg_type)})});
   if(r.code===0){
     toast('包类型已保存','success');
     closeModal('pkgtype');
@@ -916,16 +1174,135 @@ async function savePkgType(id){
   }
 }
 
+async function confirmPkgTypeChange(id, action){
+  if(action==='apply'){
+    const selEls=document.querySelectorAll('#pt-type-list select[data-type]');
+    const disc=window._ptDiscovered||{types:[],paths:[],modes:{}};
+    const updatedModes={};
+    selEls.forEach(sel=>{ updatedModes[sel.dataset.type]=sel.value; });
+    const finalPkg={types:disc.types, paths:disc.paths||[], modes:updatedModes};
+    await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({
+      package_type:JSON.stringify(finalPkg),
+      package_type_discovered:'',
+      package_type_changed:0
+    })});
+    toast('已采纳新包类型','success');
+  }else if(action==='keep'){
+    await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({
+      package_type_discovered:'',
+      package_type_changed:0
+    })});
+    toast('已保留原包类型','success');
+  }
+  closeModal('pkgtype');
+  await products();
+}
+
+async function refreshPkgType(id){
+  // 触发刷新 → POST → SSE 轮询 → 圆形进度环 + 日志浮动窗口
+  const btn=document.querySelector(`[onclick="refreshPkgType(${id})"]`);
+  if(!btn) return;
+
+  // 触发后台任务
+  const r=await api(`/system/products/${id}/refresh-pkg-type`,{method:'POST'});
+  if(r.code!==0){
+    toast(r.message||'启动失败','error');
+    return;
+  }
+
+  // 按钮变成进度环
+  const progId=`rprog-${id}`;
+  btn.style.display='none';
+  const ring=document.createElement('span');
+  ring.id=progId;
+  ring.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;cursor:pointer';
+  ring.innerHTML=`<svg width="28" height="28" viewBox="0 0 28 28" onclick="showRefreshLog(${id})"><circle cx="14" cy="14" r="11" fill="none" stroke="#e5e7eb" stroke-width="2.5"/><circle id="${progId}-arc" cx="14" cy="14" r="11" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-dasharray="69.1" stroke-dashoffset="69.1" stroke-linecap="round" transform="rotate(-90 14 14)"/><text id="${progId}-txt" x="14" y="19" text-anchor="middle" font-size="9" fill="#7c3aed" font-weight="700">·</text></svg>`;
+  btn.parentNode.insertBefore(ring,btn);
+
+  // 预建立日志窗口（隐藏）
+  const logId=`rlog-${id}`;
+  if(!document.getElementById(logId)){
+    const logDiv=document.createElement('div');
+    logDiv.id=logId;
+    logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:2000;display:none';
+    logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:12px;font-weight:600;color:#374151"><span style="flex:1">📋 包类型刷新日志</span><span onclick="document.getElementById('${logId}').style.display='none'" style="cursor:pointer;color:#9ca3af;font-size:16px;line-height:1;margin-left:8px">×</span></div><div class="log-body" style="padding:10px 14px;max-height:180px;overflow-y:auto;background:#fafafa;font-family:monospace;font-size:11px;color:#374151"></div>`;
+    document.body.appendChild(logDiv);
+  }
+
+  // 轮询方式获取进度（每 2 秒一次，兼容长任务）
+  let done=false;
+  let pollTimer=null;
+  function updateRing(state){
+    if(!state) return;
+    const arc=document.getElementById(`${progId}-arc`);
+    const txt=document.getElementById(`${progId}-txt`);
+    if(arc&&txt){
+      // Phase format: 'fetching_home' | 'fetching_ver (3/7)' | 'done' | 'error'
+      const rawPhase = state.phase || '';
+      let pct = 0;
+      const verMatch = rawPhase.match(/fetching_ver \((\d+)\/(\d+)\)/);
+      if (verMatch) {
+        const cur = parseInt(verMatch[1]);
+        const tot = parseInt(verMatch[2]);
+        pct = 25 + Math.round((cur / tot) * 70);
+      } else if (rawPhase === 'fetching_home') {
+        pct = 10;
+      } else if (rawPhase === 'done') {
+        pct = 100;
+      } else if (rawPhase === 'error') {
+        pct = 100;
+      }
+      arc.setAttribute('stroke-dashoffset', 69.1*(1-pct/100));
+      txt.textContent = pct === 100 ? (rawPhase === 'error' ? '✗' : '✓') : `${pct}`;
+    }
+    if(state.log_lines&&state.log_lines.length){
+      const win=document.getElementById(logId);
+      if(win){
+        win.style.display='block';
+        win.querySelector('.log-body').innerHTML=state.log_lines.map(l=>`<div style="padding:1px 0;border-bottom:1px solid #f1f3f5">${escHtml(l)}</div>`).join('');
+        win.querySelector('.log-body').scrollTop=win.querySelector('.log-body').scrollHeight;
+      }
+    }
+    if(state.phase==='done'||state.phase==='error'||!state.active){
+      done=true;
+      if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+      setTimeout(async()=>{
+        ring.remove();
+        btn.style.display='';
+        await products();
+      },1000);
+    }
+  }
+
+  // 触发后立即查询一次初始状态，然后每 2 秒轮询
+  async function poll(){
+    if(done) return;
+    const r=await api(`/system/products/${id}/refresh-pkg-status`);
+    if(r.code===0){
+      updateRing(r.data);
+    }
+  }
+
+  poll(); // 立即查一次
+  pollTimer=setInterval(poll, 2000); // 每 2 秒轮询
+  // 最多轮询 120 秒（60次 × 2s），防止无限等待
+  setTimeout(()=>{if(!done){done=true;if(pollTimer){clearInterval(pollTimer);}ring.remove();btn.style.display='';}},120000);
+}
+
+function showRefreshLog(id){
+  const w=document.getElementById(`rlog-${id}`);
+  if(w){ w.style.display=w.style.display==='none'?'block':'none'; }
+}
+
+function togglePkgType(cb){}
+
 function _renderProductRows(prods){
-  if(!prods.length) return `<tr><td colspan="9" style="text-align:center;color:#9ca3af;padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
+  if(!prods.length) return `<tr><td colspan="8" style="text-align:center;color:#9ca3af;padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
   let h='';
   for(const p of prods){
     const last=p.last_collected_at?fmtTZ(p.last_collected_at,true):'—';
     const hlth=p.health_status||'unknown';
     const hlthColor={'ok':'#16a34a','error':'#dc2626','unknown':'#6b7280'}[hlth]||'#6b7280';
-    const stratBadge=p.strategy==='recursive'
-      ?'<span style="background:#fef3c7;color:#92400e;font-size:11px;padding:1px 6px;border-radius:10px">递归</span>'
-      :'<span style="background:#dbeafe;color:#1e40af;font-size:11px;padding:1px 6px;border-radius:10px">标准</span>';
     const rowClass=p.is_active?'':'opacity:0.6';
     h+=`<tr id="pr-${p.id}" style="${rowClass}">
       <td>${p.id}</td>
@@ -934,15 +1311,15 @@ function _renderProductRows(prods){
       </td>
       <td><strong>${escHtml(p.name)}</strong></td>
       <td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td>
-      <td>${stratBadge}</td>
-      <td><a href="javascript:void(0)" onclick="editPkgType(${p.id})" title="点击编辑包类型" style="color:#7c3aed;font-size:12px;text-decoration:none">${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
-      <td><span class="hlth-badge" style="color:${p.is_active?(hlthColor):'#9ca3af'};font-size:12px">${p.is_active?'● '+hlth:'已禁用'}</span></td>
-      <td><span style="font-size:12px;color:#666">${last}</span></td>
-      <td>
-        <button class="btn btn-sm" onclick="editProduct(${p.id})" title="编辑">✏️</button>
+      <td><a href="javascript:void(0)" onclick="editPkgType(${p.id})" title="点击编辑包类型" style="color:#7c3aed;font-size:12px;text-decoration:none">${p.package_type_changed?'⚠️ ':''}${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
+      <td><span class="hlth-badge" style="color:${p.is_active?(hlthColor):'#9ca3af'};font-size:12px;white-space:nowrap">${p.is_active?'● '+hlth:'已禁用'}</span></td>
+      <td><span style="font-size:12px;color:#666;white-space:nowrap">${last}</span></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="editProduct(${p.id})" title="编辑" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">✏️</button>
         <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="collectProduct(${p.id},'quick')" title="快速采集" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">▶</button>
         <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="collectProduct(${p.id},'full')" title="全量采集" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">◉</button>
-        <button class="btn btn-sm" style="color:#dc2626" onclick="delProduct(${p.id},'${escHtml(p.name)}')" title="删除">🗑</button>
+        <button class="btn btn-sm" ${p.is_active?'':'disabled'} onclick="refreshPkgType(${p.id})" title="刷新包类型" style="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">🔄</button>
+        <button class="btn btn-sm" ${p.is_active?'':'disabled'} style="color:#dc2626;${p.is_active?'':'opacity:0.35;cursor:not-allowed'}" onclick="delProduct(${p.id},'${escHtml(p.name)}')" title="删除">🗑</button>
       </td>
     </tr>`;
   }
@@ -962,76 +1339,198 @@ function filterProducts(){
 }
 
 async function discoverProducts(){
-  // Show modal shell immediately
+  // 1. 触发后台发现任务
   _showModal('disc');
-  modalBody('disc',`<div style="padding:20px;text-align:center"><div class="spin"></div> 正在从绿盟站点发现产品…</div>`);
+  modalBody('disc',`<div style="padding:24px;text-align:center"><div class="spin"></div><div id="disc-phase" style="margin-top:12px;color:#666">正在启动自动发现…</div><div id="disc-log" style="margin-top:8px;font-size:11px;color:#9ca3af;max-height:120px;overflow-y:auto;text-align:left"></div></div>`);
+
   const r=await api('/system/products/discover',{method:'POST'});
   if(r.code!==0){
-    modalBody('disc',`<div style="padding:24px"><div style="color:#dc2626;font-weight:600;margin-bottom:8px">发现失败</div><div style="color:#666;font-size:13px">${escHtml(r.message||'')}</div><div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div></div>`);
-    return;
-  }
-  const added=r.data?.added||[];
-  const unchanged=r.data?.unchanged||[];
-  const removed=r.data?.removed||[];
-  const total=r.data?.total||0;
-  if(total===0){
-    modalBody('disc',`<div style="padding:24px"><div style="color:#9ca3af">未发现产品</div><div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div></div>`);
+    modalBody('disc',`<div style="padding:24px"><div style="color:#dc2626;font-weight:600;margin-bottom:8px">启动失败</div><div style="color:#666;font-size:13px">${escHtml(r.message||'')}</div><div style="margin-top:16px"><button class="btn" onclick="closeModal('disc')">关闭</button></div></div>`);
     return;
   }
 
-  // Helper: collapsible section table
-  function sectionTable(label, color, icon, prods, key){
-    if(!prods.length) return `<div id="sec-${key}" style="margin-bottom:10px"><div style="font-size:12px;font-weight:600;color:${color};cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0" onclick="toggleSection('${key}')"><span id="sec-icon-${key}">▸</span>${icon} ${label}<span style="background:${color}20;color:${color};padding:1px 7px;border-radius:10px;font-size:11px;margin-left:4px">${prods.length}</span></div></div>`;
-    let rows=prods.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
-    return `<div id="sec-${key}" style="margin-bottom:10px">
-      <div style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f3f5;color:${color}" onclick="toggleSection('${key}')">
-        <span id="sec-icon-${key}">▾</span>${icon} ${label}<span style="background:${color}20;color:${color};padding:1px 7px;border-radius:10px;font-size:11px;margin-left:4px">${prods.length}</span>
+  // 2. 轮询进度
+  let done=false;
+  let pollTimer=null;
+  function renderProgress(state){
+    const phaseNames={
+      'scanning_products':'🔍 扫描产品列表…',
+      'discovering_pkg_types':`📦 发现包类型 (${state.progress||0}/${state.total||0})…`,
+      'done':'✅ 发现完成',
+      'error':'❌ 发现出错',
+    };
+    const phaseEl=document.getElementById('disc-phase');
+    const logEl=document.getElementById('disc-log');
+    if(phaseEl) phaseEl.textContent=phaseNames[state.phase]||state.phase||'';
+    if(logEl && state.log_lines?.length){
+      logEl.innerHTML=state.log_lines.map(l=>`<div style="padding:1px 0;border-bottom:1px solid #f5f5f5">${escHtml(l)}</div>`).join('');
+      logEl.scrollTop=logEl.scrollHeight;
+    }
+    return state.phase==='done'||state.phase==='error'||!state.active;
+  }
+
+  async function poll(){
+    if(done) return;
+    const s=await api('/system/products/discover/status');
+    if(s.code===0){
+      done=renderProgress(s.data);
+      if(done){
+        clearInterval(pollTimer);
+        if(s.data.phase==='done') showDiscoverResult(s.data.result);
+      }
+    }
+  }
+  poll();
+  pollTimer=setInterval(poll,2000);
+  setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);modalBody('disc',`<div style="padding:24px;text-align:center;color:#dc2626">发现超时，请重试</div><div style="padding:8px"><button class="btn" onclick="closeModal('disc')">关闭</button></div>`);}},600000);
+}
+
+function showDiscoverResult(result){
+  // 渲染两阶段变更确认
+  const prod=result?.products||{};
+  const pkgChanges=result?.pkg_changes||{};
+  const added=prod.added||[];
+  const removed=prod.removed||[];
+  const unchanged=prod.unchanged||[];
+  const pkgChangedProducts=Object.values(pkgChanges);
+  const totalProdChanges=added.length+removed.length;
+  const totalPkgChanges=pkgChangedProducts.reduce((n,c)=>n+(c.added_paths?.length||0)+(c.deleted_paths?.length||0)+(c.modified_paths?.length||0),0);
+
+  let summaryHtml=`<div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
+    <span style="color:#16a34a">🆕 新增产品 <b>${added.length}</b></span>
+    <span style="color:#dc2626">⛔ 下线产品 <b>${removed.length}</b></span>
+    <span style="color:#9ca3af">✔️ 未变 <b>${unchanged.length}</b></span>
+    ${totalPkgChanges>0?`<span style="color:#7c3aed">📦 包类型变更 <b>${totalPkgChanges}</b> 项 (<b>${pkgChangedProducts.length}</b> 个产品)</span>`:''}
+  </div>`;
+
+  function toggleSection(key){
+    const body=document.getElementById('sec-body-'+key);
+    const icon=document.getElementById('sec-icon-'+key);
+    if(!body) return;
+    const open=body.style.display!=='none';
+    body.style.display=open?'none':'block';
+    if(icon) icon.textContent=open?'▸':'▾';
+  }
+
+  let sectionsHtml='';
+  // 产品新增
+  if(added.length){
+    const rows=added.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    sectionsHtml+=`<div style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f3f5;color:#16a34a" onclick="toggleSection('add-prod')">
+        <span id="sec-icon-add-prod">▾</span>🆕 新增产品 <span style="background:#16a34a20;color:#16a34a;padding:1px 7px;border-radius:10px;font-size:11px">${added.length}</span>
       </div>
-      <div id="sec-body-${key}" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:4px">
-        <table class="table" style="margin:0;font-size:13px">
-          <thead><tr><th>产品名称</th><th>入口URL</th></tr></thead>
-          <tbody>${rows}</tbody>
-        </table>
+      <div id="sec-body-add-prod" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:4px">
+        <table class="table" style="margin:0;font-size:13px"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
+    </div>`;
+  }
+  // 产品删除
+  if(removed.length){
+    const rows=removed.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    sectionsHtml+=`<div style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f3f5;color:#dc2626" onclick="toggleSection('rem-prod')">
+        <span id="sec-icon-rem-prod">▾</span>⛔ 下线产品 <span style="background:#dc262620;color:#dc2626;padding:1px 7px;border-radius:10px;font-size:11px">${removed.length}</span>
+      </div>
+      <div id="sec-body-rem-prod" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:4px">
+        <table class="table" style="margin:0;font-size:13px"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
+    </div>`;
+  }
+  // 包类型变更
+  if(pkgChangedProducts.length){
+    let pkgRows='';
+    for(const change of pkgChangedProducts){
+      const addedCount=change.added_paths?.length||0;
+      const delCount=change.deleted_paths?.length||0;
+      const modCount=change.modified_paths?.length||0;
+      const segs=[];
+      if(addedCount) segs.push(`<span style="color:#16a34a">+${addedCount} 新增</span>`);
+      if(delCount) segs.push(`<span style="color:#dc2626">-${delCount} 删除</span>`);
+      if(modCount) segs.push(`<span style="color:#f59e0b">±${modCount} 修改</span>`);
+      pkgRows+=`<tr>
+        <td style="font-weight:600">${escHtml(change.product_name||'')}</td>
+        <td style="font-size:12px;color:#666">${segs.join(' | ')}</td>
+        <td style="text-align:right"><button class="btn btn-xs btn-outline" onclick="togglePkgDetail('${escHtml(change.entry_url||'')}')">详情</button></td>
+      </tr>`;
+      // Hidden detail rows
+      pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" style="display:none;background:#fafafa">
+        <td colspan="3" style="padding:8px 12px;font-size:12px">
+          ${addedCount?`<div style="margin-bottom:4px"><span style="color:#16a34a;font-weight:600">+ 新增路径</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.added_paths.map(p=>`<li style="word-break:break-all"><span class="mono" style="color:#666;font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+          ${delCount?`<div style="margin-bottom:4px"><span style="color:#dc2626;font-weight:600">- 删除路径</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.deleted_paths.map(p=>`<li style="word-break:break-all"><span class="mono" style="color:#666;font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+          ${modCount?`<div><span style="color:#f59e0b;font-weight:600">± 修改类型</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.modified_paths.map(p=>`<li style="word-break:break-all"><span class="mono" style="color:#666;font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span> <span style="color:#f59e0b">${escHtml(p.old_types?.join(','))} → ${escHtml(p.new_types?.join(','))}</span></li>`).join('')}</ul></div>`:''}
+        </td>
+      </tr>`;
+    }
+    sectionsHtml+=`<div style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f3f5;color:#7c3aed" onclick="toggleSection('pkg-chg')">
+        <span id="sec-icon-pkg-chg">▾</span>📦 包类型变更 <span style="background:#7c3aed20;color:#7c3aed;padding:1px 7px;border-radius:10px;font-size:11px">${pkgChangedProducts.length} 个产品</span>
+      </div>
+      <div id="sec-body-pkg-chg" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:4px">
+        <table class="table" style="margin:0;font-size:13px"><thead><tr><th>产品</th><th>变更</th><th></th></tr></thead><tbody>${pkgRows}</tbody></table>
       </div>
     </div>`;
   }
 
-  let t=`<div style="padding:20px">
-    <div style="font-size:15px;font-weight:600;margin-bottom:16px">🔍 发现结果 <span style="font-size:12px;font-weight:400;color:#9ca3af">共 ${total} 个</span></div>
-    <div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
-      <span style="color:#16a34a">🆕 新增 <b>${added.length}</b></span>
-      <span style="color:#dc2626">⛔ 下线 <b>${removed.length}</b></span>
-      <span style="color:#9ca3af">✔️ 未变 <b>${unchanged.length}</b></span>
+  // 未变化产品
+  if(unchanged.length){
+    const visCount=Math.min(unchanged.length,5);
+    const shown=unchanged.slice(0,visCount);
+    const hidden=unchanged.slice(visCount);
+    let rows=shown.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    if(hidden.length){
+      rows+=`<tr id="disc-unchanged-extra" style="display:none">${hidden.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" style="font-size:12px;color:#666">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('')}</tr>`;
+    }
+    sectionsHtml+=`<div style="margin-bottom:10px">
+      <div style="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid #f1f3f5;color:#9ca3af" onclick="toggleSection('unchanged')">
+        <span id="sec-icon-unchanged">▸</span>✔️ 未变化产品 <span style="background:#9ca3af20;color:#9ca3af;padding:1px 7px;border-radius:10px;font-size:11px">${unchanged.length}</span>
+      </div>
+      <div id="sec-body-unchanged" style="display:none;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-top:4px">
+        <table class="table" style="margin:0;font-size:13px"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
+      </div>
+    </div>`;
+  }
+
+  let html=`<div style="padding:20px">
+    <div style="font-size:15px;font-weight:600;margin-bottom:16px">🔍 自动发现结果</div>
+    ${summaryHtml}
+    <div style="max-height:420px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
+      ${sectionsHtml}
     </div>
-    ${sectionTable('新增产品', '#16a34a', '🆕', added, 'added')}
-    ${sectionTable('下线产品', '#dc2626', '⛔', removed, 'removed')}
-    ${sectionTable('未变化产品', '#9ca3af', '✔️', unchanged, 'unchanged')}
     <div style="display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
-      <button class="btn btn-primary" onclick="saveDiscoveredProducts()">💾 确认变更</button>
-      <span style="font-size:12px;color:#9ca3af">新增产品默认禁用，下线产品将删除</span>
+      <button class="btn btn-primary" onclick="confirmDiscoverResult()">💾 确认应用变更</button>
+      <span style="font-size:12px;color:#9ca3af">新增产品默认禁用，包类型变更将触发告警</span>
       <button class="btn" style="margin-left:auto" onclick="closeModal('disc')">关闭</button>
     </div>
   </div>`;
-  modalBody('disc',t);
-  window._discoverResult={added,unchanged,removed};
+  modalBody('disc',html);
+  window._discoverResult=result;
 }
 
-async function saveDiscoveredProducts(){
-  const {added,unchanged,removed}=window._discoverResult||{};
-  if(!added?.length && !removed?.length){
-    toast('没有需要确认的变更','warn');
-    return;
-  }
-  const r=await api('/system/products/discover/save',{method:'PUT',body:JSON.stringify({added:added||[],removed:removed||[]})});
+function togglePkgDetail(entryUrl){
+  const el=document.getElementById('pkgdetail-'+entryUrl);
+  if(el) el.style.display=el.style.display==='none'?'table-row':'';
+}
+
+async function confirmDiscoverResult(){
+  const result=window._discoverResult;
+  if(!result) return;
+  const btn=document.querySelector('#disc-box .btn-primary');
+  if(btn){btn.disabled=true;btn.textContent='处理中…';}
+  const r=await api('/system/products/discover/confirm',{method:'POST',body:JSON.stringify(result)});
   if(r.code===0){
-    toast(`已处理：新增 ${r.data?.saved?.length||0} 个，删除 ${r.data?.deleted?.length||0} 个`,'success');
+    toast(`已应用：产品新增${r.data?.saved?.length||0} 删除${r.data?.deleted?.length||0}，包类型更新${r.data?.pkg_updated?.length||0}`,'success');
+    window._discoverResult=null;
     closeModal('disc');
+    await products();
   }else{
     toast('保存失败: '+r.message,'error');
+    if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
   }
-  window._discoverResult=null;
-  await products();
 }
+
+// 旧函数保留兼容（不再调用）
+async function saveDiscoveredProducts(){ await confirmDiscoverResult(); }
 
 function showProductForm(p){
   // p is optional: if provided, we're editing (for manual products); otherwise creating
@@ -1054,8 +1553,7 @@ function showProductForm(p){
     </div>
     <div class="form-group" style="margin-top:14px"><label>采集策略</label>
       <select id="pf-strat" style="width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:14px">
-        <option value="standard" ${strat==='standard'?'selected':''}>标准（版本→包类型→升级包 3层）</option>
-        <option value="recursive" ${strat==='recursive'?'selected':''}>递归（自动发现深度，最多4层）</option>
+        <option value="standard" selected>标准</option>
       </select>
     </div>
     <div style="display:flex;gap:8px;margin-top:20px">

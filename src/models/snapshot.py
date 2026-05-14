@@ -79,7 +79,8 @@ def set_source_active(source_id: int, active: bool):
 def update_source(source_id: int, *, name: str = None, entry_url: str = None,
                   strategy: str = None, is_active: bool = None, category: str = None,
                   display_name: str = None, package_type: str = None,
-                  force_type: str = None):
+                  force_type: str = None,
+                  package_type_discovered: str = None, package_type_changed: int = None):
     """Update one or more fields of a content source. Only provided fields are updated."""
     from src.models.database import execute
     fields, vals = [], []
@@ -107,6 +108,12 @@ def update_source(source_id: int, *, name: str = None, entry_url: str = None,
     if force_type is not None:
         fields.append("force_type = ?")
         vals.append(force_type)
+    if package_type_discovered is not None:
+        fields.append("package_type_discovered = ?")
+        vals.append(package_type_discovered)
+    if package_type_changed is not None:
+        fields.append("package_type_changed = ?")
+        vals.append(int(package_type_changed))
     if not fields:
         return
     vals.append(source_id)

@@ -8,6 +8,17 @@ from src.web.auth import require_auth
 from src.collectors.nsfocus import PRODUCTS
 
 bp = Blueprint('system', __name__, url_prefix='/api/system')
+_refresh_pool = None  # ThreadPoolExecutor for pkg-type refresh, lazy init
+_auto_discover_state = None  # {active, phase, progress, total, log_lines, result}
+_auto_discover_lock = None
+
+
+def _get_refresh_pool():
+    global _refresh_pool
+    if _refresh_pool is None:
+        from concurrent.futures import ThreadPoolExecutor
+        _refresh_pool = ThreadPoolExecutor(max_workers=1)
+    return _refresh_pool
 
 
 def _audit(action: str, details: dict = None):
@@ -324,6 +335,8 @@ def update_product(source_id: int):
     display_name = body.get('display_name')
     package_type = body.get('package_type')
     force_type = body.get('force_type')
+    package_type_discovered = body.get('package_type_discovered')
+    package_type_changed = body.get('package_type_changed')
 
     if name is not None and not name.strip():
         return {'code': 400, 'message': '产品名称不能为空'}, 400
@@ -342,7 +355,9 @@ def update_product(source_id: int):
                   category=category,
                   display_name=display_name,
                   package_type=package_type,
-                  force_type=force_type)
+                  force_type=force_type,
+                  package_type_discovered=package_type_discovered if package_type_discovered is not None else None,
+                  package_type_changed=int(package_type_changed) if package_type_changed is not None else None)
 
     _audit('product_update', {'source_id': source_id, 'fields': list(body.keys())})
     return {'code': 0, 'message': '已更新'}
@@ -377,57 +392,297 @@ def delete_product(source_id: int):
 @bp.route('/products/discover', methods=['POST'])
 @require_auth
 def discover_products():
-    """Auto-discover all products from the NSFOCUS update index page.
+    """Auto-discover: scan products + discover package types + compare changes.
 
-    Compares discovered products with DB to classify each as:
-      - added:    in discovered, not in DB
-      - removed:  in DB, not in discovered (gone from website)
-      - unchanged: in both and unchanged
+    Two-stage flow:
+    1. Stage 1 (products): scan index → product-level added/removed (immediate, no DB write)
+    2. Stage 2 (pkg-types): for each product call discover_package_types → diff
+       → package-type added/deleted/modified (held in memory, no DB write)
+
+    Client polls GET /products/discover/status for progress.
+    After review, client calls POST /products/discover/confirm to apply.
     """
-    from src.models.snapshot import discover_products_from_index, list_sources
-    try:
-        discovered = discover_products_from_index()
-        existing = {s['entry_url']: s for s in list_sources()}
+    global _auto_discover_state, _auto_discover_lock
+    import threading, json
+    from src.models.snapshot import list_sources, discover_products_from_index
+    from src.models.user_session import get_active_sessions
+    from src.collectors.nsfocus import NsfocusCollector
+    from src.core.logger import get_logger as _get_logger
+    logger = _get_logger('system_routes')
 
-        discovered_urls = {p['entry_url'] for p in discovered}
-        existing_urls = set(existing.keys())
-        db_urls = set()
+    # Lazy-init lock
+    if _auto_discover_lock is None:
+        import threading
+        _auto_discover_lock = threading.Lock()
 
-        added, unchanged, removed = [], [], []
-        for p in discovered:
-            url = p['entry_url']
-            db_urls.add(url)
-            if url not in existing_urls:
-                added.append({**p, 'status': 'added'})
-            else:
-                unchanged.append({**p, 'status': 'unchanged'})
+    with _auto_discover_lock:
+        if _auto_discover_state and _auto_discover_state.get('active'):
+            return {'code': 409, 'message': '自动发现已在运行中'}, 409
 
-        for url, s in existing.items():
-            if url not in db_urls:
-                removed.append({
-                    'name': s['name'],
-                    'entry_url': url,
-                    'display_name': s.get('display_name', s['name']),
-                    'status': 'removed',
-                    'is_active': s.get('is_active', 1),
-                })
+        sessions = get_active_sessions()
+        if not sessions:
+            return {'code': 400, 'message': '无有效会话，请先添加绿盟账号'}, 400
+        cookie = sessions[0]['cookie_value']
 
-        _audit('product_discover', {
-            'added': len(added), 'unchanged': len(unchanged), 'removed': len(removed)
-        })
-        return {
-            'code': 0,
-            'message': f'新增 {len(added)} | 下线 {len(removed)} | 未变 {len(unchanged)}',
-            'data': {
-                'added': added,
-                'unchanged': unchanged,
-                'removed': removed,
-                'total': len(discovered),
-            },
+        _auto_discover_state = {
+            'active': True,
+            'phase': 'scanning_products',   # scanning_products | discovering_pkg_types | done | error
+            'progress': 0,
+            'total': 0,
+            'current': '',
+            'log_lines': [],
+            'result': None,   # set when done/error
         }
-    except Exception as e:
-        import traceback
-        return {'code': 500, 'message': f'自动发现失败: {str(e)}'}, 500
+
+    def _log(msg):
+        with _auto_discover_lock:
+            if _auto_discover_state:
+                _auto_discover_state['log_lines'].append(str(msg))
+
+    def _run():
+        global _auto_discover_state, _auto_discover_lock
+        collector = NsfocusCollector()
+        collector._set_cookie(cookie)
+
+        try:
+            # ── Stage 1: product-level scan ─────────────────────────
+            _log('开始扫描产品列表...')
+            with _auto_discover_lock:
+                _auto_discover_state['phase'] = 'scanning_products'
+                _auto_discover_state['current'] = '扫描产品列表'
+
+            discovered = discover_products_from_index()
+            existing_map = {s['entry_url']: s for s in list_sources()}
+            disc_urls = {p['entry_url'] for p in discovered}
+
+            prod_added, prod_unchanged, prod_removed = [], [], []
+            for p in discovered:
+                url = p['entry_url']
+                if url not in existing_map:
+                    prod_added.append({**p, 'status': 'added'})
+                else:
+                    prod_unchanged.append({**p, **existing_map[url], 'status': 'unchanged'})
+
+            for url, s in existing_map.items():
+                if url not in disc_urls:
+                    prod_removed.append({
+                        'name': s['name'],
+                        'entry_url': url,
+                        'display_name': s.get('display_name', s['name']),
+                        'status': 'removed',
+                    })
+
+            _log(f'产品扫描完成: 新增={len(prod_added)} 移除={len(prod_removed)} 未变={len(prod_unchanged)}')
+
+            # ── Stage 2: package-type discovery for ALL products ─────
+            all_products = prod_added + prod_unchanged
+            total = len(all_products)
+
+            with _auto_discover_lock:
+                _auto_discover_state['phase'] = 'discovering_pkg_types'
+                _auto_discover_state['total'] = total
+
+            pkg_changes = {}   # {source_id or temp_id: {added_paths, deleted_paths, modified_paths}}
+
+            # For unchanged products, fetch current stored package_type for diff
+            unchanged_map = {p['entry_url']: p for p in prod_unchanged}
+
+            for idx, p in enumerate(all_products):
+                source_id = p.get('id')
+                # If source exists in DB, get its current package_type
+                current_pkg = None
+                if source_id:
+                    from src.models.snapshot import get_source
+                    src = get_source(source_id)
+                    if src and src.get('package_type'):
+                        try:
+                            current_pkg = json.loads(src['package_type'])
+                        except Exception:
+                            pass
+
+                # Discover new package types
+                _log(f'[{idx+1}/{total}] 发现包类型: {p["name"]}')
+                with _auto_discover_lock:
+                    _auto_discover_state['progress'] = idx + 1
+                    _auto_discover_state['current'] = p['name']
+
+                if source_id:
+                    # Wrap log_fn to capture every log line from nested discovery calls
+                    captured_lines = []
+                    def capture_log(msg):
+                        if msg:
+                            captured_lines.append(str(msg))
+                            _log(msg)
+                    def on_progress(phase, current, total):
+                        _log(f'  → 版本 {current}/{total}: {phase}')
+                    discovered_pkg = collector.discover_package_types(source_id, cookie, log_fn=capture_log, progress_fn=on_progress)
+                else:
+                    # New product — no source_id yet, can't call discover_package_types
+                    # We'll insert the product first (in confirm step) then set package_type
+                    discovered_pkg = {'types': [], 'paths': [], 'modes': {}}
+
+                # Diff
+                diff = NsfocusCollector.diff_package_types(current_pkg, discovered_pkg)
+                if diff['added_paths'] or diff['deleted_paths'] or diff['modified_paths']:
+                    pkg_changes[p.get('id') or p['entry_url']] = {
+                        **diff,
+                        'product_name': p['name'],
+                        'entry_url': p['entry_url'],
+                    }
+
+            _log(f'包类型发现完成，共 {len(pkg_changes)} 个产品有变更')
+
+            result = {
+                'products': {
+                    'added': prod_added,
+                    'removed': prod_removed,
+                    'unchanged': prod_unchanged,
+                    'total': len(discovered),
+                },
+                'pkg_changes': pkg_changes,
+            }
+
+            with _auto_discover_lock:
+                _auto_discover_state['result'] = result
+                _auto_discover_state['phase'] = 'done'
+                _auto_discover_state['active'] = False
+
+            _log('自动发现完成，请确认变更')
+
+        except Exception as e:
+            import traceback
+            logger.error(f'[auto_discover] error: {e}\n{traceback.format_exc()}')
+            _log(f'错误: {e}')
+            with _auto_discover_lock:
+                if _auto_discover_state:
+                    _auto_discover_state['phase'] = 'error'
+                    _auto_discover_state['active'] = False
+                    _auto_discover_state['result'] = {'error': str(e)}
+
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+
+    return {'code': 0, 'message': '自动发现已启动，请轮询状态'}
+
+
+@bp.route('/products/discover/status', methods=['GET'])
+@require_auth
+def discover_products_status():
+    """Poll auto-discover progress. Returns current state + log_lines."""
+    global _auto_discover_state, _auto_discover_lock
+    if _auto_discover_lock is None:
+        return {'code': 0, 'data': {'active': False}}
+    with _auto_discover_lock:
+        if not _auto_discover_state:
+            return {'code': 0, 'data': {'active': False}}
+        state = dict(_auto_discover_state)
+    # Don't expose lock in response
+    state.pop('_lock', None)
+    return {'code': 0, 'data': state}
+
+
+@bp.route('/products/discover/confirm', methods=['POST'])
+@require_auth
+def discover_products_confirm():
+    """Apply the discovered changes: insert added products, remove deleted ones,
+    update package_type for all processed products."""
+    global _auto_discover_state, _auto_discover_lock
+    from src.models.snapshot import upsert_source, delete_source, get_source_by_url, get_source, update_source
+    from src.core.logger import get_logger as _get_logger
+    logger = _get_logger('system_routes')
+    import json
+
+    if _auto_discover_lock is None:
+        return {'code': 400, 'message': '无待确认的发现结果，请先运行自动发现'}, 400
+
+    with _auto_discover_lock:
+        if not _auto_discover_state or not _auto_discover_state.get('result'):
+            return {'code': 400, 'message': '无待确认的发现结果'}, 400
+        result = _auto_discover_state['result']
+        if 'error' in result:
+            return {'code': 400, 'message': f'上次发现有错误: {result["error"]}'}, 400
+
+    body = request.get_json() or {}
+    prod_added = body.get('products', {}).get('added', result['products']['added'])
+    prod_removed = body.get('products', {}).get('removed', result['products']['removed'])
+    pkg_changes = body.get('pkg_changes', result['pkg_changes'])
+
+    saved_prods, deleted_prods = [], []
+    pkg_updated_prods = []
+
+    # ── Insert added products ───────────────────────────────────
+    for p in prod_added:
+        name = p.get('name', '').strip()
+        entry_url = p.get('entry_url', '').strip()
+        display_name = p.get('display_name', name)
+        if not name or not entry_url:
+            continue
+        strategy = _auto_detect_strategy(entry_url)
+        sid = upsert_source(name, 'nsfocus', entry_url, strategy,
+                           created_by=g.user_id, display_name=display_name,
+                           is_active=False, is_manual=False)
+        saved_prods.append({'id': sid, 'name': name, 'entry_url': entry_url})
+        _log(f'[confirm] 新增产品: {name} (id={sid})')
+
+    # ── Remove deleted products ──────────────────────────────────
+    for p in prod_removed:
+        entry_url = p.get('entry_url', '').strip()
+        if not entry_url:
+            continue
+        src = get_source_by_url(entry_url)
+        if src:
+            delete_source(src['id'])
+            deleted_prods.append(entry_url)
+            _log(f'[confirm] 删除产品: {entry_url}')
+
+    # ── Update package_type for all processed products ───────────
+    # We need to re-discover for each product to get the full discovered result
+    # Since we already ran discovery in the _run thread, we store the discovered
+    # result in pkg_changes. But we need to re-run discovery here to get the
+    # full JSON (not just diff). Alternative: store full discovered result.
+    #
+    # Simpler approach: for each product in pkg_changes, we have the diff.
+    # For update, we need the full discovered paths. We re-call discover_package_types.
+    # This is acceptable since confirm is a one-time action after user review.
+    sessions = get_active_sessions()
+    if not sessions:
+        return {'code': 400, 'message': '无有效会话'}, 400
+    cookie = sessions[0]['cookie_value']
+
+    from src.collectors.nsfocus import NsfocusCollector
+    collector = NsfocusCollector()
+    collector._set_cookie(cookie)
+
+    for key, change in pkg_changes.items():
+        product_name = change.get('product_name')
+        entry_url = change.get('entry_url')
+        if not entry_url:
+            continue
+        src = get_source_by_url(entry_url)
+        if not src:
+            continue
+        source_id = src['id']
+        _log(f'[confirm] 更新包类型: {product_name}')
+
+        # Re-discover (acceptable — confirm is a manual one-time action)
+        discovered = collector.discover_package_types(source_id, cookie)
+        new_pkg_json = json.dumps({
+            'types': discovered.get('types', []),
+            'paths': discovered.get('paths', []),
+            'modes': discovered.get('modes', {}),
+        })
+        update_source(source_id,
+                      package_type_discovered=new_pkg_json,
+                      package_type_changed=1 if (change['added_paths'] or change['deleted_paths'] or change['modified_paths']) else 0)
+        pkg_updated_prods.append(product_name)
+
+    _audit('product_discover_save', {
+        'added': len(saved_prods), 'removed': len(deleted_prods),
+        'pkg_updated': len(pkg_updated_prods),
+    })
+
+    return {'code': 0, 'message': f'产品: 新增{len(saved_prods)} 删除{len(deleted_prods)} | 包类型: 更新{len(pkg_updated_prods)}',
+            'data': {'saved': saved_prods, 'deleted': deleted_prods, 'pkg_updated': pkg_updated_prods}}
 
 
 @bp.route('/products/discover/save', methods=['PUT'])
@@ -468,6 +723,136 @@ def save_discovered_products():
     _audit('product_discover_save', {'added': len(saved), 'removed': len(deleted)})
     return {'code': 0, 'message': f'新增 {len(saved)} | 删除 {len(deleted)}',
             'data': {'saved': saved, 'deleted': deleted}}
+
+
+@bp.route('/products/discover-pkg-types', methods=['POST'])
+@require_auth
+def discover_pkg_types_batch():
+    """批量为指定产品发现包类型（轻量采集，只访问首页+版本页）。
+
+    Body: {"source_ids": [1,2,3]}
+    Returns: {"code":0,"data":{"updated":N,"failed":[]}}
+    """
+    import json
+    body = request.get_json() or {}
+    source_ids = body.get('source_ids', [])
+    if not source_ids:
+        return {'code': 0, 'data': {'updated': 0, 'failed': []}}
+
+    from src.collectors.nsfocus import discover_package_types
+    from src.models.snapshot import update_source
+
+    session = _get_session_cookie()
+    updated, failed = 0, []
+
+    for sid in source_ids:
+        src = get_source(sid)
+        if not src or not src.get('entry_url'):
+            failed.append(sid)
+            continue
+        try:
+            types_dict = discover_package_types(sid, session)
+            if types_dict:
+                pkg_json = json.dumps(types_dict)
+                update_source(sid, package_type=pkg_json)
+                updated += 1
+            else:
+                failed.append(sid)
+        except Exception:
+            failed.append(sid)
+
+    return {'code': 0, 'data': {'updated': updated, 'failed': failed}}
+
+
+@bp.route('/products/<int:source_id>/refresh-pkg-types', methods=['GET'])
+def sse_pkg_refresh_progress(source_id: int):
+    """SSE stream for package-type refresh progress of a single product.
+
+    Auth: token via query param ?token=xxx (for EventSource compatibility).
+    Returns server-sent events with log lines as they are produced.
+    """
+    from flask import request, Response, stream_with_context
+    from src.web.auth import decode_token
+
+    # Auth from query param (SSE can't send headers)
+    token = request.args.get('token', '')
+    payload = decode_token(token) if token else None
+    if not payload:
+        return {'code': 401, 'message': '请先登录'}, 401
+
+    from src.core.scheduler import get_pkg_refresh_progress, _pkg_refresh_state, _pkg_refresh_lock
+
+    def generate():
+        import json, time
+        # Send initial state
+        with _pkg_refresh_lock:
+            state = dict(_pkg_refresh_state)
+        yield f"data: {json.dumps(state)}\n\n"
+
+        last_log_count = len(state.get('log_lines', []))
+
+        # Poll until done or error (max 90s)
+        for _ in range(180):  # 180 * 0.5s = 90s
+            time.sleep(0.5)
+            with _pkg_refresh_lock:
+                s = dict(_pkg_refresh_state)
+            yield f"data: {json.dumps(s)}\n\n"
+            if not s.get('active'):
+                break
+            # If new logs appeared, send immediately
+            if len(s.get('log_lines', [])) > last_log_count:
+                last_log_count = len(s.get('log_lines', []))
+            # If done, send final and stop
+            if s.get('phase') in ('done', 'error'):
+                break
+
+        # Final state
+        with _pkg_refresh_lock:
+            s = dict(_pkg_refresh_state)
+        yield f"data: {json.dumps(s)}\n\n"
+        yield "event: close\ndata: {}\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={
+            'Cache-Control': 'no-cache',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+
+
+@bp.route('/products/<int:source_id>/refresh-pkg-status', methods=['GET'])
+@require_auth
+def get_pkg_refresh_status(source_id: int):
+    """返回当前包类型刷新的 JSON 状态（供前端轮询）。"""
+    from src.core.scheduler import get_pkg_refresh_progress
+    state = get_pkg_refresh_progress()
+    return {'code': 0, 'data': state}
+
+
+@bp.route('/products/<int:source_id>/refresh-pkg-type', methods=['POST'])
+@require_auth
+def trigger_pkg_refresh(source_id: int):
+    """触发单个产品包类型后台刷新，返回是否成功启动。"""
+    from src.core.scheduler import refresh_pkg_type_single, _pkg_refresh_state, _pkg_refresh_lock
+    from src.models.user_session import get_active_sessions
+    from concurrent.futures import ThreadPoolExecutor
+
+    # 检查是否已有任务在运行
+    with _pkg_refresh_lock:
+        if _pkg_refresh_state.get('active') and _pkg_refresh_state.get('source_id') == source_id:
+            return {'code': 409, 'message': '该产品正在刷新中'}, 409
+
+    sessions = get_active_sessions()
+    if not sessions:
+        return {'code': 400, 'message': '无有效会话，请先添加绿盟账号'}, 400
+    cookie = sessions[0]['cookie_value']
+
+    # 启动后台任务
+    _get_refresh_pool().submit(refresh_pkg_type_single, source_id, cookie)
+
+    return {'code': 0, 'message': '刷新任务已启动', 'data': {'source_id': source_id}}
 
 
 def _auto_detect_strategy(entry_url: str) -> str:

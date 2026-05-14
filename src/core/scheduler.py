@@ -72,6 +72,23 @@ _progress_lock = threading.Lock()
 
 _scheduler = None  # APScheduler instance, for runtime rescheduling
 
+# ── Package-type refresh progress (per-source) ──────────────────
+_pkg_refresh_state = {
+    'active': False,
+    'source_id': None,
+    'source_name': '',
+    'phase': '',      # 'idle' | 'fetching_home' | 'fetching_ver' | 'done' | 'error'
+    'log_lines': [],  # list of strings
+    'started_at': None,
+    'finished_at': None,
+}
+_pkg_refresh_lock = threading.Lock()
+
+
+def get_pkg_refresh_progress() -> dict:
+    with _pkg_refresh_lock:
+        return dict(_pkg_refresh_state)
+
 
 def get_progress() -> dict:
     """Return current collection progress (thread-safe)."""
@@ -282,6 +299,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if mode == 'full':
             _last_full_run = datetime.utcnow()
             _save_last_full_scan()
+            _check_package_types_fresh(existing_sources, cookie, emit)
 
         # WAL checkpoint: prevent unlimited WAL file growth
         try:
@@ -472,6 +490,186 @@ def _save_last_full_scan():
         )
     except Exception:
         pass
+
+
+def _check_package_types_fresh(existing_sources: dict, cookie: str, emit):
+    """Full scan 后检查各产品包类型是否有变化，写入 DB 供前端确认。
+
+    流程: discover_package_types -> 对比 DB package_type
+    - 一致: 跳过
+    - 变化: 写入 package_type_discovered，标记 package_type_changed=1
+    - 删减时: 查询受影响的订阅规则，存入 affected_rules 供前端警告
+    """
+    import json
+    from src.models.snapshot import update_source
+    from src.models.database import query
+
+    _collector._set_cookie(cookie)
+    changed_products = []
+
+    for name, src in existing_sources.items():
+        try:
+            discovered = _collector.discover_package_types(src['id'], cookie)
+            if not discovered:
+                continue  # 空产品跳过
+
+            current_raw = src.get('package_type') or ''
+            # 兼容新旧格式，统一取 types 列表的集合
+            try:
+                current_obj = json.loads(current_raw)
+                if isinstance(current_obj, dict):
+                    current_types = set(current_obj.get('types', []))
+                elif isinstance(current_obj, list):
+                    current_types = set(current_obj)
+                else:
+                    current_types = set()
+            except Exception:
+                current_types = set()
+
+            new_types_list = discovered.get('types', [])
+            new_types = set(new_types_list)
+
+            if new_types != current_types:
+                # 有变化: 构造新格式并存入 package_type_discovered
+                # 复用现有 modes（如果当前有的话），新增的 type 默认 auto
+                try:
+                    current_obj = json.loads(current_raw) if current_raw else {}
+                    if isinstance(current_obj, dict):
+                        modes = dict(current_obj.get('modes', {}))
+                    else:
+                        modes = {}
+                except Exception:
+                    modes = {}
+
+                for t in new_types_list:
+                    if t not in modes:
+                        modes[t] = 'auto'
+
+                # 删减检测：被删除且被订阅规则引用的包类型
+                removed_types = [t for t in current_types if t not in new_types]
+                affected_rules = []
+                if removed_types:
+                    # 按产品名查找规则（filter_conditions.products 匹配产品名）
+                    rules = query(
+                        "SELECT id, name, filter_conditions FROM subscription_rules WHERE enabled=1"
+                    )
+                    for rule in rules:
+                        fc = rule.get('filter_conditions') or '{}'
+                        try:
+                            fc_obj = json.loads(fc) if isinstance(fc, str) else fc
+                        except Exception:
+                            fc_obj = {}
+                        rule_products = fc_obj.get('products') or []
+                        if rule_products and name not in rule_products:
+                            continue  # 规则不订阅此产品，跳过
+                        rule_pkg_types = fc_obj.get('package_types') or []
+                        # 扁平化: ['rule,sys', 'av'] -> {'rule', 'sys', 'av'}
+                        flat = set()
+                        for pt in rule_pkg_types:
+                            for t in pt.split(','):
+                                t = t.strip()
+                                if t:
+                                    flat.add(t)
+                        # 规则引用的且被删除的类型
+                        impacted = flat & set(removed_types)
+                        if impacted:
+                            affected_rules.append({
+                                'id': rule['id'],
+                                'name': rule.get('name', ''),
+                                'removed_types': list(impacted)
+                            })
+
+                disc_data = {
+                    'types': new_types_list,
+                    'paths': discovered.get('paths', []),
+                    'modes': modes,
+                }
+                if affected_rules:
+                    disc_data['affected_rules'] = affected_rules
+
+                new_pkg = json.dumps(disc_data)
+                update_source(src['id'],
+                              package_type_discovered=new_pkg,
+                              package_type_changed=1)
+                changed_products.append(name)
+                logger.info(f'[pkg_refresh] {name}: {current_types} -> {new_types}, '
+                            f'affected_rules={len(affected_rules)}')
+        except Exception as e:
+            logger.warning(f'[pkg_refresh] {name}: {e}')
+
+    if changed_products:
+        logger.info(f'[pkg_refresh] {len(changed_products)} products changed: {changed_products}')
+
+
+def refresh_pkg_type_single(source_id: int, session_cookie: str):
+    """后台执行单个产品包类型刷新，同步更新 _pkg_refresh_state。
+
+    由 ThreadPoolExecutor 调用，不阻塞 HTTP 请求。
+    发现结果通过 scheduler._pkg_refresh_state 传递，HTTP handler 在 SSE 中轮询。
+    """
+    import json
+    import threading
+    from datetime import datetime
+    from src.models.snapshot import get_source, update_source
+    from src.collectors.nsfocus import NsfocusCollector
+
+    collector = NsfocusCollector()
+
+    def log_fn(msg: str):
+        with _pkg_refresh_lock:
+            _pkg_refresh_state['log_lines'].append(msg)
+
+    src = get_source(source_id)
+    if not src:
+        with _pkg_refresh_lock:
+            _pkg_refresh_state.update({
+                'active': False, 'phase': 'error',
+                'log_lines': _pkg_refresh_state['log_lines'] + [f'产品 {source_id} 不存在']
+            })
+        return
+
+    with _pkg_refresh_lock:
+        _pkg_refresh_state.update({
+            'active': True, 'source_id': source_id,
+            'source_name': src['name'],
+            'phase': 'fetching_home',
+            'log_lines': [f'开始刷新: {src["name"]}'],
+            'started_at': datetime.utcnow().isoformat(),
+            'finished_at': None,
+        })
+
+    def progress_fn(phase: str, current: int = 0, total: int = 0):
+        """Called when starting each top-level branch to update phase."""
+        label = f'{phase} ({current}/{total})'
+        with _pkg_refresh_lock:
+            _pkg_refresh_state['phase'] = label
+
+    try:
+        collector._set_cookie(session_cookie)
+        log_fn('访问首页…')
+        types_dict = collector.discover_package_types(source_id, session_cookie, log_fn, progress_fn)
+
+        if types_dict and types_dict.get('types'):
+            pkg_json = json.dumps(types_dict)
+            update_source(source_id, package_type=pkg_json,
+                           package_type_discovered=pkg_json,
+                           package_type_changed=0)
+            log_fn(f'✅ 已保存，共 {len(types_dict["types"])} 种包类型，{len(types_dict["paths"])} 条路径')
+            with _pkg_refresh_lock:
+                _pkg_refresh_state['phase'] = 'done'
+        else:
+            log_fn('⚠️ 未发现包类型（产品可能无独立升级页）')
+            with _pkg_refresh_lock:
+                _pkg_refresh_state['phase'] = 'done'
+
+    except Exception as e:
+        log_fn(f'失败: {e}')
+        with _pkg_refresh_lock:
+            _pkg_refresh_state['phase'] = 'error'
+    finally:
+        with _pkg_refresh_lock:
+            _pkg_refresh_state['active'] = False
+            _pkg_refresh_state['finished_at'] = datetime.utcnow().isoformat()
 
 
 def start_scheduler(app=None):
