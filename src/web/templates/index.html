@@ -32,7 +32,7 @@ th{text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--m
 td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 tr:hover td{background:#fafbfc}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600;line-height:1.4}
-.badge-ok{background:#e6f7ed;color:var(--success)}.badge-warn{background:#fff8e6;color:#c27800}.badge-err{background:#fde8e8;color:var(--danger)}
+.badge-ok{background:#e6f7ed;color:var(--success)}.badge-warn{background:#fff8e6;color:#c27800}.badge-err{background:#fde8e8;color:var(--danger)}.badge-blue{background:#e6f0ff;color:#1d4ed8}
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:7px;font-size:12.5px;cursor:pointer;border:none;font-weight:500;transition:.12s}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{filter:brightness(1.08)}
 .btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
@@ -104,7 +104,7 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 const API='/api';
 let T=localStorage.getItem('token'),U=null;
 
-function api(path,opts={}){
+ function api(path,opts={}){
   const h={'Content-Type':'application/json'};
   if(T)h['Authorization']='Bearer '+T;
   return fetch(API+path,{...opts,headers:h}).then(r=>r.json());
@@ -180,10 +180,12 @@ async function dashboard(range){
   }
 
   let cards='';
-  for(let[n,snaps]of Object.entries(grp)){
-    // Sort by published_at descending (newest first)
+  for(let[n,src]of Object.entries(grp)){
+    const snaps=(src.snapshots||[]);
+    if(!snaps.length)continue;
     snaps.sort((a,b)=>(b.published_at||'').localeCompare(a.published_at||''));
-    cards+=`<div class="card"><div class="card-hd">📦 ${n} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包</span></div><div class="card-bd pt0"><table><tr><th>版本</th><th>类型</th><th style="width:40%">文件</th><th>紧急度</th></tr>`;
+    const prodName=src.name||src.display_name||n;
+    cards+=`<div class="card"><div class="card-hd">📦 ${prodName} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包</span></div><div class="card-bd pt0"><table><tr><th>版本</th><th>类型</th><th style="width:40%">文件</th><th>紧急度</th></tr>`;
     snaps.slice(0,4).forEach(s=>{cards+=`<tr><td>${s.version_branch||''}</td><td>${typeCN(s.package_type)}</td><td class="mono">${(s.file_name||'').substring(0,40)}</td><td><span class="badge badge-${s.urgency==='critical'?'err':s.urgency==='high'?'warn':'ok'}">${s.urgency||''}</span></td></tr>`;});
     cards+=`</table></div></div>`;
   }
@@ -236,22 +238,102 @@ async function dataPage(){
   const showRb=sessionStorage.getItem('dataShowRollback')==='1';
   const r=await api('/latest/snapshots?show_rollback='+(showRb?'1':'0')).catch(()=>({data:{}}));const grp=r.data||{};
   if(!Object.keys(grp).length){document.getElementById('app').innerHTML='<div class="card"><div class="card-bd empty">暂无采集数据</div></div>';return;}
-  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=fmtTZ(d.toISOString().substring(0,19),true);} let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span> <label style="cursor:pointer;font-size:11px;margin-left:12px"><input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" '+(showRb?'checked':'')+'> 显示已撤回</label></div>';
-  for(let[n,snaps]of Object.entries(grp)){
-    let vers={};snaps.forEach(s=>{let v=s.version_branch||'?';if(!vers[v])vers[v]=[];vers[v].push(s);});
-    h+=`<div class="card"><div class="card-hd">📦 ${n}${snaps.some(s=>s.status==='rollback')?' <span style="color:var(--danger);font-size:11px;font-weight:400">含已撤回</span>':''} <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包 / ${Object.keys(vers).length}版本</span></div><div class="card-bd" style="padding:8px 18px">`;
-    let vi=0;
-    for(let[ver,pkgs]of Object.entries(vers)){
-      let vid='v'+n.replace(/\W/g,'')+'_'+vi;
-      vi++;
-      h+=`<div class="ver-bar" onclick="let e=document.getElementById('${vid}');e.classList.toggle('hidden');this.querySelector('.arrow').textContent=e.classList.contains('hidden')?'▶':'▼'"><span class="arrow">▼</span><strong>${ver}</strong><span style="margin-left:8px;color:var(--muted);font-size:11px">${pkgs.length}个包</span></div><div id="${vid}" style="margin-bottom:8px"><table><tr style="background:#fafafa"><th>类型</th><th style="width:30%">文件</th><th style="width:11%">发布时间</th><th style="width:14%">最近采集</th><th style="width:6%">大小</th><th style="width:7%">紧急度</th><th style="width:7%">操作</th></tr>`;
-      pkgs.forEach(s=>{let isRb=s.status==='rollback';
-        let sz=s.file_size>1048576?(s.file_size/1048576).toFixed(1)+'M':(s.file_size/1024).toFixed(0)+'K',did='d'+s.id,pt=fmtTZ(s.published_at),ls=fmtTZ(s.last_seen_at,true);
-        h+=`<tr style="cursor:pointer;${isRb?'color:var(--muted);text-decoration:line-through':''}" onclick="document.getElementById('${did}').classList.toggle('hidden')"><td>${typeCN(s.package_type)}</td><td class="mono" style="color:var(--primary)">${(s.file_name||'').substring(0,35)}</td><td>${pt.substring(0,10)}</td><td>${ls}</td><td>${sz}</td><td><span class="badge badge-${s.urgency==='critical'?'err':s.urgency==='high'?'warn':'ok'}">${s.urgency||''}</span></td><td><button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button></td></tr><tr id="${did}" class="hidden"><td colspan="7" class="detail-row"><div style="display:grid;grid-template-columns:auto 1fr;gap:3px 16px"><b>文件:</b><span class="mono">${s.file_name||''}</span><b>版本:</b><span>${s.package_version||''}</span><b>MD5:</b><span class="mono">${s.md5_hash||''}</span><b>大小:</b><span>${sz}</span>${s.min_sys_version?`<b>依赖:</b><span>≥ ${s.min_sys_version}</span>`:''}${s.published_at?`<b>发布:</b><span>${s.published_at}</span>`:''}${s.first_seen_at?`<b>发现:</b><span>${s.first_seen_at}</span>`:''}${s.download_id?`<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>`:''}${s.source_url?`<b>详情:</b><span><a href="${s.source_url}" target="_blank">绿盟更新页</a></span>`:""}${s.page_hash?`<b>页面HASH:</b><span class="mono">${s.prev_page_hash?s.prev_page_hash.substring(0,8)+" → ":""}${s.page_hash.substring(0,8)}</span>`:""}</div>${s.description_raw?`<div class="desc-box mt12">${s.description_raw.substring(0,1500)}</div>`:''}</td></tr>`;
-      });
-      h+=`</table></div>`;}
-    h+=`</div></div>`;}
-  document.getElementById('app').innerHTML=h;
+  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=fmtTZ(d.toISOString().substring(0,19),true);}
+
+  // MAP for type display (same as used in products page)
+  const MAP = {sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试',engine:'引擎'};
+
+  let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span> <label style="cursor:pointer;font-size:11px;margin-left:12px"><input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" '+(showRb?'checked':'')+'> 显示已撤回</label></div>';
+
+  // Sort sources: enabled first, then by name
+  const sortedSources = Object.entries(grp).sort(([sid,a],[sid2,b]) => {
+    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
+    return (a.display_name||a.name||'').localeCompare(b.display_name||b.name||'','zh');
+  });
+
+  for (const [sid, src] of sortedSources) {
+    if (!src.is_active) continue; // skip disabled products
+
+    const pt = src.package_type || {types:[], paths:[], modes:{}};
+    const snaps = src.snapshots || [];
+
+    // Build version-type lookup: { "ver|shortType": dispType }
+    // dispType = full display name from paths leaf (e.g. "WAF V6.0.9规则升级包")
+    // shortType = category extracted from dispType (e.g. "rule")
+    // This lets us match: snapshot "V6.0.9|rule" -> path "V6.0.9|WAF V6.0.9规则升级包"
+    const fullName = src.name || '';
+    const alias = fullName.includes('(') ? fullName.split('(')[1].split(')')[0] : '';
+    const verTypeMap = {};   // "ver|shortType" -> dispType (for rendering badge)
+    (pt.paths || []).forEach(p => {
+      const chain = p.chain || [];
+      if (chain.length < 2) return;
+      let ver = chain[chain.length - 2] || '';
+      if (alias) ver = ver.replace(new RegExp('^' + alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*'), '').trim() || ver;
+      const dispType = (p.types || [])[0] || '';
+      // Map full display name to short type key
+      const shortKey = (() => {
+        const t = dispType;
+        if (t.includes('系统') || t.includes('引擎')) return 'sys';
+        if (t.includes('规则')) return 'rule';
+        if (t.includes('威胁情报')) return 'nti';
+        if (t.includes('病毒库')) return 'av';
+        if (t.includes('URL')) return 'url';
+        if (t.includes('应用规则')) return 'apprule';
+        if (t.includes('恶意站点')) return 'wcs';
+        if (t.includes('研判')) return 'judge';
+        if (t.includes('地理')) return 'geo';
+        if (t.includes('接口')) return 'interface';
+        return '';
+      })();
+      if (shortKey) verTypeMap[ver + '|' + shortKey] = dispType;
+    });
+
+    // Build snapshots map: key = source_url (relative path, stripped of BASE_URL)
+    // This directly matches tree node __pathId = p.url
+    const BASE_URL_RE = /^https?:\/\/update\.nsfocus\.com/;
+    const snapsMap = {};
+    snaps.forEach(s => {
+      const key = (s.source_url || '').replace(BASE_URL_RE, '');
+      if (!key) return;
+      if (!snapsMap[key]) snapsMap[key] = [];
+      snapsMap[key].push(s);
+    });
+
+    const hasRollback = snaps.some(s => s.status === 'rollback');
+    const totalVer = new Set(snaps.map(s => s.version_branch)).size;
+
+    const cardId = 'pc_' + sid.replace(/\W/g, '');
+    h += `<div class="card">
+      <div class="card-hd" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="productCardToggle(this,'${cardId}')">
+        <span class="tree-arrow" style="color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0">&#9658;</span>
+        📦 <strong>${src.display_name || src.name}</strong>
+        ${hasRollback ? '<span style="color:var(--danger);font-size:11px;font-weight:400">含已撤回</span>' : ''}
+        <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包 / ${totalVer}版本</span>
+        <span style="margin-left:auto;color:var(--muted);font-size:11px">最近采集: ${src.last_collected_at ? fmtTZ(src.last_collected_at, true) : '—'}</span>
+      </div>
+      <div id="${cardId}" class="tree-children" style="display:none;padding:8px 18px">`;
+
+    if (pt.paths && pt.paths.length > 0) {
+      h += buildDataTreeHtml(pt, snapsMap, MAP, verTypeMap, alias);
+    } else {
+      // Fallback: old flat view if no paths data
+      let vers = {};
+      snaps.forEach(s => { let v = s.version_branch || '?'; if (!vers[v]) vers[v] = []; vers[v].push(s); });
+      for (const [ver, pkgs] of Object.entries(vers)) {
+        h += `<div style="margin-bottom:8px"><strong>${ver}</strong> (${pkgs.length}包)</div>`;
+      }
+    }
+
+    h += `</div></div>`;
+  }
+
+  // Show disabled sources count
+  const disabledCount = Object.values(grp).filter(s => !s.is_active).length;
+  if (disabledCount > 0) {
+    h += `<div style="text-align:center;color:var(--muted);font-size:12px;margin-top:8px">已禁用 ${disabledCount} 个产品，不显示采集数据</div>`;
+  }
+
+  document.getElementById('app').innerHTML = h;
 }
 function toggleRollback(v){sessionStorage.setItem('dataShowRollback',v?'1':'0');dataPage();}
 async function manualPush(sid){if(!confirm('确认推送?'))return;const r=await api('/history/'+sid+'/resend',{method:'POST'});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}
@@ -328,6 +410,13 @@ async function resendTargeted(sid,cid,custid){
 }
 
 // ── Sessions ──
+const SES_PURPOSE={'discover':'发现','collect':'采集'};
+const SES_MODE={'standard':'标品','vm':'虚拟化'};
+function sesBadge(p,m){
+  if(p==='discover')return'<span class="badge" style="background:#7c3aed;color:#fff">发现</span>';
+  if(m==='vm')return'<span class="badge" style="background:#0891b2;color:#fff">采集-虚拟化</span>';
+  return'<span class="badge badge-blue">采集-标品</span>';
+}
 async function sessions(){
   const r=await api('/sessions');const my=r.data?.my_sessions||[],pool=r.data?.pool_status||{};
   let rows=my.map(s=>{
@@ -337,13 +426,27 @@ async function sessions(){
       hbInfo=`<span class="badge badge-${hbColor}" style="cursor:pointer" onclick="showHbHistory(${s.id})" title="点击查看心跳历史">${s.heartbeat_status}</span>`;
     }
     let hbTime=s.last_heartbeat_at?s.last_heartbeat_at.substring(0,16):'—';
-    return `<tr><td>${s.id}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status||'unknown'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td style="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" onclick="validateSes(${s.id})">验证</button> <button class="btn btn-danger btn-xs" onclick="delSes(${s.id})">删除</button></td></tr>`;
+    return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status||'unknown'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td style="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" onclick="validateSes(${s.id})">验证</button> <button class="btn btn-xs btn-outline" onclick="editSesType(${s.id},'${s.purpose}','${s.collect_mode}')">改类型</button> <button class="btn btn-danger btn-xs" onclick="delSes(${s.id})">删除</button></td></tr>`;
   }).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span style="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span style="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span></div><div class="card-bd"><div class="form-group"><label>添加 PHPSESSID</label><div class="flex gap8"><input id="ci" placeholder="粘贴 Cookie 值" style="flex:1"><button class="btn btn-primary" onclick="addSes()">验证并添加</button></div><p style="font-size:11px;color:var(--muted);margin-top:4px">update.nsfocus.com → F12 → Application → Cookies → PHPSESSID</p></div><table><tr><th>ID</th><th>状态</th><th>心跳</th><th>最近心跳</th><th>次数</th><th>最后有效</th><th>过期</th><th>操作</th></tr>${rows||'<tr><td colspan="8" class="empty">暂无</td></tr>'}</table></div></div>
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span style="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span style="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span></div><div class="card-bd"><div class="form-group"><label>添加 PHPSESSID</label><div class="flex gap8" style="flex-wrap:wrap"><input id="ci" placeholder="粘贴 Cookie 值" style="flex:1;min-width:200px"><select id="sPurpose" onchange="onSesPurposeCh()" style="height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px"><option value="collect">采集</option><option value="discover">发现</option></select><select id="sMode" style="height:34px;border:1px solid var(--border);border-radius:6px;padding:0 8px"><option value="standard">标品</option><option value="vm">虚拟化</option></select><button class="btn btn-primary" onclick="addSes()">验证并添加</button></div><p style="font-size:11px;color:var(--muted);margin-top:4px">update.nsfocus.com → F12 → Application → Cookies → PHPSESSID</p></div><table><tr><th>ID</th><th>类型</th><th>状态</th><th>心跳</th><th>最近心跳</th><th>次数</th><th>最后有效</th><th>过期</th><th>操作</th></tr>${rows||'<tr><td colspan="9" class="empty">暂无</td></tr>'}</table></div></div>
   <div id="hbModal"></div>`;}
-async function addSes(){const v=document.getElementById('ci').value.trim();if(!v)return toast('请输入','error');const r=await api('/sessions',{method:'POST',body:JSON.stringify({cookie_value:v})});if(r.code===0){toast(r.data?.message||'添加成功');sessions();}else toast(r.message,'error');}
+function onSesPurposeCh(){const p=document.getElementById('sPurpose').value;document.getElementById('sMode').disabled=p==='discover';if(p==='discover')document.getElementById('sMode').value='standard';}
+// Mode selector: only shown for collect; discover always standard
+async function addSes(){const v=document.getElementById('ci').value.trim();if(!v)return toast('请输入','error');const p=document.getElementById('sPurpose').value,m=document.getElementById('sMode').value;const r=await api('/sessions',{method:'POST',body:JSON.stringify({cookie_value:v,purpose:p,collect_mode:m})});if(r.code===0){toast(r.data?.message||'添加成功');sessions();}else toast(r.message,'error');}
 async function validateSes(id){const r=await api('/sessions/'+id+'/validate',{method:'POST'});toast(r.code===0?r.message:r.message,r.code===0?'success':'error');sessions();}
 async function delSes(id){if(confirm('删除此Session?')){const r=await api('/sessions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');sessions();}else toast(r.message,'error');}}
+async function editSesType(id,curP,curM){
+  const p=curP==='discover'?'discover':'collect';
+  const m=curM==='vm'?'vm':'standard';
+  const sel=`<select id="etP" onchange="document.getElementById('etM').disabled=this.value==='discover';if(this.value==='discover')document.getElementById('etM').value='standard';"><option value="discover" ${p==='discover'?'selected':''}>发现</option><option value="collect" ${p==='collect'?'selected':''}>采集</option></select> <select id="etM" ${p==='discover'?'disabled':''}><option value="standard" ${m==='standard'?'selected':''}>标品</option><option value="vm" ${m==='vm'?'selected':''}>虚拟化</option></select>`;
+  if(!confirm(`修改 Session #${id} 类型：\n\n${sel}\n\n确认？`))return;
+  // Use PATCH to update
+  const newP=document.getElementById('etP')?.value||p;
+  const newM=document.getElementById('etM')?.value||m;
+  const r=await api('/sessions/'+id,{method:'PATCH',body:JSON.stringify({purpose:newP,collect_mode:newM})});
+  if(r.code===0){toast('已更新');sessions();}else toast(r.message,'error');
+}
+
 
 async function showHbHistory(sid){
   const r=await api('/sessions/'+sid+'/heartbeat');
@@ -721,8 +824,15 @@ function _checkDiscBanner(){
   api('/system/products/discover/status').then(s=>{
     if(s.code===0 && s.data?.active){
       _showDiscBanner(s.data);
-    } else if(s.code===0 && s.data?.phase==='done' && window._discLastDone){
-      showDiscoverResult(s.data.result);
+    } else if(s.code===0 && s.data?.phase==='done' && (window._discLastDone || s.data.result)){
+      // 页面刷新后 window._discLastDone 丢失，优先用 is_stale 标记提示用户
+      if(s.data.is_stale){
+        // 服务重启恢复：保存结果到内存，按钮变为待确认状态，等用户点击按钮再显示弹窗
+        window._pendingDiscResult=s.data.result;
+        window._pendingDiscStale=true;
+      } else if(window._discLastDone){
+        showDiscoverResult(window._discLastDone);
+      }
       window._discLastDone=null;
     }
   });
@@ -822,6 +932,20 @@ function _showDiscBanner(state){
 }
 
 async function products(){
+  // 检查是否有待确认的发现结果（来自temp file）
+  let pendingDiscResult = null;
+  let pendingDiscStale = false;
+  console.log('[products] checking discover status...');
+  try {
+    const s=await api('/system/products/discover/status');
+    console.log('[products] discover status result:', JSON.stringify(s));
+    if(s.code===0 && s.data?.phase==='done' && s.data?.result && !s.data?.active){
+      pendingDiscResult = s.data.result;
+      pendingDiscStale = !!s.data.is_stale;
+      window._pendingDiscResult = s.data.result;
+      window._pendingDiscStale = !!s.data.is_stale;
+    }
+  } catch(e){ console.log('[products] discover status error:', e); }
   const r=await api('/system/products');
   const allProds=r.data?.products||[];
   window._allProducts=allProds;
@@ -838,7 +962,7 @@ async function products(){
         <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
       </div>
       <div style="display:flex;align-items:center;gap:6px">
-        <button class="btn btn-sm" style="border-color:#d1d5db;color:#6b7280" onclick="discoverProducts()">🔍 自动发现</button>
+        <button class="btn btn-sm" id="disc-btn" style="border-color:${pendingDiscResult?'#f59e0b':'#d1d5db'};color:${pendingDiscResult?'#d97706':'#6b7280'};background:${pendingDiscResult?'#fef3c7':'transparent'}" onclick="_handleDiscBtn()">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
         <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
         <button class="btn btn-sm btn-primary" onclick="showProductForm()">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品名称和入口URL添加产品">ⓘ</span>
@@ -910,10 +1034,10 @@ function _reopenDiscModal(){
         <div style="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${phaseNames[s.data.phase]||s.data.phase||''}</div>
         <div style="font-size:13px;color:#666;margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
         <div style="margin-top:10px"><button class="btn" onclick="document.getElementById('${logId}').style.display='block'" style="background:none;border:1px solid #e5e7eb;border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button></div>
-        ${s.data.phase==='done'?'<div style="margin-top:12px"><button class="btn btn-primary" onclick="closeModal(\'disc\');showDiscoverResult(window._discLastDone||{})">查看结果</button></div>':''}
+        ${s.data.phase==='done'?'<div style="margin-top:12px"><button class="btn btn-primary" onclick="closeModal(\'disc\');showDiscoverResult(window._discLastDone||{}, !!s.data.is_stale)">查看结果</button></div>':''}
       </div>`);
       if(s.data.phase==='done'&&s.data.result){
-        setTimeout(()=>showDiscoverResult(s.data.result),100);
+        setTimeout(()=>showDiscoverResult(s.data.result, !!s.data.is_stale),100);
       }
     }
   });
@@ -921,6 +1045,7 @@ function _reopenDiscModal(){
 
 // Floating modal shell
 function _showModal(id){
+  closeModal(id); // 防止重复创建
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div id="${id}-overlay" onclick="if(event.target===this)closeModal('${id}')" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">`+
     `<div id="${id}-box" style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto"></div>`+
@@ -1152,14 +1277,211 @@ function buildTreeHtml(pt, MAP) {
   return treeHtml;
 }
 
-function treeToggle(el) {
-  var node = el.closest('.tree-node');
-  // .tree-children 是 .tree-node 的下一个兄弟节点（不是 child）
+// Build data tree: renders snapshots using paths chain as directory structure.
+// snapshotsMap: { "version_branch|short_type": [snapshot, ...], ... }
+// MAP: type code -> Chinese label map
+// verTypeMap: { "ver|shortType": dispType } for snapshot type display
+// alias: product alias to strip from version (e.g., "WAF")
+function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
+  const paths = pt.paths || [];
+  if (paths.length === 0) return '<span style="color:#9ca3af">无路径数据</span>';
+
+  // Build tree structure from paths
+  const root = {};
+  paths.forEach(p => {
+    const chain = p.chain || [];
+    if (chain.length < 2) return;
+    let node = root;
+    chain.forEach((name, idx) => {
+      if (!node.__children) node.__children = {};
+      if (!node.__children[name]) node.__children[name] = { __children: {}, __isPkg: false, __pkgKey: null, __snapshots: [] };
+      node = node.__children[name];
+      if (idx === chain.length - 1) {
+        node.__isPkg = true;
+        const rawType = (p.types || [])[0] || '';
+        node.__pkgKey = chain[chain.length - 1] || (ver + '|' + rawType);
+        // __pathId: the leaf page URL (relative path), matches snapshots.source_url after stripping BASE_URL
+        node.__pathId = p.url || '';
+      }
+    });
+  });
+
+  // Attach snapshots to matching leaf nodes
+  // snapshotsMap key = source_url (relative path, stripped of BASE_URL)
+  // tree node __pathId = p.url (relative path from product management)
+  // Direct URL comparison — no version/type matching needed
+  Object.entries(snapshotsMap || {}).forEach(([urlKey, snaps]) => {
+    function attach(node) {
+      if (node.__isPkg && node.__pathId) {
+        // Normalize both URLs: strip trailing slash, ensure leading /
+        const normNode = ('/' + node.__pathId).replace(/\/+$/, '');
+        const normKey = ('/' + urlKey).replace(/\/+$/, '');
+        if (normNode === normKey) {
+          node.__snapshots = snaps;
+          return true;
+        }
+      }
+      if (node.__children) {
+        for (const [, child] of Object.entries(node.__children)) {
+          if (attach(child)) return true;
+        }
+      }
+      return false;
+    }
+    attach(root);
+  });
+
+  // Render the tree
+  function renderNode(node, name, depth) {
+    const indent = depth * 16;
+    const children = node.__children ? Object.entries(node.__children) : [];
+    const hasChildren = children.length > 0;
+    const isPkg = node.__isPkg;
+    const snaps = node.__snapshots || [];
+
+    // Determine target div to toggle
+    let targetId = null;
+    if (isPkg && snaps.length > 0) {
+      targetId = 'pktbl_' + (node.__pkgKey || name)
+          .replace(/([^\x00-\x7F])/g, function(m) { return '_' + m.charCodeAt(0).toString(16) + '_'; })
+          .replace(/\W/g, '_');
+    }
+
+    // Clicking the row: for internal nodes toggle children div; for pkg nodes toggle snapshot table
+    const rowOnclick = hasChildren
+      ? `treeToggle(this,'${targetId || ''}')`
+      : (isPkg && snaps.length > 0 ? `pkgTableToggleById('${targetId}')` : '');
+
+    const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
+    const label = isPkg ? name : (MAP[name] || name);
+    const childCount = hasChildren ? ` <span style="color:#94a3b8;font-size:11px">(${children.length})</span>` : '';
+    const snapCount = isPkg && snaps.length > 0 ? ` <span style="background:#dbeafe;color:#1d4ed8;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">${snaps.length}包</span>` : '';
+    const arrow = hasChildren || (isPkg && snaps.length > 0) ? `<span class="tree-arrow" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>` : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
+
+    let html = `<div class="tree-node" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px${rowOnclick ? ';cursor:pointer' : ''}" ${rowOnclick ? `onclick="${rowOnclick}"` : ''}>`;
+    html += arrow;
+    html += `<span style="font-size:13px;color:#334155;flex-shrink:0">${icon} ${escHtml(label)}${childCount}${snapCount}</span>`;
+    html += `</div>`;
+
+    if (hasChildren) {
+      html += `<div class="tree-children" style="display:none">`;
+      children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
+      html += `</div>`;
+    }
+
+    // Snapshot table for leaf nodes (hidden by default)
+    if (isPkg && snaps.length > 0) {
+      html += `<div id="${targetId}" class="tree-children" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px"><table><tr style="background:#fafafa"><th>类型</th><th style="width:30%">文件</th><th style="width:11%">发布时间</th><th style="width:14%">最近采集</th><th style="width:6%">大小</th><th style="width:7%">紧急度</th><th style="width:7%">操作</th></tr>`;
+      snaps.forEach(s => {
+        const isRb = s.status === 'rollback';
+        const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
+        const did = 'dd_' + s.id;
+        const ptTime = fmtTZ(s.published_at);
+        const lsTime = fmtTZ(s.last_seen_at, true);
+        const shortType = s.package_type || '';
+        const ver = s.version_branch || '';
+        const dispType = verTypeMap ? verTypeMap[ver + '|' + shortType] : '';
+        const pkgTypeBadge = dispType && MAP[shortType] ? `<span style="background:#ede9fe;color:#5b21b6;font-size:10px;padding:1px 6px;border-radius:8px">${MAP[shortType]}</span>` : (typeCN(s.package_type) || s.package_type || '');
+        html += `<tr style="cursor:pointer;${isRb ? 'color:var(--muted);text-decoration:line-through' : ''}" onclick="document.getElementById('${did}').classList.toggle('hidden')">
+          <td>${pkgTypeBadge}</td>
+          <td class="mono" style="color:var(--primary)">${(s.file_name || '').substring(0, 35)}</td>
+          <td>${ptTime.substring(0, 10)}</td>
+          <td>${lsTime}</td>
+          <td>${sz}</td>
+          <td><span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}">${s.urgency || ''}</span></td>
+          <td><button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button></td>
+        </tr>
+        <tr id="${did}" class="hidden"><td colspan="7" class="detail-row"><div style="display:grid;grid-template-columns:auto 1fr;gap:3px 16px">
+          <b>文件:</b><span class="mono">${s.file_name || ''}</span>
+          <b>版本:</b><span>${s.package_version || ''}</span>
+          <b>MD5:</b><span class="mono">${s.md5_hash || ''}</span>
+          <b>大小:</b><span>${sz}</span>
+          ${s.min_sys_version ? `<b>依赖:</b><span>≥ ${s.min_sys_version}</span>` : ''}
+          ${s.published_at ? `<b>发布:</b><span>${s.published_at}</span>` : ''}
+          ${s.first_seen_at ? `<b>发现:</b><span>${s.first_seen_at}</span>` : ''}
+          ${s.download_id ? `<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>` : ''}
+          ${s.source_url ? `<b>详情:</b><span><a href="${s.source_url}" target="_blank">绿盟更新页</a></span>` : ''}
+          ${s.page_hash ? `<b>页面HASH:</b><span class="mono">${(s.prev_page_hash || '').substring(0, 8) ? (s.prev_page_hash.substring(0, 8) + ' → ') : ''}${s.page_hash.substring(0, 8)}</span>` : ''}
+        </div>${s.description_raw ? `<div class="desc-box mt12">${s.description_raw.substring(0, 1500)}</div>` : ''}</td></tr>`;
+      });
+      html += `</table></div>`;
+    }
+
+    return html;
+  }
+
+  let treeHtml = '<div style="font-family:system-ui">';
+  const rootChildren = root.__children ? Object.entries(root.__children).sort(([a],[b]) => {
+    const aV = /\d/.test(a); const bV = /\d/.test(b);
+    if (aV && !bV) return -1; if (!aV && bV) return 1;
+    return a.localeCompare(b, 'zh');
+  }) : [];
+  // Skip the top-level product name node if it's the only child (duplicates card title)
+  if (rootChildren.length === 1) {
+    const [topName, topNode] = rootChildren[0];
+    const topChildren = topNode.__children ? Object.entries(topNode.__children).sort(([a],[b]) => {
+      const aV = /\d/.test(a); const bV = /\d/.test(b);
+      if (aV && !bV) return -1; if (!aV && bV) return 1;
+      return a.localeCompare(b, 'zh');
+    }) : [];
+    topChildren.forEach(([childName, childNode]) => { treeHtml += renderNode(childNode, childName, 0); });
+  } else {
+    rootChildren.forEach(([name, node]) => { treeHtml += renderNode(node, name, 0); });
+  }
+  treeHtml += '</div>';
+  return treeHtml;
+}
+
+function productCardToggle(el, targetId) {
+  if (!targetId) targetId = el.getAttribute('data-target');
+  if (!targetId) return;
+  var target = document.getElementById(targetId);
+  if (!target) return;
+  var isOpen = target.style.display !== 'none';
+  target.style.display = isOpen ? 'none' : 'block';
+  var arrow = el.querySelector('.tree-arrow');
+  if (arrow) arrow.innerHTML = isOpen ? '&#9658;' : '&#9660;';
+}
+
+function pkgTableToggle(el) {
+  var targetId = el.getAttribute('data-target');
+  if (!targetId) return;
+  var target = document.getElementById(targetId);
+  if (!target) return;
+  var isOpen = target.style.display !== 'none';
+  target.style.display = isOpen ? 'none' : 'block';
+  el.innerHTML = isOpen ? '&#9658;' : '&#9660;';
+}
+
+function pkgTableToggleById(targetId) {
+  if (!targetId) return;
+  var target = document.getElementById(targetId);
+  if (!target) return;
+  var isOpen = target.style.display !== 'none';
+  target.style.display = isOpen ? 'none' : 'block';
+  // Also toggle the arrow in the parent tree-node
+  var node = target.previousElementSibling;
+  if (node && node.classList.contains('tree-node')) {
+    var arrow = node.querySelector('.tree-arrow');
+    if (arrow) arrow.innerHTML = isOpen ? '&#9658;' : '&#9660;';
+  }
+}
+
+function treeToggle(el, extraTargetId) {
+  var node = el.closest ? el.closest('.tree-node') : el;
+  // .tree-children is the next sibling of .tree-node
   var ch = node.nextElementSibling;
   if (!ch || !ch.classList.contains('tree-children')) return;
   var isOpen = ch.style.display !== 'none';
   ch.style.display = isOpen ? 'none' : 'block';
-  el.innerHTML = isOpen ? '&#9658;' : '&#9660;';
+  // Toggle extra target (snapshot table) if provided
+  if (extraTargetId) {
+    var extra = document.getElementById(extraTargetId);
+    if (extra) extra.style.display = isOpen ? 'none' : 'block';
+  }
+  // Update arrow inside this node
+  var arrow = node.querySelector('.tree-arrow');
+  if (arrow) arrow.innerHTML = isOpen ? '&#9658;' : '&#9660;';
 }
 
 function editPkgType(id){
@@ -1497,6 +1819,24 @@ function filterProducts(){
   document.getElementById('prod-tbody').innerHTML=_renderProductRows(filtered);
 }
 
+async function _handleDiscBtn(){
+  if(window._pendingDiscResult){
+    showDiscoverResult(window._pendingDiscResult, !!window._pendingDiscStale);
+    return;
+  }
+  // 内存没有，实时查API
+  try {
+    const s=await api('/system/products/discover/status');
+    if(s.code===0 && s.data?.phase==='done' && s.data?.result && !s.data?.active){
+      window._pendingDiscResult=s.data.result;
+      window._pendingDiscStale=!!s.data.is_stale;
+      showDiscoverResult(window._pendingDiscResult, window._pendingDiscStale);
+      return;
+    }
+  } catch(e){}
+  discoverProducts();
+}
+
 async function discoverProducts(){
   // 清除隐藏状态，新任务开始
   window._discBannerHidden=false;
@@ -1589,7 +1929,7 @@ async function discoverProducts(){
   setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);modalBody('disc',`<div style="padding:24px;text-align:center;color:#dc2626">发现超时，请重试</div><div style="padding:8px"><button class="btn" onclick="closeModal('disc')">关闭</button></div>`);}},600000);
 }
 
-function showDiscoverResult(result){
+function showDiscoverResult(result, isStale){
   // 渲染两阶段变更确认
   const prod=result?.products||{};
   const pkgChanges=result?.pkg_changes||{};
@@ -1599,6 +1939,8 @@ function showDiscoverResult(result){
   const pkgChangedProducts=Object.values(pkgChanges);
   const totalProdChanges=added.length+removed.length;
   const totalPkgChanges=pkgChangedProducts.reduce((n,c)=>n+(c.added_paths?.length||0)+(c.deleted_paths?.length||0)+(c.modified_paths?.length||0),0);
+
+  const staleWarning=isStale?'<div style="background:#fef3c7;border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#92400e;display:flex;align-items:center;gap:8px"><span style="font-size:16px">⚠️</span><div><b>发现结果已从临时文件恢复</b>（服务重启前未执行确认），请检查以下变更后点击「确认应用变更」。</div></div>':'';
 
   let summaryHtml=`<div style="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
     <span style="color:#16a34a">🆕 新增产品 <b>${added.length}</b></span>
@@ -1697,6 +2039,7 @@ function showDiscoverResult(result){
 
   let html=`<div style="padding:20px">
     <div style="font-size:15px;font-weight:600;margin-bottom:16px">🔍 自动发现结果</div>
+    ${staleWarning}
     ${summaryHtml}
     <div style="max-height:420px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:8px;padding:8px">
       ${sectionsHtml}
@@ -1704,10 +2047,12 @@ function showDiscoverResult(result){
     <div id="disc-confirm-phase" style="display:none;margin-top:10px;padding:8px 12px;background:#f5f3ff;border-radius:6px;font-size:13px;color:#7c3aed;text-align:center"></div>
     <div style="display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
       <button class="btn btn-primary" id="disc-confirm-btn" onclick="confirmDiscoverResult()">💾 确认应用变更</button>
+      <button class="btn" style="border-color:#dc2626;color:#dc2626" onclick="discardDiscoverResult()">丢弃</button>
       <span style="font-size:12px;color:#9ca3af">新增产品默认禁用，包类型变更将触发告警</span>
       <button class="btn" style="margin-left:auto" onclick="closeModal('disc')">关闭</button>
     </div>
   </div>`;
+  _showModal('disc');
   modalBody('disc',html);
   window._discoverResult=result;
 }
@@ -1762,6 +2107,8 @@ async function confirmDiscoverResult(){
               const d=s.data.result||{};
               toast(`已应用：产品新增${d.saved?.length||0} 删除${d.deleted?.length||0}，包类型更新${d.pkg_updated?.length||0}`,'success');
               window._discoverResult=null;
+              window._pendingDiscResult=null;
+              window._pendingDiscStale=null;
               closeModal('disc');
               await products();
             }else if(s.data.phase==='error'){
@@ -1780,6 +2127,16 @@ async function confirmDiscoverResult(){
     if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
     if(phaseEl){phaseEl.style.display='none';}
   }
+}
+
+async function discardDiscoverResult(){
+  if(!confirm('确定丢弃当前发现结果？')) return;
+  window._pendingDiscResult=null;
+  window._pendingDiscStale=null;
+  window._discoverResult=null;
+  closeModal('disc');
+  // Tell server to clear pending file
+  try { await api('/system/products/discover/confirm', {method:'DELETE'}); } catch(e){}
 }
 
 // 旧函数保留兼容（不再调用）

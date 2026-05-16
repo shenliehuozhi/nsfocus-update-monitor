@@ -43,6 +43,7 @@ def _get_setting(key: str, default: str) -> str:
 COLLECT_INTERVAL = int(_get_setting('collect_interval', '4'))
 ROLLBACK_CONFIRM = int(_get_setting('rollback_confirm', '2'))
 FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '24'))  # hours, default 1 day
+HEALTH_URL = _get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys')
 
 _collector = NsfocusCollector()
 _last_run: Optional[datetime] = None
@@ -196,13 +197,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         # Pre-validate session before starting collection.
         # Avoids the scenario where an expired session causes a product
         # to collect 0 items → all its snapshots marked rollback.
-        if not _collector.verify_session():
+        if not _collector.verify_session(HEALTH_URL):
             logger.warning('Pre-flight session check failed, trying backup...')
             update_status(sessions[0]['id'], 'expired')
             if len(sessions) > 1:
                 cookie = sessions[1]['cookie_value']
                 _collector._set_cookie(cookie)
-                if not _collector.verify_session():
+                if not _collector.verify_session(HEALTH_URL):
                     logger.warning('Backup session also invalid')
                     update_status(sessions[1]['id'], 'expired')
                     summary['status'] = 'error'
@@ -230,10 +231,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         all_items = []
 
         if mode == 'quick':
-            all_items = _collect_quick(existing_sources, _emit)
+            all_items = _collect_quick(existing_sources, cookie, _emit)
         elif mode == 'delta':
             # Legacy: redirect delta to quick
-            all_items = _collect_quick(existing_sources, _emit)
+            all_items = _collect_quick(existing_sources, cookie, _emit)
         else:
             all_items = _collect_full(existing_sources, sessions, cookie, _emit)
 
@@ -262,12 +263,51 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             if not src_items:
                 continue
 
+            # ── Capture "before" state for change logging ──────────────
+            from src.models.database import query as _db_q
+            before_snaps = _db_q(
+                """SELECT file_name, md5_hash FROM snapshots
+                   WHERE source_id=? AND status IN ('active','rollback','rollback_pending')""",
+                (src['id'],)
+            )
+            before_files = {s['file_name'] for s in before_snaps}
+            before_by_fname = {s['file_name']: s['md5_hash'] for s in before_snaps}
+
             result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
                                   check_rollback=True)
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
             summary['products'][name]['new'] = len(result.new_items)
+
+            # ── Detailed Chinese logging ──────────────────────────────
+            after_files = before_files.copy()
+            new_files = []
+            for sid, snap in result.new_items:
+                fname = snap.get('file_name', '')
+                after_files.add(fname)
+                new_files.append(fname)
+            gone_files = sorted(before_files - after_files)
+
+            # Summary line per product
+            total_items = len(src_items)
+            new_count = len(result.new_items)
+            roll_count = len(result.rollback_items)
+            if new_count > 0 or roll_count > 0:
+                logger.info(f'【{name}】采集完成：本次提取 {total_items} 个文件 | 新增 {new_count} | 回滚 {roll_count}')
+                if new_files:
+                    new_detail = ', '.join(sorted(new_files)[:15])
+                    if len(new_files) > 15:
+                        new_detail += f' ...（共{len(new_files)}个）'
+                    logger.info(f'  新增文件：{new_detail}')
+                if gone_files:
+                    gone_detail = ', '.join(gone_files[:15])
+                    if len(gone_files) > 15:
+                        gone_detail += f' ...（共{len(gone_files)}个）'
+                    logger.warning(f'  消失文件（可能被回滚）：{gone_detail}')
+            else:
+                logger.info(f'【{name}】采集完成：{total_items} 个文件，无变化')
+            # ── end detailed logging ──────────────────────────────────
 
             with _progress_lock:
                 _progress['total_new'] = summary['total_new']
@@ -338,13 +378,14 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         return summary
 
 
-def _collect_quick(existing_sources: dict, emit) -> list:
+def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
     """Quick collection: revisit known snapshot URLs, only GET changed pages.
 
     Uses collector._collect_quick which does HEAD/page-hash checks on known detail pages.
     Falls back gracefully if no known URLs exist (new installation).
     Keeps the package-level dedup from delta mode as safety net.
     """
+    _collector._set_cookie(cookie)
     from src.models.snapshot import get_active_snapshots
 
     # Build known-package index for dedup safety net
@@ -788,7 +829,7 @@ def _session_heartbeat():
 
     try:
         start = _time.time()
-        _collector._fetch('/update/wafIndex')
+        _collector._fetch(HEALTH_URL)
         latency = int((_time.time() - start) * 1000)
 
         update_heartbeat(session_id, 'ok')

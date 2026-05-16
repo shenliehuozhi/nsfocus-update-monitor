@@ -606,33 +606,66 @@ bp_latest = Blueprint('latest', __name__, url_prefix='/api/latest')
 @bp_latest.route('/snapshots', methods=['GET'])
 @require_auth
 def get_latest_snapshots():
-    """Get latest snapshots grouped by product. Add ?show_rollback=1 to include rollbacks."""
+    """Get latest snapshots grouped by source (product).
+    
+    Returns dict keyed by source_id, each containing:
+      - name, is_active, package_type (paths for tree building)
+      - snapshots list (only is_active=true sources, all snapshots kept in DB)
+    
+    Query params:
+      - show_rollback: '1' to include rollback snapshots
+    """
+    import json as _json
     from src.models.database import query
-    product = request.args.get('product', '')
+    from src.models.snapshot import list_sources
+
     show_rollback = request.args.get('show_rollback', '0') == '1'
-    
     status_filter = "status IN ('active'" + (",'rollback'" if show_rollback else "") + ")"
-    
-    if product:
-        rows = query(
-            f"""SELECT * FROM snapshots WHERE product_name=? AND {status_filter}
-               ORDER BY last_seen_at DESC LIMIT 50""",
-            (product,))
-    else:
-        rows = query(
-            f"""SELECT * FROM snapshots WHERE {status_filter}
-               ORDER BY product_name, last_seen_at DESC""")
-    
-    # Group by product
-    grouped = {}
+
+    # Get all active sources with their package_type paths
+    sources = list_sources('nsfocus')
+    # Build source metadata map
+    source_map = {}
+    for s in sources:
+        if not s.get('is_active'):
+            continue
+        pt = s.get('package_type', '')
+        if isinstance(pt, str) and pt:
+            try:
+                pt = _json.loads(pt)
+            except Exception:
+                pt = None
+        else:
+            pt = None
+        source_map[s['id']] = {
+            'id': s['id'],
+            'name': s['name'],
+            'display_name': s.get('display_name') or s['name'],
+            'is_active': bool(s.get('is_active')),
+            'package_type': pt or {'types': [], 'paths': [], 'modes': {}},
+            'last_collected_at': s.get('last_collected_at'),
+            'snapshots': [],
+        }
+
+    if not source_map:
+        return jsonify({'code': 0, 'data': {}})
+
+    # Get all snapshots for active sources
+    source_ids = list(source_map.keys())
+    placeholders = ','.join(['?'] * len(source_ids))
+    rows = query(
+        f"""SELECT * FROM snapshots
+           WHERE source_id IN ({placeholders}) AND {status_filter}
+           ORDER BY source_id, last_seen_at DESC""",
+        tuple(source_ids)
+    )
+
     for r in rows:
-        p = r['product_name']
-        if p not in grouped:
-            grouped[p] = []
-        if len(grouped[p]) < 20:
-            grouped[p].append(dict(r))
-    
-    return jsonify({'code': 0, 'data': grouped})
+        sid = r['source_id']
+        if sid in source_map:
+            source_map[sid]['snapshots'].append(dict(r))
+
+    return jsonify({'code': 0, 'data': source_map})
 
 bp_settings = Blueprint('settings', __name__, url_prefix='/api/settings')
 

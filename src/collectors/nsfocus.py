@@ -58,8 +58,8 @@ def _cst_to_utc(raw_time: str) -> str:
         return raw_time.strip() if raw_time else ''
 
 
-REQUEST_DELAY_MIN = _get_delay('collect_delay_min', 1.0)
-REQUEST_DELAY_MAX = _get_delay('collect_delay_max', 3.0)
+REQUEST_DELAY_MIN = _get_delay('collect_delay_min', 0.3)
+REQUEST_DELAY_MAX = _get_delay('collect_delay_max', 0.5)
 TIMEOUT = int(_get_delay('collect_timeout', 30))
 MAX_RETRIES = 2
 
@@ -102,6 +102,13 @@ class NsfocusCollector(BaseCollector):
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'zh-CN,zh;q=0.9',
+        })
+        # Separate session for discover (may hit /upLic redirects — must not pollute collect session)
+        self._discover_session = requests.Session()
+        self._discover_session.headers.update({
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
             'Accept': 'text/html,application/xhtml+xml',
             'Accept-Language': 'zh-CN,zh;q=0.9',
@@ -159,7 +166,7 @@ class NsfocusCollector(BaseCollector):
             return {}
         name = src['name']
         url = src['entry_url']
-        self._set_cookie(session_cookie)
+        self._set_discover_cookie(session_cookie)
         _log = lambda msg: log_fn(msg) if log_fn else None
 
         all_types = []    # union list
@@ -168,7 +175,7 @@ class NsfocusCollector(BaseCollector):
 
         try:
             _log(f'入口: {url}')
-            html = self._fetch(url)
+            html = self._fetch_discover(url)
 
             # Extract section titles from entry page (e.g. "WEB应用防护系统(WAF)列表")
             # and map each top-level link to its containing section.
@@ -209,7 +216,10 @@ class NsfocusCollector(BaseCollector):
 
                 _log('  ' * (depth + 1) + f'{"└── " if chain else ""}{chain[-1] if chain else url} ({page_url})')
                 try:
-                    page_html = self._fetch(page_url)
+                    page_html = self._fetch_discover(page_url)
+                except RedirectToLicenseError:
+                    _log('  ' * (depth + 2) + f'跳过（/upLic 跳转，session 上下文污染）')
+                    return
                 except Exception as e:
                     _log('  ' * (depth + 2) + f'访问失败: {e}')
                     return
@@ -402,7 +412,10 @@ class NsfocusCollector(BaseCollector):
     # ── Quick: HEAD-check known pages, only GET changed ones ──
 
     def _collect_quick(self, source_id: int, product_name: str) -> list:
-        """Quick collection: revisit known snapshot URLs, HEAD-check for changes.
+        """Quick collection: revisit known package-page URLs, HEAD-check for changes.
+
+        Primary source: content_sources.package_type_discovered.paths (has final-page URLs).
+        Fallback: snapshots.source_url (legacy, for old data without URL in paths).
 
         Falls back gracefully:
         - No known URLs → empty list (caller should run full scan first)
@@ -410,10 +423,35 @@ class NsfocusCollector(BaseCollector):
         - Page unchanged → skip
         - Page changed → full GET + extract new/updated items
         """
+        import json as _json
         from src.models.database import query as snap_query
+        from src.models.database import execute as snap_exec
         items = []
 
-        # Get distinct page URLs for this source's snapshots (all statuses).
+        # ── Step 1: get final-page URLs from content_sources.package_type_discovered ──
+        src_rows = snap_query(
+            "SELECT package_type_discovered FROM content_sources WHERE id = ?",
+            (source_id,)
+        )
+        paths_urls = []   # [(url, version_branch, package_type), ...]
+        if src_rows and src_rows[0].get('package_type_discovered'):
+            try:
+                pkg_data = _json.loads(src_rows[0]['package_type_discovered'])
+                for p in pkg_data.get('paths', []):
+                    url = p.get('url')
+                    if not url:
+                        continue
+                    chain = p.get('chain', [])
+                    # version is second-to-last in chain (last is the package type name)
+                    ver = chain[-2] if len(chain) >= 2 else ''
+                    # package type is the last chain element
+                    pkg_type = chain[-1] if chain else ''
+                    paths_urls.append((url, ver, pkg_type))
+            except Exception:
+                pass
+
+        # ── Step 2: fallback — also check snapshots.source_url for legacy data ──
+        snap_urls = []
         rows = snap_query(
             """SELECT DISTINCT source_url, version_branch, package_type
                FROM snapshots
@@ -422,21 +460,29 @@ class NsfocusCollector(BaseCollector):
                ORDER BY source_url""",
             (source_id,)
         )
-        if not rows:
+        if rows:
+            snap_urls = [(r['source_url'], r['version_branch'], r['package_type']) for r in rows]
+
+        # Use paths_urls if available, otherwise fall back to snap_urls
+        if paths_urls:
+            urls = paths_urls
+        elif snap_urls:
+            urls = snap_urls
+        else:
             logger.info(f'Quick {product_name}: no known URLs, run full scan first')
             return items
-
-        urls = [(r['source_url'], r['version_branch'], r['package_type']) for r in rows]
         total = len(urls)
         checked = 0
         changed = 0
 
         for url, ver, pkg in urls:
             checked += 1
+            # Prepend BASE_URL if url is a relative path (from paths.url)
+            full_url = f'{BASE_URL}{url}' if url.startswith('/') else url
             try:
                 # Try HEAD with If-Modified-Since
                 self._delay()
-                head_resp = self.session.head(url, timeout=15, allow_redirects=True)
+                head_resp = self.session.head(full_url, timeout=15, allow_redirects=True)
                 if head_resp.status_code == 200:
                     # Server supports HEAD — but HEAD doesn't give us the body
                     # We still need GET to check if content actually changed
@@ -448,9 +494,13 @@ class NsfocusCollector(BaseCollector):
             try:
                 # Use GET with stream to read headers without full body
                 self._delay()
-                resp = self.session.get(url, timeout=TIMEOUT, stream=True)
+                resp = self.session.get(full_url, timeout=TIMEOUT, stream=True)
                 content_length = resp.headers.get('Content-Length', '')
                 last_modified = resp.headers.get('Last-Modified', '')
+
+                # Detect login-page redirect (session valid for some products but not this one)
+                if '/portal/' in resp.url or '/login' in resp.url.lower() or '登录' in resp.text[:200]:
+                    raise SessionExpiredError(f'Session invalid for {product_name} (login page)')
 
                 # Quick check: if page is small enough and has last_modified,
                 # we can compute a hash from headers alone
@@ -458,62 +508,98 @@ class NsfocusCollector(BaseCollector):
                 html = resp.text[:50000]  # Read up to 50KB
                 resp.close()
 
+                # Also verify this isn't a login page by title
+                if '<title>' in html:
+                    title = html[html.find('<title>')+7:html.find('</title>')]
+                    if '登录' in title:
+                        raise SessionExpiredError(f'Session invalid for {product_name} (login title: {title[:30]})')
+
                 # Compute page hash for comparison
                 import hashlib
                 page_hash = hashlib.md5(html.encode()).hexdigest()
+                _stored = snap_query("SELECT page_hash, prev_page_hash FROM snapshots WHERE source_id=? AND source_url=? LIMIT 1", (source_id, full_url))
+                stored_hash = _stored[0]['page_hash'] if _stored else None
+                prev_hash = _stored[0]['prev_page_hash'] if _stored else None
 
-                # Check if this hash matches any existing snapshot's page_hash
+                # ── Log hash change: prev → current ─────────────────────
+                # Display URL uses the clean original url (from DB paths, no corruption)
+                display_url = url[-50:]  # last 50 chars of clean path
+                if stored_hash is None:
+                    logger.info(f'【{product_name}】NEW  {display_url}  无 → {page_hash}')
+                elif page_hash == stored_hash:
+                    prev = prev_hash or '无'
+                    logger.info(f'【{product_name}】SAME {display_url}  {prev} → {page_hash}')
+                else:
+                    prev = prev_hash or '无'
+                    logger.info(f'【{product_name}】CHANGE {display_url}  {prev} → {page_hash}')
                 existing = snap_query(
                     """SELECT id FROM snapshots
                        WHERE source_id = ? AND source_url = ? AND page_hash = ?
                        LIMIT 1""",
-                    (source_id, url, page_hash)
+                    (source_id, full_url, page_hash)
                 )
                 if existing:
-                    # Page unchanged — reconstruct existing snapshots as items
-                    # so they are included in seen_ids for rollback detection
-                    existing_snaps = snap_query(
-                        """SELECT * FROM snapshots
-                           WHERE source_id = ? AND source_url = ? AND status = 'active'""",
-                        (source_id, url)
+                    # Hash matched — but verify the page is actually the real data page,
+                    # not a login page that accidentally collides with the stored hash.
+                    # Strategy: if this URL has known snapshots with MD5 values,
+                    # check whether any of those MD5s appear in the current page text.
+                    # If none found → treat as changed (force re-extract).
+                    known_md5s = snap_query(
+                        """SELECT md5_hash FROM snapshots
+                           WHERE source_id=? AND source_url=? AND md5_hash != ''""",
+                        (source_id, full_url)
                     )
-                    for s in existing_snaps:
-                        desc_parsed = s.get('description_parsed', '{}')
-                        if isinstance(desc_parsed, str):
-                            try: desc_parsed = json.loads(desc_parsed)
-                            except: desc_parsed = {}
-                        item = UnifiedContentItem(
-                            source_id=source_id, source_type='nsfocus',
-                            product_name=s['product_name'],
-                            version_branch=s['version_branch'],
-                            package_type=s['package_type'],
-                            file_name=s['file_name'],
-                            package_version=s.get('package_version', ''),
-                            md5_hash=s['md5_hash'],
-                            file_size=s.get('file_size', 0),
-                            description_raw=s.get('description_raw', ''),
-                            description_parsed=desc_parsed,
-                            min_sys_version=s.get('min_sys_version', ''),
-                            restart_required=bool(s.get('restart_required', 0)),
-                            urgency=s.get('urgency', 'normal'),
-                            download_id=s.get('download_id', 0),
-                            published_at=s.get('published_at', ''),
-                            page_hash=page_hash,
-                            source_url=url,
-                        )
-                        items.append(item)
-                    # Update prev_page_hash even for unchanged pages (user wants "旧→新" always)
-                    from src.models.database import execute
-                    execute("UPDATE snapshots SET prev_page_hash=page_hash, page_hash=? WHERE source_id=? AND source_url=?",
-                            (page_hash, source_id, url))
-                    continue
+                    force_changed = False
+                    if known_md5s:
+                        md5_found = any(m['md5_hash'] in html for m in known_md5s)
+                        if not md5_found:
+                            logger.info(f'Quick [{product_name}] hash matched but content differs (login page collision?), re-extracting')
+                            force_changed = True
 
+                    if not force_changed:
+                        # Page truly unchanged — reconstruct existing snapshots as items
+                        # so they are included in seen_ids for rollback detection
+                        existing_snaps = snap_query(
+                            """SELECT * FROM snapshots
+                               WHERE source_id = ? AND source_url = ? AND status = 'active'""",
+                            (source_id, full_url)
+                        )
+                        for s in existing_snaps:
+                            desc_parsed = s.get('description_parsed', '{}')
+                            if isinstance(desc_parsed, str):
+                                try: desc_parsed = json.loads(desc_parsed)
+                                except: desc_parsed = {}
+                            item = UnifiedContentItem(
+                                source_id=source_id, source_type='nsfocus',
+                                product_name=s['product_name'], version_branch=s['version_branch'],
+                                package_type=s['package_type'], file_name=s['file_name'],
+                                package_version=s.get('package_version', ''),
+                                md5_hash=s['md5_hash'], file_size=s.get('file_size', 0),
+                                description_raw=s.get('description_raw', ''),
+                                description_parsed=desc_parsed,
+                                min_sys_version=s.get('min_sys_version', ''),
+                                restart_required=bool(s.get('restart_required', 0)),
+                                urgency=s.get('urgency', 'normal'),
+                                download_id=s.get('download_id', 0),
+                                published_at=s.get('published_at', ''),
+                                page_hash=page_hash, source_url=full_url,
+                            )
+                            items.append(item)
+                        # Update prev_page_hash to track the change trail
+                        # NOTE: do NOT update page_hash itself here — that would erase
+                        # the "changed" signal for the next quick run (Bug #008 fix)
+                        from src.models.database import execute
+                        execute("UPDATE snapshots SET prev_page_hash=page_hash WHERE source_id=? AND source_url=?",
+                                (source_id, full_url))
+                        continue
+
+                # --- Page changed (or login-collision forced re-extract) ---
                 changed += 1
-                logger.info(f'Quick {product_name}: changed {url[-60:]} ({checked}/{total})')
+                logger.info(f'Quick {product_name}: changed {full_url[-60:]} ({checked}/{total})')
 
                 # Extract items from the page
                 table_items = self._extract_table_items(
-                    html, source_id, product_name, ver, pkg, page_url=url)
+                    html, source_id, product_name, ver, pkg, page_url=full_url)
                 items.extend(table_items)
                 # Also update page_hash on ALL snapshots for this URL,
                 # so the "unchanged path" works even if items don't match
@@ -521,12 +607,12 @@ class NsfocusCollector(BaseCollector):
                 from src.models.database import execute
                 execute("""UPDATE snapshots SET prev_page_hash = page_hash,
                     page_hash = ? WHERE source_id=? AND source_url=?""",
-                        (page_hash, source_id, url))
+                        (page_hash, source_id, full_url))
 
             except SessionExpiredError:
                 raise
             except Exception as e:
-                logger.warning(f'Quick {product_name}: {url[-60:]}: {e}')
+                logger.warning(f'Quick {product_name}: {full_url[-60:]}: {e}')
 
         logger.info(f'Quick {product_name}: {changed}/{total} pages changed, {len(items)} items')
         return items
@@ -536,10 +622,60 @@ class NsfocusCollector(BaseCollector):
     def _set_cookie(self, cookie: str):
         self.session.cookies.set('PHPSESSID', cookie, domain='update.nsfocus.com')
 
-    def verify_session(self) -> bool:
+    def _set_discover_cookie(self, cookie: str):
+        """Set cookie on the dedicated discover session (separate from collect session)."""
+        self._discover_session.cookies.set('PHPSESSID', cookie, domain='update.nsfocus.com')
+
+    def _fetch_discover(self, path: str) -> str:
+        """Fetch using the dedicated discover session. Raises RedirectToLicenseError on /upLic."""
+        url = f'{BASE_URL}{path}'
+        last_error = None
+        for attempt in range(MAX_RETRIES + 1):
+            if attempt == 0:
+                self._delay()
+            else:
+                backoff = 2 ** attempt
+                logger.warning(f'[discover] Retry {attempt}/{MAX_RETRIES} for {path} (backoff {backoff}s)')
+                time.sleep(backoff)
+            try:
+                logger.debug(f'[discover] GET {url}')
+                resp = self._discover_session.get(url, timeout=TIMEOUT)
+                resp.raise_for_status()
+                if '/portal/index' in resp.url:
+                    raise SessionExpiredError('Session expired')
+                if '/update/upLic' in resp.url:
+                    raise RedirectToLicenseError('Redirected to /update/upLic — session context switched')
+                return resp.text
+            except SessionExpiredError:
+                raise
+            except RedirectToLicenseError:
+                raise
+            except requests.Timeout:
+                last_error = f'Timeout after {TIMEOUT}s'
+                logger.warning(f'[discover] {path}: {last_error} (attempt {attempt+1}/{MAX_RETRIES+1})')
+            except requests.ConnectionError as e:
+                if 'Name or service not known' in str(e):
+                    raise
+                last_error = str(e)[:120]
+                logger.warning(f'[discover] {path}: {last_error} (attempt {attempt+1}/{MAX_RETRIES+1})')
+            except Exception as e:
+                last_error = str(e)[:120]
+                logger.warning(f'[discover] {path}: {last_error}')
+                break
+        raise Exception(last_error or f'[discover] Failed after {MAX_RETRIES+1} attempts')
+
+    def verify_session(self, health_url: str = None) -> bool:
+        """Check if session is still valid. health_url defaults to /update/listBvsV6/v/bvssys."""
+        url = health_url or '/update/listBvsV6/v/bvssys'
         try:
-            resp = self.session.get(f'{BASE_URL}/update/wafIndex', timeout=15, allow_redirects=True)
-            return '/portal/index' not in resp.url and resp.status_code == 200
+            resp = self.session.get(f'{BASE_URL}{url}', timeout=15, allow_redirects=True)
+            # Login redirect: any nsfocus portal path means expired
+            if '/portal/' in resp.url or '/login' in resp.url:
+                return False
+            # Also catch the license redirect (session context switch = wrong mode)
+            if '/update/upLic' in resp.url:
+                return False
+            return resp.status_code == 200
         except Exception:
             return False
 
@@ -564,8 +700,12 @@ class NsfocusCollector(BaseCollector):
                 resp.raise_for_status()
                 if '/portal/index' in resp.url:
                     raise SessionExpiredError('Session expired')
+                if '/update/upLic' in resp.url:
+                    raise RedirectToLicenseError('Redirected to /update/upLic — session context switched')
                 return resp.text
             except SessionExpiredError:
+                raise
+            except RedirectToLicenseError:
                 raise
             except requests.Timeout:
                 last_error = f'Timeout after {TIMEOUT}s'
@@ -615,7 +755,7 @@ class NsfocusCollector(BaseCollector):
             cell_texts = []
             for cell in cells:
                 a_tag = cell.find('a', href=True)
-                if a_tag and '/update/downloads/id/' in a_tag['href']:
+                if a_tag and ('/update/downloads/id/' in a_tag['href'] or '/update/downloadsVm/id/' in a_tag['href']):
                     download_id = self._extract_download_id(a_tag['href'])
                     cell_texts.append(cell.get_text(' ', strip=True))
                 else:
@@ -645,7 +785,8 @@ class NsfocusCollector(BaseCollector):
             if current_item.get('file_name') and current_item.get('md5_hash'):
                 item = self._build_item(current_item, source_id, product_name,
                                         version_branch, package_type, download_id,
-                                        source_url=page_url)
+                                        source_url=page_url,
+                                        path_id=hashlib.md5(page_url.encode()).hexdigest()[:12])
                 items.append(item)
                 current_item = {}
                 download_id = 0
@@ -654,7 +795,8 @@ class NsfocusCollector(BaseCollector):
                 if current_item.get('file_name'):
                     item = self._build_item(current_item, source_id, product_name,
                                             version_branch, package_type, download_id,
-                                            source_url=page_url)
+                                            source_url=page_url,
+                                            path_id=hashlib.md5(page_url.encode()).hexdigest()[:12])
                     items.append(item)
                 current_item = {}
 
@@ -665,7 +807,8 @@ class NsfocusCollector(BaseCollector):
         if current_item.get('file_name') and current_item.get('md5_hash'):
             item = self._build_item(current_item, source_id, product_name,
                                     version_branch, package_type, download_id,
-                                    source_url=page_url)
+                                    source_url=page_url,
+                                    path_id=hashlib.md5(page_url.encode()).hexdigest()[:12])
             items.append(item)
 
         for it in items:
@@ -694,7 +837,8 @@ class NsfocusCollector(BaseCollector):
 
     def _build_item(self, raw: dict, source_id: int, product_name: str,
                     version_branch: str, package_type: str,
-                    download_id: int, source_url: str = '') -> UnifiedContentItem:
+                    download_id: int, source_url: str = '',
+                    path_id: str = '') -> UnifiedContentItem:
         description_raw = raw.get('description_raw', '')
         description_parsed = parse_description(description_raw)
         urgency = 'normal'
@@ -716,6 +860,7 @@ class NsfocusCollector(BaseCollector):
             urgency=urgency, download_id=download_id,
             published_at=_cst_to_utc(raw.get('published_at', '')),
             source_url=source_url,
+            path_id=path_id,
         )
 
     @staticmethod
@@ -834,4 +979,9 @@ def parse_description(desc: str) -> dict:
 
 
 class SessionExpiredError(Exception):
+    pass
+
+
+class RedirectToLicenseError(Exception):
+    """Raised when a page redirects to /update/upLic (session context switched to virtualisation)."""
     pass

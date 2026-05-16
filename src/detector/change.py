@@ -24,6 +24,7 @@ class DetectionResult:
     source_id: int
     new_items: list = field(default_factory=list)       # (snapshot_id, snapshot_dict)
     rollback_items: list = field(default_factory=list)   # (snapshot_id, snapshot_dict)
+    unchanged_items: list = field(default_factory=list)  # (snapshot_id, snapshot_dict)
     unchanged_count: int = 0
     errors: list = field(default_factory=list)
 
@@ -59,6 +60,7 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
                 result.new_items.append((sid, snap))
             else:
                 result.unchanged_count += 1
+                result.unchanged_items.append((sid, snap))
 
         except Exception as e:
             logger.error(f'Failed to save snapshot: {e}')

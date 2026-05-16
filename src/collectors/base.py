@@ -25,7 +25,8 @@ class UnifiedContentItem:
     download_id: int = 0
     published_at: str = ''
     page_hash: str = ''
-    source_url: str = ''          # detail page URL for quick-mode HEAD check
+    source_url: str = ''           # detail page URL for quick-mode HEAD check
+    path_id: str = ''              # MD5(source_url)[:12], unique per path
 
     def to_snapshot_dict(self) -> dict:
         return {
@@ -46,6 +47,7 @@ class UnifiedContentItem:
             'published_at': self.published_at,
             'page_hash': self.page_hash,
             'source_url': self.source_url,
+            'path_id': self.path_id,
         }
 
 

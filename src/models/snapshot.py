@@ -326,8 +326,8 @@ def save_snapshot(snap: dict) -> int:
             (source_id, product_name, version_branch, package_type,
              file_name, package_version, md5_hash, file_size,
              description_raw, description_parsed, min_sys_version,
-             restart_required, urgency, download_id, published_at, page_hash, source_url)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             restart_required, urgency, download_id, published_at, page_hash, source_url, path_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             snap['source_id'], snap['product_name'], snap['version_branch'],
             snap['package_type'], snap.get('file_name', ''),
@@ -337,7 +337,7 @@ def save_snapshot(snap: dict) -> int:
             int(snap.get('restart_required', False)),
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
             snap.get('published_at', ''), snap.get('page_hash', ''),
-            snap.get('source_url', '')
+            snap.get('source_url', ''), snap.get('path_id', ''),
         ))
 
 

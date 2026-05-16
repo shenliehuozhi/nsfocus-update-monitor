@@ -14,6 +14,80 @@ _auto_discover_lock = None
 _confirm_state = None  # {active, phase, log_lines, result, error}
 _confirm_lock = None
 
+# ── Temp file for discover result persistence ─────────────────────────
+import threading
+# Compute project root from this module's location (src/web/routes/)
+# Need 3 levels up to reach project root from src/web/routes/
+_PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+_PENDING_FILE = os.path.join(_PROJECT_ROOT, 'data', 'discover_pending.json')
+
+# ── Dedicated discover/confirm log file ──────────────────────────────
+_disc_log_file = None
+
+def _disc_log_path():
+    global _disc_log_file
+    if _disc_log_file is None:
+        _disc_log_file = os.path.join(_PROJECT_ROOT, 'data', 'discover.log')
+    return _disc_log_file
+
+def _disc_log(msg, prefix='[auto_discover]'):
+    """Append a timestamped line to data/discover.log."""
+    try:
+        import datetime as _dt
+        ts = _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        line = f'{ts} {prefix} {msg}\n'
+        with open(_disc_log_path(), 'a', encoding='utf-8') as f:
+            f.write(line)
+    except Exception:
+        pass
+
+def _load_pending():
+    """Load pending discover result from temp file, or None."""
+    try:
+        import json as _json
+        if os.path.exists(_PENDING_FILE):
+            with open(_PENDING_FILE, 'r', encoding='utf-8') as f:
+                d = _json.load(f)
+            if isinstance(d, dict) and 'result' in d:
+                return d
+    except Exception:
+        pass
+    return None
+
+def _save_pending(result):
+    """Write discover result to temp file for service-restart resilience."""
+    try:
+        import json as _json
+        os.makedirs(os.path.dirname(_PENDING_FILE), exist_ok=True)
+        with open(_PENDING_FILE, 'w', encoding='utf-8') as f:
+            _json.dump({'saved_at': __import__('datetime').datetime.utcnow().isoformat() + 'Z',
+                        'result': result}, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def _clear_pending():
+    """Remove pending file after successful confirm or discard."""
+    try:
+        if os.path.exists(_PENDING_FILE):
+            os.remove(_PENDING_FILE)
+    except Exception:
+        pass
+
+# ── Service-startup recovery ─────────────────────────────────────────
+_auto_discover_lock = threading.Lock()
+_pending = _load_pending()
+if _pending:
+    _auto_discover_state = {
+        'active': False,
+        'phase': 'done',
+        'result': _pending['result'],
+        'progress': 0,
+        'total': 0,
+        'log_lines': ['[已从临时文件恢复发现结果，服务重启前未执行确认]'],
+        'is_stale': True,  # mark as stale so UI can show banner
+    }
+    _disc_log('service started: restored pending result from temp file', '[auto_discover]')
+
 
 def _get_refresh_pool():
     global _refresh_pool
@@ -407,7 +481,7 @@ def discover_products():
     global _auto_discover_state, _auto_discover_lock
     import threading, json
     from src.models.snapshot import list_sources, discover_products_from_index
-    from src.models.user_session import get_active_sessions
+    from src.models.user_session import get_active_sessions, get_active_sessions_by_purpose
     from src.collectors.nsfocus import NsfocusCollector
     from src.core.logger import get_logger as _get_logger
     logger = _get_logger('system_routes')
@@ -421,9 +495,9 @@ def discover_products():
         if _auto_discover_state and _auto_discover_state.get('active'):
             return {'code': 409, 'message': '自动发现已在运行中'}, 409
 
-        sessions = get_active_sessions()
+        sessions = get_active_sessions_by_purpose('discover')
         if not sessions:
-            return {'code': 400, 'message': '无有效会话，请先添加绿盟账号'}, 400
+            return {'code': 400, 'message': '无发现用途 Session，请先添加"发现"类型的 PHPSESSID'}, 400
         cookie = sessions[0]['cookie_value']
 
         _auto_discover_state = {
@@ -440,6 +514,7 @@ def discover_products():
         with _auto_discover_lock:
             if _auto_discover_state:
                 _auto_discover_state['log_lines'].append(str(msg))
+        _disc_log(msg, '[auto_discover]')
 
     def _run():
         global _auto_discover_state, _auto_discover_lock
@@ -549,17 +624,19 @@ def discover_products():
                 _auto_discover_state['phase'] = 'done'
                 _auto_discover_state['active'] = False
 
+            _save_pending(result)
             _log('自动发现完成，请确认变更')
 
         except Exception as e:
             import traceback
-            logger.error(f'[auto_discover] error: {e}\n{traceback.format_exc()}')
+            _disc_log(f'ERROR: {e}', '[auto_discover]')
             _log(f'错误: {e}')
             with _auto_discover_lock:
                 if _auto_discover_state:
                     _auto_discover_state['phase'] = 'error'
                     _auto_discover_state['active'] = False
                     _auto_discover_state['result'] = {'error': str(e)}
+            _clear_pending()
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -573,9 +650,17 @@ def discover_products_status():
     """Poll auto-discover progress. Returns current state + log_lines."""
     global _auto_discover_state, _auto_discover_lock
     if _auto_discover_lock is None:
+        # Service just started: check pending file for stale result
+        pending = _load_pending()
+        if pending and 'result' in pending:
+            return {'code': 0, 'data': {'active': False, 'phase': 'done', 'result': pending['result'], 'is_stale': True}}
         return {'code': 0, 'data': {'active': False}}
     with _auto_discover_lock:
         if not _auto_discover_state:
+            # Memory empty: check pending file for stale result
+            pending = _load_pending()
+            if pending and 'result' in pending:
+                return {'code': 0, 'data': {'active': False, 'phase': 'done', 'result': pending['result'], 'is_stale': True}}
             return {'code': 0, 'data': {'active': False}}
         state = dict(_auto_discover_state)
     # Don't expose lock in response
@@ -592,21 +677,32 @@ def discover_products_confirm():
     """
     global _auto_discover_state, _auto_discover_lock, _confirm_state, _confirm_lock
     from src.models.snapshot import upsert_source, delete_source, get_source_by_url, get_source, update_source
-    from src.models.user_session import get_active_sessions
+    from src.models.user_session import get_active_sessions, get_active_sessions_by_purpose
     from src.core.logger import get_logger as _get_logger
     import threading, json
 
     logger = _get_logger('system_routes')
 
-    if _auto_discover_lock is None:
-        return {'code': 400, 'message': '无待确认的发现结果，请先运行自动发现'}, 400
+    # Try memory first, then fall back to temp file (service-restart resilience)
+    result = None
+    stale = False
+    if _auto_discover_lock is not None:
+        with _auto_discover_lock:
+            if _auto_discover_state and _auto_discover_state.get('result') and \
+               'error' not in _auto_discover_state.get('result', {}):
+                result = _auto_discover_state['result']
 
-    with _auto_discover_lock:
-        if not _auto_discover_state or not _auto_discover_state.get('result'):
-            return {'code': 400, 'message': '无待确认的发现结果'}, 400
-        result = _auto_discover_state['result']
-        if 'error' in result:
-            return {'code': 400, 'message': f'上次发现有错误: {result["error"]}'}, 400
+    if result is None:
+        pending = _load_pending()
+        if pending and 'error' not in pending.get('result', {}):
+            result = pending['result']
+            stale = True
+            _disc_log('restored result from pending file (stale=True)', '[confirm]')
+        else:
+            return {'code': 400, 'message': '无待确认的发现结果，请先运行自动发现'}, 400
+
+    if 'error' in result:
+        return {'code': 400, 'message': f'上次发现有错误: {result["error"]}'}, 400
 
     body = request.get_json() or {}
     prod_added = body.get('products', {}).get('added', result['products']['added'])
@@ -631,11 +727,25 @@ def discover_products_confirm():
         with _confirm_lock:
             if _confirm_state:
                 _confirm_state['log_lines'].append(str(msg))
+        _disc_log(msg, '[confirm]')
+
+    # Capture user_id before entering background thread (g is not accessible there)
+    user_id = g.user_id
 
     def _run():
         global _confirm_state, _confirm_lock
         saved_prods, deleted_prods = [], []
         pkg_updated_prods = []
+        import traceback as _tb
+        _disc_log(f'thread started: user_id={user_id}, prod_added={len(prod_added)}, prod_removed={len(prod_removed)}, pkg_changes={len(pkg_changes) if pkg_changes else "None"}', '[confirm]')
+
+        def _audit_in_thread(action: str, details: dict = None):
+            """Thread-safe audit (no g/request access)."""
+            try:
+                from src.models.audit import log
+                log(user_id, action, details or {}, '')
+            except Exception:
+                pass
 
         try:
             # ── Insert added products ────────────────────────────────
@@ -647,7 +757,7 @@ def discover_products_confirm():
                     continue
                 strategy = _auto_detect_strategy(entry_url)
                 sid = upsert_source(name, 'nsfocus', entry_url, strategy,
-                                   created_by=g.user_id, display_name=display_name,
+                                   created_by=user_id, display_name=display_name,
                                    is_active=False, is_manual=False)
                 saved_prods.append({'id': sid, 'name': name, 'entry_url': entry_url})
                 _log(f'[confirm] 新增产品: {name} (id={sid})')
@@ -711,11 +821,12 @@ def discover_products_confirm():
                     package_type_changed=1 if (change['added_paths'] or change['deleted_paths'] or change['modified_paths']) else 0)
                 pkg_updated_prods.append(product_name)
 
-            _audit('product_discover_save', {
+            _audit_in_thread('product_discover_save', {
                 'added': len(saved_prods), 'removed': len(deleted_prods),
                 'pkg_updated': len(pkg_updated_prods),
             })
 
+            _disc_log(f'[confirm] ✅ 应用完成: 新增产品{len(saved_prods)} 删除{len(deleted_prods)} 包类型更新{len(pkg_updated_prods)}', '[confirm]')
             with _confirm_lock:
                 _confirm_state['result'] = {
                     'saved': saved_prods, 'deleted': deleted_prods,
@@ -724,10 +835,11 @@ def discover_products_confirm():
                 _confirm_state['active'] = False
                 _confirm_state['phase'] = 'done'
             _log('✅ 确认应用完成')
+            _clear_pending()
 
         except Exception as e:
             import traceback
-            logger.error(f'[confirm] error: {e}\n{traceback.format_exc()}')
+            _disc_log(f'ERROR: {e}', '[confirm]')
             _log(f'❌ 错误: {e}')
             with _confirm_lock:
                 _confirm_state['active'] = False
@@ -740,12 +852,31 @@ def discover_products_confirm():
     return {'code': 0, 'message': '确认应用已启动，请轮询状态'}
 
 
+@bp.route('/products/discover/confirm', methods=['DELETE'])
+@require_auth
+def discover_confirm_discard():
+    """Discard pending discover result and clear temp file."""
+    _clear_pending()
+    if _confirm_lock:
+        with _confirm_lock:
+            if _confirm_state:
+                _confirm_state.update({'active': False, 'phase': 'done', 'error': 'discarded'})
+    _disc_log('discarded pending discover result', '[confirm]')
+    return {'code': 0, 'message': '已丢弃'}
+
+
 @bp.route('/products/discover/confirm/status', methods=['GET'])
 @require_auth
 def discover_confirm_status():
     """SSE stream for confirm progress."""
     from flask import Response, stream_with_context
     import json, time
+
+    # Lazy-init like POST endpoint does
+    global _confirm_lock
+    if _confirm_lock is None:
+        import threading
+        _confirm_lock = threading.Lock()
 
     def generate():
         last_count = 0
@@ -925,7 +1056,7 @@ def get_pkg_refresh_status(source_id: int):
 def trigger_pkg_refresh(source_id: int):
     """触发单个产品包类型后台刷新，返回是否成功启动。"""
     from src.core.scheduler import refresh_pkg_type_single, _pkg_refresh_state, _pkg_refresh_lock
-    from src.models.user_session import get_active_sessions
+    from src.models.user_session import get_active_sessions, get_active_sessions_by_purpose
     from concurrent.futures import ThreadPoolExecutor
 
     # 检查是否已有任务在运行
@@ -933,9 +1064,9 @@ def trigger_pkg_refresh(source_id: int):
         if _pkg_refresh_state.get('active') and _pkg_refresh_state.get('source_id') == source_id:
             return {'code': 409, 'message': '该产品正在刷新中'}, 409
 
-    sessions = get_active_sessions()
+    sessions = get_active_sessions_by_purpose('discover')
     if not sessions:
-        return {'code': 400, 'message': '无有效会话，请先添加绿盟账号'}, 400
+        return {'code': 400, 'message': '无发现用途 Session，请先添加"发现"类型的 PHPSESSID'}, 400
     cookie = sessions[0]['cookie_value']
 
     # 启动后台任务

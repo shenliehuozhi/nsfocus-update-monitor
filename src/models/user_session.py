@@ -46,22 +46,33 @@ def create_tables(db):
         db.execute("ALTER TABLE user_sessions ADD COLUMN heartbeat_count INTEGER DEFAULT 0")
     except Exception:
         pass
+    try:
+        db.execute("ALTER TABLE user_sessions ADD COLUMN purpose TEXT DEFAULT 'collect'")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE user_sessions ADD COLUMN collect_mode TEXT DEFAULT 'standard'")
+    except Exception:
+        pass
 
 
-def create(user_id: int, cookie_value: str) -> int:
+def create(user_id: int, cookie_value: str, purpose: str = 'collect',
+           collect_mode: str = 'standard') -> int:
     from src.models.database import execute
     from src.core.crypto import encrypt
     encrypted = encrypt(cookie_value)
     return execute(
-        "INSERT INTO user_sessions (user_id, cookie_value, status) VALUES (?, ?, 'unknown')",
-        (user_id, encrypted)
+        "INSERT INTO user_sessions (user_id, cookie_value, status, purpose, collect_mode) "
+        "VALUES (?, ?, 'unknown', ?, ?)",
+        (user_id, encrypted, purpose, collect_mode)
     )
 
 
 def get_by_user(user_id: int) -> list:
     from src.models.database import query
     return query(
-        "SELECT id, user_id, status, last_valid, expires_at, "
+        "SELECT id, user_id, status, purpose, collect_mode, "
+        "last_valid, expires_at, "
         "last_heartbeat_at, heartbeat_status, heartbeat_count, created_at "
         "FROM user_sessions WHERE user_id = ? ORDER BY created_at DESC",
         (user_id,))
@@ -75,6 +86,44 @@ def get_active_sessions() -> list:
     for r in rows:
         r['cookie_value'] = decrypt(r['cookie_value'])
     return rows
+
+
+def get_active_sessions_by_purpose(purpose: str) -> list:
+    """Get active sessions filtered by purpose (discover/collect), with decrypted cookies."""
+    from src.models.database import query
+    from src.core.crypto import decrypt
+    rows = query(
+        "SELECT * FROM user_sessions WHERE status = 'active' AND purpose = ? ORDER BY last_valid DESC",
+        (purpose,)
+    )
+    for r in rows:
+        r['cookie_value'] = decrypt(r['cookie_value'])
+    return rows
+
+
+def get_active_collect_sessions() -> dict:
+    """Get active collect sessions grouped by collect_mode (standard/vm), first cookie each."""
+    from src.models.database import query
+    from src.core.crypto import decrypt
+    rows = query(
+        "SELECT * FROM user_sessions WHERE status = 'active' AND purpose = 'collect' "
+        "ORDER BY collect_mode, last_valid DESC"
+    )
+    result = {}  # collect_mode -> session row
+    for r in rows:
+        if r['collect_mode'] not in result:
+            r['cookie_value'] = decrypt(r['cookie_value'])
+            result[r['collect_mode']] = r
+    return result
+
+
+def update_purpose_mode(session_id: int, purpose: str, collect_mode: str):
+    """Update session purpose and collect_mode."""
+    from src.models.database import execute
+    execute(
+        "UPDATE user_sessions SET purpose = ?, collect_mode = ? WHERE id = ?",
+        (purpose, collect_mode, session_id)
+    )
 
 
 def update_status(session_id: int, status: str, last_valid: str = None, expires_at: str = None):
@@ -123,8 +172,9 @@ def get_heartbeat_history(session_id: int, limit: int = 20) -> list:
 
 def delete(session_id: int) -> None:
     from src.models.database import execute
-    execute("DELETE FROM user_sessions WHERE id = ?", (session_id,))
+    # Delete child table first (heartbeat_log -> user_sessions FK)
     execute("DELETE FROM heartbeat_log WHERE session_id = ?", (session_id,))
+    execute("DELETE FROM user_sessions WHERE id = ?", (session_id,))
 
 
 def count_by_status(status: str) -> int:

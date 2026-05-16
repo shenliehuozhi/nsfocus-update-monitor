@@ -28,6 +28,8 @@ def list_sessions():
         'data': {
             'my_sessions': [{
                 'id': s['id'], 'status': s['status'],
+                'purpose': s.get('purpose', 'collect'),
+                'collect_mode': s.get('collect_mode', 'standard'),
                 'last_valid': s.get('last_valid'),
                 'expires_at': s.get('expires_at'),
                 'created_at': s.get('created_at'),
@@ -79,7 +81,13 @@ def create_session():
         return jsonify({'code': 40001, 'message': f'无法连接绿盟站点: {str(e)}'}), 400
 
     # Session valid — save it
-    sid = user_session.create(g.user_id, cookie_value)
+    purpose = data.get('purpose', 'collect')
+    collect_mode = data.get('collect_mode', 'standard')
+    if purpose not in ('discover', 'collect'):
+        purpose = 'collect'
+    if collect_mode not in ('standard', 'vm'):
+        collect_mode = 'standard'
+    sid = user_session.create(g.user_id, cookie_value, purpose=purpose, collect_mode=collect_mode)
     user_session.update_status(sid, 'active')
 
     # Record initial heartbeat
@@ -90,6 +98,7 @@ def create_session():
         'code': 0,
         'data': {
             'id': sid, 'status': 'active',
+            'purpose': purpose, 'collect_mode': collect_mode,
             'latency_ms': latency_ms,
             'message': f'Session 验证成功 ({latency_ms}ms)',
         }
@@ -101,6 +110,35 @@ def create_session():
 def delete_session(session_id: int):
     user_session.delete(session_id)
     return jsonify({'code': 0, 'message': '已删除'})
+
+
+@bp.route('/<int:session_id>', methods=['PATCH'])
+@require_auth
+def update_session(session_id: int):
+    """Update session purpose and/or collect_mode."""
+    data = request.get_json() or {}
+    purpose = data.get('purpose')
+    collect_mode = data.get('collect_mode')
+
+    if not purpose and not collect_mode:
+        return jsonify({'code': 40001, 'message': '至少需要提供 purpose 或 collect_mode'}), 400
+
+    if purpose not in ('discover', 'collect', None):
+        return jsonify({'code': 40001, 'message': 'purpose 必须是 discover 或 collect'}), 400
+    if collect_mode not in ('standard', 'vm', None):
+        return jsonify({'code': 40001, 'message': 'collect_mode 必须是 standard 或 vm'}), 400
+
+    # Resolve final values (keep existing if not provided)
+    sessions = user_session.get_by_user(g.user_id)
+    target = next((s for s in sessions if s['id'] == session_id), None)
+    if not target:
+        return jsonify({'code': 40400, 'message': 'Session 不存在'}), 404
+
+    final_purpose = purpose if purpose else target.get('purpose', 'collect')
+    final_mode = collect_mode if collect_mode else target.get('collect_mode', 'standard')
+
+    user_session.update_purpose_mode(session_id, final_purpose, final_mode)
+    return jsonify({'code': 0, 'message': '已更新', 'data': {'purpose': final_purpose, 'collect_mode': final_mode}})
 
 
 @bp.route('/<int:session_id>/heartbeat', methods=['GET'])
