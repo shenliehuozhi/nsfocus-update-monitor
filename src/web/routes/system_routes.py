@@ -836,6 +836,9 @@ def discover_products_confirm():
                 _confirm_state['phase'] = 'done'
             _log('✅ 确认应用完成')
             _clear_pending()
+            # Clear in-memory state so service restart doesn't restore stale pending
+            global _auto_discover_state
+            _auto_discover_state = {'active': False, 'phase': 'cleared', 'result': None, 'log_lines': [], 'is_stale': False}
 
         except Exception as e:
             import traceback

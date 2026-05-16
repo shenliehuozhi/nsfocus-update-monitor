@@ -1837,22 +1837,7 @@ async function _handleDiscBtn(){
   discoverProducts();
 }
 
-async function discoverProducts(){
-  // 清除隐藏状态，新任务开始
-  window._discBannerHidden=false;
-  // 1. 触发后台发现任务
-  // 预建立日志窗口（隐藏，点击按钮显示）
-  const discLogId='disc-float-log';
-  if(!document.getElementById(discLogId)){
-    const logDiv=document.createElement('div');
-    logDiv.id=discLogId;
-    logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
-    logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:12px;font-weight:600;color:#374151;gap:8px"><span style="flex:1">📋 自动发现日志</span><button onclick="document.getElementById('${discLogId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;padding:0;line-height:1">×</button></div><div id="${discLogId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:#fafafa;font-family:monospace;font-size:11px;color:#374151"></div>`;
-    document.body.appendChild(logDiv);
-    window.__discLogId=discLogId; // expose globally for confirmDiscoverResult
-  }
-
-  // 渲染带颜色的日志行
+// ── 渲染带颜色的日志行（全局，discover 和 confirm 共用）────────────
   function renderLogLine(l){
     const txt=escHtml(l);
     if(l.startsWith('🔍')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#4f46e5">${txt}</div>`;
@@ -1862,6 +1847,20 @@ async function discoverProducts(){
     if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#dc2626">${txt}</div>`;
     if(l.startsWith('[')) return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#374151">${txt}</div>`;
     return `<div style="padding:1px 0;border-bottom:1px solid #f1f3f5;color:#6b7280">${txt}</div>`;
+  }
+
+async function discoverProducts(){
+  // 清除隐藏状态，新任务开始
+  window._discBannerHidden=false;
+  // 预建立日志窗口（隐藏，点击按钮显示）
+  const discLogId='disc-float-log';
+  if(!document.getElementById(discLogId)){
+    const logDiv=document.createElement('div');
+    logDiv.id=discLogId;
+    logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
+    logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:12px;font-weight:600;color:#374151;gap:8px"><span style="flex:1">📋 自动发现日志</span><button onclick="document.getElementById('${discLogId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;padding:0;line-height:1">×</button></div><div id="${discLogId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:#fafafa;font-family:monospace;font-size:11px;color:#374151"></div>`;
+    document.body.appendChild(logDiv);
+    window.__discLogId=discLogId; // expose globally for confirmDiscoverResult
   }
 
   _showModal('disc');
@@ -2072,10 +2071,20 @@ async function confirmDiscoverResult(){
 
   const r=await api('/system/products/discover/confirm',{method:'POST',body:JSON.stringify(result)});
   if(r.code===0){
-    // Reuse the floating log window
-    const logId=window.__discLogId||'disc-float-log';
-    const logBody=document.getElementById(logId+'-body');
-    if(logBody) logBody.innerHTML='';
+    // Reuse or create floating log window
+    let logId=window.__discLogId||'disc-float-log';
+    let logBody=document.getElementById(logId+'-body');
+    if(!logBody){
+      const logDiv=document.createElement('div');
+      logDiv.id=logId;
+      logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
+      logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid #f1f3f5;font-size:12px;font-weight:600;color:#374151;gap:8px"><span style="flex:1">📋 应用日志</span><button onclick="document.getElementById('${logId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:#9ca3af;font-size:16px;padding:0;line-height:1">×</button></div><div id="${logId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:#fafafa;font-family:monospace;font-size:11px;color:#374151"></div>`;
+      document.body.appendChild(logDiv);
+      logBody=document.getElementById(logId+'-body');
+      window.__discLogId=logId;
+    }
+    logBody.innerHTML='';
+    document.getElementById(logId).style.display='block';
 
     let done=false;
     let pollTimer=null;
