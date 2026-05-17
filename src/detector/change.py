@@ -30,7 +30,8 @@ class DetectionResult:
 
 
 def run_detection(source_id: int, items: list[UnifiedContentItem],
-                  rollback_confirm: int = 2, check_rollback: bool = True) -> DetectionResult:
+                  rollback_confirm: int = 2, check_rollback: bool = True,
+                  seen_ids: set = None) -> DetectionResult:
     """Main detection entry point.
 
     1. Save/update all collected items as snapshots
@@ -40,14 +41,18 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
     """
     result = DetectionResult(source_id=source_id)
 
-    if not items:
+    # Build seen_ids: pre-populate with known active snapshot IDs (unchanged pages
+    # that were filtered by dedup in scheduler._collect_quick) so they aren't
+    # incorrectly marked rollback_pending.
+    seen_ids = set() if seen_ids is None else set(seen_ids)
+
+    if not items and not seen_ids:
         # Nothing collected — could mean session expired or site down
         # Don't trigger mass rollback on empty collection
         logger.warning(f'Source {source_id}: collected 0 items')
         return result
 
-    # Step 1: Save/update all items
-    seen_ids = set()
+    # Step 1: Save/update all collected items as snapshots
     for item in items:
         try:
             snap_dict = item.to_snapshot_dict()

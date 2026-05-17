@@ -71,7 +71,7 @@ def create(user_id: int, cookie_value: str, purpose: str = 'collect',
 def get_by_user(user_id: int) -> list:
     from src.models.database import query
     return query(
-        "SELECT id, user_id, status, purpose, collect_mode, "
+        "SELECT id, user_id, cookie_value, status, purpose, collect_mode, "
         "last_valid, expires_at, "
         "last_heartbeat_at, heartbeat_status, heartbeat_count, created_at "
         "FROM user_sessions WHERE user_id = ? ORDER BY created_at DESC",
@@ -188,6 +188,6 @@ def get_expired_active_count() -> int:
     from src.models.database import query
     rows = query(
         "SELECT COUNT(*) as cnt FROM user_sessions "
-        "WHERE status = 'active' AND heartbeat_status = 'expired'"
+        "WHERE status = 'active' AND heartbeat_status IN ('过期', '污染', '错误')"
     )
     return rows[0]['cnt'] if rows else 0

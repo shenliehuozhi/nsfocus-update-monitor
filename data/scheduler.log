@@ -1,0 +1,8 @@
+2026-05-17 22:37:13 [INFO] monitor.database: Database path: /root/nsfocus-monitor/src/../data/nsfocus_monitor.db
+2026-05-17 22:37:14 [INFO] monitor.scheduler: Scheduler started: collection every 1h, full scan every 720h
+2026-05-17 22:37:14 [INFO] monitor.scheduler: Collection starting: mode=quick
+ * Tip: There are .env files present. Install python-dotenv to use them.
+ * Serving Flask app 'src.app'
+ * Debug mode: off
+Run time of job "Digest Summary Check (trigger: interval[6:00:00], next run at: 2026-05-18 02:37:14 CST)" was missed by 2:00:00.002237
+2026-05-17 22:37:14 [WARNING] monitor.scheduler: Collection aborted: no active sessions

@@ -6,6 +6,9 @@ from flask import Blueprint, request, jsonify, g
 from src.web.auth import require_auth
 from src.models import user_session
 
+BASE_URL = 'https://update.nsfocus.com'
+HEALTH_URL = '/update/listBvsV6/v/bvssys'
+
 bp = Blueprint('sessions', __name__, url_prefix='/api/sessions')
 
 
@@ -56,25 +59,21 @@ def create_session():
     start = time.time()
     try:
         resp = requests.get(
-            'https://update.nsfocus.com/update/wafIndex',
+            BASE_URL + HEALTH_URL,
             cookies={'PHPSESSID': cookie_value},
             timeout=10,
             allow_redirects=False
         )
         latency_ms = int((time.time() - start) * 1000)
 
-        # Check for redirect to login (session expired)
+        # Session expiry: 302 redirect → expired
         if resp.status_code == 302:
             loc = resp.headers.get('Location', '')
-            if '/portal/index' in loc or '/portal' in loc:
-                return jsonify({'code': 40001, 'message': 'Session 已过期，请重新登录获取'}), 400
+            if '/portal/index' in loc:
+                return jsonify({'code': 40001, 'message': 'Session 已过期（302 跳转到登录页），请重新登录获取'}), 400
 
-        if resp.status_code == 200:
-            if 'ser_c_b_con' not in resp.text and '登录' in resp.text:
-                return jsonify({'code': 40001, 'message': 'Session 无效（返回了登录页），请重新获取'}), 400
-            if 'ser_c_b_con' not in resp.text:
-                return jsonify({'code': 40001, 'message': '无法确认 Session 有效性，请确认已登录并复制正确的 PHPSESSID'}), 400
-        else:
+        # 200 OK → session alive (bvssys page doesn't have ser_c_b_con, no need to check page content)
+        if resp.status_code != 200:
             return jsonify({'code': 40001, 'message': f'绿盟站点返回异常状态码: {resp.status_code}'}), 400
 
     except requests.RequestException as e:
@@ -91,8 +90,8 @@ def create_session():
     user_session.update_status(sid, 'active')
 
     # Record initial heartbeat
-    user_session.update_heartbeat(sid, 'ok')
-    user_session.log_heartbeat(sid, 'ok', latency_ms=latency_ms)
+    user_session.update_heartbeat(sid, '正常')
+    user_session.log_heartbeat(sid, '正常', latency_ms=latency_ms, error_msg='200 OK，session 存活')
 
     return jsonify({
         'code': 0,
@@ -158,55 +157,61 @@ def heartbeat_history(session_id: int):
 @bp.route('/<int:session_id>/validate', methods=['POST'])
 @require_auth
 def validate_session(session_id: int):
-    """Re-validate a stored session with an immediate heartbeat."""
-    from src.collectors.nsfocus import NsfocusCollector, SessionExpiredError
+    """Re-validate a stored session with an immediate heartbeat.
+    Supports both active and expired sessions — if expired and still valid,
+    it will be restored to active status.
+    """
+    import requests
+    from src.core.crypto import decrypt
 
     sessions = user_session.get_by_user(g.user_id)
     target = next((s for s in sessions if s['id'] == session_id), None)
     if not target:
         return jsonify({'code': 40400, 'message': 'Session 不存在'}), 404
 
-    # Need the decrypted cookie value
-    active_list = user_session.get_active_sessions()
-    active_target = next((s for s in active_list if s['id'] == session_id), None)
-
-    if not active_target:
-        # Session is not active, can't test
-        return jsonify({'code': 40001, 'message': '只能验证状态为 active 的 Session'}), 400
-
-    collector = NsfocusCollector()
-    collector._set_cookie(active_target['cookie_value'])
+    # Get decrypted cookie (get_by_user returns encrypted, need to decrypt)
+    cookie_value = decrypt(target['cookie_value'])
 
     start = time.time()
     try:
-        collector._fetch('/update/wafIndex')
+        resp = requests.get(
+            BASE_URL + HEALTH_URL,
+            cookies={'PHPSESSID': cookie_value},
+            timeout=10,
+            allow_redirects=False
+        )
         latency_ms = int((time.time() - start) * 1000)
 
-        user_session.update_status(session_id, 'active')
-        user_session.update_heartbeat(session_id, 'ok')
-        user_session.log_heartbeat(session_id, 'ok', latency_ms=latency_ms)
+        # Session expiry: 302 redirect → expired
+        if resp.status_code == 302:
+            loc = resp.headers.get('Location', '')
+            if '/portal/index' in loc:
+                user_session.update_status(session_id, 'expired')
+                user_session.update_heartbeat(session_id, '过期')
+                user_session.log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效')
+                return jsonify({'code': 40001, 'message': 'Session 已过期（302 跳转到登录页）'}), 400
 
-        return jsonify({
-            'code': 0,
-            'data': {'status': 'active', 'latency_ms': latency_ms},
-            'message': f'验证通过 ({latency_ms}ms)',
-        })
+        # 200 OK → session alive
+        if resp.status_code != 200:
+            user_session.update_heartbeat(session_id, '错误')
+            user_session.log_heartbeat(session_id, '错误', error_msg=f'HTTP {resp.status_code}')
+            return jsonify({'code': 40001, 'message': f'绿盟站点返回异常状态码: {resp.status_code}'}), 400
 
-    except SessionExpiredError:
-        user_session.update_status(session_id, 'expired')
-        user_session.update_heartbeat(session_id, 'expired')
-        user_session.log_heartbeat(session_id, 'expired', error_msg='Session expired')
-
-        return jsonify({
-            'code': 40001,
-            'message': 'Session 已过期',
-        }), 400
-
-    except Exception as e:
-        user_session.update_heartbeat(session_id, 'error')
-        user_session.log_heartbeat(session_id, 'error', error_msg=str(e)[:200])
-
+    except requests.RequestException as e:
+        user_session.update_heartbeat(session_id, '错误')
+        user_session.log_heartbeat(session_id, '错误', error_msg=str(e)[:200])
         return jsonify({
             'code': 40001,
-            'message': f'验证失败: {str(e)[:100]}',
+            'message': f'无法连接绿盟站点: {str(e)[:100]}',
         }), 400
+
+    # Session still valid — restore to active if it was expired
+    user_session.update_status(session_id, 'active')
+    user_session.update_heartbeat(session_id, '正常')
+    user_session.log_heartbeat(session_id, '正常', latency_ms=latency_ms, error_msg='200 OK，session 存活')
+
+    return jsonify({
+        'code': 0,
+        'data': {'status': 'active', 'latency_ms': latency_ms},
+        'message': f'验证通过 ({latency_ms}ms)',
+    })

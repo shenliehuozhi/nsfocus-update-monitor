@@ -6,6 +6,7 @@ Supports two modes:
 """
 
 import os
+import random
 import time
 import threading
 from datetime import datetime, timedelta
@@ -266,7 +267,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             # ── Capture "before" state for change logging ──────────────
             from src.models.database import query as _db_q
             before_snaps = _db_q(
-                """SELECT file_name, md5_hash FROM snapshots
+                """SELECT id, file_name, md5_hash FROM snapshots
                    WHERE source_id=? AND status IN ('active','rollback','rollback_pending')""",
                 (src['id'],)
             )
@@ -274,7 +275,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             before_by_fname = {s['file_name']: s['md5_hash'] for s in before_snaps}
 
             result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
-                                  check_rollback=True)
+                                  check_rollback=True,
+                                  seen_ids={s['id'] for s in before_snaps})
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
@@ -805,14 +807,28 @@ def _check_first_run():
 
 
 def _session_heartbeat():
-    """Send a lightweight request to keep PHPSESSID alive.
+    """Send lightweight requests to keep all active PHPSESSID alive.
 
     PHP default session.gc_maxlifetime is 24 min, so 30 min heartbeat
     should prevent server-side session expiry between collection cycles.
     Skips heartbeat if collection is in progress to avoid cookie conflicts.
+
+    Anti-detection: jitter + skip probability to avoid periodic patterns.
+
+    All active sessions (collect + discover) get a heartbeat.
+    Pollution detection (format check) only applies to collect sessions.
     """
     import time as _time
-    from src.models.user_session import update_heartbeat, log_heartbeat
+
+    # Anti-detection: random initial delay (0-30s) to break periodic pattern
+    _time.sleep(random.uniform(0, 30))
+
+    # Anti-detection: 5% skip probability — simulates human patrol gaps
+    if random.random() < 0.05:
+        logger.debug('Heartbeat skipped: random skip (anti-detection)')
+        return
+    import requests as _requests
+    from src.models.user_session import update_heartbeat, log_heartbeat, update_status
 
     if _is_running:
         logger.debug('Heartbeat skipped: collection in progress')
@@ -822,34 +838,69 @@ def _session_heartbeat():
     if not sessions:
         return
 
-    interval = int(_get_setting('heartbeat_interval', '30'))  # minutes
-    cookie = sessions[0]['cookie_value']
-    session_id = sessions[0]['id']
-    _collector._set_cookie(cookie)
+    # interval = int(_get_setting('heartbeat_interval', '30'))  # minutes — not used yet
+    BASE_URL = 'https://update.nsfocus.com'
 
-    try:
-        start = _time.time()
-        _collector._fetch(HEALTH_URL)
-        latency = int((_time.time() - start) * 1000)
+    for sess in sessions:
+        # Anti-detection: random delay between sessions (2-15s) to spread traffic
+        _time.sleep(random.uniform(2, 15))
 
-        update_heartbeat(session_id, 'ok')
-        log_heartbeat(session_id, 'ok', latency_ms=latency)
-        logger.debug(f'Heartbeat OK ({latency}ms)')
+        cookie = sess['cookie_value']
+        session_id = sess['id']
+        purpose = sess.get('purpose', 'collect')
 
-    except SessionExpiredError:
-        logger.warning(f'Heartbeat: session {session_id} expired')
-        update_status(session_id, 'expired')
-        update_heartbeat(session_id, 'expired')
-        log_heartbeat(session_id, 'expired', error_msg='Session expired (redirect to login)')
+        try:
+            start = _time.time()
+            resp = _requests.get(
+                BASE_URL + HEALTH_URL,
+                cookies={'PHPSESSID': cookie},
+                timeout=10,
+                allow_redirects=False
+            )
+            latency = int((_time.time() - start) * 1000)
 
-        logger.warning(
-            f'⚠️ SESSION EXPIRED: session {session_id} is no longer valid. '
-            f'Please add a new PHPSESSID in the web UI.')
+            # Pollution detection: collect session only
+            if purpose == 'collect':
+                if 'downloadsVm/id' in resp.text:
+                    update_status(session_id, 'expired')
+                    update_heartbeat(session_id, '污染')
+                    log_heartbeat(session_id, '污染', error_msg='collect session 返回 downloadsVm/id，说明上下文被 upLic/Vm 格式污染')
+                    logger.warning(f'Session {session_id} 污染 (downloadsVm/id detected)')
+                    continue
 
-    except Exception as e:
-        logger.warning(f'Heartbeat failed: {e}')
-        update_heartbeat(session_id, 'error')
-        log_heartbeat(session_id, 'error', error_msg=str(e)[:200])
+            # Session expiry: 302 redirect → expired (all sessions)
+            if resp.status_code == 302:
+                loc = resp.headers.get('Location', '')
+                if '/portal/index' in loc:
+                    update_status(session_id, 'expired')
+                    update_heartbeat(session_id, '过期')
+                    log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效')
+                    logger.warning(f'Session {session_id} 过期 (redirect to {loc})')
+                    continue
+
+            # 200 OK + no pollution + no portal redirect → session alive
+            update_heartbeat(session_id, '正常')
+            log_heartbeat(session_id, '正常', latency_ms=latency, error_msg='200 OK，session 存活')
+            logger.debug(f'Heartbeat OK session={session_id} purpose={purpose} ({latency}ms)')
+
+        except _requests.RequestException as e:
+            err_str = str(e)
+            # Extract key error type for readability
+            if 'ConnectionRefused' in err_str or 'refused' in err_str.lower():
+                detail = '连接被拒绝（目标服务器未开放端口）'
+            elif 'Timeout' in err_str or 'timed out' in err_str.lower():
+                detail = '连接超时（目标服务器响应过慢）'
+            elif 'SSLError' in err_str or 'SSL' in err_str:
+                detail = 'SSL 证书错误'
+            elif 'ConnectionError' in err_str or 'NewConnectionError' in err_str:
+                detail = '网络连接失败（无法到达目标服务器）'
+            elif 'DNS' in err_str or 'gaierror' in err_str.lower():
+                detail = 'DNS 解析失败'
+            else:
+                detail = err_str[:200]
+            update_heartbeat(session_id, '错误')
+            log_heartbeat(session_id, '错误', error_msg=f'网络错误: {detail}')
+            logger.warning(f'Heartbeat failed session={session_id}: {detail}')
 
 
 def _digest_check():
