@@ -222,25 +222,121 @@ curl -s "https://update.nsfocus.com/update/listBvsV6/v/bvssys" \
 
 ---
 
+## Bug #008：session 心跳时间未做时区转换
+
+**严重程度**：低
+
+**日期**：2026-05-18
+
+**现象**：前端 session 列表表格中"最近心跳"列显示 UTC 时间（比实际 CST 早 8 小时）。
+
+**根因**：`last_heartbeat_at` 存储 UTC（SQLite `datetime('now')`），前端直接用 `substring(0,16)` 截取原始字符串，未经过 `fmtTZ()` 转换为本地时间。
+
+**涉及文件**：
+- `src/web/templates/index.html` 第 428 行：`hbTime = s.last_heartbeat_at ? s.last_heartbeat_at.substring(0,16) : '—'`
+
+**修复**：改为 `s.last_heartbeat_at ? fmtTZ(s.last_heartbeat_at, true) : '—'`
+
+**时区规范（全局铁律）**：
+- DB 存储 UTC（`datetime('now')` in SQLite = UTC）
+- 前端统一经过 `fmtTZ()` 显示本地时间（CST）
+- `fmtTZ` 使用 `getHours()/getMinutes()`（非 `toISOString()`）来获取本地时间
+- 严禁直接渲染 UTC 时间字符串
+
+**为什么不用 toISOString()**：CST = UTC+8，`toISOString()` 输出的是 UTC 时间，比实际时间少 8 小时。`fmtTZ` 手动拼装 `getHours()/getMinutes()` 保证显示本地时间。
+
+---
+
 ## Feature #001：心跳防检测机制
 
 **日期**：2026-05-18
 
 **目标**：降低心跳请求被识别为机器行为的特征。
 
-**实现（三层）**：
+---
 
-| 层级 | 机制 | 参数 |
-|------|------|------|
-| 1 | 函数入口随机延迟 | 0-30s jitter（`random.uniform(0, 30)`） |
-| 2 | 5% 跳过概率 | 模拟人工巡逻间隙（`random.random() < 0.05`） |
-| 3 | session 间延迟 | 2-15s 随机间隔（`random.uniform(2, 15)`） |
+### 背景
 
-**效果**：
-- 心跳触发时间不再与整点对齐
-- 有 5% 概率本轮静默（不像固定任务的刚性执行）
-- 多 session 时请求分散在 2-15s 区间，而非瞬间并发
+绿盟升级监控平台对 session 的依赖极高：
+- `PHPSESSID` 是绿盟服务器端 session，默认 `gc_maxlifetime=24min`
+- 若超过 24min 未访问，服务器自动回收 session
+- 采集任务间隔（可配置，默认 4 分钟）远小于 24min，但发现任务（discover）间隔更长
+- 因此需要心跳机制定期访问绿盟服务器，维持 session 活性
 
-**涉及文件**：
-- `src/core/scheduler.py` — `_session_heartbeat()` 函数（第 809-912 行）
-- 新增顶层 import：`import random`（第 8 行）
+---
+
+### 旧行为的问题
+
+原来的心跳是**严格周期性**的：
+- APScheduler `interval` 触发，每 N 分钟 `:00, :01, :02` 准时执行
+- 多个 session 请求几乎同时发出（间隔 < 100ms）
+- 连续几轮完全相同的时间间隔和请求顺序
+
+这种模式在服务端日志中非常明显，容易被异常检测识别为机器行为。
+
+---
+
+### 新设计：三层防检测
+
+#### 第一层：入口抖动（Jitter）
+
+```python
+_time.sleep(random.uniform(0, 30))  # 随机延迟 0-30 秒
+```
+
+在函数入口处随机 sleep，打破"整点触发"的固定节奏。
+效果：本次心跳触发时间在计划时间基础上偏移 0-30 秒。
+
+#### 第二层：跳过概率（Skip）
+
+```python
+if random.random() < 0.05:  # 5% 概率跳过
+    return
+```
+
+5% 的概率本轮完全不做心跳。模拟人类不会每分钟都巡逻的场景。
+跳过时 `last_heartbeat_at` 和 `heartbeat_count` 都不会更新，不影响正常监控。
+
+#### 第三层：session 间延迟（Spread）
+
+```python
+for sess in sessions:
+    _time.sleep(random.uniform(2, 15))  # 每个 session 前等待 2-15 秒
+    # ... 发送心跳请求 ...
+```
+
+多 session 时，每个请求之间等待 2-15 秒，而非瞬间并发。
+假设 3 个 session，原来可能 100ms 内全部发完，现在分散到 4-45 秒。
+
+---
+
+### 综合效果
+
+| 场景 | 旧行为 | 新行为 |
+|------|--------|--------|
+| 单 session，固定间隔 1 分钟 | 每分钟 :00 触发，规律 | :00 偏移 0-30s，有 5% 概率跳过 |
+| 3 session，每分钟心跳 | 100ms 内全部发出 | 每个间隔 2-15s，总耗时 4-45s |
+| 连续多轮观察 | 时间间隔完全相同 | 每次触发时间、请求顺序均不同 |
+
+---
+
+### 配置参数
+
+| 参数 | 当前值 | 说明 |
+|------|--------|------|
+| `heartbeat_interval` | 1 分钟 | APScheduler 触发间隔（不变） |
+| jitter 范围 | 0-30s | 入口延迟上限可调 |
+| skip 概率 | 5% | 跳过概率，增大则更"随意" |
+| session 间延迟 | 2-15s | session 间隔，可按 session 数量调整 |
+
+若需调整防检测强度，修改 `src/core/scheduler.py` 中 `_session_heartbeat()` 的三个参数即可。
+
+---
+
+### 涉及文件
+
+- `src/core/scheduler.py`：
+  - 第 8 行：新增 `import random`
+  - 第 823-829 行：入口抖动 + 跳过概率
+  - 第 845-846 行：session 间延迟
+- `src/web/templates/index.html` 第 428 行：心跳时间时区转换（Bug #008 修复）
