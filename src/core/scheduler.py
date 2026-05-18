@@ -450,7 +450,12 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
 
 
 def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> list:
-    """Full collection: traverse all detail pages for all products."""
+    """Full collection: for each source, directly GET all known final-page URLs.
+
+    Uses package_type_discovered.paths as URL source (same as _collect_quick).
+    No recursive traversal needed — paths already contain all final-page URLs.
+    Session fallback: on SessionExpiredError, try next available session.
+    """
     all_items = []
     products = list(_collector_products().items())
     done = 0
@@ -461,33 +466,34 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         if name not in existing_sources:
             continue
         src = existing_sources[name]
-        strategy = src.get('strategy', 'standard')
-        try:
-            if strategy == 'recursive':
-                items = _collector._collect_recursive(src['id'], name, url, max_depth=4)
-            else:
-                items = _collector._collect_standard(src['id'], name, url)
-
-            all_items.extend(items)
-            emit('collecting', product=name, items=len(items))
-            update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
-            # Bump last_seen_at for all active snapshots (reflects collection ran)
-            from src.models.snapshot import touch_active_snapshots
-            touch_active_snapshots(src['id'])
-
-        except SessionExpiredError:
-            if sessions:
-                update_status(sessions[0]['id'], 'expired')
-            if len(sessions) > 1:
-                cookie = sessions[1]['cookie_value']
-                _collector._set_cookie(cookie)
-                logger.warning(f'Switched to backup session')
-            _progress['errors'].append(f'{name}: Session expired')
-            emit('collecting', product=name, version='SESSION EXPIRED')
-        except Exception as e:
-            logger.error(f'{name}: {e}')
-            _progress['errors'].append(f'{name}: {str(e)[:100]}')
-            update_source_health(src['id'], 'error')
+        current_cookie = cookie
+        session_idx = 0
+        # Try each session in order on SessionExpiredError
+        while session_idx < len(sessions):
+            try:
+                items = _collector._collect_quick(src['id'], name)
+                all_items.extend(items)
+                emit('collecting', product=name, items=len(items))
+                update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
+                from src.models.snapshot import touch_active_snapshots
+                touch_active_snapshots(src['id'])
+                break  # success, move to next product
+            except SessionExpiredError:
+                session_idx += 1
+                if session_idx < len(sessions):
+                    current_cookie = sessions[session_idx]['cookie_value']
+                    _collector._set_cookie(current_cookie)
+                    logger.warning(f'Full [{name}]: session expired, trying backup session')
+                else:
+                    update_status(sessions[0]['id'], 'expired')
+                    _progress['errors'].append(f'{name}: all sessions expired')
+                    emit('collecting', product=name, version='ALL SESSIONS EXPIRED')
+                    break
+            except Exception as e:
+                logger.error(f'Full {name}: {e}')
+                _progress['errors'].append(f'{name}: {str(e)[:100]}')
+                update_source_health(src['id'], 'error')
+                break
 
         _progress['products_done'] = done
 
