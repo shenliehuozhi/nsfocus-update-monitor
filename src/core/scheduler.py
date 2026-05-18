@@ -632,6 +632,7 @@ def _check_package_types_fresh(existing_sources: dict, cookie: str, emit):
 
                 new_pkg = json.dumps(disc_data)
                 update_source(src['id'],
+                              package_type=new_pkg,
                               package_type_discovered=new_pkg,
                               package_type_changed=1)
                 changed_products.append(name)

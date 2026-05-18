@@ -1,3 +1,13 @@
+# ROLLBACK MARKER — strategy field cleanup
+# Before this change, the following code existed but was dead (never called by any active path):
+#   - NsfocusCollector.collect()       (lines ~117-133, read strategy field)
+#   - NsfocusCollector.collect_by_id() (lines ~135-155, read strategy field)
+#   - _get_source_config()             (lines ~93-96, used only by the two methods above)
+# The strategy field (standard/recursive) was read by collect_by_id but that method was never invoked.
+# Actual collection uses: _collect_quick (delta/full scheduler), discover_package_types (refresh).
+# If rolling back, restore the two methods above from git history commit ~957494c.
+# ROLLBACK MARKER — strategy field cleanup
+
 """NSFOCUS update site collector.
 
 Handles all 6 products: WAF, IPS, IDS, RSAS, NF, UTS.
@@ -90,12 +100,6 @@ def _get_products_full() -> list[dict]:
     return list_sources('nsfocus')
 
 
-def _get_source_config(product_name: str) -> dict | None:
-    """Return the DB row for a product by name, or None."""
-    from src.models.snapshot import get_source_by_name
-    return get_source_by_name(product_name)
-
-
 class NsfocusCollector(BaseCollector):
     source_type = 'nsfocus'
 
@@ -103,56 +107,23 @@ class NsfocusCollector(BaseCollector):
         self.session = requests.Session()
         self.session.headers.update({
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh;q=0.9',
         })
         # Separate session for discover (may hit /upLic redirects — must not pollute collect session)
         self._discover_session = requests.Session()
         self._discover_session.headers.update({
             'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36',
-            'Accept': 'text/html,application/xhtml+xml',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             'Accept-Language': 'zh-CN,zh;q=0.9',
         })
 
-    def collect(self, source_id: int, session_cookie: str) -> list[UnifiedContentItem]:
-        """Collect ALL active products (legacy behavior — limited to PRODUCTS dict)."""
-        items = []
-        self._set_cookie(session_cookie)
-        for name, url in PRODUCTS.items():
-            src = _get_source_config(name)
-            strategy = src.get('strategy', 'standard') if src else 'standard'
-            try:
-                if strategy == 'recursive':
-                    p_items = self._collect_recursive(source_id, name, url, max_depth=4)
-                else:
-                    p_items = self._collect_standard(source_id, name, url)
-                items.extend(p_items)
-                logger.info(f'{name}: {len(p_items)} items')
-            except Exception as e:
-                logger.error(f'{name}: {e}')
-        return items
-
-    def collect_by_id(self, source_id: int, session_cookie: str) -> list[UnifiedContentItem]:
-        """Collect a single product by its DB source_id."""
-        from src.models.snapshot import get_source
-        src = get_source(source_id)
-        if not src:
-            logger.error(f'Source {source_id} not found')
-            return []
-        name = src['name']
-        url = src['entry_url']
-        strategy = src.get('strategy', 'standard')
-        self._set_cookie(session_cookie)
-        try:
-            if strategy == 'recursive':
-                items = self._collect_recursive(source_id, name, url, max_depth=4)
-            else:
-                items = self._collect_standard(source_id, name, url)
-            logger.info(f'[{source_id}] {name}: {len(items)} items')
-            return items
-        except Exception as e:
-            logger.error(f'[{source_id}] {name}: {e}')
-            raise
+    # ROLLBACK MARKER — strategy field cleanup
+    # If rolling back, restore the full method body from git history commit ~957494c.
+    # ROLLBACK MARKER — strategy field cleanup
+    def collect(self, source_id: int, session_cookie: str):
+        """DEPRECATED: not used by any active collection path. Use scheduler delta/full modes."""
+        raise NotImplementedError('use scheduler delta/full modes instead')
 
     def discover_package_types(self, source_id: int, session_cookie: str, log_fn=None, progress_fn=None) -> dict:
         """Fully recursive directory-tree traversal for package type discovery.
@@ -181,7 +152,7 @@ class NsfocusCollector(BaseCollector):
             # and map each top-level link to its containing section.
             section_titles = {}
             import re as _re
-            for sec_match in _re.finditer(r"ser_c_b_tit['\"]>\s*([^<]+?)\s*</div>", html):
+            for sec_match in _re.finditer(r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html):
                 sec_title = sec_match.group(1).strip()
                 if sec_title:
                     # Find all links within this section (until next ser_c_b_tit or end)
@@ -942,7 +913,7 @@ class NsfocusCollector(BaseCollector):
             r'/iscatIndex$', r'/bvsIndex$', r'/listWsms$', r'/listWvss$',
             r'/listApiScan$', r'/websafeIndex$', r'/uipIndex$', r'/sagIndex$',
             r'/CSSIndex$', r'/adsIndex$', r'/adsmIndex$', r'/AdbosIndex$',
-            r'/ntaIndex$', r'/mfIndex$', r'/listEspc$', r'/listEspcM$',
+            r'/n taIndex$', r'/mfIndex$', r'/listEspc$', r'/listEspcM$',
             r'/listMatrix$', r'/listEps$', r'/apolloIndex$', r'/saswIndex$',
             r'/iotapIndex$', r'/tdcIndex$', r'/inspIndex$', r'/sdaIndex$',
             r'/listLas$', r'/mdpsIndex$', r'/rsasmIndex$', r'/sgecIndex$',

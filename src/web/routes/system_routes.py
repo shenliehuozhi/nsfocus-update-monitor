@@ -817,6 +817,7 @@ def discover_products_confirm():
                     'modes': discovered.get('modes', {}),
                 })
                 update_source(source_id,
+                    package_type=new_pkg_json,
                     package_type_discovered=new_pkg_json,
                     package_type_changed=1 if (change['added_paths'] or change['deleted_paths'] or change['modified_paths']) else 0)
                 pkg_updated_prods.append(product_name)
@@ -977,7 +978,7 @@ def discover_pkg_types_batch():
             types_dict = discover_package_types(sid, session)
             if types_dict:
                 pkg_json = json.dumps(types_dict)
-                update_source(sid, package_type=pkg_json)
+                update_source(sid, package_type=pkg_json, package_type_discovered=pkg_json)
                 updated += 1
             else:
                 failed.append(sid)
