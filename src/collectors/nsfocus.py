@@ -205,6 +205,14 @@ class NsfocusCollector(BaseCollector):
                     _log('  ' * (depth + 2) + f'  ► 最终页，包类型={type_name}，{len(table_items)} 条记录')
                     return
 
+                # Record this page's url even if table is empty (page might have packages later).
+                # No table + no sub_links → leaf, record it. No table + has sub_links → still record
+                # the current level before recursing further.
+                type_name = chain[-1] if chain else self._clean_version(name) or name
+                if type_name not in all_types:
+                    all_types.append(type_name)
+                paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
+
                 # Not final — keep recursing into sub-links
                 sub_links = self._extract_content_links(page_html)
                 sub_links = [(t.strip(), u) for t, u in sub_links
@@ -212,10 +220,7 @@ class NsfocusCollector(BaseCollector):
                               and not self._is_stopped(u, page_html)]
 
                 if not sub_links:
-                    type_name = chain[-1] if chain else self._clean_version(name) or name
-                    if type_name not in all_types:
-                        all_types.append(type_name)
-                    paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
+                    _log('  ' * (depth + 2) + f'  ► 空页（无子链接），记录: {page_url}')
                     return
 
                 for sub_text, sub_url in sub_links:
