@@ -189,7 +189,14 @@ class NsfocusCollector(BaseCollector):
                 try:
                     page_html = self._fetch_discover(page_url)
                 except RedirectToLicenseError:
-                    _log('  ' * (depth + 2) + f'跳过（/upLic 跳转，session 上下文污染）')
+                    # Record the type as VM-specific even though we can't get the URL.
+                    # _collect_quick will skip VM paths (no url), and future collectors
+                    # with proper VM context can re-discover and populate the real url.
+                    _log('  ' * (depth + 2) + f'  ► /upLic 重定向，标记为 VM 类型')
+                    type_name = chain[-1] if chain else self._clean_version(name) or name
+                    if type_name not in all_types:
+                        all_types.append(type_name)
+                    paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': None, 'vm': True})
                     return
                 except Exception as e:
                     _log('  ' * (depth + 2) + f'访问失败: {e}')
