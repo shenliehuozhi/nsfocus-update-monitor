@@ -6,6 +6,11 @@
 #   - _collect_full read strategy field     (REFACTORED to use paths URLs)
 # To rollback: git show cbfaea6^:src/collectors/nsfocus.py > /tmp/nsfocus_old.py
 #              git show cbfaea6^:src/core/scheduler.py > /tmp/scheduler_old.py
+#
+# Related fix (git 5b83e8c): empty pages now record url; /upLic paths get url:null, vm:true
+#   - Old behavior: skipped empty pages entirely (no url recorded)
+#   - New behavior: empty pages record url; /upLic 302 gets url:null + vm:true marker
+#   - _collect_quick skips url:None paths automatically
 # ROLLBACK MARKER — strategy field cleanup
 
 """NSFOCUS update site collector.
