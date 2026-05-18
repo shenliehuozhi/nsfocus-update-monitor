@@ -1,11 +1,11 @@
-# ROLLBACK MARKER — strategy field cleanup
-# Before this change, the following code existed but was dead (never called by any active path):
-#   - NsfocusCollector.collect()       (lines ~117-133, read strategy field)
-#   - NsfocusCollector.collect_by_id() (lines ~135-155, read strategy field)
-#   - _get_source_config()             (lines ~93-96, used only by the two methods above)
-# The strategy field (standard/recursive) was read by collect_by_id but that method was never invoked.
-# Actual collection uses: _collect_quick (delta/full scheduler), discover_package_types (refresh).
-# If rolling back, restore the two methods above from git history commit ~957494c.
+# ROLLBACK MARKER — strategy field cleanup (git commit cbfaea6)
+# Before this change, the following existed but was dead or strategy-based:
+#   - NsfocusCollector.collect()            (raised NotImplementedError)
+#   - NsfocusCollector.collect_by_id()      (DELETED)
+#   - _collect_standard / _collect_recursive (DELETED)
+#   - _collect_full read strategy field     (REFACTORED to use paths URLs)
+# To rollback: git show cbfaea6^:src/collectors/nsfocus.py > /tmp/nsfocus_old.py
+#              git show cbfaea6^:src/core/scheduler.py > /tmp/scheduler_old.py
 # ROLLBACK MARKER — strategy field cleanup
 
 """NSFOCUS update site collector.
@@ -95,7 +95,7 @@ def _get_products() -> dict:
 
 
 def _get_products_full() -> list[dict]:
-    """Return list of product dicts with all DB fields (id, name, entry_url, strategy, ...)."""
+    """Return list of product dicts with all DB fields (id, name, entry_url, ...)."""
     from src.models.snapshot import list_sources
     return list_sources('nsfocus')
 
