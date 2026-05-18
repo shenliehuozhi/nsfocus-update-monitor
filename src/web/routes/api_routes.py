@@ -3,6 +3,8 @@
 from flask import Blueprint, request, jsonify, g
 from src.web.auth import require_auth
 
+BASE_URL = 'https://update.nsfocus.com'
+
 
 def _audit(action: str, details: dict = None):
     """Log audit entry (best-effort)."""
@@ -640,6 +642,7 @@ def get_latest_snapshots():
         source_map[s['id']] = {
             'id': s['id'],
             'name': s['name'],
+            'entry_url': (lambda u: u[len(BASE_URL):] if u.startswith(BASE_URL) else u)(s.get('entry_url') or ''),
             'display_name': s.get('display_name') or s['name'],
             'is_active': bool(s.get('is_active')),
             'package_type': pt or {'types': [], 'paths': [], 'modes': {}},
@@ -650,20 +653,36 @@ def get_latest_snapshots():
     if not source_map:
         return jsonify({'code': 0, 'data': {}})
 
-    # Get all snapshots for active sources
+    # Get all snapshots for active sources, with last delivery time
     source_ids = list(source_map.keys())
     placeholders = ','.join(['?'] * len(source_ids))
     rows = query(
-        f"""SELECT * FROM snapshots
-           WHERE source_id IN ({placeholders}) AND {status_filter}
-           ORDER BY source_id, last_seen_at DESC""",
+        f"""SELECT s.*, dl.last_sent
+           FROM snapshots s
+           LEFT JOIN (
+               SELECT snapshot_id, MAX(sent_at) AS last_sent
+               FROM delivery_log
+               WHERE delivery_status = 'sent'
+               GROUP BY snapshot_id
+           ) dl ON dl.snapshot_id = s.id
+           WHERE s.source_id IN ({placeholders}) AND {status_filter}
+           ORDER BY s.source_id, s.last_seen_at DESC""",
         tuple(source_ids)
     )
 
     for r in rows:
         sid = r['source_id']
         if sid in source_map:
-            source_map[sid]['snapshots'].append(dict(r))
+            rec = dict(r)
+            rec['last_delivered_at'] = r.get('last_sent') or None
+            rec['description_raw'] = r.get('description_raw') or ''
+            rec['md5_hash'] = r.get('md5_hash') or ''
+            del rec['last_sent']
+            # Normalize source_url to path only (strip BASE_URL prefix) for tree matching
+            src_url = rec.get('source_url') or ''
+            if src_url.startswith(BASE_URL):
+                rec['source_url'] = src_url[len(BASE_URL):]
+            source_map[sid]['snapshots'].append(rec)
 
     return jsonify({'code': 0, 'data': source_map})
 

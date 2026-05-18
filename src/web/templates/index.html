@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>绿盟升级监控</title>
 <style>
-:root{--bg:#f1f4f8;--card:#fff;--text:#1a2332;--muted:#6b7d95;--border:#e2e7ee;--primary:#4361ee;--danger:#e5484d;--success:#0ca678;--warn:#f08c00;--header:#111827}
+:root{--bg:#f1f4f8;--card:#fff;--text:#1a2332;--muted:#6b7d95;--border:#e2e7ee;--primary:#4361ee;--danger:#e5484d;--success:#0ca678;--warn:#f08c00;--header:#111827;--snap-bg:#f8fafc;--snap-border:#e2e7ee;--snap-row-hover:#f5f7fa;--snap-rollback-bg:rgba(229,72,77,0.04);--snap-rollback-border:var(--danger);--snap-ver-bg:#f0f4f9;--snap-ver-border:#d0d8e4;--snap-chip-bg:#eef2f8;--snap-chip-active-bg:var(--primary);--snap-chip-active-color:#fff;--snap-new-badge:#dbeafe;--snap-new-color:#1d4ed8;--snap-empty-badge:#fee2e2;--snap-empty-color:#dc2626;--snap-pkg-type-badge:#ede9fe;--snap-pkg-type-color:#5b21b6}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:var(--bg);color:var(--text)}
 .header{background:var(--header);color:#fff;display:flex;align-items:center;height:58px;padding:0 24px;gap:24px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.12)}
@@ -32,7 +32,7 @@ th{text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--m
 td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 tr:hover td{background:#fafbfc}
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600;line-height:1.4}
-.badge-ok{background:#e6f7ed;color:var(--success)}.badge-warn{background:#fff8e6;color:#c27800}.badge-err{background:#fde8e8;color:var(--danger)}.badge-blue{background:#e6f0ff;color:#1d4ed8}
+.badge-ok{background:#e6f7ed;color:var(--success)}.badge-warn{background:#fff8e6;color:#c27800}.badge-err{background:#fde8e8;color:var(--danger)}.badge-blue{background:#e6f0ff;color:#1d4ed8}.badge-grey{background:#f1f3f4;color:#6b7280}
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:7px;font-size:12.5px;cursor:pointer;border:none;font-weight:500;transition:.12s}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{filter:brightness(1.08)}
 .btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
@@ -78,8 +78,82 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .flex{display:flex}.gap6{gap:6px}.gap8{gap:8px}.flex1{flex:1;min-width:0}.items-center{align-items:center}.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}
 .empty{text-align:center;padding:28px;color:var(--muted);font-size:12.5px}
 .form-panel{padding:16px;background:#f8fafc;border-radius:8px;border:1px solid var(--border);margin-bottom:12px}
+/* ── Data Page ── */
+.data-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 14px}
+.data-search-wrap{position:relative;display:flex;align-items:center;flex:1;min-width:200px}
+.data-search{width:100%;padding:7px 12px 7px 32px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:var(--snap-bg)}
+.data-search:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.1)}
+.data-search-icon{position:absolute;left:10px;color:var(--muted);font-size:13px;pointer-events:none}
+.data-search-clear{position:absolute;right:10px;cursor:pointer;color:var(--muted);font-size:16px;line-height:1;padding:2px}
+.data-search-clear:hover{color:var(--danger)}
+.data-filters{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.data-filter-label{font-size:12px;color:var(--muted);font-weight:500}
+.data-chip{padding:5px 10px;border:1px solid var(--border);border-radius:20px;background:#fff;color:var(--text);font-size:11.5px;cursor:pointer;transition:.12s}
+.data-chip:hover{background:var(--snap-bg)}
+.data-chip-active{background:var(--primary);color:#fff;border-color:var(--primary)}
+.data-meta{display:flex;align-items:center;gap:10px;margin-left:auto;font-size:12px;color:var(--muted)}
+.data-count-badge{background:var(--snap-chip-bg);color:var(--primary);padding:3px 10px;border-radius:12px;font-size:11px;font-weight:600}
+.data-badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:10px;font-weight:600}
+.data-badge-new{background:var(--snap-new-badge);color:var(--snap-new-color)}
+.data-badge-rb{background:#fde8e8;color:var(--danger)}
+.data-badge-empty{background:var(--snap-empty-badge);color:var(--snap-empty-color)}
+.data-prod-card{background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;overflow:hidden}
+.data-prod-hd{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;user-select:none;font-size:13px}
+.data-prod-hd:hover{background:#fafbfd}
+.data-prod-arrow{font-size:10px;color:var(--muted);flex-shrink:0}
+.data-prod-name{font-weight:600;color:var(--text)}
+.data-prod-flags{display:flex;gap:4px;margin-left:8px;flex-wrap:wrap}
+.data-prod-collected{color:var(--muted);font-size:11px;margin-left:auto;white-space:nowrap}
+.data-prod-body{padding:0 14px 10px;border-top:1px solid var(--border);background:var(--snap-bg)}
+.data-prod-summary{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0}
+.data-snap-pill{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;background:#fff;border:1px solid var(--border);border-radius:7px;font-size:12px;cursor:pointer;transition:.1s}
+.data-snap-pill:hover{border-color:var(--primary);background:#f5f7ff}
+.data-pill-type{background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);padding:1px 6px;border-radius:6px;font-size:10.5px;font-weight:600}
+.data-pill-ver{color:var(--primary);font-weight:500;font-size:11.5px}
+.data-pill-file{color:var(--muted);font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.data-pill-new-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--primary);margin-right:2px;flex-shrink:0}
+.data-pager{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:16px}
+.data-pager-info{color:var(--muted);font-size:12px;margin-right:8px}
+.data-drill-hd{display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap}
+.data-drill-title{font-size:15px;font-weight:700;color:var(--text)}
+.data-drill-body{display:flex;flex-direction:column;gap:8px}
+.data-ver-block{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.data-ver-highlight{border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.1)}
+.data-ver-hd{display:flex;align-items:center;gap:8px;padding:10px 14px;cursor:pointer;user-select:none;background:var(--snap-ver-bg);border-bottom:1px solid var(--snap-ver-border);font-size:13px}
+.data-ver-hd:hover{background:#e8ecf4}
+.data-ver-label{font-weight:600;color:var(--text);font-size:13.5px}
+.data-ver-body{padding:8px}
+.data-type-row{border-bottom:1px solid #f1f3f5}
+.data-type-row:last-child{border-bottom:none}
+.data-type-rollback{background:var(--snap-rollback-bg);border-left:3px solid var(--snap-rollback-border)}
+.data-type-main{display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;font-size:12.5px;flex-wrap:wrap}
+.data-type-main:hover{background:#f5f7fa}
+.data-type-label{min-width:72px;background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;flex-shrink:0;text-align:center}
+.data-history-toggle{color:var(--primary);font-size:11px;cursor:pointer;padding:2px 8px;border-radius:4px;background:#eef2f8;margin-left:4px}
+.data-history-toggle:hover{background:#dde4f5}
+.data-history{margin:0 12px 8px;padding:6px 8px;background:#fafbfc;border-radius:6px;border:1px solid var(--border)}
+.data-hist-row{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:5px;cursor:pointer;font-size:12px}
+.data-hist-row:hover{background:#eef2f8}
+.data-hist-row.data-type-rollback{background:var(--snap-rollback-bg)}
+.data-hist-expanded{background:#eef2f8}
+.data-layout{display:flex;gap:10px;align-items:flex-start}
+.data-right{flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);padding:0 16px;max-height:calc(100vh - 160px);overflow-y:auto}
+.data-right-hd{font-weight:700;font-size:14px;padding:12px 0 8px;border-bottom:1px solid var(--border);margin-bottom:0;display:flex;align-items:center;gap:8px}
+.data-right-hd-sub{font-weight:400;font-size:12px;color:var(--muted)}
+.data-right-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
+.data-right-actions{display:flex;gap:5px;align-items:center}
+.data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
+.data-rpager{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px}
+.data-prod-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.15)}
+tr[data-sid]{cursor:pointer}
+tr[data-sid]:hover{filter:brightness(.97)}
+.data-detail-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;padding:12px 16px;align-items:start}
+.data-detail-k{color:var(--muted);font-weight:600;white-space:nowrap}
+.data-desc-box{grid-column:1/-1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-top:4px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#555}
+.tree-node-selected{background:#b8ccff!important;border-radius:4px;box-shadow:0 0 0 2px rgba(67,97,238,.25)}
+.card-selected{background:#dce5ff!important;border-color:#4a6fff!important;box-shadow:0 0 0 3px rgba(67,97,238,.2),0 3px 12px rgba(67,97,238,.15)}
+.tree-children{display:none}
 </style>
-</head>
 <body>
 
 <header class="header" id="header" style="display:none">
@@ -234,109 +308,1036 @@ async function dashboard(range){
 //   toISOString() would show UTC (8h behind CST). See commit 884a835.
 // ═══════════════════════════════════════════════════════════════
 function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
-async function dataPage(){
-  const showRb=sessionStorage.getItem('dataShowRollback')==='1';
-  const r=await api('/latest/snapshots?show_rollback='+(showRb?'1':'0')).catch(()=>({data:{}}));const grp=r.data||{};
-  if(!Object.keys(grp).length){document.getElementById('app').innerHTML='<div class="card"><div class="card-bd empty">暂无采集数据</div></div>';return;}
-  const sR=await fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}));const sch=sR.data||{};let next='—';let base=sch.last_run;if(!base&&sch.is_running){let now=new Date();base=now.toISOString().substring(0,19);} if(base){let d=new Date(base+'Z');d.setUTCHours(d.getUTCHours()+sch.interval_hours);next=fmtTZ(d.toISOString().substring(0,19),true);}
+// ── Data Page ──────────────────────────────────────────────
+const PAGE_SIZE = 20;
+let _dataQuery = '';
+let _dataFilters = { has_new: false, has_rb: false, empty: false };
+let _dataExpanded = new Set();
+let _dataPage = 1;
+let _dataAll = {};
 
-  // MAP for type display (same as used in products page)
-  const MAP = {sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试',engine:'引擎'};
+async function dataPage() {
+  _dataExpanded.clear();
+  _dataPage = 1;
+  _dataSelectedSid = null;
+  _dataSelectedChain = null;
+  _dataSelectedUrl = null;
 
-  let h='<div class="info-bar"><strong>📊 紧急度</strong>  🔴critical=高危/严重/远程代码执行 | ⚠️high=中危/漏洞/绕过 | ℹ️normal=其他  <span style="float:right">⏱️ 下次采集: '+next+'</span> <label style="cursor:pointer;font-size:11px;margin-left:12px"><input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" '+(showRb?'checked':'')+'> 显示已撤回</label></div>';
+  const showRb = sessionStorage.getItem('dataShowRollback') === '1';
+  const [r, cfgR] = await Promise.all([
+    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0')).catch(() => ({ data: {} })),
+    api('/settings/config').catch(() => ({})),
+  ]);
+  _dataAll = r.data || {};
+  _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.feed_pkg_limit) || 3);
 
-  // Sort sources: enabled first, then by name
-  const sortedSources = Object.entries(grp).sort(([sid,a],[sid2,b]) => {
-    if (a.is_active !== b.is_active) return a.is_active ? -1 : 1;
-    return (a.display_name||a.name||'').localeCompare(b.display_name||b.name||'','zh');
-  });
+  const sR = await fetch(API + '/settings/scheduler', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({}));
+  const sch = sR.data || {};
+  let next = '—';
+  if (sch.last_run) {
+    const d = new Date(sch.last_run + 'Z');
+    d.setUTCHours(d.getUTCHours() + (sch.interval_hours || 24));
+    next = fmtTZ(d.toISOString().substring(0, 19), true);
+  } else if (sch.is_running) {
+    next = '采集中…';
+  }
 
-  for (const [sid, src] of sortedSources) {
-    if (!src.is_active) continue; // skip disabled products
+  const totalActive = Object.values(_dataAll).filter(s => s.is_active).length;
+  const filterHtml = [
+    dataChipHtml('has_new', '有新增'),
+    dataChipHtml('has_rb', '含撤回'),
+    dataChipHtml('empty', '空数据'),
+  ].join('');
 
-    const pt = src.package_type || {types:[], paths:[], modes:{}};
-    const snaps = src.snapshots || [];
-
-    // Build version-type lookup: { "ver|shortType": dispType }
-    // dispType = full display name from paths leaf (e.g. "WAF V6.0.9规则升级包")
-    // shortType = category extracted from dispType (e.g. "rule")
-    // This lets us match: snapshot "V6.0.9|rule" -> path "V6.0.9|WAF V6.0.9规则升级包"
-    const fullName = src.name || '';
-    const alias = fullName.includes('(') ? fullName.split('(')[1].split(')')[0] : '';
-    const verTypeMap = {};   // "ver|shortType" -> dispType (for rendering badge)
-    (pt.paths || []).forEach(p => {
-      const chain = p.chain || [];
-      if (chain.length < 2) return;
-      let ver = chain[chain.length - 2] || '';
-      if (alias) ver = ver.replace(new RegExp('^' + alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*'), '').trim() || ver;
-      const dispType = (p.types || [])[0] || '';
-      // Map full display name to short type key
-      const shortKey = (() => {
-        const t = dispType;
-        if (t.includes('系统') || t.includes('引擎')) return 'sys';
-        if (t.includes('规则')) return 'rule';
-        if (t.includes('威胁情报')) return 'nti';
-        if (t.includes('病毒库')) return 'av';
-        if (t.includes('URL')) return 'url';
-        if (t.includes('应用规则')) return 'apprule';
-        if (t.includes('恶意站点')) return 'wcs';
-        if (t.includes('研判')) return 'judge';
-        if (t.includes('地理')) return 'geo';
-        if (t.includes('接口')) return 'interface';
-        return '';
-      })();
-      if (shortKey) verTypeMap[ver + '|' + shortKey] = dispType;
-    });
-
-    // Build snapshots map: key = source_url (relative path, stripped of BASE_URL)
-    // This directly matches tree node __pathId = p.url
-    const BASE_URL_RE = /^https?:\/\/update\.nsfocus\.com/;
-    const snapsMap = {};
-    snaps.forEach(s => {
-      const key = (s.source_url || '').replace(BASE_URL_RE, '');
-      if (!key) return;
-      if (!snapsMap[key]) snapsMap[key] = [];
-      snapsMap[key].push(s);
-    });
-
-    const hasRollback = snaps.some(s => s.status === 'rollback');
-    const totalVer = new Set(snaps.map(s => s.version_branch)).size;
-
-    const cardId = 'pc_' + sid.replace(/\W/g, '');
-    h += `<div class="card">
-      <div class="card-hd" style="display:flex;align-items:center;gap:8px;cursor:pointer" onclick="productCardToggle(this,'${cardId}')">
-        <span class="tree-arrow" style="color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0">&#9658;</span>
-        📦 <strong>${src.display_name || src.name}</strong>
-        ${hasRollback ? '<span style="color:var(--danger);font-size:11px;font-weight:400">含已撤回</span>' : ''}
-        <span style="color:var(--muted);font-weight:400;font-size:12px">${snaps.length}包 / ${totalVer}版本</span>
-        <span style="margin-left:auto;color:var(--muted);font-size:11px">最近采集: ${src.last_collected_at ? fmtTZ(src.last_collected_at, true) : '—'}</span>
+  let h = `<div class="data-page">
+    <div class="data-toolbar">
+      <div class="data-search-wrap">
+        <span class="data-search-icon">🔍</span>
+        <input class="data-search" id="dataSearch" placeholder="搜索产品名 / 版本号 / 包类型…" value="${escHtml(_dataQuery)}" oninput="dataSearch(this.value)">
+        ${_dataQuery ? '<span class="data-search-clear" onclick="dataSearch(\'\')">×</span>' : ''}
       </div>
-      <div id="${cardId}" class="tree-children" style="display:none;padding:8px 18px">`;
-
-    if (pt.paths && pt.paths.length > 0) {
-      h += buildDataTreeHtml(pt, snapsMap, MAP, verTypeMap, alias);
-    } else {
-      // Fallback: old flat view if no paths data
-      let vers = {};
-      snaps.forEach(s => { let v = s.version_branch || '?'; if (!vers[v]) vers[v] = []; vers[v].push(s); });
-      for (const [ver, pkgs] of Object.entries(vers)) {
-        h += `<div style="margin-bottom:8px"><strong>${ver}</strong> (${pkgs.length}包)</div>`;
-      }
-    }
-
-    h += `</div></div>`;
-  }
-
-  // Show disabled sources count
-  const disabledCount = Object.values(grp).filter(s => !s.is_active).length;
-  if (disabledCount > 0) {
-    h += `<div style="text-align:center;color:var(--muted);font-size:12px;margin-top:8px">已禁用 ${disabledCount} 个产品，不显示采集数据</div>`;
-  }
+      <div class="data-filters">
+        <span class="data-filter-label">筛选:</span>
+        ${filterHtml}
+        <select id="dataUrgencyFilter" onchange="dataUrgencyChange(this.value)" style="margin-left:8px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border)">
+          <option value="">紧急度</option>
+          <option value="critical">🔴 critical</option>
+          <option value="high">⚠️ high</option>
+          <option value="normal">ℹ️ normal</option>
+        </select>
+      </div>
+      <div class="data-meta">
+        <span class="data-count-badge">${totalActive} 个产品</span>
+        <span style="color:var(--muted);font-size:11px">下次采集: ${next}</span>
+        <label style="cursor:pointer;font-size:11px;margin-left:12px">
+          <input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" ${showRb ? 'checked' : ''}> 显示已撤回
+        </label>
+      </div>
+    </div>
+    <div class="data-layout">
+      <div id="dataLeft"></div>
+      <div class="data-right" id="dataRight"></div>
+    </div>
+  </div>`;
 
   document.getElementById('app').innerHTML = h;
+  dataRenderLeft();
+  dataRenderRight();
+
+  // ── One-time event delegation (NEVER inside dataRenderLeft) ──
+  document.getElementById('dataLeft').addEventListener('click', function(e) {
+    // Card header toggle
+    var cardHd = e.target.closest('[data-action="cardToggle"]');
+    if (cardHd) {
+      var targetId = cardHd.getAttribute('data-body-id');
+      if (targetId) {
+        var card = cardHd.closest('.card');
+        var body = document.getElementById(targetId);
+        var wasVisible = body && body.style.display !== 'none';
+        productCardToggle(targetId);
+        // Highlight card when expanded; remove highlight when collapsed
+        if (card) {
+          if (!wasVisible) {
+            document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+            card.classList.add('card-selected');
+          } else {
+            card.classList.remove('card-selected');
+          }
+        }
+      }
+      return;
+    }
+    // Tree arrow toggle (no inline onclick needed)
+    var arrow = e.target.closest('[data-action="treeToggle"]');
+    if (arrow) {
+      treeToggleById(arrow.getAttribute('data-target'));
+      return;
+    }
+    // Tree node click
+    var node = e.target.closest('[data-action="treeNode"]');
+    if (!node) return;
+    const sid = node.getAttribute('data-sid');
+    const chain = JSON.parse(node.getAttribute('data-chain') || '[]');
+    const url = node.getAttribute('data-url') || '';
+    const isLeaf = node.getAttribute('data-isleaf') === '1';
+    const snapIds = (node.getAttribute('data-snapids') || '').split(',').filter(Boolean);
+    const verHint = node.getAttribute('data-verhint') || '';
+    const pkgHint = node.getAttribute('data-pkghint') || '';
+    dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint);
+  });
 }
-function toggleRollback(v){sessionStorage.setItem('dataShowRollback',v?'1':'0');dataPage();}
-async function manualPush(sid){if(!confirm('确认推送?'))return;const r=await api('/history/'+sid+'/resend',{method:'POST'});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}
+
+let _dataSelectedSid = null; // currently selected source id
+let _dataSelectedChain = null; // selected tree node chain
+let _dataSelectedUrl = null; // selected leaf URL (for exact URL filtering)
+let _dataSelectedVerHint = null; // version_branch hint for intermediate node filtering
+let _dataSelectedPkgHint = null; // package_type hint for intermediate node filtering
+
+function dataChipHtml(key, label) {
+  const active = _dataFilters[key] ? 'data-chip-active' : '';
+  return `<button class="data-chip ${active}" onclick="dataToggleFilter('${key}')">${label}</button>`;
+}
+
+function dataSearch(v) {
+  _dataQuery = v.trim();
+  _dataPage = 1;
+  dataRenderLeft();
+  dataRenderRight();
+}
+
+function dataToggleFilter(key) {
+  _dataFilters[key] = !_dataFilters[key];
+  _dataPage = 1;
+  dataRenderLeft();
+  dataRenderRight();
+}
+
+function dataUrgencyChange(v) {
+  _dataFilters.urgency = v;
+  _dataPage = 1;
+  dataRenderLeft();
+  dataRenderRight();
+}
+
+function dataSourceFlags(src) {
+  const snaps = src.snapshots || [];
+  const hasRb = snaps.some(s => s.status === 'rollback');
+  const isEmpty = snaps.length === 0;
+  // freshness: newest published_at among all snapshots
+  let freshness = 'idle'; // 'new' ≤7d, 'lowfreq' 8-30d, 'idle' >30d
+  if (!isEmpty) {
+    const now = Date.now();
+    const latestPublished = snaps.reduce((max, s) => {
+      if (!s.published_at) return max;
+      const t = new Date(s.published_at).getTime();
+      return t > max ? t : max;
+    }, 0);
+    if (latestPublished > 0) {
+      const days = (now - latestPublished) / 86400000;
+      if (days <= 30) freshness = 'new';
+      else if (days <= 365) freshness = 'lowfreq';
+    }
+  }
+  return { hasRb, freshness, isEmpty };
+}
+
+function dataFilteredSources() {
+  return Object.entries(_dataAll).filter(([sid, src]) => {
+    if (!src.is_active) return false;
+    if (_dataQuery) {
+      const q = _dataQuery.toLowerCase();
+      const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
+      const verMatch = (src.snapshots || []).some(s =>
+        (s.version_branch || '').toLowerCase().includes(q) ||
+        (s.package_type || '').toLowerCase().includes(q) ||
+        (s.file_name || '').toLowerCase().includes(q)
+      );
+      if (!nameMatch && !verMatch) return false;
+    }
+    const { hasRb, freshness, isEmpty } = dataSourceFlags(src);
+    if (_dataFilters.has_new && freshness !== 'new') return false;
+    if (_dataFilters.has_rb && !hasRb) return false;
+    if (_dataFilters.empty && !isEmpty) return false;
+    if (_dataFilters.urgency) {
+      const matchUrg = (src.snapshots || []).some(s => s.urgency === _dataFilters.urgency && s.status === 'active');
+      if (!matchUrg) return false;
+    }
+    return true;
+  });
+}
+
+function dataSortedSources(filt) {
+  return filt.sort(([sid, a], [sid2, b]) => {
+    const fa = dataSourceFlags(a), fb = dataSourceFlags(b);
+    if (fa.hasNew !== fb.hasNew) return fa.hasNew ? -1 : 1;
+    if (fa.hasRb !== fb.hasRb) return fa.hasRb ? -1 : 1;
+    const ta = a.last_collected_at || '';
+    const tb = b.last_collected_at || '';
+    return tb.localeCompare(ta);
+  });
+}
+
+// ── Left panel: multi-level directory tree ──
+// Builds from paths.chain: 产品 → 子分类 → 版本 → 包类型
+// ── Data Render (single-column product cards with multi-level tree) ──
+// Fallback: render flat version list when no paths data
+function buildFlatVerTreeHtml(snapshots) {
+  const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
+  if (!snapshots || snapshots.length === 0) return '<div style="color:var(--muted);font-size:12px;padding:8px">暂无数据</div>';
+  const byVer = {};
+  snapshots.forEach(s => {
+    const v = s.version_branch || '?';
+    if (!byVer[v]) byVer[v] = [];
+    byVer[v].push(s);
+  });
+  const vers = Object.keys(byVer).sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return nb - na;
+    return b.localeCompare(a, 'zh');
+  });
+  let html = '';
+  vers.forEach(ver => {
+    const snaps = byVer[ver];
+    const blockId = 'fv_' + ver.replace(/\W/g, '_');
+    const isRb = snaps.some(s => s.status === 'rollback');
+    const newCount = snaps.filter(s => s.status === 'active' && !s.last_delivered_at).length;
+    const badge = isRb ? ' <span style="color:var(--danger);font-size:10px">↩</span>' : '';
+    const freshSnap = snaps.reduce((latest, s) => {
+      if (!s.published_at) return latest;
+      const t = new Date(s.published_at).getTime();
+      const lt = latest ? new Date(latest).getTime() : 0;
+      return t > lt ? s.published_at : latest;
+    }, null);
+    const now = Date.now();
+    let freshBadge = '';
+    if (freshSnap) {
+      const days = (now - new Date(freshSnap).getTime()) / 86400000;
+      if (days <= 30) freshBadge = ' <span style="color:var(--success);font-size:10px">新</span>';
+      else if (days <= 365) freshBadge = ' <span style="color:#e6a700;font-size:10px">低频</span>';
+      else freshBadge = ' <span style="color:#9ca3af;font-size:10px">沉寂</span>';
+    }
+    const verLabel = escHtml(ver) + badge + freshBadge;
+    html += `<div class="ver-bar" onclick="verBarToggle(this,'${blockId}')" style="margin-bottom:4px">
+      <span class="tree-arrow" style="margin-right:4px">&#9658;</span>
+      <span style="font-weight:600;font-size:13px">${verLabel}</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--muted)">${snaps.length} 个包</span>
+    </div>`;
+    // Build snapshot table
+    let tbl = `<div id="${blockId}" style="display:none;padding:4px 0 8px 28px">`;
+    snaps.forEach(s => {
+      const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
+      const did = 'dd_v_' + s.id;
+      const isRb = s.status === 'rollback';
+      const pkgTypeBadge = `<span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px">${MAP[s.package_type] || s.package_type || ''}</span>`;
+      tbl += `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : ''}" onclick="document.getElementById('${did}').classList.toggle('hidden')">
+        ${pkgTypeBadge}
+        <span style="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${s.file_name || ''}</span>
+        <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
+        <span style="font-size:11px;color:var(--muted)">${sz}</span>
+        <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
+        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button>
+      </div>
+      <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
+        <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:#fafdf7;padding:8px;border-radius:4px">
+          <b>文件:</b><span class="mono">${s.file_name || ''}</span>
+          <b>版本:</b><span>${s.package_version || ''}</span>
+          <b>MD5:</b><span class="mono">${s.md5_hash || ''}</span>
+          <b>大小:</b><span>${sz}</span>
+          ${s.min_sys_version ? `<b>依赖:</b><span>≥ ${s.min_sys_version}</span>` : ''}
+          ${s.published_at ? `<b>发布:</b><span>${fmtTZ(s.published_at, true)}</span>` : ''}
+          ${s.source_url ? `<b>详情:</b><span><a href="https://update.nsfocus.com${s.source_url}" target="_blank">绿盟更新页</a></span>` : ''}
+          ${s.download_id ? `<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>` : ''}
+        </div>${s.description_raw ? `<div class="desc-box mt8">${s.description_raw.substring(0, 1200)}</div>` : ''}
+      </div>`;
+    });
+    tbl += '</div>';
+    html += tbl;
+  });
+  return html;
+}
+
+function verBarToggle(el, blockId) {
+  const block = document.getElementById(blockId);
+  if (!block) return;
+  const hidden = block.style.display === 'none';
+  block.style.display = hidden ? 'block' : 'none';
+  const arrow = el.querySelector('.tree-arrow');
+  if (arrow) arrow.innerHTML = hidden ? '&#9660;' : '&#9658;';
+}
+
+function dataRenderLeft() {
+  const filt = dataFilteredSources();
+  const sorted = dataSortedSources(filt);
+  // Render ALL products (no pagination) so scrollIntoView always finds nodes across pages
+  const pageSlice = sorted;
+
+  // Update filter chip active states
+  document.querySelectorAll('.data-chip').forEach(c => {
+    const m = c.getAttribute('onclick').match(/'([^']+)'/);
+    if (m) c.classList.toggle('data-chip-active', !!_dataFilters[m[1]]);
+  });
+
+  if (pageSlice.length === 0) {
+    document.getElementById('dataProductList').innerHTML = '<div class="empty" style="padding:24px;text-align:center;color:var(--muted)">未找到匹配条件的产品</div>';
+    return;
+  }
+
+  // Build all product cards
+  let html = '';
+  pageSlice.forEach(([sid, src]) => {
+    // Build snapshots_map (URL -> snapshot[]) for buildDataTreeHtml
+    if (!src.snapshots_map) {
+      src.snapshots_map = {};
+      (src.snapshots || []).forEach(s => {
+        if (s.source_url) {
+          if (!src.snapshots_map[s.source_url]) src.snapshots_map[s.source_url] = [];
+          src.snapshots_map[s.source_url].push(s);
+        }
+      });
+    }
+    const pt = src.package_type || {};
+    const paths = pt.paths || [];
+    let treeHtml;
+    if (!paths.length) {
+      // Fallback: no paths → render flat version list (old behavior)
+      treeHtml = buildFlatVerTreeHtml(src.snapshots || []);
+    } else {
+      treeHtml = buildDataTreeHtml(pt, src.snapshots_map, typeCN, src.ver_type_map || {}, src.name || '', sid);
+    }
+    const { hasRb, freshness } = dataSourceFlags(src);
+    const rbBadge = hasRb ? ' <span class="badge badge-err" style="font-size:10px">含撤回</span>' : '';
+    const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok" style="font-size:10px">新</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn" style="font-size:10px">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey" style="font-size:10px">沉寂</span>' : ''));
+    const cardId = 'dpc_' + sid;
+    const treeBodyId = cardId + '_body';
+    html += `<div class="card" id="${cardId}" style="margin-bottom:10px">
+      <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
+        <span class="tree-arrow" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:6px">&#9658;</span>
+        <span style="flex:1">${escHtml(src.display_name || src.name || sid)}</span>
+        ${rbBadge}${freshBadge}
+        <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
+      </div>
+      <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
+        <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
+      </div>
+    </div>`;
+  });
+
+  document.getElementById('dataLeft').innerHTML = html;
+  // Limit left panel height and make it independently scrollable so it doesn't push the right panel down
+  const leftEl = document.getElementById('dataLeft');
+  leftEl.style.maxHeight = 'calc(100vh - 160px)';
+  leftEl.style.overflowY = 'auto';
+}
+
+// ── Tree toggle via data-target (no inline onclick) ──
+function treeToggleById(childrenId) {
+  if (!childrenId) return;
+  var children = document.getElementById(childrenId);
+  if (!children) return;
+  var isHidden = children.style.display === 'none' || children.style.display === '';
+  children.style.display = isHidden ? 'block' : 'none';
+  var arrow = document.querySelector('[data-target="' + childrenId + '"]');
+  if (arrow) arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
+}
+
+// Card product toggle (body id string, not element reference)
+function productCardToggle(bodyId) {
+  if (!bodyId) return;
+  var target = document.getElementById(bodyId);
+  if (!target) return;
+  var isOpen = target.style.display !== 'none';
+  target.style.display = isOpen ? 'none' : 'block';
+  var card = target.closest('.card');
+  if (!card) return;
+  var hd = card.querySelector('.card-hd');
+  if (!hd) return;
+  var arrow = hd.querySelector('.tree-arrow');
+  if (arrow) arrow.innerHTML = isOpen ? '&#9658;' : '&#9660;';
+}
+
+let _lastSelectedNode = null; // track last clicked tree node for toggle-off
+
+function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint) {
+  // Toggle off if same node clicked again
+  if (_lastSelectedNode === node) {
+    _dataSelectedSid = null;
+    _dataSelectedChain = null;
+    _dataSelectedUrl = null;
+    _dataSelectedVerHint = null;
+    _dataSelectedPkgHint = null;
+    _lastSelectedNode = null;
+    _dataExpanded.clear();
+    document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+    _dataFeedPage = 1;
+    dataRenderLeft();
+    dataRenderRight();
+    return;
+  }
+
+  // Set selection
+  _dataSelectedSid = sid;
+  _dataSelectedChain = chain;
+  _dataSelectedUrl = url || null;
+  _dataSelectedVerHint = verHint || null;
+  _dataSelectedPkgHint = pkgHint || null;
+  _lastSelectedNode = node;
+  _dataFeedPage = 1;
+
+  // Update visual selection highlight
+  document.querySelectorAll('.tree-node-selected').forEach(el => el.classList.remove('tree-node-selected'));
+  node.classList.add('tree-node-selected');
+
+  // Update card selected state
+  document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+  var selectedCard = node.closest('.card');
+  if (selectedCard) selectedCard.classList.add('card-selected');
+
+  // Expand parent tree children (so selected node is visible)
+  let parent = node.parentElement;
+  while (parent && !parent.classList.contains('card-bd')) {
+    if (parent.classList.contains('tree-children') && parent.style.display === 'none') {
+      parent.style.display = '';
+      const arrow = parent.previousElementSibling?.querySelector('.tree-arrow');
+      if (arrow) arrow.innerHTML = '&#9660;';
+    }
+    parent = parent.parentElement;
+  }
+
+  // Build _chainToUrlMap for dataBuildFeed filtering
+  _chainToUrlMap = {};
+  if (chain.length > 0) {
+    const src = _dataAll[sid];
+    if (src && src.package_type && src.package_type.paths) {
+      src.package_type.paths.forEach(p => {
+        if (p.url) {
+          const key = sid + '|' + (p.chain || []).join('/');
+          _chainToUrlMap[key] = p.url;
+        }
+      });
+    }
+  }
+
+  // Re-render right panel (filters to selected chain/url)
+  dataRenderRight();
+
+  // If leaf node with snaps, auto-expand the corresponding row(s) in right panel
+  if (isLeaf && snapIds.length > 0) {
+    setTimeout(() => {
+      const tbody = document.querySelector('#dataRight tbody');
+      if (!tbody) return;
+      snapIds.forEach(id => {
+        // Find the row in #dataRight by data-sid + snapshot id
+        const snap = (_dataAll[sid]?.snapshots || []).find(s => String(s.id) === String(id));
+        if (!snap) return;
+        const rows = tbody.querySelectorAll('tr[data-sid][data-ver][data-pkgtype]');
+        rows.forEach(row => {
+          if (
+            row.dataset.sid === String(sid) &&
+            row.dataset.ver === (snap.version_branch || '') &&
+            row.dataset.pkgtype === (snap.package_type || '')
+          ) {
+            dataRightToggleRow(row);
+          }
+        });
+      });
+    }, 30);
+  }
+}
+
+function dataGoPage(p) {
+  const filt = dataFilteredSources();
+  const totalPages = Math.max(1, Math.ceil(filt.length / PAGE_SIZE));
+  _dataPage = Math.min(Math.max(1, p), totalPages);
+  dataRenderLeft();
+  dataRenderRight();
+}
+
+// ── Right panel: latest feed ──
+const FEED_PAGE_SIZE = 20;
+let _dataFeedPage = 1;
+let _feedPkgLimit = 3; // per (version+pkgtype) history limit, set from config
+let _chainToUrlMap = {};
+
+function dataBuildFeed() {
+  const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
+
+  let sources = dataFilteredSources();
+  if (_dataSelectedSid) {
+    const src = _dataAll[_dataSelectedSid];
+    sources = src ? [[_dataSelectedSid, src]] : [];
+  }
+
+  // Determine if this is an intermediate node click with hints for filtering
+  const isHintClick = !_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint);
+
+  const rows = [];
+  sources.forEach(([sid, src]) => {
+    const snaps = src.snapshots || [];
+    const byKey = {};
+    // Build source_url -> chain lookup from package_type paths for accurate tree-node matching
+    const urlChainMap = {};
+    (src.package_type?.paths || []).forEach(p => {
+      if (p.url && Array.isArray(p.chain) && p.chain.length > 0) {
+        // Normalize URL: strip trailing slash, ensure leading /
+        const norm = ('/' + p.url).replace(/\/+$/, '');
+        urlChainMap[norm] = p.chain;
+      }
+    });
+
+    snaps.forEach(s => {
+      // Filter by exact URL when a leaf node is selected
+      if (_dataSelectedUrl && s.source_url !== _dataSelectedUrl) return;
+      // Filter by hints when an intermediate node is selected
+      if (isHintClick) {
+        if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
+        if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
+      }
+      const k = (s.version_branch || '?') + '|' + (s.package_type || '?');
+      if (!byKey[k]) byKey[k] = [];
+      byKey[k].push(s);
+      byKey[k].sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
+      // When showing all packages for an intermediate node click, no limit; otherwise keep history limit
+      if (!isHintClick) {
+        byKey[k] = byKey[k].slice(0, _feedPkgLimit);
+      }
+    });
+    Object.values(byKey).forEach(snapList => snapList.forEach(s => {
+      // Attach chain for goto precision: look up by source_url
+      let _chain = null;
+      if (s.source_url) {
+        const norm = ('/' + s.source_url).replace(/\/+$/, '');
+        _chain = urlChainMap[norm] || null;
+      }
+      rows.push({ ...s, _sid: sid, _srcName: src.display_name || src.name, _chain });
+    }));
+  });
+
+  rows.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
+
+  let filtered = rows;
+  if (_dataFilters.urgency) {
+    filtered = filtered.filter(r => r.urgency === _dataFilters.urgency && r.status === 'active');
+  }
+  return { rows: filtered, MAP };
+}
+
+function dataRenderRight() {
+  const { rows, MAP } = dataBuildFeed();
+  const totalPages = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
+  if (_dataFeedPage > totalPages) _dataFeedPage = totalPages;
+  const page = _dataFeedPage;
+  const start = (page - 1) * FEED_PAGE_SIZE;
+  const pageSlice = rows.slice(start, start + FEED_PAGE_SIZE);
+
+  const src = _dataSelectedSid ? (_dataAll[_dataSelectedSid] || {}).display_name || (_dataAll[_dataSelectedSid] || {}).name : null;
+  const hdLabel = src ? `${src}${_dataSelectedChain && _dataSelectedChain.length > 1 ? ' → ' + _dataSelectedChain.slice(1).join(' → ') : ''} 的最新包` : '全部产品最新包';
+  const hasFilter = !!_dataSelectedSid;
+  const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:#fff3cd;color:#8a7000;border:1px solid #e6c94c;margin-left:auto" onclick="dataClearFilter()">重置筛选</button>` : '';
+
+  if (rows.length === 0) {
+    document.getElementById('dataRight').innerHTML = `
+      <div class="data-right-hd">📦 ${hdLabel} ${resetBtn}</div>
+      <div class="data-right-empty">暂无数据</div>`;
+    return;
+  }
+
+  let html = `<div class="data-right-hd">📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}</div>
+  <table style="width:100%;table-layout:fixed">
+    <thead><tr>
+      <th style="width:80px">包类型</th><th style="width:60px">状态</th><th style="width:120px">产品名</th><th style="width:120px">版本</th><th style="width:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">文件名</th><th style="width:100px">发布时间</th><th style="width:120px;white-space:nowrap">操作</th>
+    </tr></thead>
+    <tbody>`;
+
+  rows.forEach(r => {
+    const typeLabel = MAP[r.package_type] || r.package_type || '';
+    const isNew = r.status === 'active' && !r.last_delivered_at;
+    const isRb = r.status === 'rollback';
+    const rowClass = isRb ? 'rollback' : isNew ? 'new' : '';
+    const now = Date.now();
+    let freshBadge = '';
+    if (r.published_at) {
+      const days = (now - new Date(r.published_at).getTime()) / 86400000;
+      if (days <= 30) freshBadge = '<span class="badge badge-ok" style="font-size:10px">新</span>';
+      else if (days <= 365) freshBadge = '<span class="badge badge-warn" style="font-size:10px">低频</span>';
+      else freshBadge = '<span class="badge badge-grey" style="font-size:10px">沉寂</span>';
+    }
+    html += `<tr class="${rowClass}" onclick="dataRightToggleRow(this)" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}">
+      <td><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></td>
+      <td>${freshBadge}</td>
+      <td style="font-size:12.5px">${r._srcName}</td>
+      <td style="font-size:12px;color:var(--primary)">${r.version_branch || ''}</td>
+      <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${r.file_name || ''}</td>
+      <td style="font-size:12px;color:var(--muted)">${fmtTZ(r.published_at, true)}</td>
+      <td>
+        <div class="data-right-actions" onclick="event.stopPropagation()">
+          <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
+          <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
+        </div>
+      </td>
+    </tr>`;
+  });
+
+  html += '</tbody></table>';
+  document.getElementById('dataRight').innerHTML = html;
+  _dataRightBuilt = true;
+}
+
+function dataFeedGoPage(p) {
+  const { rows } = dataBuildFeed();
+  const totalPages = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
+  _dataFeedPage = Math.min(Math.max(1, p), totalPages);
+  dataRenderRight();
+}
+
+function dataRightToggleRow(rowEl) {
+  if (!rowEl || rowEl.tagName !== 'TR') return;
+
+  const existingDetails = rowEl.parentElement.querySelectorAll('.data-right-detail');
+  existingDetails.forEach(d => d.remove());
+
+  if (rowEl.classList.contains('data-row-expanded')) {
+    rowEl.classList.remove('data-row-expanded');
+    return;
+  }
+
+  const sid = rowEl.dataset.sid;
+  const snapId = rowEl.dataset.id ? parseInt(rowEl.dataset.id) : null;
+  if (!sid || !snapId) return;
+
+  const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
+  const src = _dataAll[sid];
+  if (!src) return;
+  const snaps = src.snapshots || [];
+  // Use snapshot id for exact match — version+pkgType or source_url may have multiple records
+  const snap = snaps.find(s => s.id === snapId);
+  if (!snap) return;
+
+  // Build chain display from source paths by matching source_url.
+  // Each intermediate node gets a URL if we can find a leaf under it.
+  // Algorithm: if two leaves share a URL prefix up to path segment N,
+  // that prefix IS the intermediate node's URL.
+  let chainDisplayHtml = '';
+  const pt = src.package_type || {};
+  const paths = pt.paths || [];
+  const entryUrl = src.entry_url || '';
+  const matchedPath = paths.find(p => p.url === snap.source_url);
+  if (matchedPath && matchedPath.chain && matchedPath.chain.length > 0) {
+    const chain = matchedPath.chain;
+    const leafUrl = matchedPath.url || '';
+
+    // Build a map: for each depth level, collect all URL prefixes at that level
+    // from ALL paths that share the same prefix up to (but not including) this depth.
+    // Then the URL for chain[i] = longest common prefix of all leaf URLs under it.
+    // We approximate by finding any OTHER path that has the SAME prefix
+    // up to chain[i+1]'s URL segment.
+    function findNodeUrl(depth) {
+      // depth=0 -> product level -> entry_url
+      if (depth === 0) return entryUrl;
+
+      // Build prefixes at each depth from all paths
+      // chain[depth-1] corresponds to a page reached from chain[depth-2]'s page
+      // We need: URL prefix that leads to chain[depth-1]
+      // Strategy: for each other path, check if its chain matches ours up to depth-1
+      // If so, use its URL at the divergence point as a reference.
+      // Simplified heuristic: find any path where the first (depth) chain elements
+      // match ours, then take the URL of the leaf (or an intermediate URL derived similarly).
+      // Since we don't store intermediate URLs explicitly, use the entry_url + the
+      // source_url of a snapshot whose chain matches up to [depth].
+      for (const p of paths) {
+        if (!p.url || !p.chain) continue;
+        // Does this path share our chain prefix up to (but not including) depth?
+        if (p.chain.length <= depth) continue;
+        let match = true;
+        for (let k = 0; k < depth; k++) {
+          if (p.chain[k] !== chain[k]) { match = false; break; }
+        }
+        if (!match) continue;
+        // This path diverges at position 'depth' (or is the same leaf).
+        // Its URL is the leaf URL. We need an intermediate URL.
+        // Use its source_url as the best approximation for the intermediate node.
+        // The leaf URL contains the full path; for intermediate we take its parent dir.
+        const otherUrl = p.url;
+        const segs = otherUrl.split('/').filter(Boolean);
+        // leaf: segs = [list.asp?...], [type?proid=...], [子分类], [版本], [包类型]]
+        // We need URL of chain[depth-1], which corresponds to segs slice up to (segs.length - (p.chain.length - depth))
+        const leafDepth = p.chain.length;
+        const targetDepth = depth;
+        const segCount = segs.length - (leafDepth - targetDepth);
+        if (segCount > 0) {
+          return '/' + segs.slice(0, segCount).join('/');
+        }
+        return otherUrl;
+      }
+      return entryUrl;
+    }
+
+    chainDisplayHtml = chain.map((name, i) => {
+      const isLast = (i === chain.length - 1);
+      if (isLast) {
+        const fullUrl = 'https://update.nsfocus.com' + leafUrl;
+        return `<a href="${escHtml(fullUrl)}" target="_blank" style="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
+      }
+      // Try to find a URL for this intermediate node
+      const nodeUrl = findNodeUrl(i + 1);
+      const fullNodeUrl = nodeUrl ? ('https://update.nsfocus.com' + nodeUrl) : '';
+      if (fullNodeUrl && nodeUrl !== entryUrl) {
+        return `<a href="${escHtml(fullNodeUrl)}" target="_blank" style="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
+      }
+      return escHtml(name);
+    }).join(' <span style="color:#94a3b8">›</span> ');
+  }
+
+  rowEl.classList.add('data-row-expanded');
+
+  const detailHtml = `<tr class="data-right-detail"><td colspan="6" style="padding:0">
+  <div class="data-detail-grid">
+    <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
+    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.version_branch || '')}</span>
+    <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
+    <span class="data-detail-k">紧急度</span><span style="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${snap.urgency || ''}</span></span>
+    <span class="data-detail-k">文件大小</span><span style="font-size:12.5px">${snap.file_size > 1048576 ? (snap.file_size / 1048576).toFixed(1) + ' MB' : (snap.file_size / 1024).toFixed(0) + ' KB'}</span>
+    <span class="data-detail-k">发布时间</span><span style="font-size:12.5px">${fmtTZ(snap.published_at, true)}</span>
+    <span class="data-detail-k">首次发现</span><span style="font-size:12.5px">${fmtTZ(snap.first_seen_at, true)}</span>
+    <span class="data-detail-k">最近采集</span><span style="font-size:12.5px">${fmtTZ(snap.last_seen_at, true)}</span>
+    <span class="data-detail-k">下载地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}" target="_blank" style="color:#0e9f6e">下载升级包</a></span>
+    <span class="data-detail-k">发布地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com' + (snap.source_url || '')}" target="_blank" style="color:var(--primary)">${'https://update.nsfocus.com' + (snap.source_url || '')}</a></span>
+    <span class="data-detail-k">MD5</span><span style="font-size:12.5px">${snap.md5_hash || snap.md5 || '—'}</span>
+    <span class="data-detail-k">页面哈希</span><span style="font-size:12.5px;word-break:break-all">${escHtml(snap.page_hash || '')}</span>
+    ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span style="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
+    ${snap.restart_required ? '<span class="data-detail-k">需重启</span><span style="font-size:12.5px">⚠️ 需要重启设备</span>' : ''}
+    ${snap.description_raw ? `<span class="data-detail-k">描述</span><div class="data-desc-box">${escHtml(snap.description_raw || '')}</div>` : ''}
+  </div>
+  </td></tr>`;
+  rowEl.insertAdjacentHTML('afterend', detailHtml);
+}
+
+function dataRightGoto(sid, chainJson) {
+  _dataSelectedSid = sid;
+  _dataExpanded.add(sid);
+  let targetChain = null;
+  try { targetChain = JSON.parse(chainJson); } catch(e) { targetChain = []; }
+  _dataSelectedChain = targetChain;
+  _dataSelectedUrl = null;
+  // Derive version & package type hints from the target chain's last node for right-panel filtering.
+  const src = _dataAll[sid];
+  let verHint = null, pkgHint = null;
+  if (src && targetChain && targetChain.length > 0) {
+    const leafName = targetChain[targetChain.length - 1];
+    const pt = src.package_type;
+    if (pt && pt.paths) {
+      const path = pt.paths.find(p => (p.chain || [])[(p.chain || []).length - 1] === leafName);
+      if (path && path.url) {
+        const snap = (src.snapshots || []).find(s => s.source_url === path.url);
+        if (snap) {
+          verHint = snap.version_branch || null;
+          pkgHint = snap.package_type || null;
+        }
+      }
+    }
+  }
+  _dataSelectedVerHint = verHint;
+  _dataSelectedPkgHint = pkgHint;
+  _dataFeedPage = 1;
+  // Do NOT call dataRenderLeft() — it rebuilds the DOM and wipes all expanded states.
+  // Instead, directly manipulate the existing DOM: expand target card + tree path, then scroll.
+  // The event delegation listener on #dataLeft is set up once in dataPage() and persists.
+  setTimeout(() => {
+    const card = document.getElementById('dpc_' + sid);
+    if (!card) {
+      // Card not yet in DOM — fall back to dataRenderLeft() for initial render
+      dataRenderLeft();
+      return;
+    }
+
+    // Expand the card body (tree container) via productCardToggle, then expand tree path
+    const cardBody = card.querySelector('.card-bd');
+    const wasHidden = cardBody && cardBody.style.display === 'none';
+    if (wasHidden) {
+      // Use the existing productCardToggle to expand the card body cleanly
+      const targetId = cardBody.id;
+      productCardToggle(targetId);
+    }
+
+    // Find the tree node whose data-chain matches targetChain
+    const allNodes = card.querySelectorAll('[data-action="treeNode"]');
+    let targetNode = null;
+    if (targetChain && targetChain.length > 0) {
+      allNodes.forEach(n => {
+        try {
+          const nc = JSON.parse(n.getAttribute('data-chain') || '[]');
+          if (JSON.stringify(nc) === JSON.stringify(targetChain)) {
+            targetNode = n;
+          }
+        } catch(e) {}
+      });
+    }
+
+    if (targetNode) {
+      // Expand all ancestor .tree-children so target is visible
+      let parent = targetNode.parentElement;
+      while (parent && !parent.classList.contains('card-bd')) {
+        if (parent.classList.contains('tree-children') && parent.style.display === 'none') {
+          treeToggleById(parent.id); // use the named toggle to keep arrow icons in sync
+        }
+        parent = parent.parentElement;
+      }
+      // Highlight the target node
+      document.querySelectorAll('.tree-node-selected').forEach(el => el.classList.remove('tree-node-selected'));
+      targetNode.classList.add('tree-node-selected');
+      targetNode.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      // Highlight the parent card
+      document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+      var pc = targetNode.closest('.card');
+      if (pc) pc.classList.add('card-selected');
+    } else if (card) {
+      // No specific node but card found — highlight the card at least
+      document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+      card.classList.add('card-selected');
+    }
+  }, 50);
+  dataRenderRight();
+}
+
+function dataRightExpand(btn, sid, ver, pkgType) {
+  dataRightToggleRow(btn.closest('tr'));
+}
+
+function dataClearFilter() {
+  _dataSelectedSid = null;
+  _dataSelectedChain = null;
+  _dataSelectedUrl = null;
+  _dataSelectedVerHint = null;
+  _dataSelectedPkgHint = null;
+  _lastSelectedNode = null;
+  _dataExpanded.clear();
+  document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+  document.querySelectorAll('.tree-node-selected').forEach(el => el.classList.remove('tree-node-selected'));
+  _dataFeedPage = 1;
+  dataRenderLeft();
+  dataRenderRight();
+}
+
+function toggleRollback(checked) {
+  sessionStorage.setItem('dataShowRollback', checked ? '1' : '0');
+  dataPage();
+}
+
+// ── Old data page helpers (kept for compatibility) ──
+async function dataShowDrill(sid, highlightVer) {
+  const src = _dataAll[sid];
+  if (!src) return;
+
+  document.getElementById('dataAggView').classList.add('hidden');
+  document.getElementById('dataPager').innerHTML = '';
+
+  const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
+  const snaps = src.snapshots || [];
+
+  const byVer = {};
+  snaps.forEach(s => {
+    const v = s.version_branch || '?';
+    if (!byVer[v]) byVer[v] = [];
+    byVer[v].push(s);
+  });
+
+  const versions = Object.keys(byVer).sort((a, b) => {
+    const na = parseFloat(a), nb = parseFloat(b);
+    if (!isNaN(na) && !isNaN(nb)) return nb - na;
+    return b.localeCompare(a, 'zh');
+  });
+
+  let drillHtml = `<div class="data-drill">
+    <div class="data-drill-hd">
+      <button class="btn btn-xs btn-outline" onclick="dataBackToAgg()">← 返回列表</button>
+      <span class="data-drill-title">📦 ${src.display_name || src.name}</span>
+      <span style="color:var(--muted);font-size:12px;margin-left:12px">${snaps.length} 条记录 · ${versions.length} 个版本</span>
+    </div>
+    <div class="data-drill-body">`;
+
+  versions.forEach(ver => {
+    const verSnaps = byVer[ver].sort((a, b) => (b.last_seen_at || '').localeCompare(a.last_seen_at || ''));
+    const isHighlight = ver === highlightVer;
+
+    const hasRb = verSnaps.some(s => s.status === 'rollback');
+    const hasNew = verSnaps.some(s => s.status === 'active' && !s.last_delivered_at);
+    const latestCollected = verSnaps[0] ? fmtTZ(verSnaps[0].last_seen_at, true) : '—';
+    const hasCritical = verSnaps.some(s => s.urgency === 'critical' && s.status === 'active');
+
+    const verFlags = [];
+    if (hasCritical) verFlags.push('<span class="badge badge-err" style="font-size:10px">🔴critical</span>');
+    if (hasRb) verFlags.push('<span style="color:var(--danger);font-size:11px">含撤回</span>');
+    if (hasNew) verFlags.push('<span style="color:var(--primary);font-size:11px">有未推送</span>');
+
+    const byType = {};
+    verSnaps.forEach(s => {
+      const t = s.package_type || '?';
+      if (!byType[t]) byType[t] = [];
+      byType[t].push(s);
+    });
+
+    const typeKeys = Object.keys(byType).sort();
+    const verKey = sid + '_' + ver;
+    // Highlighted version: open by default
+    const verBodyClass = isHighlight ? 'data-ver-body' : 'data-ver-body hidden';
+
+    drillHtml += `<div class="data-ver-block ${isHighlight ? 'data-ver-highlight' : ''}" id="dvb_anchor_${escHtml(verKey)}">
+      <div class="data-ver-hd" onclick="dataToggleVer(this, '${escHtml(verKey)}')">
+        <span class="data-prod-arrow">${isHighlight ? '&#9660;' : '&#9658;'}</span>
+        <span class="data-ver-label">${ver}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:8px">${verSnaps.length}条 / ${typeKeys.length}种类型</span>
+        <div style="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
+        <span style="color:var(--muted);font-size:11px;margin-left:8px">采集 ${latestCollected}</span>
+      </div>
+      <div class="${verBodyClass}" id="dvb_${escHtml(verKey)}">`;
+
+    typeKeys.forEach(pkgType => {
+      const typeSnaps = byType[pkgType].sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
+      const latest = typeSnaps[0];
+      const historyCount = typeSnaps.length - 1;
+      const typeLabel = MAP[pkgType] || pkgType || '';
+      const isLatestPkg = historyCount > 0; // multiple packages exist, this one is the latest by published_at
+      const sz = latest.file_size > 1048576 ? (latest.file_size / 1048576).toFixed(1) + 'M' : (latest.file_size / 1024).toFixed(0) + 'K';
+      const urg = latest.urgency === 'critical' ? 'badge-err' : latest.urgency === 'high' ? 'badge-warn' : 'badge-ok';
+      const isRb = latest.status === 'rollback';
+      const isNewPkg = latest.status === 'active' && !latest.last_delivered_at;
+      const histKey = verKey + '_' + pkgType;
+
+      drillHtml += `<div class="data-type-row ${isRb ? 'data-type-rollback' : ''}">
+        <div class="data-type-main" onclick="dataToggleSnapDetail(this)">
+          ${isNewPkg ? '<span class="data-pill-new-dot" style="margin-right:4px"></span>' : ''}
+          ${isLatestPkg ? '<span class="badge badge-blue" style="font-size:10px;margin-right:4px">最新</span>' : ''}
+          <span class="data-type-label">${typeLabel}</span>
+          <span class="mono" style="color:var(--primary);font-size:12px">${(latest.file_name || '').substring(0, 35)}</span>
+          <span style="color:var(--muted);font-size:11px">${fmtTZ(latest.published_at)}</span>
+          <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
+          ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
+            (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
+          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
+          ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
+        </div>
+        <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
+        ${historyCount > 0 ? `<div class="data-history hidden" id="dh_${escHtml(histKey)}">
+          ${typeSnaps.slice(1).map(s => {
+            const sz2 = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
+            const urg2 = s.urgency === 'critical' ? 'badge-err' : s.urgency === 'high' ? 'badge-warn' : 'badge-ok';
+            const isRb2 = s.status === 'rollback';
+            return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" onclick="this.classList.toggle('data-hist-expanded')">
+              <span style="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
+              <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
+              <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
+              ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
+              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
+              <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
+            </div>`;
+          }).join('')}
+        </div>` : ''}
+      </div>`;
+    });
+
+    drillHtml += `</div></div>`;
+  });
+
+  drillHtml += `</div></div>`;
+  document.getElementById('dataDrillView').innerHTML = drillHtml;
+  document.getElementById('dataDrillView').classList.remove('hidden');
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  // Scroll to highlighted version block if one was specified
+  if (highlightVer) {
+    const anchor = document.getElementById('dvb_anchor_' + highlightVer.replace(/\\/g, '\\\\'));
+    if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
+function dataSnapDetailHtml(s, MAP) {
+  const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
+  const typeLabel = MAP[s.package_type] || s.package_type || '';
+  return `<div class="data-detail-grid">
+    <span class="data-detail-k">类型</span><span>${typeLabel}</span>
+    <span class="data-detail-k">版本</span><span>${s.package_version || ''}</span>
+    <span class="data-detail-k">大小</span><span>${sz}</span>
+    ${s.min_sys_version ? `<span class="data-detail-k">依赖</span><span>≥ ${s.min_sys_version}</span>` : ''}
+    ${s.published_at ? `<span class="data-detail-k">发布</span><span>${fmtTZ(s.published_at, true)}</span>` : ''}
+    ${s.first_seen_at ? `<span class="data-detail-k">发现</span><span>${fmtTZ(s.first_seen_at, true)}</span>` : ''}
+    ${s.md5_hash ? `<span class="data-detail-k">MD5</span><span class="mono">${s.md5_hash}</span>` : ''}
+    ${s.download_id ? `<span class="data-detail-k">下载</span><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>` : ''}
+    ${s.source_url ? `<span class="data-detail-k">详情</span><span><a href="https://update.nsfocus.com${s.source_url}" target="_blank">绿盟更新页</a></span>` : ''}
+    ${s.description_raw ? `<div class="data-desc-box">${s.description_raw.substring(0, 800)}${s.description_raw.length > 800 ? '…' : ''}</div>` : ''}
+  </div>`;
+}
+
+function dataToggleVer(el, key) {
+  const body = document.getElementById('dvb_' + key);
+  const arrow = el.querySelector('.data-prod-arrow');
+  if (!body) return;
+  const open = body.classList.toggle('hidden');
+  if (arrow) arrow.innerHTML = open ? '&#9658;' : '&#9660;';
+}
+
+function dataToggleSnapDetail(el) {
+  const detail = el.nextElementSibling;
+  if (detail && detail.classList.contains('data-snap-detail')) detail.classList.toggle('hidden');
+}
+
+function dataToggleHistory(el, key) {
+  const hist = document.getElementById('dh_' + key);
+  if (!hist) return;
+  const open = hist.classList.toggle('hidden');
+  el.textContent = open ? `+${hist.querySelectorAll('.data-hist-row').length} 条历史 ▼` : `+${hist.querySelectorAll('.data-hist-row').length} 条历史 ▲`;
+}
+
+function dataBackToAgg() {
+  document.getElementById('dataDrillView').classList.add('hidden');
+  document.getElementById('dataDrillView').innerHTML = '';
+  document.getElementById('dataAggView').classList.remove('hidden');
+  document.getElementById('dataPager').innerHTML = '';
+  const filt = dataFilteredSources();
+  const totalPages = Math.max(1, Math.ceil(filt.length / PAGE_SIZE));
+  if (_dataPage > totalPages) _dataPage = totalPages;
+  dataRenderAgg();
+}
+
+function toggleRollback(v) { sessionStorage.setItem('dataShowRollback', v ? '1' : '0'); dataPage(); }
+async function manualPush(sid) { if (!confirm('确认推送?')) return; const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }
 
 // ── Push Modal ──
 let _pushSid=0,_pushMode='customer',_pushTarget=0,_pushEmail='',_banTimer=null;
@@ -906,6 +1907,7 @@ async function settings(){
       <div class="form-group"><label>静默结束</label><input id="cfg-quiet-end" value="${cfg.quiet_hours_end||'08:00'}"></div>
       <div class="form-group"><label>全量扫描间隔 (小时)</label><input id="cfg-full-scan" type="number" value="${cfg.full_scan_interval||168}" min="24" max="720"><p style="font-size:10px;color:var(--muted);margin-top:2px">建议168(7天)，期间增量检查列表页</p></div>
       <div class="form-group"><label>心跳间隔 (分钟)</label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p style="font-size:10px;color:var(--muted);margin-top:2px">Session保活间隔，默认30分钟</p></div>
+      <div class="form-group"><label>每类型包数量</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p style="font-size:10px;color:var(--muted);margin-top:2px">采集数据页每(版本+包类型)显示的历史包数量，默认3</p></div>
     </div>
     <p style="font-size:11px;color:var(--muted);margin:8px 0">修改后下次采集生效</p>
 
@@ -1402,7 +2404,8 @@ function buildTreeHtml(pt, MAP) {
 // MAP: type code -> Chinese label map
 // verTypeMap: { "ver|shortType": dispType } for snapshot type display
 // alias: product alias to strip from version (e.g., "WAF")
-function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
+// sid: source id for click delegation
+function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
   const paths = pt.paths || [];
   if (paths.length === 0) return '<span style="color:#9ca3af">无路径数据</span>';
 
@@ -1412,18 +2415,22 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
     const chain = p.chain || [];
     if (chain.length < 2) return;
     let node = root;
+    // Track accumulated chain for intermediate nodes
+    let accChain = [];
     chain.forEach((name, idx) => {
       if (!node.__children) node.__children = {};
       if (!node.__children[name]) node.__children[name] = { __children: {}, __isPkg: false, __pkgKey: null, __snapshots: [], __pathId: '', __chain: [], __pathIdx: -1 };
       node = node.__children[name];
+      // Set __chain for ALL nodes (not just leaves) so intermediate clicks work
+      node.__chain = accChain.concat([name]);
+      node.__pathIdx = pathIdx;
       if (idx === chain.length - 1) {
         node.__isPkg = true;
         const rawType = (p.types || [])[0] || '';
         node.__pkgKey = chain[chain.length - 1] || (ver + '|' + rawType);
         node.__pathId = p.url || '';
-        node.__chain = chain;
-        node.__pathIdx = pathIdx;
       }
+      accChain = node.__chain;
     });
   });
 
@@ -1452,6 +2459,49 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
     attach(root);
   });
 
+  // Phase 2: Propagate version_branch, package_type hints and freshness from leaves up.
+  function propagateHints(node) {
+    if (node.__isPkg) {
+      const snaps = node.__snapshots || [];
+      if (snaps.length > 0) {
+        const verHint = snaps[0].version_branch || '';
+        const pkgHint = snaps[0].package_type || '';
+        const now = Date.now();
+        const latestPublished = snaps.reduce((max, s) => {
+          if (!s.published_at) return max;
+          const t = new Date(s.published_at).getTime();
+          return t > max ? t : max;
+        }, 0);
+        let freshness = 'idle';
+        if (latestPublished > 0) {
+          const days = (now - latestPublished) / 86400000;
+          if (days <= 30) freshness = 'new';
+          else if (days <= 365) freshness = 'lowfreq';
+        }
+        node.__freshness = freshness;
+        return { ver: verHint, pkg: pkgHint, freshness };
+      }
+      return null;
+    }
+    if (!node.__children) return null;
+    let verSet = new Set(), pkgSet = new Set();
+    let childFreshness = 'idle';
+    for (const [, child] of Object.entries(node.__children)) {
+      const childHints = propagateHints(child);
+      if (!childHints) continue;
+      if (childHints.ver) verSet.add(childHints.ver);
+      if (childHints.pkg) pkgSet.add(childHints.pkg);
+      // Highest priority: new > lowfreq > idle
+      if (childHints.freshness === 'new') childFreshness = 'new';
+      else if (childHints.freshness === 'lowfreq' && childFreshness !== 'new') childFreshness = 'lowfreq';
+    }
+    if (verSet.size === 1) node.__verHint = [...verSet][0];
+    if (pkgSet.size === 1) node.__pkgHint = [...pkgSet][0];
+    node.__freshness = childFreshness;
+    return { ver: verSet.size === 1 ? [...verSet][0] : '', pkg: pkgSet.size === 1 ? [...pkgSet][0] : '', freshness: childFreshness };
+  }
+  propagateHints(root);
+
   // Render the tree
   function renderNode(node, name, depth) {
     const indent = depth * 16;
@@ -1475,10 +2525,17 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
           .replace(/\W/g, '_');
     }
 
-    // Clicking the row: internal nodes toggle children; pkg nodes (any state) toggle snapshot table
-    const rowOnclick = hasChildren
-      ? `treeToggle(this,'${targetId || ''}')`
-      : (isPkg ? `pkgTableToggleById('${targetId}')` : '');
+    // Clicking any node: filter right panel to that product/sub-category/version
+    // Clicking a leaf node: also expand the corresponding row in the right panel
+    // data attributes for event delegation
+    const chainJson = JSON.stringify(node.__chain || []).replace(/"/g, '&quot;');
+    const nodeUrl = node.__pathId || '';
+    const isLeaf = isPkg ? '1' : '0';
+    // For leaf nodes, collect snapshot IDs for right-panel expansion
+    const leafSnapIds = isPkg ? (snaps.map(s => s.id).join(',')) : '';
+    // Hints for filtering: version_branch and package_type shared by all descendants
+    const verHint = node.__verHint || '';
+    const pkgHint = node.__pkgHint || '';
 
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = isPkg ? name : (MAP[name] || name);
@@ -1488,64 +2545,39 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
         ? ` <span style="background:#dbeafe;color:#1d4ed8;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">${snaps.length}包</span>`
         : ` <span style="background:#fee2e2;color:#dc2626;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">空</span>`
     ) : '';
-    const arrow = hasChildren || isPkg ? `<span class="tree-arrow" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>` : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
-
-    let html = `<div class="tree-node" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px${rowOnclick ? ';cursor:pointer' : ''}" ${rowOnclick ? `onclick="${rowOnclick}"` : ''}>`;
+    const freshBadge = (node.__freshness === 'new') ? ` <span style="background:#0e9f6e;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">新</span>` : (node.__freshness === 'lowfreq' ? ` <span style="background:#e6a700;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">低频</span>` : (node.__freshness === 'idle' ? ` <span style="background:#9ca3af;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">沉寂</span>` : ''));
+    // Arrow: toggle children visibility via data-action="treeToggle" (handled by event delegation)
+    // Uses a generated children ID stored in data-target on the arrow
+    const childDivId = hasChildren ? ('tcd_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
+    const arrow = hasChildren || isPkg
+      ? `<span class="tree-arrow" data-action="treeToggle" data-target="${childDivId}" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
+      : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
+    let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
     html += arrow;
-    html += `<span style="font-size:13px;color:#334155;flex-shrink:0">${icon} ${escHtml(label)}${childCount}${snapCount}</span>`;
+    html += `<span style="font-size:13px;color:#334155;flex-shrink:0">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
     html += `</div>`;
 
     if (hasChildren) {
-      html += `<div class="tree-children" style="display:none">`;
+      html += `<div id="${childDivId}" class="tree-children" data-target="${childDivId}" style="display:none">`;
       children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
       html += `</div>`;
     }
 
-    // Snapshot table for leaf nodes (hidden by default)
+    // Snapshot table for leaf nodes — NO LONGER rendered here.
+    // Clicking a leaf node now filters the right panel to that URL and expands the row there.
+    // Empty leaves still show the placeholder div so tree height is consistent.
     if (isPkg) {
-      // Use __pathId for the div id so different leaf nodes (even with same name) get distinct IDs
-      const divId = targetId;  // already computed above using __pathId
-      if (snaps.length > 0) {
-        html += `<div id="${divId}" class="tree-children" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px"><table><tr style="background:#fafafa"><th>类型</th><th style="width:30%">文件</th><th style="width:11%">发布时间</th><th style="width:14%">最近采集</th><th style="width:6%">大小</th><th style="width:7%">紧急度</th><th style="width:7%">操作</th></tr>`;
-        snaps.forEach(s => {
-          const isRb = s.status === 'rollback';
-          const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
-          const did = 'dd_' + s.id;
-          const ptTime = fmtTZ(s.published_at);
-          const lsTime = fmtTZ(s.last_seen_at, true);
-          const shortType = s.package_type || '';
-          const ver = s.version_branch || '';
-          const dispType = verTypeMap ? verTypeMap[ver + '|' + shortType] : '';
-          const pkgTypeBadge = dispType && MAP[shortType] ? `<span style="background:#ede9fe;color:#5b21b6;font-size:10px;padding:1px 6px;border-radius:8px">${MAP[shortType]}</span>` : (typeCN(s.package_type) || s.package_type || '');
-          html += `<tr style="cursor:pointer;${isRb ? 'color:var(--muted);text-decoration:line-through' : ''}" onclick="document.getElementById('${did}').classList.toggle('hidden')">
-          <td>${pkgTypeBadge}</td>
-          <td class="mono" style="color:var(--primary)">${(s.file_name || '').substring(0, 35)}</td>
-          <td>${ptTime.substring(0, 10)}</td>
-          <td>${lsTime}</td>
-          <td>${sz}</td>
-          <td><span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}">${s.urgency || ''}</span></td>
-          <td><button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button></td>
-        </tr>
-        <tr id="${did}" class="hidden"><td colspan="7" class="detail-row"><div style="display:grid;grid-template-columns:auto 1fr;gap:3px 16px">
-          <b>文件:</b><span class="mono">${s.file_name || ''}</span>
-          <b>版本:</b><span>${s.package_version || ''}</span>
-          <b>MD5:</b><span class="mono">${s.md5_hash || ''}</span>
-          <b>大小:</b><span>${sz}</span>
-          ${s.min_sys_version ? `<b>依赖:</b><span>≥ ${s.min_sys_version}</span>` : ''}
-          ${s.published_at ? `<b>发布:</b><span>${fmtTZ(s.published_at, true)}</span>` : ''}
-          ${s.first_seen_at ? `<b>发现:</b><span>${fmtTZ(s.first_seen_at, true)}</span>` : ''}
-          ${s.download_id ? `<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>` : ''}
-          ${s.source_url ? `<b>详情:</b><span><a href="${s.source_url}" target="_blank">绿盟更新页</a></span>` : ''}
-          ${s.page_hash ? `<b>页面HASH:</b><span class="mono">${(s.prev_page_hash || '').substring(0, 8) ? (s.prev_page_hash.substring(0, 8) + ' → ') : ''}${s.page_hash.substring(0, 8)}</span>` : ''}
-        </div>${s.description_raw ? `<div class="desc-box mt12">${s.description_raw.substring(0, 1500)}</div>` : ''}</td></tr>`;
-        });
-        html += `</table></div>`;
-      } else {
-        // Empty package: render target div with empty placeholder so toggle works
-        html += `<div id="${targetId}" class="tree-children" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px">
+      if (snaps.length === 0) {
+        // Keep a hidden placeholder div for consistent tree height
+        const divId = targetId;
+        html += `<div id="${divId}" class="tree-children" data-target="${divId}" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px">
           <div style="color:var(--muted);font-size:12px;padding:8px 12px;background:#fafafa;border-radius:4px">
             暂无采集数据<div style="font-size:11px;margin-top:2px">页面可能返回登录页或无数据包</div>
           </div></div>`;
+      } else {
+        // Has data: render a placeholder div (hidden) for tree height consistency only
+        const divId = targetId;
+        html += `<div id="${divId}" class="tree-children" data-target="${divId}" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px"></div>`;
       }
     }
 
@@ -1572,17 +2604,6 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias) {
   }
   treeHtml += '</div>';
   return treeHtml;
-}
-
-function productCardToggle(el, targetId) {
-  if (!targetId) targetId = el.getAttribute('data-target');
-  if (!targetId) return;
-  var target = document.getElementById(targetId);
-  if (!target) return;
-  var isOpen = target.style.display !== 'none';
-  target.style.display = isOpen ? 'none' : 'block';
-  var arrow = el.querySelector('.tree-arrow');
-  if (arrow) arrow.innerHTML = isOpen ? '&#9658;' : '&#9660;';
 }
 
 function pkgTableToggle(el) {
@@ -2428,6 +3449,7 @@ async function collectProduct(id,mode){
 
 async function saveSettings(){
   const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+    feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
