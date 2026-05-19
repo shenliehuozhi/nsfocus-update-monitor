@@ -140,8 +140,8 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-right{flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);padding:0 16px;max-height:calc(100vh - 160px);overflow-y:auto}
 .data-right-hd{font-weight:700;font-size:14px;padding:12px 0 8px;border-bottom:1px solid var(--border);margin-bottom:0;display:flex;align-items:center;gap:8px}
 .data-right-hd-sub{font-weight:400;font-size:12px;color:var(--muted)}
-.data-hd-path-seg{cursor:pointer;color:var(--primary);text-decoration:underline;text-underline-offset:2px}
-.data-hd-path-seg:hover{color:#1a56db}
+.data-hd-path-seg{cursor:pointer;color:var(--text);font-weight:400}
+.data-hd-path-seg:hover{color:var(--primary)}
 .data-right-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
@@ -857,20 +857,35 @@ function dataRenderRight() {
   const start = (page - 1) * FEED_PAGE_SIZE;
   const pageSlice = rows.slice(start, start + FEED_PAGE_SIZE);
 
+  // TODO: header path links not yet functional for intermediate nodes
+  // _chainToUrlMap only contains leaf-node keys (4-level chains like "产品/父/子/叶子")
+  // header renders intermediate nodes (2-3 levels), so map lookup always returns undefined
+  // Fix: propagate leaf URLs up to all ancestor chain keys when building _chainToUrlMap
+  // Alternatively: use _dataSelectedUrl directly (already set to leaf URL on tree node click)
+  // but header needs per-segment URLs, not just the leaf URL
+  // For now: data-hd-path-seg renders as <span> when no URL found (same visual as non-link text)
   // Build clickable path segments from chain
-  const src = _dataSelectedSid ? (_dataAll[_dataSelectedSid] || {}).display_name || (_dataAll[_dataSelectedSid] || {}).name : null;
+  // _chainToUrlMap is built in dataTreeNodeClick: key = sid + '|' + chain.join('/')
+  const src = _dataSelectedSid ? (_dataAll[_dataSelectedSid] || {}) : null;
+  const srcName = src ? (src.display_name || src.name || '') : '';
   const hasFilter = !!_dataSelectedSid;
   let hdPathHtml = '';
-  if (src && _dataSelectedChain && _dataSelectedChain.length > 0) {
+  if (srcName && _dataSelectedChain && _dataSelectedChain.length > 0) {
     const chainParts = _dataSelectedChain.slice(1); // skip product name
     chainParts.forEach((segment, i) => {
-      // Determine version hint: use this segment if it looks like a version, otherwise null (show all)
-      const segVerHint = (segment === _dataSelectedVerHint) ? _dataSelectedVerHint : null;
-      hdPathHtml += `<span class="data-hd-path-seg" onclick="dataShowDrill('${esc(_dataSelectedSid)}', ${segVerHint ? "'" + esc(segVerHint) + "'" : 'null'})">${esc(segment)}</span>`;
+      // segChain = [product, segment1, ..., currentSegment]
+      const segChain = _dataSelectedChain.slice(0, i + 2);
+      const mapKey = _dataSelectedSid + '|' + segChain.join('/');
+      const segUrl = _chainToUrlMap[mapKey] || '';
+      if (segUrl) {
+        hdPathHtml += `<a href="https://update.nsfocus.com${escHtml(segUrl)}" target="_blank" class="data-hd-path-seg">${esc(segment)}</a>`;
+      } else {
+        hdPathHtml += `<span class="data-hd-path-seg">${esc(segment)}</span>`;
+      }
       if (i < chainParts.length - 1) hdPathHtml += ' <span style="color:var(--muted)">→</span> ';
     });
   }
-  const hdLabel = src ? `${esc(src)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
+  const hdLabel = srcName ? `${esc(srcName)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
   const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:#fff3cd;color:#8a7000;border:1px solid #e6c94c;margin-left:auto" onclick="dataClearFilter()">重置筛选</button>` : '';
 
   if (rows.length === 0) {
@@ -1162,7 +1177,7 @@ function toggleRollback(checked) {
 }
 
 // ── Old data page helpers (kept for compatibility) ──
-async function dataShowDrill(sid, highlightVer) {
+async function dataShowDrill(sid, url, verHint, pkgHint) {
   const src = _dataAll[sid];
   if (!src) return;
 
@@ -1170,7 +1185,19 @@ async function dataShowDrill(sid, highlightVer) {
   document.getElementById('dataPager').innerHTML = '';
 
   const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
-  const snaps = src.snapshots || [];
+  let snaps = src.snapshots || [];
+
+  // Filter by exact URL when provided (leaf node)
+  if (url) {
+    snaps = snaps.filter(s => s.source_url === url);
+  }
+  // Filter by hints when provided (intermediate node)
+  if (verHint) {
+    snaps = snaps.filter(s => (s.version_branch || '') === verHint);
+  }
+  if (pkgHint) {
+    snaps = snaps.filter(s => (s.package_type || '') === pkgHint);
+  }
 
   const byVer = {};
   snaps.forEach(s => {
@@ -1195,7 +1222,7 @@ async function dataShowDrill(sid, highlightVer) {
 
   versions.forEach(ver => {
     const verSnaps = byVer[ver].sort((a, b) => (b.last_seen_at || '').localeCompare(a.last_seen_at || ''));
-    const isHighlight = ver === highlightVer;
+    const isHighlight = ver === verHint;
 
     const hasRb = verSnaps.some(s => s.status === 'rollback');
     const hasNew = verSnaps.some(s => s.status === 'active' && !s.last_delivered_at);
@@ -1281,8 +1308,8 @@ async function dataShowDrill(sid, highlightVer) {
   document.getElementById('dataDrillView').classList.remove('hidden');
   window.scrollTo({ top: 0, behavior: 'instant' });
   // Scroll to highlighted version block if one was specified
-  if (highlightVer) {
-    const anchor = document.getElementById('dvb_anchor_' + highlightVer.replace(/\\/g, '\\\\'));
+  if (verHint) {
+    const anchor = document.getElementById('dvb_anchor_' + verHint.replace(/\\/g, '\\\\'));
     if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 }
