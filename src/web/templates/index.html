@@ -140,6 +140,8 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-right{flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);padding:0 16px;max-height:calc(100vh - 160px);overflow-y:auto}
 .data-right-hd{font-weight:700;font-size:14px;padding:12px 0 8px;border-bottom:1px solid var(--border);margin-bottom:0;display:flex;align-items:center;gap:8px}
 .data-right-hd-sub{font-weight:400;font-size:12px;color:var(--muted)}
+.data-hd-path-seg{cursor:pointer;color:var(--primary);text-decoration:underline;text-underline-offset:2px}
+.data-hd-path-seg:hover{color:#1a56db}
 .data-right-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
@@ -869,9 +871,20 @@ function dataRenderRight() {
   const start = (page - 1) * FEED_PAGE_SIZE;
   const pageSlice = rows.slice(start, start + FEED_PAGE_SIZE);
 
+  // Build clickable path segments from chain
   const src = _dataSelectedSid ? (_dataAll[_dataSelectedSid] || {}).display_name || (_dataAll[_dataSelectedSid] || {}).name : null;
-  const hdLabel = src ? `${src}${_dataSelectedChain && _dataSelectedChain.length > 1 ? ' → ' + _dataSelectedChain.slice(1).join(' → ') : ''} 的最新包` : '全部产品最新包';
   const hasFilter = !!_dataSelectedSid;
+  let hdPathHtml = '';
+  if (src && _dataSelectedChain && _dataSelectedChain.length > 0) {
+    const chainParts = _dataSelectedChain.slice(1); // skip product name
+    chainParts.forEach((segment, i) => {
+      // Determine version hint: use this segment if it looks like a version, otherwise null (show all)
+      const segVerHint = (segment === _dataSelectedVerHint) ? _dataSelectedVerHint : null;
+      hdPathHtml += `<span class="data-hd-path-seg" onclick="dataShowDrill('${esc(_dataSelectedSid)}', ${segVerHint ? "'" + esc(segVerHint) + "'" : 'null'})">${esc(segment)}</span>`;
+      if (i < chainParts.length - 1) hdPathHtml += ' <span style="color:var(--muted)">→</span> ';
+    });
+  }
+  const hdLabel = src ? `${esc(src)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
   const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:#fff3cd;color:#8a7000;border:1px solid #e6c94c;margin-left:auto" onclick="dataClearFilter()">重置筛选</button>` : '';
 
   if (rows.length === 0) {
@@ -1032,7 +1045,7 @@ function dataRightToggleRow(rowEl) {
   const detailHtml = `<tr class="data-right-detail"><td colspan="6" style="padding:0">
   <div class="data-detail-grid">
     <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
-    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.version_branch || '')}</span>
+    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || '')}</span>
     <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
     <span class="data-detail-k">紧急度</span><span style="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${snap.urgency || ''}</span></span>
     <span class="data-detail-k">文件大小</span><span style="font-size:12.5px">${snap.file_size > 1048576 ? (snap.file_size / 1048576).toFixed(1) + ' MB' : (snap.file_size / 1024).toFixed(0) + ' KB'}</span>
