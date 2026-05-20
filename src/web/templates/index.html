@@ -340,6 +340,7 @@ async function dataPage() {
   ]);
   _dataAll = r.data || {};
   _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.feed_pkg_limit) || 3);
+  const t0 = performance.now();
   // Build _srcUrlChainMap once: URL→chain lookup per source
   // Also clear chain prefix cache since _dataAll changed
   _srcUrlChainMap = {};
@@ -356,16 +357,28 @@ async function dataPage() {
     _srcUrlChainMap[sid] = map;
   });
 
-  const sR = await fetch(API + '/settings/scheduler', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({}));
+  // Fetch scheduler + detailed progress in parallel
+  const [sR, prR] = await Promise.all([
+    fetch(API + '/settings/scheduler', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({})),
+    fetch(API + '/system/collect/progress', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({})),
+  ]);
   const sch = sR.data || {};
-  let next = '—';
+  const p = prR.data?.progress || {};  // detailed progress (current_product, products_done/total, etc.)
+  const mode_label = { quick: '⚡Quick', full: '🔍Full', '': '' };
+  const isRunning = sch.is_running;
+  const curMode = mode_label[sch.current_mode] || sch.current_mode || '';
+  let lastText = sch.last_run ? fmtTZ(sch.last_run, true) : '—';
+  let nextText = '—';
   if (sch.last_run) {
     const d = new Date(sch.last_run + 'Z');
     d.setUTCHours(d.getUTCHours() + (sch.interval_hours || 24));
-    next = fmtTZ(d.toISOString().substring(0, 19), true);
-  } else if (sch.is_running) {
-    next = '采集中…';
+    nextText = fmtTZ(d.toISOString().substring(0, 19), true);
   }
+  // Progress % for display
+  const pct = (p.products_total && p.products_total > 0) ? Math.round(p.products_done / p.products_total * 100) : 0;
+  const progressHtml = isRunning
+    ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0}) <a href="#" onclick="showCollectProgress();return false" style="color:var(--primary);text-decoration:underline;margin-left:4px">查看</a></span>`
+    : '';
 
   const totalActive = Object.values(_dataAll).filter(s => s.is_active).length;
   const filterHtml = [
@@ -393,7 +406,6 @@ async function dataPage() {
       </div>
       <div class="data-meta">
         <span class="data-count-badge">${totalActive} 个产品</span>
-        <span style="color:var(--muted);font-size:11px">下次采集: ${next}</span>
         <label style="cursor:pointer;font-size:11px;margin-left:12px">
           <input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" ${showRb ? 'checked' : ''}> 显示已撤回
         </label>
@@ -411,7 +423,33 @@ async function dataPage() {
 
   document.getElementById('app').innerHTML = h;
   dataRenderLeft();
-  dataRenderRight();
+  dataRenderRight(sch, p, { lastText, nextText, isRunning, curMode, mode_label, progressHtml });
+  console.log('[perf] dataPage total:', Math.round(performance.now() - t0), 'ms');
+
+  // ── Collect progress polling ──
+  if (isRunning) {
+    _collectRunning = true;
+    if (!_collectPollTimer) _collectPollTimer = setInterval(async () => {
+      try {
+        const pr = await api('/system/collect/progress');
+        const p2 = pr.data?.progress || {};
+        const s2 = pr.data?.scheduler || {};
+        if (!p2.active && !p2.phase) {
+          _collectRunning = false; clearInterval(_collectPollTimer); _collectPollTimer = null;
+          return;
+        }
+        if (document.getElementById('dataRightHd')) {
+          const pct2 = (p2.products_total && p2.products_total > 0) ? Math.round(p2.products_done / p2.products_total * 100) : 0;
+          const isR2 = !!p2.active;
+          const ph2 = isR2 ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct2}% ${p2.current_product || ''} (${p2.products_done||0}/${p2.products_total||0}) <a href="#" onclick="showCollectProgress();return false" style="color:var(--primary);text-decoration:underline;margin-left:4px">查看</a></span>` : '';
+          dataRenderRight(s2, p2, { isRunning: isR2, progressHtml: ph2 });
+        }
+      } catch (e) {}
+    }, 3000);
+  } else {
+    if (_collectPollTimer) { clearInterval(_collectPollTimer); _collectPollTimer = null; }
+    _collectRunning = false;
+  }
 
   // ── One-time event delegation (NEVER inside dataRenderLeft) ──
   document.getElementById('dataLeft').addEventListener('click', function(e) {
@@ -872,7 +910,18 @@ function dataBuildFeed() {
   return { rows: filtered, MAP };
 }
 
-function dataRenderRight() {
+function dataRenderRight(sch, p, info) {
+  if (!sch) sch = {};
+  if (!p) p = {};
+  if (!info) info = {};
+  const mode_label = { quick: '⚡Quick', full: '🔍Full', '': '' };
+  const {
+    lastText = sch.last_run ? fmtTZ(sch.last_run, true) : '—',
+    nextText = '—',
+    isRunning = !!sch.is_running,
+    curMode = mode_label[sch.current_mode] || '',
+    progressHtml = ''
+  } = info;
   const { rows, MAP } = dataBuildFeed();
   const totalPages = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
   if (_dataFeedPage > totalPages) _dataFeedPage = totalPages;
@@ -899,17 +948,27 @@ function dataRenderRight() {
     });
   }
   const hdLabel = srcName ? `${esc(srcName)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
-  const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:#fff3cd;color:#8a7000;border:1px solid #e6c94c;margin-left:auto" onclick="dataClearFilter()">重置筛选</button>` : '';
+  const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:#fff3cd;color:#8a7000;border:1px solid #e6c94c;margin-left:8px" onclick="dataClearFilter()">重置筛选</button>` : '';
+  const lastMode = mode_label[sch.last_mode] || '';
+  const nextMode = mode_label[sch.next_mode] || '';
+  // Build header: left=label, center=last/next timeline, right=progress+btn
+  const hdrRight = `<div style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
+    <span style="color:var(--muted)">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
+    <span style="color:var(--border)">|</span>
+    <span style="color:var(--muted)">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
+    ${progressHtml}
+    <button class="btn btn-xs" style="background:var(--primary);color:#fff" onclick="triggerCollect()">🔄 手动采集</button>${resetBtn}
+  </div>`;
 
   if (rows.length === 0) {
-    document.getElementById('dataRightHd').innerHTML = `📦 ${hdLabel} ${resetBtn}`;
+    document.getElementById('dataRightHd').innerHTML = `<div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">📦 <span class="data-right-hd">${hdLabel}</span></div>${hdrRight}`;
     document.getElementById('dataRight').innerHTML = `<div class="data-right-empty">暂无数据</div>`;
     document.getElementById('dataPager').innerHTML = '';
     return;
   }
 
   const colStyle = 'style="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
-  document.getElementById('dataRightHd').innerHTML = `📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}`;
+  document.getElementById('dataRightHd').innerHTML = `<div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">📦 <span class="data-right-hd">${hdLabel}</span> <span class="data-right-hd-sub">（${rows.length} 条）</span></div>${hdrRight}`;
   let html = `<div class="feed-list">
 <div class="feed-hd">
   <div class="feed-cell feed-arrow-hd" style="width:28px;flex-shrink:0"></div>
@@ -1023,10 +1082,12 @@ function dataFeedGoPage(p) {
 }
 
 function dataRightToggleRow(rowId) {
+  const t0 = performance.now();
   const rowEl = document.getElementById(rowId);
   if (!rowEl) return;
 
   // Close any open detail
+  const t1 = performance.now();
   const openDetail = document.querySelector('.feed-detail');
   if (openDetail) {
     const prevRow = openDetail.previousElementSibling;
@@ -1041,9 +1102,11 @@ function dataRightToggleRow(rowId) {
     rowEl.classList.remove('feed-expanded');
     const arrow = rowEl.querySelector('.feed-arrow');
     if (arrow) arrow.textContent = '▶';
+    console.log('[perf] toggle close:', (performance.now() - t0).toFixed(1) + 'ms');
     return;
   }
 
+  const t2 = performance.now();
   const sid = rowEl.dataset.sid;
   const snapId = rowEl.dataset.id ? parseInt(rowEl.dataset.id) : null;
   if (!sid || !snapId) return;
@@ -1055,6 +1118,7 @@ function dataRightToggleRow(rowId) {
   const snap = snaps.find(s => s.id === snapId);
   if (!snap) return;
 
+  const t3 = performance.now();
   let chainDisplayHtml = '';
   const pt = src.package_type || {};
   const paths = pt.paths || [];
@@ -1117,6 +1181,7 @@ function dataRightToggleRow(rowId) {
     }).join(' <span style="color:#94a3b8">›</span> ');
   }
 
+  const t4 = performance.now();
   rowEl.classList.add('feed-expanded');
   const arrow = rowEl.querySelector('.feed-arrow');
   if (arrow) arrow.textContent = '▼';
@@ -1141,7 +1206,10 @@ function dataRightToggleRow(rowId) {
     ${snap.description_raw ? `<span class="data-detail-k">描述</span><div class="data-desc-box">${escHtml(snap.description_raw || '')}</div>` : ''}
   </div>
   </div>`;
+  const t5 = performance.now();
   rowEl.insertAdjacentHTML('afterend', detailHtml);
+  const t6 = performance.now();
+  console.log('[perf] toggle open — close:' + (t1-t0).toFixed(1) + 'ms data:' + (t3-t2).toFixed(1) + 'ms chain:' + (t4-t3).toFixed(1) + 'ms html:' + (t5-t4).toFixed(1) + 'ms insert:' + (t6-t5).toFixed(1) + 'ms total:' + (t6-t0).toFixed(1) + 'ms');
 }
 
 function dataRightGoto(sid, chainJson) {
