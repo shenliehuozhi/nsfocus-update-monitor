@@ -9,6 +9,7 @@ from src.notifiers.wecom import WecomNotifier
 from src.notifiers.dingtalk import DingtalkNotifier
 from src.notifiers.feishu import FeishuNotifier
 from src.notifiers.email import EmailNotifier
+from src.notifiers.apprise import AppriseNotifier
 from src.models.channel import get_by_id, list_active
 from src.models.subscription import get_rule_channels, enqueue, get_due_items, mark_pushed, cancel_for_snapshot
 from src.models.snapshot import get_snapshot
@@ -21,6 +22,7 @@ NOTIFIERS = {
     'dingtalk': DingtalkNotifier(),
     'feishu': FeishuNotifier(),
     'email': EmailNotifier(),
+    'apprise': AppriseNotifier(),
 }
 
 # Rate-limit tracker: minimum seconds between sends to same channel type
