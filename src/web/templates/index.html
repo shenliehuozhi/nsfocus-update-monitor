@@ -146,10 +146,11 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
 .feed-list{display:block;width:100%}
+.feed-hd{display:flex;align-items:center;background:#f8f9fa;border-bottom:2px solid var(--border);position:sticky;top:0;z-index:2}
 .feed-row{display:flex;align-items:center;border-bottom:1px solid #f1f3f5;padding:0;min-height:38px;background:#fff}
 .feed-row.rollback{background:rgba(229,72,77,0.04)}
 .feed-row.new{background:rgba(59,130,246,0.04)}
-.feed-cell{flex-shrink:0;font-size:12px;padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-cell{flex-shrink:0;font-size:12px}
 .feed-arrow{width:24px;text-align:center;color:var(--muted);cursor:pointer;font-size:11px;flex-shrink:0;padding:6px 4px}
 .feed-row:hover{background:#fafbfc}
 .feed-detail{background:#fafdf7;border-bottom:2px solid var(--border);padding:8px 12px 12px}
@@ -899,9 +900,19 @@ function dataRenderRight() {
     return;
   }
 
-  const colStyle = 'style="font-size:12px;padding:6px 8px;border-bottom:1px solid #f1f3f5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
+  const colStyle = 'style="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
   let html = `<div class="data-right-hd">📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}</div>
-  <div class="feed-list">`;
+<div class="feed-list">
+<div class="feed-hd">
+  <div class="feed-cell feed-arrow-hd" style="width:28px;flex-shrink:0"></div>
+  <div class="feed-cell" style="width:80px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
+  <div class="feed-cell" style="width:56px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">状态</div>
+  <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">产品名称</div>
+  <div class="feed-cell" style="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px">版本</div>
+  <div class="feed-cell" style="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600">文件</div>
+  <div class="feed-cell" style="width:88px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">更新日期</div>
+  <div class="feed-cell" style="width:136px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
+</div>`;
 
   pageSlice.forEach(r => {
     const typeLabel = MAP[r.package_type] || r.package_type || '';
@@ -918,14 +929,14 @@ function dataRenderRight() {
     }
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
-  <div class="feed-cell feed-arrow" onclick="dataRightToggleRow('${rid}')">▶</div>
-  <div class="feed-cell" style="width:80px" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></div>
-  <div class="feed-cell" style="width:60px" ${colStyle}>${freshBadge}</div>
-  <div class="feed-cell" style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
-  <div class="feed-cell" style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary)" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
-  <div class="feed-cell" style="min-width:120px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
-  <div class="feed-cell" style="width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${fmtTZ(r.published_at, true)}</div>
-  <div class="feed-cell" style="width:120px;white-space:nowrap">
+  <div class="feed-cell feed-arrow" style="width:28px;flex-shrink:0" onclick="dataRightToggleRow('${rid}')">▶</div>
+  <div class="feed-cell" style="width:80px;flex-shrink:0" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></div>
+  <div class="feed-cell" style="width:56px;flex-shrink:0" ${colStyle}>${freshBadge}</div>
+  <div class="feed-cell" style="width:180px;flex-shrink:0" title="${escHtml(r._srcName)}">${r._srcName}</div>
+  <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
+  <div class="feed-cell" style="flex:1;min-width:200px" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
+  <div class="feed-cell" style="width:88px;flex-shrink:0" ${colStyle}>${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
       <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
