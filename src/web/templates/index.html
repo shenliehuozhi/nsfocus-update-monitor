@@ -927,7 +927,7 @@ function dataRenderRight() {
       <td>
         <div class="data-right-actions" onclick="event.stopPropagation()">
           <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-          <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
+          <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
         </div>
       </td>
     </tr>`;
@@ -956,6 +956,7 @@ function dataFeedGoPage(p) {
         if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
         if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
       }
+      if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
       const k = (s.version_branch || '?') + '|' + (s.package_type || '?');
       if (!byKey[k]) { byKey[k] = 0; }
       byKey[k]++;
