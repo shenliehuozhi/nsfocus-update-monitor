@@ -3586,11 +3586,14 @@ function showCollectProgress(){
 }
 function closeCollectModal(){
   const m=document.getElementById('collectModal');if(m)m.remove();
-  // Keep timer running so progress continues in background
+  // Stop the progress poll timer — collection continues in backend
+  if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
 }
 function pollProgress(){
   const body=document.getElementById('collectModalBody');
-  if(!body)return; // Modal closed, but keep polling for background state
+  if(!body)return; // Modal closed, stop polling
+  // Guard: if no collection is running on backend, clear timer and skip request
+  if(!_collectRunning){if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}return;}
   api('/system/collect/progress').then(pr=>{
     if(!pr.data){if(body)body.innerHTML='<p style="text-align:center;color:var(--muted)">无法获取进度</p>';return;}
     const p=pr.data.progress||{};
