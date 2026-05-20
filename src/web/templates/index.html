@@ -27,7 +27,7 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',san
 .stat .num{font-size:26px;font-weight:800;color:var(--header);line-height:1.2}
 .stat .label{font-size:11px;color:var(--muted);margin-top:2px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
 .stat.green .num{color:var(--success)}.stat.red .num{color:var(--danger)}
-table{width:100%;border-collapse:collapse;font-size:13px}
+table{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
 th{text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--muted);background:#f8fafc;border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.4px}
 td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 tr:hover td{background:#fafbfc}
@@ -148,10 +148,9 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-rpager{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px}
 .data-prod-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.15)}
 tr[data-sid]{cursor:pointer}
-tr[data-sid]:hover{filter:brightness(.97)}
 .data-detail-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;padding:12px 16px;align-items:start}
 .data-detail-k{color:var(--muted);font-weight:600;white-space:nowrap}
-.data-desc-box{grid-column:1/-1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-top:4px;max-height:150px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;font-size:12px;color:#555}
+.data-desc-box{grid-column:1/-1;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;margin-top:4px;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:#555}
 .tree-node-selected{background:#b8ccff!important;border-radius:4px;box-shadow:0 0 0 2px rgba(67,97,238,.25)}
 .card-selected{background:#dce5ff!important;border-color:#4a6fff!important;box-shadow:0 0 0 3px rgba(67,97,238,.2),0 3px 12px rgba(67,97,238,.15)}
 .tree-children{display:none}
@@ -921,7 +920,7 @@ function dataRenderRight() {
       else if (days <= 365) freshBadge = '<span class="badge badge-warn" style="font-size:10px">低频</span>';
       else freshBadge = '<span class="badge badge-grey" style="font-size:10px">沉寂</span>';
     }
-    html += `<tr class="${rowClass}" onclick="dataRightToggleRow(this)" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}" data-snap-id="${r.id}">`;
+    html += `<tr class="${rowClass}" onclick="dataRightToggleRow(this)" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}" data-snap-id="${r.id}">
       <td><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></td>
       <td>${freshBadge}</td>
       <td style="font-size:12.5px">${r._srcName}</td>
@@ -1016,7 +1015,6 @@ function dataRightToggleRow(rowEl) {
   const snaps = src.snapshots || [];
   const snap = snaps.find(s => s.id === snapId);
   if (!snap) return;
-  console.log('[toggle] find snap:', (performance.now() - t0).toFixed(1), 'ms, paths count:', (src.package_type?.paths || []).length, 'snapshots:', snaps.length);
 
   // Build chain display from source paths by matching source_url.
   // Each intermediate node gets a URL if we can find a leaf under it.
@@ -1085,7 +1083,6 @@ function dataRightToggleRow(rowEl) {
       return escHtml(name);
     }).join(' <span style="color:#94a3b8">›</span> ');
   }
-  console.log('[toggle] chainBuild:', (performance.now() - t0).toFixed(1), 'ms');
 
   rowEl.classList.add('data-row-expanded');
 
@@ -1102,14 +1099,13 @@ function dataRightToggleRow(rowEl) {
     <span class="data-detail-k">下载地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}" target="_blank" style="color:#0e9f6e">下载升级包</a></span>
     <span class="data-detail-k">发布地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com' + (snap.source_url || '')}" target="_blank" style="color:var(--primary)">${'https://update.nsfocus.com' + (snap.source_url || '')}</a></span>
     <span class="data-detail-k">MD5</span><span style="font-size:12.5px">${snap.md5_hash || snap.md5 || '—'}</span>
-    <span class="data-detail-k">页面哈希</span><span style="font-size:12.5px;word-break:break-all">${escHtml(snap.page_hash || '')}</span>
+    <span class="data-detail-k">页面哈希</span><span style="font-size:12.5px;word-break:normal;overflow-x:auto">${escHtml(snap.page_hash || '')}</span>
     ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span style="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
     ${snap.restart_required ? '<span class="data-detail-k">需重启</span><span style="font-size:12.5px">⚠️ 需要重启设备</span>' : ''}
     ${snap.description_raw ? `<span class="data-detail-k">描述</span><div class="data-desc-box">${escHtml(snap.description_raw || '')}</div>` : ''}
   </div>
   </td></tr>`;
   rowEl.insertAdjacentHTML('afterend', detailHtml);
-  console.log('[toggle] insertAdjacentHTML:', (performance.now() - t0).toFixed(1), 'ms');
 }
 
 function dataRightGoto(sid, chainJson) {
