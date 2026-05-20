@@ -145,6 +145,8 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-right-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
+.detail-close-btn{grid-column:1/-1;cursor:pointer;font-size:12px;color:var(--muted);text-align:right;margin-bottom:4px;padding:2px 0}
+.detail-close-btn:hover{color:var(--danger)}
 .data-rpager{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px}
 .data-prod-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.15)}
 tr[data-sid]{cursor:pointer}
@@ -903,6 +905,7 @@ function dataRenderRight() {
   let html = `<div class="data-right-hd">📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}</div>
   <table style="width:100%;table-layout:fixed">
     <thead><tr>
+      <th style="width:24px"></th>
       <th style="width:80px">包类型</th><th style="width:60px">状态</th><th style="width:120px">产品名</th><th style="width:120px">版本</th><th style="min-width:120px;max-width:240px">文件名</th><th style="width:100px">发布时间</th><th style="width:120px;white-space:nowrap">操作</th>
     </tr></thead>
     <tbody>`;
@@ -920,7 +923,8 @@ function dataRenderRight() {
       else if (days <= 365) freshBadge = '<span class="badge badge-warn" style="font-size:10px">低频</span>';
       else freshBadge = '<span class="badge badge-grey" style="font-size:10px">沉寂</span>';
     }
-    html += `<tr class="${rowClass}" onclick="dataRightToggleRow(this)" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}" data-snap-id="${r.id}">
+    html += `<tr class="${rowClass}" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}" data-snap-id="${r.id}">
+      <td style="padding:8px 4px;color:var(--muted);font-size:11px;text-align:center;cursor:pointer" class="row-arrow" onclick="dataRightToggleRow(this.parentElement)">▶</td>
       <td><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></td>
       <td>${freshBadge}</td>
       <td style="font-size:12.5px">${r._srcName}</td>
@@ -995,13 +999,20 @@ function dataRightToggleRow(rowEl) {
   // fallback to parent query only if structure is unexpected.
   const existingDetail = rowEl.nextElementSibling;
   if (existingDetail && existingDetail.classList && existingDetail.classList.contains('data-right-detail')) {
+    // Also reset arrow on the row being collapsed
+    const prevArrow = rowEl.querySelector('.row-arrow');
+    if (prevArrow) prevArrow.textContent = '▶';
     existingDetail.remove();
   } else {
     rowEl.parentElement.querySelectorAll('.data-right-detail').forEach(d => d.remove());
+    // Reset all arrows
+    rowEl.parentElement.querySelectorAll('.row-arrow').forEach(a => a.textContent = '▶');
   }
 
   if (rowEl.classList.contains('data-row-expanded')) {
     rowEl.classList.remove('data-row-expanded');
+    const arrow = rowEl.querySelector('.row-arrow');
+    if (arrow) arrow.textContent = '▶';
     return;
   }
 
@@ -1085,9 +1096,12 @@ function dataRightToggleRow(rowEl) {
   }
 
   rowEl.classList.add('data-row-expanded');
+  const arrow = rowEl.querySelector('.row-arrow');
+  if (arrow) arrow.textContent = '▼';
 
-  const detailHtml = `<tr class="data-right-detail"><td colspan="6" style="padding:0">
+  const detailHtml = `<tr class="data-right-detail"><td colspan="7" style="padding:0">
   <div class="data-detail-grid">
+    <span class="detail-close-btn" onclick="this.closest('.data-right-detail').previousElementSibling.querySelector('.row-arrow').click()">✕ 收起</span>
     <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
     <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || '')}</span>
     <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
