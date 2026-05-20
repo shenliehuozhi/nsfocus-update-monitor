@@ -945,16 +945,18 @@ function dataRenderRight(sch, p, info) {
   if (!sch) sch = {};
   if (!p) p = {};
   if (!info) info = {};
+  // sch may be undefined when called from dataSearch/dataToggleFilter without args — fallback to cached _lastScheduler
+  const _sch = sch || _lastScheduler || {};
   const mode_label = { quick: '⚡Quick', full: '🔍Full', '': '' };
   const {
-    lastText = sch.last_run ? fmtTZ(sch.last_run, true) : '—',
-    nextText = sch.last_run ? (() => {
-      const d = new Date(sch.last_run + 'Z');
-      d.setUTCHours(d.getUTCHours() + (sch.interval_hours || 24));
+    lastText = _sch.last_run ? fmtTZ(_sch.last_run, true) : '—',
+    nextText = _sch.last_run ? (() => {
+      const d = new Date(_sch.last_run + 'Z');
+      d.setUTCHours(d.getUTCHours() + (_sch.interval_hours || 24));
       return fmtTZ(d.toISOString().substring(0, 19), true);
     })() : '—',
-    isRunning = !!sch.is_running,
-    curMode = mode_label[sch.current_mode] || '',
+    isRunning = !!_sch.is_running,
+    curMode = mode_label[_sch.current_mode] || '',
     progressHtml = ''
   } = info;
   const { rows, MAP } = dataBuildFeed();
