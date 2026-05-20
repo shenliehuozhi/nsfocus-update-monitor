@@ -145,8 +145,18 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-right-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
-.detail-close-btn{grid-column:1/-1;cursor:pointer;font-size:12px;color:var(--muted);text-align:right;margin-bottom:4px;padding:2px 0}
+.feed-list{display:block;width:100%}
+.feed-row{display:flex;align-items:center;border-bottom:1px solid #f1f3f5;padding:0;min-height:38px;background:#fff}
+.feed-row.rollback{background:rgba(229,72,77,0.04)}
+.feed-row.new{background:rgba(59,130,246,0.04)}
+.feed-cell{flex-shrink:0;font-size:12px;padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.feed-arrow{width:24px;text-align:center;color:var(--muted);cursor:pointer;font-size:11px;flex-shrink:0;padding:6px 4px}
+.feed-row:hover{background:#fafbfc}
+.feed-detail{background:#fafdf7;border-bottom:2px solid var(--border);padding:8px 12px 12px}
+.detail-inner{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:start}
+.detail-close-btn{grid-column:1/-1;cursor:pointer;font-size:12px;color:var(--muted);text-align:right;margin-bottom:4px}
 .detail-close-btn:hover{color:var(--danger)}
+.data-detail-k{color:var(--muted);font-weight:600;white-space:nowrap}
 .data-rpager{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px}
 .data-prod-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.15)}
 tr[data-sid]{cursor:pointer}
@@ -773,12 +783,9 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
   // If leaf node with snaps, auto-expand the corresponding row(s) in right panel
   if (isLeaf && snapIds.length > 0) {
     setTimeout(() => {
-      const tbody = document.querySelector('#dataRight tbody');
-      if (!tbody) return;
       snapIds.forEach(id => {
-        // Direct O(1) lookup via data-snap-id attribute (added during feed render)
-        const row = tbody.querySelector('tr[data-snap-id="' + String(id) + '"]');
-        if (row) dataRightToggleRow(row);
+        const row = document.getElementById('fr_' + String(id));
+        if (row) dataRightToggleRow('fr_' + String(id));
       });
     }, 30);
   }
@@ -864,23 +871,13 @@ function dataRenderRight() {
   const start = (page - 1) * FEED_PAGE_SIZE;
   const pageSlice = rows.slice(start, start + FEED_PAGE_SIZE);
 
-  // TODO: header path links not yet functional for intermediate nodes
-  // _chainToUrlMap only contains leaf-node keys (4-level chains like "产品/父/子/叶子")
-  // header renders intermediate nodes (2-3 levels), so map lookup always returns undefined
-  // Fix: propagate leaf URLs up to all ancestor chain keys when building _chainToUrlMap
-  // Alternatively: use _dataSelectedUrl directly (already set to leaf URL on tree node click)
-  // but header needs per-segment URLs, not just the leaf URL
-  // For now: data-hd-path-seg renders as <span> when no URL found (same visual as non-link text)
-  // Build clickable path segments from chain
-  // _chainToUrlMap is built in dataTreeNodeClick: key = sid + '|' + chain.join('/')
   const src = _dataSelectedSid ? (_dataAll[_dataSelectedSid] || {}) : null;
   const srcName = src ? (src.display_name || src.name || '') : '';
   const hasFilter = !!_dataSelectedSid;
   let hdPathHtml = '';
   if (srcName && _dataSelectedChain && _dataSelectedChain.length > 0) {
-    const chainParts = _dataSelectedChain.slice(1); // skip product name
+    const chainParts = _dataSelectedChain.slice(1);
     chainParts.forEach((segment, i) => {
-      // segChain = [product, segment1, ..., currentSegment]
       const segChain = _dataSelectedChain.slice(0, i + 2);
       const mapKey = _dataSelectedSid + '|' + segChain.join('/');
       const segUrl = _chainToUrlMap[mapKey] || '';
@@ -902,15 +899,11 @@ function dataRenderRight() {
     return;
   }
 
+  const colStyle = 'style="font-size:12px;padding:6px 8px;border-bottom:1px solid #f1f3f5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
   let html = `<div class="data-right-hd">📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}</div>
-  <table style="width:100%;table-layout:fixed">
-    <thead><tr>
-      <th style="width:24px"></th>
-      <th style="width:80px">包类型</th><th style="width:60px">状态</th><th style="width:120px">产品名</th><th style="width:120px">版本</th><th style="min-width:120px;max-width:240px">文件名</th><th style="width:100px">发布时间</th><th style="width:120px;white-space:nowrap">操作</th>
-    </tr></thead>
-    <tbody>`;
+  <div class="feed-list">`;
 
-  rows.forEach(r => {
+  pageSlice.forEach(r => {
     const typeLabel = MAP[r.package_type] || r.package_type || '';
     const isNew = r.status === 'active' && !r.last_delivered_at;
     const isRb = r.status === 'rollback';
@@ -923,24 +916,25 @@ function dataRenderRight() {
       else if (days <= 365) freshBadge = '<span class="badge badge-warn" style="font-size:10px">低频</span>';
       else freshBadge = '<span class="badge badge-grey" style="font-size:10px">沉寂</span>';
     }
-    html += `<tr class="${rowClass}" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}" data-snap-id="${r.id}">
-      <td style="padding:8px 4px;color:var(--muted);font-size:11px;text-align:center;cursor:pointer" class="row-arrow" onclick="dataRightToggleRow(this.parentElement)">▶</td>
-      <td><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></td>
-      <td>${freshBadge}</td>
-      <td style="font-size:12.5px">${r._srcName}</td>
-      <td style="font-size:12px;color:var(--primary)">${r.package_version || r.version_branch || ''}</td>
-      <td style="font-size:12px;min-width:0;max-width:200px;word-break:break-all;word-wrap:break-word;overflow:visible" title="${escHtml(r.file_name || '')}">${r.file_name || ''}</td>
-      <td style="font-size:12px;color:var(--muted)">${fmtTZ(r.published_at, true)}</td>
-      <td>
-        <div class="data-right-actions" onclick="event.stopPropagation()">
-          <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-          <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
-        </div>
-      </td>
-    </tr>`;
+    const rid = 'fr_' + r.id;
+    html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
+  <div class="feed-cell feed-arrow" onclick="dataRightToggleRow('${rid}')">▶</div>
+  <div class="feed-cell" style="width:80px" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></div>
+  <div class="feed-cell" style="width:60px" ${colStyle}>${freshBadge}</div>
+  <div class="feed-cell" style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
+  <div class="feed-cell" style="width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--primary)" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
+  <div class="feed-cell" style="min-width:120px;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
+  <div class="feed-cell" style="width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)">${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell" style="width:120px;white-space:nowrap">
+    <div class="data-right-actions" onclick="event.stopPropagation()">
+      <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
+      <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
+    </div>
+  </div>
+</div>`;
   });
 
-  html += '</tbody></table>';
+  html += '</div>';
   document.getElementById('dataRight').innerHTML = html;
   _dataRightBuilt = true;
 }
@@ -991,27 +985,24 @@ function dataFeedGoPage(p) {
   dataRenderRight();
 }
 
-function dataRightToggleRow(rowEl) {
-  if (!rowEl || rowEl.tagName !== 'TR') return;
-  const t0 = performance.now();
+function dataRightToggleRow(rowId) {
+  const rowEl = document.getElementById(rowId);
+  if (!rowEl) return;
 
-  // Remove existing detail row: check immediate next sibling first (O(1)),
-  // fallback to parent query only if structure is unexpected.
-  const existingDetail = rowEl.nextElementSibling;
-  if (existingDetail && existingDetail.classList && existingDetail.classList.contains('data-right-detail')) {
-    // Also reset arrow on the row being collapsed
-    const prevArrow = rowEl.querySelector('.row-arrow');
-    if (prevArrow) prevArrow.textContent = '▶';
-    existingDetail.remove();
-  } else {
-    rowEl.parentElement.querySelectorAll('.data-right-detail').forEach(d => d.remove());
-    // Reset all arrows
-    rowEl.parentElement.querySelectorAll('.row-arrow').forEach(a => a.textContent = '▶');
+  // Close any open detail
+  const openDetail = document.querySelector('.feed-detail');
+  if (openDetail) {
+    const prevRow = openDetail.previousElementSibling;
+    if (prevRow && prevRow.classList.contains('feed-row')) {
+      const arrow = prevRow.querySelector('.feed-arrow');
+      if (arrow) arrow.textContent = '▶';
+    }
+    openDetail.remove();
   }
 
-  if (rowEl.classList.contains('data-row-expanded')) {
-    rowEl.classList.remove('data-row-expanded');
-    const arrow = rowEl.querySelector('.row-arrow');
+  if (rowEl.classList.contains('feed-expanded')) {
+    rowEl.classList.remove('feed-expanded');
+    const arrow = rowEl.querySelector('.feed-arrow');
     if (arrow) arrow.textContent = '▶';
     return;
   }
@@ -1027,10 +1018,6 @@ function dataRightToggleRow(rowEl) {
   const snap = snaps.find(s => s.id === snapId);
   if (!snap) return;
 
-  // Build chain display from source paths by matching source_url.
-  // Each intermediate node gets a URL if we can find a leaf under it.
-  // prefixSegCount is cached in _dataChainPrefixCache keyed by sid|chainJoin
-  // to avoid re-computing O(paths) on every toggle click.
   let chainDisplayHtml = '';
   const pt = src.package_type || {};
   const paths = pt.paths || [];
@@ -1042,7 +1029,6 @@ function dataRightToggleRow(rowEl) {
     const cacheKey = sid + '|' + chain.join('/');
 
     if (!_dataChainPrefixCache[cacheKey]) {
-      // Compute prefixSegCount and cache it
       const prefixSegCount = new Array(chain.length).fill(null);
       paths.forEach(p => {
         if (!p.url || !p.chain) return;
@@ -1070,7 +1056,6 @@ function dataRightToggleRow(rowEl) {
     const prefixSegCount = _dataChainPrefixCache[cacheKey];
 
     function findNodeUrl(depth) {
-      // depth=0 -> product level -> entry_url
       if (depth === 0) return entryUrl;
       const idx = depth - 1;
       if (idx >= prefixSegCount.length || prefixSegCount[idx] === null) return entryUrl;
@@ -1095,13 +1080,13 @@ function dataRightToggleRow(rowEl) {
     }).join(' <span style="color:#94a3b8">›</span> ');
   }
 
-  rowEl.classList.add('data-row-expanded');
-  const arrow = rowEl.querySelector('.row-arrow');
+  rowEl.classList.add('feed-expanded');
+  const arrow = rowEl.querySelector('.feed-arrow');
   if (arrow) arrow.textContent = '▼';
 
-  const detailHtml = `<tr class="data-right-detail"><td colspan="7" style="padding:0">
-  <div class="data-detail-grid">
-    <span class="detail-close-btn" onclick="this.closest('.data-right-detail').previousElementSibling.querySelector('.row-arrow').click()">✕ 收起</span>
+  const detailHtml = `<div class="feed-detail">
+  <div class="detail-inner">
+    <div class="detail-close-btn" onclick="this.closest('.feed-detail').previousElementSibling.querySelector('.feed-arrow').click()">✕ 收起</div>
     <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
     <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || '')}</span>
     <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
@@ -1118,7 +1103,7 @@ function dataRightToggleRow(rowEl) {
     ${snap.restart_required ? '<span class="data-detail-k">需重启</span><span style="font-size:12.5px">⚠️ 需要重启设备</span>' : ''}
     ${snap.description_raw ? `<span class="data-detail-k">描述</span><div class="data-desc-box">${escHtml(snap.description_raw || '')}</div>` : ''}
   </div>
-  </td></tr>`;
+  </div>`;
   rowEl.insertAdjacentHTML('afterend', detailHtml);
 }
 
