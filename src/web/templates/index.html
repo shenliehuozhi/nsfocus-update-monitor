@@ -303,6 +303,12 @@ let _dataFilters = { has_new: false, has_rb: false, empty: false };
 let _dataExpanded = new Set();
 let _dataPage = 1;
 let _dataAll = {};
+// Chain prefix cache: keyed by 'sid|chain.join("/")', value = precomputed prefixSegCount[]
+// Eliminates repeated O(paths) traversal in dataRightToggleRow
+let _dataChainPrefixCache = {};
+// Per-source URL→chain map: keyed by sid, value = { normalizedUrl: chain }
+// Built once in dataPage() after _dataAll loads, reused by dataBuildFeed every render
+let _srcUrlChainMap = {};
 
 async function dataPage() {
   _dataExpanded.clear();
@@ -318,6 +324,21 @@ async function dataPage() {
   ]);
   _dataAll = r.data || {};
   _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.feed_pkg_limit) || 3);
+  // Build _srcUrlChainMap once: URL→chain lookup per source
+  // Also clear chain prefix cache since _dataAll changed
+  _srcUrlChainMap = {};
+  _dataChainPrefixCache = {};
+  Object.entries(_dataAll).forEach(([sid, src]) => {
+    if (!src.package_type?.paths) return;
+    const map = {};
+    src.package_type.paths.forEach(p => {
+      if (p.url && Array.isArray(p.chain) && p.chain.length > 0) {
+        const norm = ('/' + p.url).replace(/\/+$/, '');
+        map[norm] = p.chain;
+      }
+    });
+    _srcUrlChainMap[sid] = map;
+  });
 
   const sR = await fetch(API + '/settings/scheduler', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({}));
   const sch = sR.data || {};
@@ -754,19 +775,9 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
       const tbody = document.querySelector('#dataRight tbody');
       if (!tbody) return;
       snapIds.forEach(id => {
-        // Find the row in #dataRight by data-sid + snapshot id
-        const snap = (_dataAll[sid]?.snapshots || []).find(s => String(s.id) === String(id));
-        if (!snap) return;
-        const rows = tbody.querySelectorAll('tr[data-sid][data-ver][data-pkgtype]');
-        rows.forEach(row => {
-          if (
-            row.dataset.sid === String(sid) &&
-            row.dataset.ver === (snap.version_branch || '') &&
-            row.dataset.pkgtype === (snap.package_type || '')
-          ) {
-            dataRightToggleRow(row);
-          }
-        });
+        // Direct O(1) lookup via data-snap-id attribute (added during feed render)
+        const row = tbody.querySelector('tr[data-snap-id="' + String(id) + '"]');
+        if (row) dataRightToggleRow(row);
       });
     }, 30);
   }
@@ -802,15 +813,8 @@ function dataBuildFeed() {
   sources.forEach(([sid, src]) => {
     const snaps = src.snapshots || [];
     const byKey = {};
-    // Build source_url -> chain lookup from package_type paths for accurate tree-node matching
-    const urlChainMap = {};
-    (src.package_type?.paths || []).forEach(p => {
-      if (p.url && Array.isArray(p.chain) && p.chain.length > 0) {
-        // Normalize URL: strip trailing slash, ensure leading /
-        const norm = ('/' + p.url).replace(/\/+$/, '');
-        urlChainMap[norm] = p.chain;
-      }
-    });
+    // Use cached urlChainMap from _srcUrlChainMap (built once in dataPage)
+    const urlChainMap = _srcUrlChainMap[sid] || {};
 
     snaps.forEach(s => {
       // Filter by exact URL when a leaf node is selected
@@ -917,7 +921,7 @@ function dataRenderRight() {
       else if (days <= 365) freshBadge = '<span class="badge badge-warn" style="font-size:10px">低频</span>';
       else freshBadge = '<span class="badge badge-grey" style="font-size:10px">沉寂</span>';
     }
-    html += `<tr class="${rowClass}" onclick="dataRightToggleRow(this)" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}">
+    html += `<tr class="${rowClass}" onclick="dataRightToggleRow(this)" data-sid="${escHtml(r._sid)}" data-ver="${escHtml(r.version_branch || '')}" data-pkgtype="${escHtml(r.package_type || '')}" data-url="${escHtml(r.source_url || '')}" data-id="${r.id}" data-snap-id="${r.id}">`;
       <td><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></td>
       <td>${freshBadge}</td>
       <td style="font-size:12.5px">${r._srcName}</td>
@@ -1016,8 +1020,8 @@ function dataRightToggleRow(rowEl) {
 
   // Build chain display from source paths by matching source_url.
   // Each intermediate node gets a URL if we can find a leaf under it.
-  // Pre-compute a prefix map: for each chain prefix (up to depth N), store the
-  // URL segment count so findNodeUrl(depth) is O(1) instead of O(paths × depth).
+  // prefixSegCount is cached in _dataChainPrefixCache keyed by sid|chainJoin
+  // to avoid re-computing O(paths) on every toggle click.
   let chainDisplayHtml = '';
   const pt = src.package_type || {};
   const paths = pt.paths || [];
@@ -1026,34 +1030,35 @@ function dataRightToggleRow(rowEl) {
   if (matchedPath && matchedPath.chain && matchedPath.chain.length > 0) {
     const chain = matchedPath.chain;
     const leafUrl = matchedPath.url || '';
+    const cacheKey = sid + '|' + chain.join('/');
 
-    // Pre-compute: for each chain depth (1..chain.length-1), how many URL segments
-    // does that node consume? We derive this by finding the minimum URL seg count
-    // among all paths that share the chain prefix up to that depth.
-    const prefixSegCount = new Array(chain.length).fill(null);
-    paths.forEach(p => {
-      if (!p.url || !p.chain) return;
-      // How many chain levels does this path share with our target chain?
-      let sharedLen = 0;
-      const minLen = Math.min(p.chain.length, chain.length);
-      for (let i = 0; i < minLen; i++) {
-        if (p.chain[i] === chain[i]) sharedLen++;
-        else break;
-      }
-      if (sharedLen === 0) return;
-      const segs = p.url.split('/').filter(Boolean);
-      const leafDepth = p.chain.length;
-      for (let d = 1; d <= sharedLen; d++) {
-        // segCount for this depth = segs.len - (leafDepth - d)
-        const segCount = segs.length - (leafDepth - d);
-        const effectiveSegs = segCount > 0 ? segCount : 1;
-        if (prefixSegCount[d - 1] === null) {
-          prefixSegCount[d - 1] = effectiveSegs;
-        } else {
-          prefixSegCount[d - 1] = Math.min(prefixSegCount[d - 1], effectiveSegs);
+    if (!_dataChainPrefixCache[cacheKey]) {
+      // Compute prefixSegCount and cache it
+      const prefixSegCount = new Array(chain.length).fill(null);
+      paths.forEach(p => {
+        if (!p.url || !p.chain) return;
+        let sharedLen = 0;
+        const minLen = Math.min(p.chain.length, chain.length);
+        for (let i = 0; i < minLen; i++) {
+          if (p.chain[i] === chain[i]) sharedLen++;
+          else break;
         }
-      }
-    });
+        if (sharedLen === 0) return;
+        const segs = p.url.split('/').filter(Boolean);
+        const leafDepth = p.chain.length;
+        for (let d = 1; d <= sharedLen; d++) {
+          const segCount = segs.length - (leafDepth - d);
+          const effectiveSegs = segCount > 0 ? segCount : 1;
+          if (prefixSegCount[d - 1] === null) {
+            prefixSegCount[d - 1] = effectiveSegs;
+          } else {
+            prefixSegCount[d - 1] = Math.min(prefixSegCount[d - 1], effectiveSegs);
+          }
+        }
+      });
+      _dataChainPrefixCache[cacheKey] = prefixSegCount;
+    }
+    const prefixSegCount = _dataChainPrefixCache[cacheKey];
 
     function findNodeUrl(depth) {
       // depth=0 -> product level -> entry_url
