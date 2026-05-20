@@ -823,10 +823,12 @@ function dataBuildFeed() {
       const k = (s.version_branch || '?') + '|' + (s.package_type || '?');
       if (!byKey[k]) byKey[k] = [];
       byKey[k].push(s);
-      byKey[k].sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
-      // When showing all packages for an intermediate node click, no limit; otherwise keep history limit
+    });
+    // Sort + limit AFTER all snaps are collected (not per push)
+    Object.entries(byKey).forEach(([k, snapList]) => {
+      snapList.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
       if (!isHintClick) {
-        byKey[k] = byKey[k].slice(0, _feedPkgLimit);
+        byKey[k] = snapList.slice(0, _feedPkgLimit);
       }
     });
     Object.values(byKey).forEach(snapList => snapList.forEach(s => {
@@ -937,17 +939,62 @@ function dataRenderRight() {
 }
 
 function dataFeedGoPage(p) {
-  const { rows } = dataBuildFeed();
-  const totalPages = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
+  // Count total rows WITHOUT re-running the full feed build.
+  // We stored byKey counts during the last dataBuildFeed call.
+  // For simplicity, rebuild just the key statistics: count filtered rows per (ver,pkgtype).
+  let totalFiltered = 0;
+  const sources = dataFilteredSources();
+  const selSid = _dataSelectedSid;
+  const selSrc = selSid ? (_dataAll[selSid] || null) : null;
+  const isHintClick = !_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint);
+
+  if (selSrc) {
+    const byKey = {};
+    (selSrc.snapshots || []).forEach(s => {
+      if (_dataSelectedUrl && s.source_url !== _dataSelectedUrl) return;
+      if (isHintClick) {
+        if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
+        if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
+      }
+      const k = (s.version_branch || '?') + '|' + (s.package_type || '?');
+      if (!byKey[k]) { byKey[k] = 0; }
+      byKey[k]++;
+    });
+    if (!isHintClick) {
+      Object.values(byKey).forEach(c => { totalFiltered += Math.min(c, _feedPkgLimit); });
+    } else {
+      totalFiltered = Object.values(byKey).reduce((a, b) => a + b, 0);
+    }
+  } else {
+    sources.forEach(([sid, src]) => {
+      const byKey = {};
+      (src.snapshots || []).forEach(s => {
+        if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
+        const k = (s.version_branch || '?') + '|' + (s.package_type || '?');
+        if (!byKey[k]) byKey[k] = 0;
+        byKey[k]++;
+      });
+      Object.values(byKey).forEach(c => { totalFiltered += Math.min(c, _feedPkgLimit); });
+    });
+  }
+
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / FEED_PAGE_SIZE));
   _dataFeedPage = Math.min(Math.max(1, p), totalPages);
   dataRenderRight();
 }
 
 function dataRightToggleRow(rowEl) {
   if (!rowEl || rowEl.tagName !== 'TR') return;
+  const t0 = performance.now();
 
-  const existingDetails = rowEl.parentElement.querySelectorAll('.data-right-detail');
-  existingDetails.forEach(d => d.remove());
+  // Remove existing detail row: check immediate next sibling first (O(1)),
+  // fallback to parent query only if structure is unexpected.
+  const existingDetail = rowEl.nextElementSibling;
+  if (existingDetail && existingDetail.classList && existingDetail.classList.contains('data-right-detail')) {
+    existingDetail.remove();
+  } else {
+    rowEl.parentElement.querySelectorAll('.data-right-detail').forEach(d => d.remove());
+  }
 
   if (rowEl.classList.contains('data-row-expanded')) {
     rowEl.classList.remove('data-row-expanded');
@@ -962,14 +1009,14 @@ function dataRightToggleRow(rowEl) {
   const src = _dataAll[sid];
   if (!src) return;
   const snaps = src.snapshots || [];
-  // Use snapshot id for exact match — version+pkgType or source_url may have multiple records
   const snap = snaps.find(s => s.id === snapId);
   if (!snap) return;
+  console.log('[toggle] find snap:', (performance.now() - t0).toFixed(1), 'ms, paths count:', (src.package_type?.paths || []).length, 'snapshots:', snaps.length);
 
   // Build chain display from source paths by matching source_url.
   // Each intermediate node gets a URL if we can find a leaf under it.
-  // Algorithm: if two leaves share a URL prefix up to path segment N,
-  // that prefix IS the intermediate node's URL.
+  // Pre-compute a prefix map: for each chain prefix (up to depth N), store the
+  // URL segment count so findNodeUrl(depth) is O(1) instead of O(paths × depth).
   let chainDisplayHtml = '';
   const pt = src.package_type || {};
   const paths = pt.paths || [];
@@ -979,50 +1026,43 @@ function dataRightToggleRow(rowEl) {
     const chain = matchedPath.chain;
     const leafUrl = matchedPath.url || '';
 
-    // Build a map: for each depth level, collect all URL prefixes at that level
-    // from ALL paths that share the same prefix up to (but not including) this depth.
-    // Then the URL for chain[i] = longest common prefix of all leaf URLs under it.
-    // We approximate by finding any OTHER path that has the SAME prefix
-    // up to chain[i+1]'s URL segment.
+    // Pre-compute: for each chain depth (1..chain.length-1), how many URL segments
+    // does that node consume? We derive this by finding the minimum URL seg count
+    // among all paths that share the chain prefix up to that depth.
+    const prefixSegCount = new Array(chain.length).fill(null);
+    paths.forEach(p => {
+      if (!p.url || !p.chain) return;
+      // How many chain levels does this path share with our target chain?
+      let sharedLen = 0;
+      const minLen = Math.min(p.chain.length, chain.length);
+      for (let i = 0; i < minLen; i++) {
+        if (p.chain[i] === chain[i]) sharedLen++;
+        else break;
+      }
+      if (sharedLen === 0) return;
+      const segs = p.url.split('/').filter(Boolean);
+      const leafDepth = p.chain.length;
+      for (let d = 1; d <= sharedLen; d++) {
+        // segCount for this depth = segs.len - (leafDepth - d)
+        const segCount = segs.length - (leafDepth - d);
+        const effectiveSegs = segCount > 0 ? segCount : 1;
+        if (prefixSegCount[d - 1] === null) {
+          prefixSegCount[d - 1] = effectiveSegs;
+        } else {
+          prefixSegCount[d - 1] = Math.min(prefixSegCount[d - 1], effectiveSegs);
+        }
+      }
+    });
+
     function findNodeUrl(depth) {
       // depth=0 -> product level -> entry_url
       if (depth === 0) return entryUrl;
-
-      // Build prefixes at each depth from all paths
-      // chain[depth-1] corresponds to a page reached from chain[depth-2]'s page
-      // We need: URL prefix that leads to chain[depth-1]
-      // Strategy: for each other path, check if its chain matches ours up to depth-1
-      // If so, use its URL at the divergence point as a reference.
-      // Simplified heuristic: find any path where the first (depth) chain elements
-      // match ours, then take the URL of the leaf (or an intermediate URL derived similarly).
-      // Since we don't store intermediate URLs explicitly, use the entry_url + the
-      // source_url of a snapshot whose chain matches up to [depth].
-      for (const p of paths) {
-        if (!p.url || !p.chain) continue;
-        // Does this path share our chain prefix up to (but not including) depth?
-        if (p.chain.length <= depth) continue;
-        let match = true;
-        for (let k = 0; k < depth; k++) {
-          if (p.chain[k] !== chain[k]) { match = false; break; }
-        }
-        if (!match) continue;
-        // This path diverges at position 'depth' (or is the same leaf).
-        // Its URL is the leaf URL. We need an intermediate URL.
-        // Use its source_url as the best approximation for the intermediate node.
-        // The leaf URL contains the full path; for intermediate we take its parent dir.
-        const otherUrl = p.url;
-        const segs = otherUrl.split('/').filter(Boolean);
-        // leaf: segs = [list.asp?...], [type?proid=...], [子分类], [版本], [包类型]]
-        // We need URL of chain[depth-1], which corresponds to segs slice up to (segs.length - (p.chain.length - depth))
-        const leafDepth = p.chain.length;
-        const targetDepth = depth;
-        const segCount = segs.length - (leafDepth - targetDepth);
-        if (segCount > 0) {
-          return '/' + segs.slice(0, segCount).join('/');
-        }
-        return otherUrl;
-      }
-      return entryUrl;
+      const idx = depth - 1;
+      if (idx >= prefixSegCount.length || prefixSegCount[idx] === null) return entryUrl;
+      const segCount = prefixSegCount[idx];
+      const segs = leafUrl.split('/').filter(Boolean);
+      const base = '/' + segs.slice(0, segCount).join('/');
+      return base || entryUrl;
     }
 
     chainDisplayHtml = chain.map((name, i) => {
@@ -1031,7 +1071,6 @@ function dataRightToggleRow(rowEl) {
         const fullUrl = 'https://update.nsfocus.com' + leafUrl;
         return `<a href="${escHtml(fullUrl)}" target="_blank" style="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
       }
-      // Try to find a URL for this intermediate node
       const nodeUrl = findNodeUrl(i + 1);
       const fullNodeUrl = nodeUrl ? ('https://update.nsfocus.com' + nodeUrl) : '';
       if (fullNodeUrl && nodeUrl !== entryUrl) {
@@ -1040,6 +1079,7 @@ function dataRightToggleRow(rowEl) {
       return escHtml(name);
     }).join(' <span style="color:#94a3b8">›</span> ');
   }
+  console.log('[toggle] chainBuild:', (performance.now() - t0).toFixed(1), 'ms');
 
   rowEl.classList.add('data-row-expanded');
 
@@ -1063,6 +1103,7 @@ function dataRightToggleRow(rowEl) {
   </div>
   </td></tr>`;
   rowEl.insertAdjacentHTML('afterend', detailHtml);
+  console.log('[toggle] insertAdjacentHTML:', (performance.now() - t0).toFixed(1), 'ms');
 }
 
 function dataRightGoto(sid, chainJson) {
