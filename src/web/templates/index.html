@@ -1897,69 +1897,22 @@ async function customers(){
   let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.warranty_start||''} ~ ${c.warranty_end||''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}','${c.warranty_start||''}','${c.warranty_end||''}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>维保</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
-function addCProd(p,v){
-  // 全部产品模式：禁止新增行
-  if(document.getElementById('callBanner')&&!document.getElementById('callBanner').classList.contains('hidden')){
-    toast('已选择全部产品，无需添加明细产品','warn');return;
-  }
+function addCProd(p){
   let c=document.getElementById('cprods');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
-  d.innerHTML=`<select class="cp2" style="flex:1;min-width:0" onchange="onProdSelect(this)">${custProdOpts}</select><select class="cv2" style="flex:1;min-width:0"><option value="">全部版本</option></select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
+  d.innerHTML=`<select class="cp2" style="flex:1;min-width:0">${custProdOpts}</select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
   c.appendChild(d);
   if(p){
-    setTimeout(()=>{d.querySelector('.cp2').value=p;onProdSelect(d.querySelector('.cp2'));},80);
-    setTimeout(()=>{if(v)d.querySelector('.cv2').value=v;},300);
-  }else{
-    setTimeout(()=>{const sel=d.querySelector('.cp2');loadCV2(sel);onProdSelect(sel);},50);
+    setTimeout(()=>{d.querySelector('.cp2').value=p;},80);
   }
 }
-
-function onProdSelect(sel){
-  const banner=document.getElementById('callBanner');
-  const btn=document.getElementById('addCProdBtn');
-  const row=sel.closest('div');
-  const ver=row.querySelector('.cv2');
-  if(!sel.value){
-    // 选了"全部产品"：清空版本、隐藏版本选择、显示banner、禁用添加
-    if(ver)ver.style.visibility='hidden';
-    if(banner){banner.classList.remove('hidden');banner.style.display='';}
-    if(btn)btn.disabled=true;
-    // 清空其他行
-    document.querySelectorAll('#cprods > div').forEach(r=>{
-      if(r!==row){r.remove();}
-    });
-  }else{
-    // 选了具体产品：恢复版本选择、隐藏banner、启用添加
-    if(ver)ver.style.visibility='';
-    if(banner){banner.classList.add('hidden');banner.style.display='none';}
-    if(btn)btn.disabled=false;
-    setTimeout(()=>loadCV2(sel),50);
-  }
-}
-
-function removeCProd(btn){
-  btn.parentElement.remove();
-  // 如果还有行的产品值是空的，也要同步banner状态
-  const anyEmpty=[...document.querySelectorAll('#cprods .cp2')].some(s=>!s.value);
-  const banner=document.getElementById('callBanner');
-  const addBtn=document.getElementById('addCProdBtn');
-  if(anyEmpty){
-    if(banner){banner.classList.remove('hidden');banner.style.display='';}
-    if(addBtn)addBtn.disabled=true;
-  }else{
-    if(banner){banner.classList.add('hidden');banner.style.display='none';}
-    if(addBtn)addBtn.disabled=false;
-  }
-}
-
-async function loadCV2(s){let p=s.value,vs=s.parentElement.querySelector('.cv2');vs.innerHTML='<option value="">加载...</option>';let r=await api('/options/versions?product='+encodeURIComponent(p)).catch(()=>({data:[]}));vs.innerHTML='<option value="">全部版本</option>'+(r.data||[]).map(v=>`<option>${v}</option>`).join('');}
 
 function openCModal(id,n,co,em,ph,pr,ws,we){
   let modal=document.createElement('div');
   modal.id='cModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>维保开始</label><input id="cws" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>维保截止</label><input id="cwe" type="date" onclick="this.showPicker()" style="min-width:140px"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><div id="callBanner" class="hidden" style="background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:8px 10px;font-size:12px;color:#92400e;margin-bottom:6px">✓ 已选择全部产品，无需添加明细产品</div><button class="btn btn-xs btn-outline mt8" id="addCProdBtn" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>维保开始</label><input id="cws" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>维保截止</label><input id="cwe" type="date" onclick="this.showPicker()" style="min-width:140px"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
   document.getElementById('cid').value=id||'';
   document.getElementById('cnm').value=n||'';
@@ -1970,10 +1923,9 @@ function openCModal(id,n,co,em,ph,pr,ws,we){
   document.getElementById('cwe').value=we||'';
   document.getElementById('cprods').innerHTML='';
   if(pr){
-    (pr||'').split('|').filter(Boolean).forEach(x=>{let[p,v]=x.split(':');addCProd(p||'',v||'');});
+    (pr||'').split('|').filter(Boolean).forEach(x=>{let[p]=x.split(':');addCProd(p||'');});
     setTimeout(()=>addCProd(),50);
   }else{
-    // 空产品（全部产品）：加一行触发banner状态
     setTimeout(()=>addCProd(),50);
   }
 }
@@ -1986,7 +1938,7 @@ async function saveC(){
   if(!cm)return toast('公司必填','error');
   if(!em)return toast('邮箱必填','error');
   if(!/^[^@]+@[^@]+$/.test(em))return toast('邮箱格式错误','error');
-  let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value,v=r.querySelector('.cv2')?.value;if(p)prods.push(v?esc(p)+':'+esc(v):esc(p));});
+  let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value;if(p)prods.push(esc(p));});
   const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),warranty_start:ws,warranty_end:we,owned_products:prods};
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('cModalWrap')?.remove();}else toast(r.message,'error');
