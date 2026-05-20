@@ -900,7 +900,7 @@ function dataRenderRight() {
   let html = `<div class="data-right-hd">📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}</div>
   <table style="width:100%;table-layout:fixed">
     <thead><tr>
-      <th style="width:80px">包类型</th><th style="width:60px">状态</th><th style="width:120px">产品名</th><th style="width:120px">版本</th><th style="width:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">文件名</th><th style="width:100px">发布时间</th><th style="width:120px;white-space:nowrap">操作</th>
+      <th style="width:80px">包类型</th><th style="width:60px">状态</th><th style="width:120px">产品名</th><th style="width:120px">版本</th><th style="min-width:120px;max-width:240px">文件名</th><th style="width:100px">发布时间</th><th style="width:120px;white-space:nowrap">操作</th>
     </tr></thead>
     <tbody>`;
 
@@ -921,8 +921,8 @@ function dataRenderRight() {
       <td><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></td>
       <td>${freshBadge}</td>
       <td style="font-size:12.5px">${r._srcName}</td>
-      <td style="font-size:12px;color:var(--primary)">${r.version_branch || ''}</td>
-      <td style="font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${r.file_name || ''}</td>
+      <td style="font-size:12px;color:var(--primary)">${r.package_version || r.version_branch || ''}</td>
+      <td style="font-size:12px;min-width:0;max-width:200px;word-break:break-all;word-wrap:break-word;overflow:visible" title="${escHtml(r.file_name || '')}">${r.file_name || ''}</td>
       <td style="font-size:12px;color:var(--muted)">${fmtTZ(r.published_at, true)}</td>
       <td>
         <div class="data-right-actions" onclick="event.stopPropagation()">
