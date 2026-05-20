@@ -1910,7 +1910,7 @@ function addCProd(p,v){
     setTimeout(()=>{d.querySelector('.cp2').value=p;onProdSelect(d.querySelector('.cp2'));},80);
     setTimeout(()=>{if(v)d.querySelector('.cv2').value=v;},300);
   }else{
-    setTimeout(()=>loadCV2(d.querySelector('.cp2')),50);
+    setTimeout(()=>{const sel=d.querySelector('.cp2');loadCV2(sel);onProdSelect(sel);},50);
   }
 }
 
