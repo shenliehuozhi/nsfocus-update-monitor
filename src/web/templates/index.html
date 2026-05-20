@@ -1024,7 +1024,7 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">产品名称</div>
   <div class="feed-cell" style="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px">版本</div>
   <div class="feed-cell" style="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600">文件</div>
-  <div class="feed-cell" style="width:88px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">发布时间</div>
+  <div class="feed-cell" style="width:100px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">发布时间</div>
   <div class="feed-cell" style="width:136px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
 </div>`;
 
@@ -1053,7 +1053,7 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:180px;flex-shrink:0" title="${escHtml(r._srcName)}">${r._srcName}</div>
   <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
   <div class="feed-cell" style="flex:1;min-width:200px" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
-  <div class="feed-cell" style="width:88px;flex-shrink:0" ${colStyle}>${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell" style="width:100px;flex-shrink:0;font-size:12px;overflow:hidden">${fmtTZ(r.published_at, true)}</div>
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
