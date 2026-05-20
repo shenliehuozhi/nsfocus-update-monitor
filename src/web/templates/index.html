@@ -19,7 +19,7 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',san
 .user button:hover{background:rgba(255,255,255,.18)}
 .main{max-width:100%;margin:0;padding:20px 24px}
 .card{background:var(--card);border-radius:10px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
-.card-hd{padding:12px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:center;gap:8px;color:var(--text)}
+.card-hd{padding:12px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;color:var(--text)}
 .card-bd{padding:16px 18px}.card-bd.pt0{padding-top:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
@@ -742,7 +742,7 @@ function dataRenderLeft() {
     html += `<div class="card" id="${cardId}" style="margin-bottom:10px">
       <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span class="tree-arrow" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:6px">&#9658;</span>
-        <span style="flex:1">${escHtml(src.display_name || src.name || sid)}</span>
+        <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${rbBadge}${freshBadge}
         <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
       </div>
