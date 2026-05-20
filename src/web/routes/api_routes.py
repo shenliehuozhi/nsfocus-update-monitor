@@ -675,8 +675,10 @@ def get_latest_snapshots():
         if sid in source_map:
             rec = dict(r)
             rec['last_delivered_at'] = r.get('last_sent') or None
-            # Strip heavy fields: feed list doesn't need description_raw (already removed)
+            # Strip heavy detail-only fields from list response
             rec.pop('description_raw', None)
+            rec.pop('md5_hash', None)
+            rec.pop('page_hash', None)
             del rec['last_sent']
             # Normalize source_url to path only (strip BASE_URL prefix) for tree matching
             src_url = rec.get('source_url') or ''
@@ -685,6 +687,25 @@ def get_latest_snapshots():
             source_map[sid]['snapshots'].append(rec)
 
     return jsonify({'code': 0, 'data': source_map})
+
+
+# ── Snapshot Detail ──────────────────────────────────────────────
+bp_snap = Blueprint('snap', __name__, url_prefix='/api/snapshot')
+
+@bp_snap.route('/<int:snapshot_id>', methods=['GET'])
+@require_auth
+def get_snapshot_detail(snapshot_id: int):
+    """Get full snapshot detail including description_raw, md5_hash, page_hash."""
+    from src.models.snapshot import get_snapshot
+    snap = get_snapshot(snapshot_id)
+    if not snap:
+        return jsonify({'code': 40400, 'message': '快照不存在'}), 404
+    # Normalize source_url to path
+    src_url = snap.get('source_url') or ''
+    if src_url.startswith(BASE_URL):
+        snap['source_url'] = src_url[len(BASE_URL):]
+    return jsonify({'code': 0, 'data': snap})
+
 
 bp_settings = Blueprint('settings', __name__, url_prefix='/api/settings')
 

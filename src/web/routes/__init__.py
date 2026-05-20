@@ -10,7 +10,7 @@ def register_routes(app: Flask):
     from src.web.routes.api_routes import (
         bp_sources, bp_channels, bp_customers,
         bp_subscriptions, bp_history, bp_settings,
-        bp_options, bp_latest
+        bp_options, bp_latest, bp_snap
     )
     from src.web.routes.system_routes import bp as bp_system
 
@@ -25,6 +25,7 @@ def register_routes(app: Flask):
     app.register_blueprint(bp_settings)
     app.register_blueprint(bp_options)
     app.register_blueprint(bp_latest)
+    app.register_blueprint(bp_snap)
     app.register_blueprint(bp_system)
 
     # Serve SPA index
