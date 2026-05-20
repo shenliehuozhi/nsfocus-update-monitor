@@ -679,6 +679,15 @@ def get_latest_snapshots():
             rec.pop('description_raw', None)
             rec.pop('md5_hash', None)
             rec.pop('page_hash', None)
+            rec.pop('description_parsed', None)
+            rec.pop('min_sys_version', None)
+            rec.pop('restart_required', None)
+            rec.pop('prev_page_hash', None)
+            rec.pop('rollback_confirmed_at', None)
+            rec.pop('rollback_cycles', None)
+            rec.pop('product_name', None)
+            rec.pop('path_id', None)
+            rec.pop('file_size', None)
             del rec['last_sent']
             # Normalize source_url to path only (strip BASE_URL prefix) for tree matching
             src_url = rec.get('source_url') or ''
