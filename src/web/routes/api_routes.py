@@ -675,8 +675,9 @@ def get_latest_snapshots():
         if sid in source_map:
             rec = dict(r)
             rec['last_delivered_at'] = r.get('last_sent') or None
-            rec['description_raw'] = r.get('description_raw') or ''
-            rec['md5_hash'] = r.get('md5_hash') or ''
+            # Strip heavy fields: feed list doesn't need them, detail page loads separately
+            rec.pop('description_raw', None)
+            rec.pop('md5_hash', None)
             del rec['last_sent']
             # Normalize source_url to path only (strip BASE_URL prefix) for tree matching
             src_url = rec.get('source_url') or ''
