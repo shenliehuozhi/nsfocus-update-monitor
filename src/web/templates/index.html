@@ -843,8 +843,15 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
     }
   }
 
-  // Re-render right panel (filters to selected chain/url)
+  // Re-render right panel immediately with current scheduler cache
   dataRenderRight();
+  // Then refresh scheduler cache in background and re-render when API returns
+  api('/settings/scheduler').then(r => {
+    if (r.data?.scheduler) {
+      _lastScheduler = r.data.scheduler;
+      dataRenderRight();
+    }
+  });
 
   // If leaf node with snaps, auto-expand the corresponding row(s) in right panel
   if (isLeaf && snapIds.length > 0) {
