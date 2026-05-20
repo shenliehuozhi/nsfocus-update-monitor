@@ -1842,12 +1842,47 @@ let editingChId=0;let chList=[];let _origChConfig={};
 function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=********');}
 async function channels(){
   const r=await api('/channels');chList=r.data||[];
-  let rows=chList.map(c=>`<tr><td>${c.name}</td><td>${c.type}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editCh(${c.id})">编辑</button> <button class="btn btn-xs btn-outline" onclick="testCh(${c.id})">测试</button> <button class="btn btn-danger btn-xs" onclick="delCh(${c.id})">删除</button></td></tr>`).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showChForm()">+ 添加渠道</button><div id="chf" class="form-panel hidden mt12"><div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">企业微信</option><option value="dingtalk">钉钉</option><option value="feishu">飞书</option><option value="email">邮件</option></select></div></div><div id="chcfg"></div><div class="flex gap8"><button class="btn btn-success btn-sm" id="saveChBtn" onclick="saveCh()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('chf').classList.add('hidden');editingChId=0">取消</button></div></div><table class="mt16"><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
+  let rows=chList.map(c=>`<tr><td>${c.name}</td><td>${c.type}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-outline" onclick="testCh(${c.id})">测试</button> <button class="btn btn-danger btn-xs" onclick="delCh(${c.id})">删除</button></td></tr>`).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openChModal()">+ 添加渠道</button><table class="mt16"><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
 function chTypeCh(){const t=document.getElementById('cht').value,d=document.getElementById('chcfg');d.innerHTML=t==='email'?`<div class="grid2"><div class="form-group"><label>SMTP</label><input id="sh"></div><div class="form-group"><label>端口</label><input id="sp" value="465"></div></div><div class="grid2"><div class="form-group"><label>用户</label><input id="su"></div><div class="form-group"><label>密码</label><input id="sw" type="password" placeholder="留空则不修改"></div></div><div class="grid2"><div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div><div class="form-group"><label>收件人 <span style="color:var(--danger);font-size:11px">*必填</span></label><input id="st" placeholder="a@x.com,b@x.com"></div></div><div class="grid2"><div class="form-group"><label>每小时上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div><div class="form-group"><label>每天上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div></div>`:`<div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div><div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>`;}
-function showChForm(id){editingChId=id||0;document.getElementById('chf').classList.remove('hidden');document.getElementById('saveChBtn').textContent=id?'更新':'保存';_origChConfig={};if(id){const c=chList.find(x=>x.id===id);if(!c)return;_origChConfig={...c.config};document.getElementById('chn').value=c.name||'';document.getElementById('cht').value=c.type||'wecom';chTypeCh();setTimeout(()=>{if(c.type==='email'){document.getElementById('sh').value=(c.config||{}).smtp_host||'';document.getElementById('sp').value=(c.config||{}).smtp_port||465;document.getElementById('su').value=(c.config||{}).smtp_user||'';document.getElementById('sw').value='';document.getElementById('sf').value=(c.config||{}).from_name||'绿盟升级通知';document.getElementById('st').value=((c.config||{}).to_list||[]).join(', ');document.getElementById('seh').value=c.email_hourly_limit||0;document.getElementById('sed').value=c.email_daily_limit||0}else{document.getElementById('cw').value=_maskWebhook((c.config||{}).webhook_url||'');document.getElementById('cs').value='';}},50)}else{chTypeCh()}}
-function editCh(id){showChForm(id);}
-async function saveCh(){const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();if(!n){toast('请输入渠道名称','error');return}let c={},eh=0,ed=0;if(t==='email'){const to_list=(document.getElementById('st')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);if(!to_list.length){toast('请填写至少一个收件人邮箱','error');return}let pw=document.getElementById('sw')?.value||'';c={smtp_host:document.getElementById('sh')?.value||'',smtp_port:parseInt(document.getElementById('sp')?.value||'465'),smtp_user:document.getElementById('su')?.value||'',smtp_password:pw||(_origChConfig.smtp_password||''),from_name:document.getElementById('sf')?.value||'绿盟升级通知',to_list};let eh=parseInt(document.getElementById('seh')?.value)||0,ed=parseInt(document.getElementById('sed')?.value)||0}else{let wu=document.getElementById('cw')?.value||'';if(wu&&_origChConfig.webhook_url&&wu===_maskWebhook(_origChConfig.webhook_url))wu=_origChConfig.webhook_url;c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}}let r;if(editingChId){r=await api('/channels/'+editingChId,{method:'PUT',body:JSON.stringify({name:n,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}else{r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;channels()}else toast(r.message,'error')}
+function openChModal(id){
+  editingChId=id||0;
+  const title=id?'编辑渠道':'添加渠道';
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">企业微信</option><option value="dingtalk">钉钉</option><option value="feishu">飞书</option><option value="email">邮件</option></select></div></div><div id="chcfg"></div>`;
+  const modal=document.createElement('div');
+  modal.id='chModalWrap';
+  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
+  modal.onclick=function(e){if(e.target===this)this.remove();};
+  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${title} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px">${formHtml}<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveCh()">保存</button><button class="btn btn-outline" onclick="document.getElementById('chModalWrap').remove()">取消</button></div></div></div>`;
+  document.body.appendChild(modal);
+  _origChConfig={};
+  if(id){
+    const c=chList.find(x=>x.id===id);
+    if(!c)return;
+    _origChConfig={...c.config};
+    document.getElementById('chn').value=c.name||'';
+    document.getElementById('cht').value=c.type||'wecom';
+    chTypeCh();
+    setTimeout(()=>{
+      if(c.type==='email'){
+        document.getElementById('sh').value=(c.config||{}).smtp_host||'';
+        document.getElementById('sp').value=(c.config||{}).smtp_port||465;
+        document.getElementById('su').value=(c.config||{}).smtp_user||'';
+        document.getElementById('sw').value='';
+        document.getElementById('sf').value=(c.config||{}).from_name||'绿盟升级通知';
+        document.getElementById('st').value=((c.config||{}).to_list||[]).join(', ');
+        document.getElementById('seh').value=c.email_hourly_limit||0;
+        document.getElementById('sed').value=c.email_daily_limit||0;
+      }else{
+        document.getElementById('cw').value=_maskWebhook((c.config||{}).webhook_url||'');
+        document.getElementById('cs').value='';
+      }
+    },50);
+  }else{
+    chTypeCh();
+  }
+}
+async function saveCh(){const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();if(!n){toast('请输入渠道名称','error');return}let c={},eh=0,ed=0;if(t==='email'){const to_list=(document.getElementById('st')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);if(!to_list.length){toast('请填写至少一个收件人邮箱','error');return}let pw=document.getElementById('sw')?.value||'';c={smtp_host:document.getElementById('sh')?.value||'',smtp_port:parseInt(document.getElementById('sp')?.value||'465'),smtp_user:document.getElementById('su')?.value||'',smtp_password:pw||(_origChConfig.smtp_password||''),from_name:document.getElementById('sf')?.value||'绿盟升级通知',to_list};let eh=parseInt(document.getElementById('seh')?.value)||0,ed=parseInt(document.getElementById('sed')?.value)||0}else{let wu=document.getElementById('cw')?.value||'';if(wu&&_origChConfig.webhook_url&&wu===_maskWebhook(_origChConfig.webhook_url))wu=_origChConfig.webhook_url;c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}}let r;if(editingChId){r=await api('/channels/'+editingChId,{method:'PUT',body:JSON.stringify({name:n,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}else{r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;document.getElementById('chModalWrap')?.remove()}else toast(r.message,'error')}
 async function testCh(id){const r=await api('/channels/'+id+'/test',{method:'POST'});toast(r.data?.success?'已发送':r.data?.error||'失败',r.data?.success?'success':'error');}
 async function delCh(id){if(confirm('删除此渠道?')){const r=await api('/channels/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');channels();}else toast(r.message,'error');}}
 // ── Customers ──
@@ -1859,8 +1894,8 @@ async function customers(){
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   custProdOpts=PROD.map(p=>`<option>${p}</option>`).join('');
 
-  let rows=list.map(c=>`<tr><td>${c.name}</td><td>${c.company||''}</td><td>${c.email||''}</td><td style="font-size:11px">${(c.owned_products||[]).join(', ')}</td><td>${c.warranty_start||''} ~ ${c.warranty_end||''}</td><td><button class="btn btn-xs btn-outline" onclick="editC(${c.id},'${c.name}','${c.company||''}','${c.email||''}','${c.phone||''}','${(c.owned_products||[]).join('|')}','${c.warranty_start||''}','${c.warranty_end||''}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showCForm()">+ 添加客户</button><div id="cf" class="form-panel hidden mt12"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>维保开始</label><input id="cws" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>维保截止</label><input id="cwe" type="date" onclick="this.showPicker()" style="min-width:140px"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt12" onclick="addCProd()">+ 添加产品</button></div><div class="flex gap8"><button class="btn btn-success btn-sm" onclick="saveC()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('cf').classList.add('hidden')">取消</button></div></div><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>维保</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
+  let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.warranty_start||''} ~ ${c.warranty_end||''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}','${c.warranty_start||''}','${c.warranty_end||''}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>维保</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
 function addCProd(p,v){
   let c=document.getElementById('cprods');
@@ -1873,18 +1908,25 @@ function addCProd(p,v){
 
 async function loadCV2(s){let p=s.value,vs=s.parentElement.querySelector('.cv2');vs.innerHTML='<option value="">加载...</option>';let r=await api('/options/versions?product='+encodeURIComponent(p)).catch(()=>({data:[]}));vs.innerHTML='<option value="">全部版本</option>'+(r.data||[]).map(v=>`<option>${v}</option>`).join('');}
 
-function showCForm(){
-  ['cid','cnm','ccm','cem','cph','cws','cwe'].forEach(id=>document.getElementById(id).value='');
-  document.getElementById('cprods').innerHTML='';document.getElementById('cf').classList.remove('hidden');addCProd();
-}
-
-function editC(id,n,co,em,ph,pr,ws,we){
-  document.getElementById('cid').value=id;document.getElementById('cnm').value=n;document.getElementById('ccm').value=co;document.getElementById('cem').value=em;document.getElementById('cph').value=ph;document.getElementById('cws').value=ws;document.getElementById('cwe').value=we;
+function openCModal(id,n,co,em,ph,pr,ws,we){
+  let modal=document.createElement('div');
+  modal.id='cModalWrap';
+  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
+  modal.onclick=function(e){if(e.target===this)this.remove();};
+  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>维保开始</label><input id="cws" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>维保截止</label><input id="cwe" type="date" onclick="this.showPicker()" style="min-width:140px"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt12" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
+  document.body.appendChild(modal);
+  document.getElementById('cid').value=id||'';
+  document.getElementById('cnm').value=n||'';
+  document.getElementById('ccm').value=co||'';
+  document.getElementById('cem').value=em||'';
+  document.getElementById('cph').value=ph||'';
+  document.getElementById('cws').value=ws||'';
+  document.getElementById('cwe').value=we||'';
   document.getElementById('cprods').innerHTML='';
-  let prods=(pr||'').split('|').filter(Boolean);
-  prods.forEach(x=>{let[p,v]=x.split(':');addCProd(p||'',v||'');});
-  if(!prods.length)addCProd();
-  document.getElementById('cf').classList.remove('hidden');
+  if(pr){
+    (pr||'').split('|').filter(Boolean).forEach(x=>{let[p,v]=x.split(':');addCProd(p||'',v||'');});
+  }
+  setTimeout(()=>addCProd(),50);
 }
 
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -1898,7 +1940,7 @@ async function saveC(){
   let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value,v=r.querySelector('.cv2')?.value;if(p)prods.push(v?esc(p)+':'+esc(v):esc(p));});
   const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),warranty_start:ws,warranty_end:we,owned_products:prods};
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
-  if(r.code===0){toast('已保存');customers();}else toast(r.message,'error');
+  if(r.code===0){toast('已保存');document.getElementById('cModalWrap')?.remove();}else toast(r.message,'error');
 }
 async function delC(id){if(confirm('删除?')){const r=await api('/customers/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');customers();}else toast(r.message,'error');}}
 
@@ -1913,20 +1955,9 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let isAll=!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let prodCell=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':((f.products||[]).join(',')||'全部');let vers=isAll?'<span style="color:var(--muted)">—</span>':((f.versions||[]).join(',')||'全部');let types=isAll?'<span style="color:var(--muted)">—</span>':((f.package_types||[]).map(t=>PKG.find(([k])=>k===t)?.[1]||t).join(',')||'全部');return `<tr><td>${rb} ${r.name}</td><td style="font-size:11px">${prodCell}</td><td style="font-size:11px">${vers}</td><td style="font-size:11px">${types}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="editRule(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let isAll=!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let prodCell=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':((f.products||[]).join(',')||'全部');let vers=isAll?'<span style="color:var(--muted)">—</span>':((f.versions||[]).join(',')||'全部');let types=isAll?'<span style="color:var(--muted)">—</span>':((f.package_types||[]).map(t=>PKG.find(([k])=>k===t)?.[1]||t).join(',')||'全部');return `<tr><td>${rb} ${r.name}</td><td style="font-size:11px">${prodCell}</td><td style="font-size:11px">${vers}</td><td style="font-size:11px">${types}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
 
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="showRForm()">+ 创建规则</button><div id="rf" class="form-panel hidden mt12"><input type="hidden" id="rid"><div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
-    <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
-    <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
-    <div id="rcondsWrap"><div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">产品+版本+类型，可添加多组</span></label><div id="rconds"></div><button class="btn btn-xs btn-outline mt8" onclick="addCond()">+ 添加条件</button></div></div>
-    <div class="grid3"><div class="form-group"><label>延迟(h)</label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略</label><select id="rst"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h)</label><input id="rin" type="number" value="0"></div></div>
-    <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
-    <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div class="grid2"><div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>通知渠道 <span style="font-weight:400;color:var(--muted);font-size:11px">可添加多个</span></label><div id="rchans"></div><button class="btn btn-xs btn-outline mt8" onclick="addChan()">+ 添加渠道</button></div></div>
-    <div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="ratt" type="number" value="0" min="0" max="50"></div><div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" checked> 📢 包回退通知</label></div></div>
-    <div class="flex gap8"><button class="btn btn-success btn-sm" onclick="saveRule()">保存</button><button class="btn btn-sm btn-outline" onclick="document.getElementById('rf').classList.add('hidden')">取消</button></div></div>
-    <table class="mt16"><tr><th>名称</th><th>产品</th><th>版本</th><th>类型</th><th>推送</th><th>有效期</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="8" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16"><tr><th>名称</th><th>产品</th><th>版本</th><th>类型</th><th>推送</th><th>有效期</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="8" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;}
 
@@ -1977,7 +2008,61 @@ async function loadCV(s,loadType){
   ts.innerHTML='<option value="">全部类型</option>'+types.map(x=>{let l=PKG.find(([v])=>v===x);return `<option value="${x}">${l?l[1]:x}</option>`;}).join('');
 }
 
-function showRForm(){document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rf').classList.remove('hidden');addCond();addChan();}
+async function openRModal(id){
+  // Ensure we have channels and customers loaded
+  let chOpts=window._chOpts;
+  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join(''):'';
+  if(!chOpts){
+    const[cR,custR]=await Promise.all([api('/channels'),api('/customers')]);
+    chOpts=(cR.data||[]).map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
+    window._chOpts=chOpts;
+    if(custR?.data)window._custs=custR.data;
+  }
+
+  let modal=document.createElement('div');
+  modal.id='rModalWrap';
+  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
+  modal.onclick=function(e){if(e.target===this)this.remove();};
+  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid"><div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
+    <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
+    <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
+    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
+    <div id="rcondsWrap"><div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">产品+版本+类型，可添加多组</span></label><div id="rconds"></div><button class="btn btn-xs btn-outline mt8" onclick="addCond()">+ 添加条件</button></div></div>
+    <div class="grid3"><div class="form-group"><label>延迟(h)</label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略</label><select id="rst"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h)</label><input id="rin" type="number" value="0"></div></div>
+    <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
+    <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
+    <div class="grid2"><div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>通知渠道 <span style="font-weight:400;color:var(--muted);font-size:11px">可添加多个</span></label><div id="rchans"></div><button class="btn btn-xs btn-outline mt8" onclick="addChan()">+ 添加渠道</button></div></div>
+    <div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="ratt" type="number" value="0" min="0" max="50"></div><div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" checked> 📢 包回退通知</label></div></div>
+    <div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveRule()">保存</button><button class="btn btn-outline" onclick="document.getElementById('rModalWrap').remove()">取消</button></div></div></div>`;
+  document.body.appendChild(modal);
+
+  if(id){
+    // Load existing rule
+    const rR=await api('/subscriptions');const r=(rR.data||[]).find(x=>x.id===id);if(!r)return;
+    document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';
+    document.getElementById('rcust').value=r.customer_id||'';
+    document.getElementById('remails').value=r.customer_emails||'';
+    document.getElementById('ratt').value=r.attachment_max_mb||0;
+    let f=r.filter_conditions||{},ps=f.products||[],vs=f.versions||[],ts=f.package_types||[];
+    const isAll=!ps.length && !vs.length && !ts.length;
+    document.getElementById('rall').checked=isAll;
+    document.getElementById('rcondsWrap').style.display=isAll?'none':'';
+    if(!isAll){
+    for(let i=0;i<Math.max(ps.length||0,1);i++)addCond(ps[i]||'',vs[i]||'',ts[i]||'');
+    }
+    let chs=r.channels||[];chs.forEach(c=>addChan(c));
+    document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
+    document.getElementById('rnr').checked=r.notify_rollback!==0;
+    onDigestModeChange();
+    const dc=r.digest_config||{};
+    if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
+    else if(r.digest_mode==='monthly'){setTimeout(()=>{if(document.getElementById('dc-month'))document.getElementById('dc-month').value=dc.month_day||'last';},100);}
+    else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
+  }else{
+    // Reset form for new rule
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';addCond();addChan();
+  }
+}
 
 function onDigestModeChange(){
   const m=document.getElementById('rdm').value;
@@ -1991,32 +2076,6 @@ function onDigestModeChange(){
   }else if(m==='quarterly'){
     d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
   }
-}
-
-async function editRule(id){
-  const rR=await api('/subscriptions');const r=(rR.data||[]).find(x=>x.id===id);if(!r)return;
-  document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';
-  document.getElementById('rcust').value=r.customer_id||'';
-  document.getElementById('remails').value=r.customer_emails||'';
-  document.getElementById('ratt').value=r.attachment_max_mb||0;
-  let f=r.filter_conditions||{},ps=f.products||[],vs=f.versions||[],ts=f.package_types||[];
-  // Detect "subscribe all" mode: all three filter arrays are empty
-  const isAll=!ps.length && !vs.length && !ts.length;
-  document.getElementById('rall').checked=isAll;
-  document.getElementById('rcondsWrap').style.display=isAll?'none':'';
-  if(!isAll){
-  for(let i=0;i<Math.max(ps.length||0,1);i++)addCond(ps[i]||'',vs[i]||'',ts[i]||'');
-  }
-  // Channels
-  let chs=r.channels||[];chs.forEach(c=>addChan(c));
-  document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
-  document.getElementById('rnr').checked=r.notify_rollback!==0;
-  onDigestModeChange();
-  const dc=r.digest_config||{};
-  if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
-  else if(r.digest_mode==='monthly'){setTimeout(()=>{if(document.getElementById('dc-month'))document.getElementById('dc-month').value=dc.month_day||'last';},100);}
-  else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
-  document.getElementById('rf').classList.remove('hidden');
 }async function saveRule(){
   let id=document.getElementById('rid').value;
   let chs=Array.from(document.querySelectorAll('#rchans .chsel')).map(s=>parseInt(s.value)).filter(Boolean);
@@ -2042,7 +2101,7 @@ async function editRule(id){
     d.digest_config=dc;
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
-  if(r.code===0){toast('已保存');subscriptions();}else toast(r.message,'error');
+  if(r.code===0){toast('已保存');document.getElementById('rModalWrap')?.remove();}else toast(r.message,'error');
 }async function delRule(id){if(confirm('删除?')){const r=await api('/subscriptions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');subscriptions();}else toast(r.message,'error');}}
 
 // ── History ──
