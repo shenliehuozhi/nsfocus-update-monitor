@@ -136,13 +136,16 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-hist-row:hover{background:#eef2f8}
 .data-hist-row.data-type-rollback{background:var(--snap-rollback-bg)}
 .data-hist-expanded{background:#eef2f8}
-.data-layout{display:flex;gap:10px;align-items:flex-start}
-.data-right{flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);padding:0 16px;max-height:calc(100vh - 160px);overflow-y:auto}
-.data-right-hd{font-weight:700;font-size:14px;padding:12px 0 8px;border-bottom:1px solid var(--border);margin-bottom:0;display:flex;align-items:center;gap:8px}
+.data-layout{display:flex;gap:10px;align-items:stretch;height:calc(100vh - 120px)}
+#dataLeft{width:260px;flex-shrink:0;overflow-y:auto}
+.data-right-wrap{display:flex;flex-direction:column;flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);overflow:hidden}
+#dataRightHd{position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--border);padding:12px 0 8px;display:flex;align-items:center;gap:8px}
+.data-right-body{flex:1;overflow-y:auto;padding:0 16px}
 .data-right-hd-sub{font-weight:400;font-size:12px;color:var(--muted)}
+.data-right-hd{font-weight:700;font-size:14px}
 .data-hd-path-seg{cursor:pointer;color:var(--text);font-weight:400}
 .data-hd-path-seg:hover{color:var(--primary)}
-.data-right-empty{padding:40px;text-align:center;color:var(--muted);font-size:13px}
+.data-right-empty{padding:40px 0;text-align:center;color:var(--muted);font-size:13px}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:#fafdf7;border-bottom:1px solid var(--border)}
 .feed-list{display:block;width:100%}
@@ -154,6 +157,7 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .feed-arrow{width:24px;text-align:center;color:var(--muted);cursor:pointer;font-size:11px;flex-shrink:0;padding:6px 4px}
 .feed-row:hover{background:#fafbfc}
 .feed-detail{background:#fafdf7;border-bottom:2px solid var(--border);padding:8px 12px 12px}
+.feed-pager{display:flex;align-items:center;padding:8px 16px;background:#f8f9fa;border-top:1px solid var(--border);flex-shrink:0}
 .detail-inner{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;align-items:start}
 .detail-close-btn{grid-column:1/-1;cursor:pointer;font-size:12px;color:var(--muted);text-align:right;margin-bottom:4px}
 .detail-close-btn:hover{color:var(--danger)}
@@ -397,7 +401,11 @@ async function dataPage() {
     </div>
     <div class="data-layout">
       <div id="dataLeft"></div>
-      <div class="data-right" id="dataRight"></div>
+      <div class="data-right-wrap">
+        <div class="data-right-hd" id="dataRightHd"></div>
+        <div class="data-right-body" id="dataRight"></div>
+        <div class="feed-pager" id="dataPager"></div>
+      </div>
     </div>
   </div>`;
 
@@ -684,10 +692,6 @@ function dataRenderLeft() {
   });
 
   document.getElementById('dataLeft').innerHTML = html;
-  // Limit left panel height and make it independently scrollable so it doesn't push the right panel down
-  const leftEl = document.getElementById('dataLeft');
-  leftEl.style.maxHeight = 'calc(100vh - 160px)';
-  leftEl.style.overflowY = 'auto';
 }
 
 // ── Tree toggle via data-target (no inline onclick) ──
@@ -801,7 +805,7 @@ function dataGoPage(p) {
 }
 
 // ── Right panel: latest feed ──
-const FEED_PAGE_SIZE = 20;
+const FEED_PAGE_SIZE = 50;
 let _dataFeedPage = 1;
 let _feedPkgLimit = 3; // per (version+pkgtype) history limit, set from config
 let _chainToUrlMap = {};
@@ -826,6 +830,10 @@ function dataBuildFeed() {
     const urlChainMap = _srcUrlChainMap[sid] || {};
 
     snaps.forEach(s => {
+      // Filter by has_new: only active snapshots with no delivery record
+      if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
+      // Filter by has_rb: skip active ones when "含撤回" is active
+      if (_dataFilters.has_rb && s.status !== 'rollback') return;
       // Filter by exact URL when a leaf node is selected
       if (_dataSelectedUrl && s.source_url !== _dataSelectedUrl) return;
       // Filter by hints when an intermediate node is selected
@@ -894,15 +902,15 @@ function dataRenderRight() {
   const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:#fff3cd;color:#8a7000;border:1px solid #e6c94c;margin-left:auto" onclick="dataClearFilter()">重置筛选</button>` : '';
 
   if (rows.length === 0) {
-    document.getElementById('dataRight').innerHTML = `
-      <div class="data-right-hd">📦 ${hdLabel} ${resetBtn}</div>
-      <div class="data-right-empty">暂无数据</div>`;
+    document.getElementById('dataRightHd').innerHTML = `📦 ${hdLabel} ${resetBtn}`;
+    document.getElementById('dataRight').innerHTML = `<div class="data-right-empty">暂无数据</div>`;
+    document.getElementById('dataPager').innerHTML = '';
     return;
   }
 
   const colStyle = 'style="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
-  let html = `<div class="data-right-hd">📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}</div>
-<div class="feed-list">
+  document.getElementById('dataRightHd').innerHTML = `📦 ${hdLabel} <span class="data-right-hd-sub">（${rows.length} 条）</span>${resetBtn}`;
+  let html = `<div class="feed-list">
 <div class="feed-hd">
   <div class="feed-cell feed-arrow-hd" style="width:28px;flex-shrink:0"></div>
   <div class="feed-cell" style="width:80px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
@@ -948,6 +956,24 @@ function dataRenderRight() {
   html += '</div>';
   document.getElementById('dataRight').innerHTML = html;
   _dataRightBuilt = true;
+
+  const tp2 = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
+  if (tp2 > 1) {
+    const pg = _dataFeedPage;
+    let phtml = '';
+    if (pg > 1) phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(${pg-1})">‹</button>`;
+    const win = 5;
+    const st = Math.max(1, pg - Math.floor(win/2));
+    const en = Math.min(tp2, st + win - 1);
+    const s2 = Math.max(1, en - win + 1);
+    if (s2 > 1) { phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(1)">1</button>`; if (s2 > 2) phtml += `<span style="color:var(--muted);padding:0 2px">…</span>`; }
+    for (let i = s2; i <= en; i++) { phtml += `<button class="btn btn-xs${i===pg?' btn-primary':''}" onclick="dataFeedGoPage(${i})">${i}</button>`; }
+    if (en < tp2) { if (en < tp2-1) phtml += `<span style="color:var(--muted);padding:0 2px">…</span>`; phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(${tp2})">${tp2}</button>`; }
+    if (pg < tp2) phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(${pg+1})">›</button>`;
+    document.getElementById('dataPager').innerHTML = phtml + `<span style="color:var(--muted);font-size:11px;margin-left:8px">${rows.length}条/共${tp2}页</span>`;
+  } else {
+    document.getElementById('dataPager').innerHTML = '';
+  }
 }
 
 function dataFeedGoPage(p) {
