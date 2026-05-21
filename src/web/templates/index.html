@@ -39,6 +39,19 @@ td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 .btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:5px}
 .btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:#f8fafc}
 .form-group{margin-bottom:10px}
+.cfg-section{margin-bottom:22px}
+.cfg-section-hd{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;padding:0 0 8px 0;border-bottom:1px solid var(--border);margin-bottom:12px}
+.cfg-section-sub{font-size:11.5px;color:var(--muted);margin:0 0 10px 0}
+.cfg-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:10px}
+.cfg-row-inline{display:flex;align-items:flex-end;gap:8px}
+.cfg-row-inline .form-group{flex:1;margin-bottom:0}
+.cfg-sep{font-size:18px;color:var(--muted);padding-bottom:9px}
+.cfg-flag{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px}
+.cfg-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
+.cfg-toggle input{width:15px;height:15px;cursor:pointer}
+.cfg-flag-desc{font-size:11px;color:var(--muted);flex:1}
+.cfg-hint{font-size:10.5px;color:var(--muted);margin:3px 0 0 0;line-height:1.4}
+.cfg-unit{font-weight:400;color:var(--muted);font-size:11px}
 .form-group label{display:block;position:relative;font-size:12px;font-weight:600;color:#4a5568;margin-bottom:4px}.req::after{content:" *";color:var(--danger);font-weight:700}
 .form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid #d1d5db;border-radius:7px;font-size:13px;background:#fff;color:var(--text);transition:.12s;line-height:1.5;font-family:inherit}
 .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(67,97,238,.1)}
@@ -2205,41 +2218,79 @@ async function settings(){
   const r=await api('/settings/config').catch(()=>({data:{}}));
   const cfg=r.data||{};
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
-    <div style="background:#fff8e6;border:1px solid #f5c842;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({maintenance_mode:v})}).then(r=>toast(r.code===0?(v==='1'?'🔇 维护模式已开启':'🔔 维护模式已关闭'):'失败',r.code===0?'success':'error'))"> 🔧 维护模式</label>
-      <span style="font-size:11px;color:var(--muted);flex:1">开启后所有推送静默（采集照常），调试时避免误发通知</span>
+    <div class="cfg-section">
+      <div class="cfg-section-hd">🔶 开关选项</div>
+      <div class="cfg-row">
+        <div class="cfg-flag" style="background:#fff8e6;border:1px solid #f5c842">
+          <label class="cfg-toggle"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({maintenance_mode:v})}).then(r=>toast(r.code===0?(v==='1'?'🔇 维护模式已开启':'🔔 维护模式已关闭'):'失败',r.code===0?'success':'error'))"><span>🔧 维护模式</span></label>
+          <span class="cfg-flag-desc">开启后所有推送静默（采集照常），调试时避免误发通知</span>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-flag" style="background:#ffeef0;border:1px solid #f5a0a8">
+          <label class="cfg-toggle"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="let v=this.checked?'1':'0';if(v==='1'&&!confirm('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\\n\\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。\\n\\n确认开启？')){this.checked=false;return;}api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:v})}).then(r=>toast(r.code===0?(v==='1'?'🔒 API 已锁定为 localhost':'🔓 API 已开放'):'失败',r.code===0?'success':'error'))"><span>🔒 API 仅限本机</span></label>
+          <span class="cfg-flag-desc">/api/* 仅允许 127.0.0.1 调用，TCP 层校验不可伪造</span>
+        </div>
+      </div>
+      <div class="cfg-row">
+        <div class="cfg-flag" style="background:#f0f4ff;border:1px solid #b8d0ff">
+          <label class="cfg-toggle"><input type="checkbox" id="cfg-skip-hash" ${cfg.skip_page_hash_check==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({skip_page_hash_check:v})}).then(r=>toast(r.code===0?(v==='1'?'⚡ 已跳过PageHash检查':'🔄 已恢复PageHash检查'):'失败',r.code===0?'success':'error'))"><span>⚡ 跳过 PageHash 检查</span></label>
+          <span class="cfg-flag-desc">每次快速采集都重新解析所有页面，消耗更高但数据更实时</span>
+        </div>
+      </div>
     </div>
-    <div style="background:#ffeef0;border:1px solid #f5a0a8;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="let v=this.checked?'1':'0';if(v==='1'&&!confirm('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\\n\\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。\\n\\n确认开启？')){this.checked=false;return;}api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:v})}).then(r=>toast(r.code===0?(v==='1'?'🔒 API 已锁定为 localhost':'🔓 API 已开放'):'失败',r.code===0?'success':'error'))"> 🔒 API 仅限本机访问</label>
-      <span style="font-size:11px;color:var(--muted);flex:1">开启后 /api/* 仅允许 127.0.0.1 调用（基于 TCP 层校验，不可伪造）</span>
-    </div>
-    <div style="background:#f0f4ff;border:1px solid #b8d0ff;border-radius:8px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600"><input type="checkbox" id="cfg-skip-hash" ${cfg.skip_page_hash_check==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({skip_page_hash_check:v})}).then(r=>toast(r.code===0?(v==='1'?'⚡ 已跳过PageHash检查（每次全量解析）':'🔄 已恢复PageHash检查（智能跳过）'):'失败',r.code===0?'success':'error'))"> ⚡ 跳过 PageHash 检查</label>
-      <span style="font-size:11px;color:var(--muted);flex:1">开启后快速采集跳过 PageHash 对比，每次重新解析所有页面（消耗更高，但数据更实时）</span>
-    </div>
-    <div class="grid2">
-      <div class="form-group"><label>采集间隔 (小时)</label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"><p style="font-size:10px;color:var(--muted);margin-top:2px">快速采集周期，建议1-4小时，超短间隔易被封IP</p></div>
-      <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"><p style="font-size:10px;color:var(--muted);margin-top:2px">包版本降低时需连续N次检测到才触发回退通知，防止误报</p></div>
-      <div class="form-group"><label>速率下限 (秒)</label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"><p style="font-size:10px;color:var(--muted);margin-top:2px">每次请求间隔随机范围下限，建议0.3-1秒</p></div>
-      <div class="form-group"><label>速率上限 (秒)</label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"><p style="font-size:10px;color:var(--muted);margin-top:2px">每次请求间隔随机范围上限，建议不超过5秒</p></div>
-      <div class="form-group"><label>附件上限 (MB)</label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p style="font-size:10px;color:var(--muted);margin-top:2px">邮件附件最大体积，超过则正文显示下载地址</p></div>
-      <div class="form-group"><label>快照保留 (天)</label><input id="cfg-retention" type="number" value="${cfg.snapshot_retention_days||180}" min="30" max="730"><p style="font-size:10px;color:var(--muted);margin-top:2px">超过此天数的旧快照自动清理，缩短可减少数据库体积</p></div>
-      <div class="form-group"><label>静默开始</label><input id="cfg-quiet-start" value="${cfg.quiet_hours_start||'22:00'}"><p style="font-size:10px;color:var(--muted);margin-top:2px">此时段内不发送任何通知（邮件/Webhook），但采集仍正常进行</p></div>
-      <div class="form-group"><label>静默结束</label><input id="cfg-quiet-end" value="${cfg.quiet_hours_end||'08:00'}"><p style="font-size:10px;color:var(--muted);margin-top:2px">静默时段结束时间，介于开始时间与24之间</p></div>
-      <div class="form-group"><label>全量扫描间隔 (小时)</label><input id="cfg-full-scan" type="number" value="${cfg.full_scan_interval||168}" min="24" max="720"><p style="font-size:10px;color:var(--muted);margin-top:2px">建议168(7天)，期间增量检查列表页</p></div>
-      <div class="form-group"><label>心跳间隔 (分钟)</label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p style="font-size:10px;color:var(--muted);margin-top:2px">Session保活间隔，默认30分钟</p></div>
-      <div class="form-group"><label>每类型包数量</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p style="font-size:10px;color:var(--muted);margin-top:2px">采集数据页每(版本+包类型)显示的历史包数量，默认3</p></div>
-    </div>
-    <p style="font-size:11px;color:var(--muted);margin:8px 0">修改后下次采集生效</p>
 
-    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px 16px;margin:14px 0">
-      <h4 style="margin:0 0 10px 0;font-size:14px">📧 邮件频率限制</h4>
-      <p style="font-size:11px;color:var(--muted);margin:0 0 10px 0">防止 Bug 导致邮件轰炸。0=不限制。</p>
-      <div class="grid2">
+    <div class="cfg-section">
+      <div class="cfg-section-hd">📡 采集设置</div>
+      <div class="cfg-row">
+        <div class="form-group"><label>采集间隔 <span class="cfg-unit">(小时)</span></label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"><p class="cfg-hint">快速采集周期，建议1-4小时；过短易被封IP</p></div>
+        <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"><p class="cfg-hint">包版本降低需连续N次确认才通知，防止误报</p></div>
+      </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>速率下限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机下限，建议0.3-1秒</p></div>
+        <div class="form-group"><label>速率上限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机上限，建议不超过5秒</p></div>
+      </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>全量扫描间隔 <span class="cfg-unit">(小时)</span></label><input id="cfg-full-scan" type="number" value="${cfg.full_scan_interval||168}" min="24" max="720"><p class="cfg-hint">强制重新解析产品列表页，建议168(7天)；期间用PageHash增量检查</p></div>
+        <div class="form-group"><label>每类型包数量</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p class="cfg-hint">采集数据页每(版本+包类型)显示的历史包数量，默认3</p></div>
+      </div>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-section-hd">💾 存储与保留</div>
+      <div class="cfg-row">
+        <div class="form-group"><label>附件上限 <span class="cfg-unit">(MB)</span></label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p class="cfg-hint">邮件附件最大体积；超过则在正文显示下载地址</p></div>
+        <div class="form-group"><label>快照保留 <span class="cfg-unit">(天)</span></label><input id="cfg-retention" type="number" value="${cfg.snapshot_retention_days||180}" min="30" max="730"><p class="cfg-hint">超过此天数的旧快照自动清理，缩短可减少数据库体积</p></div>
+      </div>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-section-hd">🔇 静默时段</div>
+      <div class="cfg-row cfg-row-inline">
+        <div class="form-group"><label>开始时间</label><input id="cfg-quiet-start" type="time" value="${cfg.quiet_hours_start||'22:00'}"></div>
+        <span class="cfg-sep">—</span>
+        <div class="form-group"><label>结束时间</label><input id="cfg-quiet-end" type="time" value="${cfg.quiet_hours_end||'08:00'}"></div>
+      </div>
+      <p class="cfg-hint" style="margin-top:-6px">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-section-hd">⏰ 高级选项</div>
+      <div class="cfg-row">
+        <div class="form-group"><label>心跳间隔 <span class="cfg-unit">(分钟)</span></label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p class="cfg-hint">Session 保活间隔，默认30分钟</p></div>
+      </div>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-section-hd">📧 邮件频率限制</div>
+      <p class="cfg-section-sub">防止 Bug 导致邮件轰炸。0=不限制。</p>
+      <div class="cfg-row">
         <div class="form-group"><label>全局-每小时上限</label><input id="cfg-email-global-h" type="number" value="${cfg.email_global_hourly_limit||100}" min="0" max="9999"></div>
         <div class="form-group"><label>全局-每天上限</label><input id="cfg-email-global-d" type="number" value="${cfg.email_global_daily_limit||500}" min="0" max="99999"></div>
-        <div class="form-group"><label>客户-每小时上限</label><input id="cfg-email-cust-h" type="number" value="${cfg.email_customer_hourly_limit||10}" min="0" max="9999"><p style="font-size:10px;color:var(--muted);margin-top:2px">每个客户独立计数</p></div>
-        <div class="form-group"><label>客户-每天上限</label><input id="cfg-email-cust-d" type="number" value="${cfg.email_customer_daily_limit||50}" min="0" max="99999"><p style="font-size:10px;color:var(--muted);margin-top:2px">每个客户独立计数</p></div>
+      </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>客户-每小时上限</label><input id="cfg-email-cust-h" type="number" value="${cfg.email_customer_hourly_limit||10}" min="0" max="9999"><p class="cfg-hint">每个客户独立计数</p></div>
+        <div class="form-group"><label>客户-每天上限</label><input id="cfg-email-cust-d" type="number" value="${cfg.email_customer_daily_limit||50}" min="0" max="99999"><p class="cfg-hint">每个客户独立计数</p></div>
       </div>
     </div>
 
