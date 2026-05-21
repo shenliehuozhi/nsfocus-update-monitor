@@ -25,6 +25,24 @@ def _rollback_prefix(msg) -> str:
     return '⚠️【已撤回】' if msg.is_rollback else '🔔'
 
 
+def _utc_to_cst_display(utc_str: str) -> str:
+    """Convert UTC ISO string to CST display string for notifications.
+    Input:  '2026-05-12T09:05:51' (UTC, from DB)
+    Output: '2026-05-12 17:05:51' (CST, +8h)
+    Returns original string if unparseable.
+    """
+    if not utc_str:
+        return ''
+    try:
+        from datetime import datetime, timedelta, timezone
+        utc = timezone.utc
+        dt = datetime.strptime(utc_str[:19], '%Y-%m-%dT%H:%M:%S').replace(tzinfo=utc)
+        cst = timezone(timedelta(hours=8))
+        return dt.astimezone(cst).strftime('%Y-%m-%d %H:%M:%S')
+    except Exception:
+        return utc_str
+
+
 @dataclass
 class NotificationMessage:
     """Unified notification message format."""
@@ -156,7 +174,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
         f'**包版本**: {msg.package_version}',
         f'**大小**: {msg.size_display}',
         f'**MD5**: `{msg.md5_hash}`',
-        f'**时间**: {msg.published_at}',
+        f'**时间**: {_utc_to_cst_display(msg.published_at)}',
     ])
 
     if msg.description_full:
@@ -212,7 +230,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         f'**包版本**: {msg.package_version}',
         f'**大小**: {msg.size_display}',
         f'**MD5**: `{msg.md5_hash}`',
-        f'**时间**: {msg.published_at}',
+        f'**时间**: {_utc_to_cst_display(msg.published_at)}',
     ])
 
     extra_items = []
@@ -384,7 +402,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
         <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">时间</td><td>{msg.published_at}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
         {dl_btn}
