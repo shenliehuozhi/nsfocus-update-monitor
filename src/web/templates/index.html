@@ -2218,14 +2218,14 @@ async function settings(){
       <span style="font-size:11px;color:var(--muted);flex:1">开启后快速采集跳过 PageHash 对比，每次重新解析所有页面（消耗更高，但数据更实时）</span>
     </div>
     <div class="grid2">
-      <div class="form-group"><label>采集间隔 (小时)</label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"></div>
-      <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"></div>
-      <div class="form-group"><label>速率下限 (秒)</label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"></div>
-      <div class="form-group"><label>速率上限 (秒)</label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"></div>
-      <div class="form-group"><label>附件上限 (MB)</label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"></div>
-      <div class="form-group"><label>快照保留 (天)</label><input id="cfg-retention" type="number" value="${cfg.snapshot_retention_days||180}" min="30" max="730"></div>
-      <div class="form-group"><label>静默开始</label><input id="cfg-quiet-start" value="${cfg.quiet_hours_start||'22:00'}"></div>
-      <div class="form-group"><label>静默结束</label><input id="cfg-quiet-end" value="${cfg.quiet_hours_end||'08:00'}"></div>
+      <div class="form-group"><label>采集间隔 (小时)</label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"><p style="font-size:10px;color:var(--muted);margin-top:2px">快速采集周期，建议1-4小时，超短间隔易被封IP</p></div>
+      <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"><p style="font-size:10px;color:var(--muted);margin-top:2px">包版本降低时需连续N次检测到才触发回退通知，防止误报</p></div>
+      <div class="form-group"><label>速率下限 (秒)</label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"><p style="font-size:10px;color:var(--muted);margin-top:2px">每次请求间隔随机范围下限，建议0.3-1秒</p></div>
+      <div class="form-group"><label>速率上限 (秒)</label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"><p style="font-size:10px;color:var(--muted);margin-top:2px">每次请求间隔随机范围上限，建议不超过5秒</p></div>
+      <div class="form-group"><label>附件上限 (MB)</label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p style="font-size:10px;color:var(--muted);margin-top:2px">邮件附件最大体积，超过则正文显示下载地址</p></div>
+      <div class="form-group"><label>快照保留 (天)</label><input id="cfg-retention" type="number" value="${cfg.snapshot_retention_days||180}" min="30" max="730"><p style="font-size:10px;color:var(--muted);margin-top:2px">超过此天数的旧快照自动清理，缩短可减少数据库体积</p></div>
+      <div class="form-group"><label>静默开始</label><input id="cfg-quiet-start" value="${cfg.quiet_hours_start||'22:00'}"><p style="font-size:10px;color:var(--muted);margin-top:2px">此时段内不发送任何通知（邮件/Webhook），但采集仍正常进行</p></div>
+      <div class="form-group"><label>静默结束</label><input id="cfg-quiet-end" value="${cfg.quiet_hours_end||'08:00'}"><p style="font-size:10px;color:var(--muted);margin-top:2px">静默时段结束时间，介于开始时间与24之间</p></div>
       <div class="form-group"><label>全量扫描间隔 (小时)</label><input id="cfg-full-scan" type="number" value="${cfg.full_scan_interval||168}" min="24" max="720"><p style="font-size:10px;color:var(--muted);margin-top:2px">建议168(7天)，期间增量检查列表页</p></div>
       <div class="form-group"><label>心跳间隔 (分钟)</label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p style="font-size:10px;color:var(--muted);margin-top:2px">Session保活间隔，默认30分钟</p></div>
       <div class="form-group"><label>每类型包数量</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p style="font-size:10px;color:var(--muted);margin-top:2px">采集数据页每(版本+包类型)显示的历史包数量，默认3</p></div>
