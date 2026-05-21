@@ -325,7 +325,8 @@ class NsfocusCollector(BaseCollector):
 
     # ── Quick: HEAD-check known pages, only GET changed ones ──
 
-    def _collect_quick(self, source_id: int, product_name: str) -> list:
+    def _collect_quick(self, source_id: int, product_name: str,
+                       skip_page_hash: bool = False) -> list:
         """Quick collection: revisit known package-page URLs, HEAD-check for changes.
 
         Primary source: content_sources.package_type_discovered.paths (has final-page URLs).
@@ -336,6 +337,10 @@ class NsfocusCollector(BaseCollector):
         - HEAD not supported → GET with stream to check Last-Modified
         - Page unchanged → skip
         - Page changed → full GET + extract new/updated items
+
+        Args:
+            skip_page_hash: if True, skip page-hash comparison and always re-parse
+                            every page (no hash check, always CHANGE branch).
         """
         import json as _json
         from src.models.database import query as snap_query
@@ -435,6 +440,11 @@ class NsfocusCollector(BaseCollector):
                 _stored = snap_query("SELECT page_hash, prev_page_hash FROM snapshots WHERE source_id=? AND source_url=? LIMIT 1", (source_id, full_url))
                 stored_hash = _stored[0]['page_hash'] if _stored else None
                 prev_hash = _stored[0]['prev_page_hash'] if _stored else None
+
+                # ── skip_page_hash 模式：强制所有 URL 走 CHANGE 分支 ──
+                # 跳过 page_hash 对比，每次都重新解析页面
+                if skip_page_hash:
+                    stored_hash = None
 
                 # ── Bug fix: INSERT placeholder row when URL first seen ──
                 # When stored_hash is None, snapshots has no row for this URL yet.

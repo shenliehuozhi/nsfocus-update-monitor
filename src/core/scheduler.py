@@ -232,10 +232,12 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         all_items = []
 
         if mode == 'quick':
-            all_items = _collect_quick(existing_sources, cookie, _emit)
+            skip_hash = _get_setting('skip_page_hash_check') == '1'
+            all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
         elif mode == 'delta':
             # Legacy: redirect delta to quick
-            all_items = _collect_quick(existing_sources, cookie, _emit)
+            skip_hash = _get_setting('skip_page_hash_check') == '1'
+            all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
         else:
             all_items = _collect_full(existing_sources, sessions, cookie, _emit)
 
@@ -380,7 +382,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         return summary
 
 
-def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
+def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bool = False) -> list:
     """Quick collection: revisit known snapshot URLs, only GET changed pages.
 
     Uses collector._collect_quick which does HEAD/page-hash checks on known detail pages.
@@ -413,7 +415,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         src = existing_sources[name]
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
-            items = _collector._collect_quick(src['id'], name)
+            items = _collector._collect_quick(src['id'], name, skip_page_hash)
 
             # Dedup safety net
             new_items = []
