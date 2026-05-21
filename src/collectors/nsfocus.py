@@ -436,6 +436,27 @@ class NsfocusCollector(BaseCollector):
                 stored_hash = _stored[0]['page_hash'] if _stored else None
                 prev_hash = _stored[0]['prev_page_hash'] if _stored else None
 
+                # ── Bug fix: INSERT placeholder row when URL first seen ──
+                # When stored_hash is None, snapshots has no row for this URL yet.
+                # The UPDATE below (line ~566) needs a matching row to work.
+                # Without this INSERT, page_hash is never recorded and every
+                # subsequent quick scan re-visits the URL as if it were new.
+                if stored_hash is None:
+                    from src.models.database import execute as snap_exec
+                    snap_exec(
+                        """INSERT INTO snapshots
+                           (source_id, product_name, version_branch, package_type,
+                            file_name, md5_hash, page_hash, source_url, status)
+                           VALUES (?, ?, ?, ?, '', ?, ?, ?, 'active')""",
+                        (source_id, product_name, ver, pkg, page_hash, full_url)
+                    )
+                    # Re-fetch so subsequent logic sees the row we just inserted
+                    _stored = snap_query(
+                        "SELECT page_hash, prev_page_hash FROM snapshots WHERE source_id=? AND source_url=? LIMIT 1",
+                        (source_id, full_url))
+                    stored_hash = _stored[0]['page_hash'] if _stored else None
+                    prev_hash = _stored[0]['prev_page_hash'] if _stored else None
+
                 # ── Log hash change: prev → current ─────────────────────
                 # Display URL uses the clean original url (from DB paths, no corruption)
                 display_url = url[-50:]  # last 50 chars of clean path
