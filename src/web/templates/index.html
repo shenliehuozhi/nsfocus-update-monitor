@@ -183,6 +183,10 @@ tr[data-sid]{cursor:pointer}
 .tree-node-selected{background:#b8ccff!important;border-radius:4px;box-shadow:0 0 0 2px rgba(67,97,238,.25)}
 .card-selected{background:#dce5ff!important;border-color:#4a6fff!important;box-shadow:0 0 0 3px rgba(67,97,238,.2),0 3px 12px rgba(67,97,238,.15)}
 .tree-children{display:none}
+.tree-node[data-conflict="1"]{animation:chainConflict .4s ease-out;border-radius:4px}
+@keyframes chainConflict{
+ 0%{background:#fee2e2}50%{background:#fecaca}100%{background:#fee2e2}
+}
 </style>
 <body>
 
@@ -518,8 +522,25 @@ async function dataPage() {
       treeToggleById(arrow.getAttribute('data-target'));
       return;
     }
+    // Chain selector tree arrow toggle
+    var csArrow = e.target.closest('[data-action="csTreeToggle"]');
+    if (csArrow) {
+      csTreeToggleById(csArrow.getAttribute('data-target'));
+      return;
+    }
     // Tree node click
     var node = e.target.closest('[data-action="treeNode"]');
+    if (!node) {
+      // Chain selector tree node click
+      var csNode = e.target.closest('[data-action="csTreeNode"]');
+      if (csNode) {
+        const chain = JSON.parse(csNode.getAttribute('data-chain') || '[]');
+        const url = csNode.getAttribute('data-url') || '';
+        csTreeNodeClick(chain, url, csNode);
+        return;
+      }
+      return;
+    }
     if (!node) return;
     const sid = node.getAttribute('data-sid');
     const chain = JSON.parse(node.getAttribute('data-chain') || '[]');
@@ -1998,12 +2019,32 @@ function toggleAllMode(){
 // 临时状态：当前编辑会话选中的 chain 条目
 let _condChains = [];  // [{chain:[...], match:'leaf'|'subtree'}]
 
+// 加载产品数据（填充 _dataAll）
+async function loadDataAll() {
+  const showRb = sessionStorage.getItem('dataShowRollback') === '1';
+  const [r] = await Promise.all([
+    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0')).catch(() => ({ data: {} })),
+  ]);
+  _dataAll = window._dataAll = r.data || {};
+  Object.entries(_dataAll).forEach(([sid, src]) => {
+    if (!src.package_type?.paths) return;
+    const map = {};
+    src.package_type.paths.forEach(p => {
+      if (p.url && Array.isArray(p.chain) && p.chain.length > 0) {
+        const norm = ('/' + p.url).replace(/\/+$/, '');
+        map[norm] = p.chain;
+      }
+    });
+    _srcUrlChainMap[sid] = map;
+  });
+}
+
 // 链选择器弹窗（树形选择 + match 模式切换）
 async function openChainSelectorModal(existingChains) {
   // existingChains: 编辑时传入已有条件，供回显选中态
   const chains = existingChains || [];
 
-  // 确保 _dataAll 已加载（复用产品管理数据）
+  // 确保 _dataAll 已加载（从 /latest/snapshots 拉取产品路径数据）
   if (Object.keys(_dataAll).length === 0) {
     await loadDataAll();
   }
@@ -2031,7 +2072,7 @@ async function openChainSelectorModal(existingChains) {
     <div style="display:flex;flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--border)">
       <div id="chainSelTree" style="flex:1;overflow-y:auto;padding:12px;border-right:1px solid var(--border);max-height:70vh">
         <div style="color:var(--muted);font-size:12px;margin-bottom:10px">📂 点击节点添加到右侧「已选路径」，再次点击取消</div>
-        <div id="chainTreeBody"></div>
+        <div id="chainTreeBody"><div style="color:var(--muted);font-size:13px;text-align:center;padding:40px">📂 加载产品数据中...</div></div>
       </div>
       <div style="width:300px;overflow-y:auto;padding:12px;background:#fafbfc" id="chainSelRight">
         <div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${chains.length}）</div>
@@ -2070,6 +2111,60 @@ async function openChainSelectorModal(existingChains) {
     treeHtml = '<div style="color:var(--muted);font-size:12px">无产品数据，请先完成产品发现与采集</div>';
   }
   treeBody.innerHTML = '<div style="font-family:system-ui">' + treeHtml + '</div>';
+}
+
+// 链选择器：节点点击 toggle 选中（全局函数，供 inline onclick 调用）
+// nodeEl: 被点击的 tree-node div 元素
+function csTreeNodeClick(nodeEl) {
+  const chain = JSON.parse(nodeEl.getAttribute('data-chain') || '[]');
+  const url = nodeEl.getAttribute('data-url') || '';
+  const isLeafNode = nodeEl.getAttribute('data-is-leaf') === '1';
+  const match = isLeafNode ? 'leaf' : 'subtree';
+  const chainKey = JSON.stringify(chain);
+
+  // 冲突检测：检查新 chain 与已选项是否有父子重叠
+  for (const existing of _condChains) {
+    const existKey = JSON.stringify(existing.chain);
+    if (existKey === chainKey) continue; // 取消选择不触发冲突
+    // 新 chain 是否包含已选 chain（选了父，但子已存在）
+    if (chain.length > existing.chain.length &&
+        JSON.stringify(chain.slice(0, existing.chain.length)) === existKey) {
+      nodeEl.setAttribute('data-conflict', '1');
+      setTimeout(() => nodeEl.removeAttribute('data-conflict'), 2000);
+      return;
+    }
+    // 已选 chain 是否包含新 chain（选了子，但父已存在）
+    if (existing.chain.length > chain.length &&
+        JSON.stringify(existing.chain.slice(0, chain.length)) === chainKey) {
+      nodeEl.setAttribute('data-conflict', '1');
+      setTimeout(() => nodeEl.removeAttribute('data-conflict'), 2000);
+      return;
+    }
+  }
+
+  const idx = _condChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
+  if (idx >= 0) {
+    _condChains.splice(idx, 1);
+    nodeEl.setAttribute('data-sel', '0');
+    nodeEl.style.background = '';
+  } else {
+    _condChains.push({ chain, match });
+    nodeEl.setAttribute('data-sel', '1');
+    nodeEl.style.background = '#dbeafe';
+  }
+  const rightDiv = document.getElementById('chainSelRight');
+  if (rightDiv) {
+    rightDiv.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${_condChains.length}）</div>` + renderChainSelList(_condChains);
+  }
+}
+
+// 链选择器：节点折叠/展开
+function csTreeToggleById(childDivId, arrowEl) {
+  const child = document.getElementById(childDivId);
+  if (!child) return;
+  const isHidden = child.style.display === 'none' || !child.style.display;
+  child.style.display = isHidden ? 'block' : 'none';
+  if (arrowEl) arrowEl.innerHTML = isHidden ? '&#9660;' : '&#9658;';
 }
 
 // 渲染链选择树（复用 buildDataTreeHtml 的树结构逻辑，节点点击 toggle 选中）
@@ -2116,10 +2211,12 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     const selClass = isSelected ? ' style="background:#dbeafe;border-radius:4px"' : '';
     const childDivId = hasChildren ? ('cst_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
     const arrow = hasChildren
-      ? `<span class="tree-arrow" data-action="csTreeToggle" data-target="${childDivId}" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
+      ? `<span onclick="csTreeToggleById('${childDivId}', this); event.stopPropagation();" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
       : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
 
-    let html = `<div class="tree-node" data-action="csTreeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isPkg ? '1' : '0'}" data-sel="${isSelected ? '1' : '0'}" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer"${selClass}>`;
+    const isLeafNode = !hasChildren;
+    const leafAttr = ' data-is-leaf="' + (isLeafNode ? '1' : '0') + '"';
+    let html = `<div class="tree-node"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" onclick="csTreeNodeClick(this); event.stopPropagation();" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer"${selClass}>`;
     html += arrow;
     html += `<span style="font-size:13px;color:#334155;flex-shrink:0">${icon} ${escHtml(label)}${childCount}</span>`;
     html += `</div>`;
@@ -2140,19 +2237,9 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
   }) : [];
   // 产品名作为可折叠分组头
   const prodLabel = `<div style="font-weight:700;font-size:13px;color:#1e40af;padding:6px 4px 4px;border-bottom:1px solid #e2e8f0;margin-bottom:4px">${escHtml(alias || String(sid))}</div>`;
-  if (rootChildren.length === 1) {
-    const [, topNode] = rootChildren[0];
-    const topChildren = topNode.__children ? Object.entries(topNode.__children).sort(([a], [b]) => {
-      const aV = /\d/.test(a); const bV = /\d/.test(b);
-      if (aV && !bV) return -1; if (!aV && bV) return 1;
-      return a.localeCompare(b, 'zh');
-    }) : [];
-    html += prodLabel;
-    topChildren.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, 0); });
-  } else {
-    html += prodLabel;
-    rootChildren.forEach(([name, node]) => { html += renderNode(node, name, 0); });
-  }
+  // 始终从真实根节点开始渲染，保持完整的链层级深度
+  html += prodLabel;
+  rootChildren.forEach(([name, node]) => { html += renderNode(node, name, 0); });
   return html;
 }
 
@@ -2214,28 +2301,33 @@ function renderChainSelList(chains) {
   return chains.map((c, i) => {
     const pathStr = c.chain.join(' › ');
     const isLeaf = c.match !== 'subtree';
+    const matchHtml = isLeaf
+      ? `<span style="font-size:10px;padding:2px 6px;background:#dbeafe;color:#1e40af;border-radius:8px;font-weight:600">leaf（仅当前节点）</span>`
+      : `<span style="font-size:10px;padding:2px 6px;background:#fef3c7;color:#92400e;border-radius:8px;font-weight:600">sub（包含子节点）</span>`;
     return `<div style="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid #f0f0f0;font-size:12px;flex-wrap:wrap">
       <span style="flex:1;min-width:0;color:#334155;word-break:break-all">${escHtml(pathStr)}</span>
-      <select onchange="toggleChainMatch(${i}, this.value)" style="font-size:11px;padding:2px 4px;border-radius:4px;border:1px solid var(--border);cursor:pointer">
-        <option value="leaf" ${isLeaf ? 'selected' : ''}>leaf</option>
-        <option value="subtree" ${!isLeaf ? 'selected' : ''}>sub</option>
-      </select>
+      ${matchHtml}
       <button onclick="removeChainCond(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 2px">×</button>
     </div>`;
   }).join('');
 }
 
-// 切换单个 chain 的匹配模式
-function toggleChainMatch(idx, mode) {
-  if (window._condChains[idx]) {
-    window._condChains[idx].match = mode;
-  }
-}
-
 // 移除单个路径条件
 function removeChainCond(idx) {
-  window._condChains.splice(idx, 1);
+  const removed = window._condChains.splice(idx, 1);
+  if (removed.length) {
+    const chain = removed[0].chain;
+    const chainKey = JSON.stringify(chain);
+    // 取消树的该节点高亮
+    const node = document.querySelector(`.tree-node[data-chain='${chainKey.replace(/"/g, '&quot;')}']`);
+    if (node) { node.setAttribute('data-sel', '0'); node.style.background = ''; }
+  }
   renderCondPills();
+  // 同时更新右侧面板
+  const rightDiv = document.getElementById('chainSelRight');
+  if (rightDiv) {
+    rightDiv.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
+  }
 }
 
 // 渲染订阅条件区的路径标签（在主表单的 rconds div 中）
@@ -2325,7 +2417,7 @@ async function openRModal(id){
     <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
     <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
-    <div id="rcondsWrap"><div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">选择产品路径后精确订阅</span></label><div id="rconds"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="openChainSelectorModal()">+ 添加路径</button></div></div>
+    <div id="rcondsWrap"><div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">选择产品路径后精确订阅</span></label><div id="rconds"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="(async ()=>{ await openChainSelectorModal(); })()">+ 添加路径</button></div></div>
     <div class="grid3"><div class="form-group"><label>延迟(h)</label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略</label><select id="rst"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h)</label><input id="rin" type="number" value="0"></div></div>
     <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
@@ -2364,7 +2456,7 @@ async function openRModal(id){
     else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';addCond();addChan();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';window._condChains=[];renderCondPills();addChan();
   }
 }
 
