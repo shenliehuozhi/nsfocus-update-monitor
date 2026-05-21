@@ -763,6 +763,9 @@ def update_config():
     if 'collect_interval' in data:
         from src.core.scheduler import reschedule_collect
         reschedule_collect()
+    if 'heartbeat_interval' in data:
+        from src.core.scheduler import reschedule_heartbeat
+        reschedule_heartbeat()
     return jsonify({'code': 0, 'message': '配置已保存'})
 
 

@@ -232,11 +232,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         all_items = []
 
         if mode == 'quick':
-            skip_hash = _get_setting('skip_page_hash_check') == '1'
+            skip_hash = _get_setting('skip_page_hash_check', '0') == '1'
             all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
         elif mode == 'delta':
             # Legacy: redirect delta to quick
-            skip_hash = _get_setting('skip_page_hash_check') == '1'
+            skip_hash = _get_setting('skip_page_hash_check', '0') == '1'
             all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
         else:
             all_items = _collect_full(existing_sources, sessions, cookie, _emit)
@@ -788,6 +788,17 @@ def reschedule_collect():
         if job:
             _scheduler.reschedule_job('nsfocus_collect', trigger='interval', hours=interval_hours)
             logger.info(f'Collection rescheduled: every {interval_hours}h')
+
+
+def reschedule_heartbeat():
+    """Reschedule the session heartbeat job with current interval from DB."""
+    global _scheduler
+    if _scheduler:
+        hb_interval = int(_get_setting('heartbeat_interval', '30'))
+        job = _scheduler.get_job('nsfocus_heartbeat')
+        if job:
+            _scheduler.reschedule_job('nsfocus_heartbeat', trigger='interval', minutes=hb_interval)
+            logger.info(f'Heartbeat rescheduled: every {hb_interval}min')
 
 
 def _smart_collect():
