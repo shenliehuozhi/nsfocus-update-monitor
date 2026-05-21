@@ -40,6 +40,31 @@ def _is_maintenance_mode() -> bool:
         return False
 
 
+def _is_quiet_hours() -> bool:
+    """Check if current time falls within the global quiet hours window (system_settings)."""
+    from datetime import datetime as _dt
+    try:
+        from src.models.database import query
+        rows = query("SELECT value FROM system_settings WHERE key = 'quiet_hours_enabled'")
+        if not rows or rows[0]['value'] != '1':
+            return False
+        start_rows = query("SELECT value FROM system_settings WHERE key = 'quiet_hours_start'")
+        end_rows = query("SELECT value FROM system_settings WHERE key = 'quiet_hours_end'")
+        if not start_rows or not end_rows:
+            return False
+        quiet_start = start_rows[0]['value']
+        quiet_end = end_rows[0]['value']
+        if not quiet_start or not quiet_end:
+            return False
+        now_str = _dt.now().strftime('%H:%M')
+        if quiet_start <= quiet_end:
+            return quiet_start <= now_str <= quiet_end
+        else:
+            return now_str >= quiet_start or now_str <= quiet_end
+    except Exception:
+        return False
+
+
 def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = False):
     """Route a snapshot through its matched channels.
 
@@ -47,6 +72,9 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
     """
     if _is_maintenance_mode():
         logger.info(f'Maintenance mode: suppressed notification for snapshot {snapshot_id}')
+        return
+    if _is_quiet_hours():
+        logger.info(f'Quiet hours: suppressed notification for snapshot {snapshot_id}')
         return
 
     snap = get_snapshot(snapshot_id)

@@ -2220,19 +2220,15 @@ async function settings(){
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
     <div class="cfg-section">
       <div class="cfg-section-hd">🔶 开关选项</div>
-      <div class="cfg-row">
+      <div class="cfg-row" style="grid-template-columns:1fr 1fr 1fr">
         <div class="cfg-flag" style="background:#fff8e6;border:1px solid #f5c842">
           <label class="cfg-toggle"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({maintenance_mode:v})}).then(r=>toast(r.code===0?(v==='1'?'🔇 维护模式已开启':'🔔 维护模式已关闭'):'失败',r.code===0?'success':'error'))"><span>🔧 维护模式</span></label>
           <span class="cfg-flag-desc">开启后所有推送静默（采集照常），调试时避免误发通知</span>
         </div>
-      </div>
-      <div class="cfg-row">
         <div class="cfg-flag" style="background:#ffeef0;border:1px solid #f5a0a8">
           <label class="cfg-toggle"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="let v=this.checked?'1':'0';if(v==='1'&&!confirm('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\\n\\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。\\n\\n确认开启？')){this.checked=false;return;}api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:v})}).then(r=>toast(r.code===0?(v==='1'?'🔒 API 已锁定为 localhost':'🔓 API 已开放'):'失败',r.code===0?'success':'error'))"><span>🔒 API 仅限本机</span></label>
           <span class="cfg-flag-desc">/api/* 仅允许 127.0.0.1 调用，TCP 层校验不可伪造</span>
         </div>
-      </div>
-      <div class="cfg-row">
         <div class="cfg-flag" style="background:#f0f4ff;border:1px solid #b8d0ff">
           <label class="cfg-toggle"><input type="checkbox" id="cfg-skip-hash" ${cfg.skip_page_hash_check==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({skip_page_hash_check:v})}).then(r=>toast(r.code===0?(v==='1'?'⚡ 已跳过PageHash检查':'🔄 已恢复PageHash检查'):'失败',r.code===0?'success':'error'))"><span>⚡ 跳过 PageHash 检查</span></label>
           <span class="cfg-flag-desc">每次快速采集都重新解析所有页面，消耗更高但数据更实时</span>
@@ -2265,13 +2261,21 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd">🔇 静默时段</div>
-      <div class="cfg-row cfg-row-inline">
-        <div class="form-group"><label>开始时间</label><input id="cfg-quiet-start" type="time" value="${cfg.quiet_hours_start||'22:00'}"></div>
-        <span class="cfg-sep">—</span>
-        <div class="form-group"><label>结束时间</label><input id="cfg-quiet-end" type="time" value="${cfg.quiet_hours_end||'08:00'}"></div>
+      <div class="cfg-section-hd" style="display:flex;align-items:center;gap:10px">
+        <span>🔇 静默时段</span>
+        <label class="cfg-toggle" style="font-size:12px">
+          <input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} onchange="document.getElementById('quiet-times').style.display=this.checked?'':'none'">
+          <span>启用</span>
+        </label>
       </div>
-      <p class="cfg-hint" style="margin-top:-6px">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
+      <div id="quiet-times" style="display:${cfg.quiet_hours_enabled==='1'?'':'none'}">
+        <div class="cfg-row cfg-row-inline">
+          <div class="form-group"><label>开始时间</label><input id="cfg-quiet-start" type="time" value="${cfg.quiet_hours_start||'22:00'}"></div>
+          <span class="cfg-sep">—</span>
+          <div class="form-group"><label>结束时间</label><input id="cfg-quiet-end" type="time" value="${cfg.quiet_hours_end||'08:00'}"></div>
+        </div>
+        <p class="cfg-hint" style="margin-top:-6px">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
+      </div>
     </div>
 
     <div class="cfg-section">
@@ -3820,7 +3824,7 @@ async function collectProduct(id,mode){
 }
 
 async function saveSettings(){
-  const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
