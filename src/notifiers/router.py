@@ -175,6 +175,19 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         if not channel or not channel.get('is_active'):
             continue
 
+        # Deduplication: skip if this snapshot+channel already sent successfully
+        # (failed records don't block — rate-limit failures are transient)
+        from src.models.database import query
+        existing = query(
+            """SELECT id FROM delivery_log
+               WHERE snapshot_id = ? AND channel_id = ? AND delivery_status = 'sent'
+               LIMIT 1""",
+            (snap['id'], channel_id)
+        )
+        if existing:
+            logger.info(f'Skip duplicate: snapshot {snap["id"]} already sent to channel {channel_id}')
+            continue
+
         notifier = NOTIFIERS.get(channel['type'])
         if not notifier:
             logger.warning(f'Unknown channel type: {channel["type"]}')
@@ -218,6 +231,7 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         from src.models.subscription import log_delivery
         log_delivery(
             snapshot_id=snap['id'],
+            rule_id=rule['id'],
             channel_id=channel_id,
             channel_type=channel['type'],
             channel_name=channel.get('name', ''),
@@ -387,6 +401,7 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list):
             from src.models.subscription import log_delivery
             log_delivery(
                 snapshot_id=snap['snapshot_id'],
+                rule_id=rule['id'],
                 channel_id=channel_id,
                 channel_type=channel['type'],
                 channel_name=channel.get('name', ''),

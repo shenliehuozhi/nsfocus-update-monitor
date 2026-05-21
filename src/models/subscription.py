@@ -152,6 +152,7 @@ SCHEMA_DELIVERY_LOG = """
 CREATE TABLE IF NOT EXISTS delivery_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
+    rule_id INTEGER REFERENCES subscription_rules(id),
     channel_id INTEGER REFERENCES channels(id),
     channel_type TEXT NOT NULL,
     channel_name TEXT DEFAULT '',
@@ -166,17 +167,18 @@ CREATE TABLE IF NOT EXISTS delivery_log (
 
 def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
                  channel_name: str = '', customer_id: int = None,
-                 status: str = 'pending', error: str = '') -> int:
+                 status: str = 'pending', error: str = '',
+                 rule_id: int = None) -> int:
     from src.models.database import execute
     sent_at = None
     if status == 'sent':
         from datetime import datetime
         sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     return execute(
-        """INSERT INTO delivery_log (snapshot_id, channel_id, channel_type, channel_name,
+        """INSERT INTO delivery_log (snapshot_id, rule_id, channel_id, channel_type, channel_name,
            customer_id, delivery_status, error_message, sent_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (snapshot_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at)
     )
 
 
