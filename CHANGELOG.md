@@ -40,3 +40,19 @@
 
 **后续**：rule_id 可追溯推送来源规则
 
+---
+
+## 2026-05-21 — process_delayed_queue 健壮性改进；CHANGELOG 模板固化
+
+**问题**：`process_delayed_queue` 中若 `get_snapshot(item['snapshot_id'])` 返回 `None`，会把 `None` 传给 `_send_immediate`，可能导致后续异常，且队列项不会被 mark_pushed，造成积压。
+
+**修复内容**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/notifiers/router.py` | 取 snapshot 失败时 mark_pushed 并 continue，避免空快照进入发送流程 |
+
+**逻辑**：
+- snapshot 不存在 → mark_pushed 清理队列项，继续下一个
+- snapshot 存在 → 正常走 `_send_immediate` 去重检查
+
