@@ -119,47 +119,134 @@ def _confirm_rollbacks(source_id: int, confirm_count: int) -> list:
     return confirmed
 
 
+# ── Subscription rule matching ──────────────────────────────────────────────
+
+
+def _chain_matches(snap_chain: list, rule_chains: list) -> bool:
+    """判断 snapshot 的 chain 是否匹配规则中的任意一条 chain 条目。
+
+    匹配模式：
+      - leaf:    snap_chain 必须与 rule_chain 完全相等（精确到具体包类型）
+      - subtree: snap_chain 以 rule_chain 为前缀（订阅该节点下全部包）
+
+    Args:
+        snap_chain:   snapshot 从 source_url 反查得到的完整 chain
+        rule_chains:  filter_conditions['chains'] 列表
+
+    Returns:
+        True if any rule_chain entry matches, False otherwise.
+    """
+    if not rule_chains:
+        return True  # 无 chains 条件 = 全部匹配
+
+    for entry in rule_chains:
+        rc = entry.get('chain', [])
+        mode = entry.get('match', 'leaf')
+
+        if not rc:
+            continue
+
+        if mode == 'leaf':
+            if snap_chain == rc:
+                return True
+        elif mode == 'subtree':
+            # subtree: snap_chain 的前缀必须等于 rule_chain
+            if len(snap_chain) >= len(rc) and snap_chain[:len(rc)] == rc:
+                return True
+
+    return False
+
+
 def get_new_for_subscription(rule: dict, new_items: list) -> list:
     """Filter new items through a subscription rule's conditions.
 
-    Returns items that match the rule's filter_conditions.
+    支持新旧两种 filter_conditions 结构：
+      - 新结构（chains）: 按链路径匹配，通过 scheduler._get_chain 反查
+      - 旧结构（products/versions/package_types）: 维持向后兼容的独立字段匹配
+
+    空 conditions = 匹配全部（等效订阅全部产品）。
+
+    Args:
+        rule:      subscription_rules 表行（含 filter_conditions JSON 解析后 dict）
+        new_items: [(snapshot_id, snapshot_dict), ...]
+
+    Returns:
+        匹配的 [(snapshot_id, snapshot_dict), ...]
     """
     conditions = rule.get('filter_conditions', {})
     if not conditions:
-        return new_items  # No filter = match all
+        return new_items  # 空条件 = 匹配全部
+
+    # ── 新结构：chains（链路径匹配）──────────────────────────────────────
+    chains = conditions.get('chains', [])
+
+    if chains:
+        # 从 scheduler 获取 chain 反查函数（延迟 import 避免循环）
+        _get_chain = None
+        try:
+            from src.core.scheduler import _get_chain as _resolve_chain
+            _get_chain = _resolve_chain
+        except ImportError:
+            logger.warning('scheduler._get_chain not available, skipping chain filter')
+
+        if _get_chain and chains:
+            matched = []
+            for sid, snap in new_items:
+                snap_chain = _get_chain(
+                    snap.get('source_id', 0),
+                    snap.get('source_url', '')
+                )
+                if not _chain_matches(snap_chain, chains):
+                    continue
+
+                # Chain 匹配通过后，再检查 urgency 和 keywords
+                urgency = conditions.get('urgency', [])
+                if urgency and snap.get('urgency') not in urgency:
+                    continue
+
+                keywords = conditions.get('keywords', [])
+                if keywords:
+                    desc = snap.get('description_raw', '')
+                    if not any(kw.lower() in desc.lower() for kw in keywords):
+                        continue
+
+                matched.append((sid, snap))
+            return matched
+
+    # ── 旧结构：products / versions / package_types（向后兼容）───────────
+    products = conditions.get('products', [])
+    versions = conditions.get('versions', [])
+    pkg_types = conditions.get('package_types', [])
+    urgency = conditions.get('urgency', [])
+    keywords = conditions.get('keywords', [])
 
     matched = []
     for sid, snap in new_items:
         # Check product filter
-        products = conditions.get('products', [])
         if products and snap.get('product_name') not in products:
             continue
 
         # Check version filter
-        versions = conditions.get('versions', [])
         if versions and snap.get('version_branch') not in versions:
             continue
 
         # Check package type filter (supports comma-separated values per entry)
-        pkg_types = conditions.get('package_types', [])
         if pkg_types:
-            # Flatten comma-separated entries: ['rule,sys', 'av'] → ['rule', 'sys', 'av']
             flat_types = set()
             for pt in pkg_types:
                 if pt:
                     for t in pt.split(','):
-                        if t.strip():
-                            flat_types.add(t.strip())
+                        t = t.strip()
+                        if t:
+                            flat_types.add(t)
             if flat_types and snap.get('package_type') not in flat_types:
                 continue
 
         # Check urgency filter
-        urgency_list = conditions.get('urgency', [])
-        if urgency_list and snap.get('urgency') not in urgency_list:
+        if urgency and snap.get('urgency') not in urgency:
             continue
 
         # Check keyword filter (in description)
-        keywords = conditions.get('keywords', [])
         if keywords:
             desc = snap.get('description_raw', '')
             if not any(kw.lower() in desc.lower() for kw in keywords):

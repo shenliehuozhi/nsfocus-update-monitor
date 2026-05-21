@@ -28,6 +28,63 @@ from src.models.subscription import get_enabled_rules
 
 logger = get_logger('scheduler')
 
+# ── URL → Chain 缓存（用于订阅规则链路径匹配）────────────────────────
+# 结构: _url_chain_cache[source_id][norm_url] = chain_list
+# 在 start_scheduler 时通过 _build_url_chain_cache() 构建
+_url_chain_cache: dict[int, dict[str, list]] = {}
+_chain_cache_loaded = False
+
+
+def _build_url_chain_cache():
+    """从 DB 加载所有 source 的 package_type.paths，构建 URL→chain 映射缓存。
+
+    snapshot 通过 source_url 在这里反查 chain，用于订阅规则链路径匹配。
+    每次 scheduler 启动时重建（产品管理修改路径后下次调度自动刷新）。
+    """
+    global _url_chain_cache, _chain_cache_loaded
+    import json as _json
+    from src.models.database import query
+
+    _url_chain_cache = {}
+    rows = query("SELECT id, package_type FROM content_sources WHERE is_active=1")
+    for row in rows:
+        try:
+            pt = _json.loads(row['package_type'] or '{}')
+        except Exception:
+            pt = {}
+        url_map = {}
+        for p in pt.get('paths', []):
+            url = p.get('url')
+            chain = p.get('chain')
+            if url and chain and isinstance(chain, list):
+                # 标准化 URL 格式：去除尾部斜线，确保前导斜线
+                norm = '/' + url.lstrip('/').rstrip('/')
+                url_map[norm] = chain
+        _url_chain_cache[row['id']] = url_map
+
+    _chain_cache_loaded = True
+    logger.debug(f'URL→Chain cache built: {len(_url_chain_cache)} sources')
+
+
+def _get_chain(source_id: int, source_url: str) -> list:
+    """从缓存反查 snapshot 的完整 chain 路径。
+
+    通过 snapshot.source_url 在 source.package_type.paths 中查找匹配路径。
+    返回 chain 数组，如找不到返回空列表。
+    """
+    if not _chain_cache_loaded:
+        _build_url_chain_cache()
+    url_map = _url_chain_cache.get(source_id, {})
+    norm = '/' + (source_url or '').lstrip('/').rstrip('/')
+    return url_map.get(norm, [])
+
+
+def invalidate_chain_cache():
+    """供外部调用的缓存失效接口（产品管理修改路径后调用）。"""
+    global _chain_cache_loaded
+    _chain_cache_loaded = False
+    _build_url_chain_cache()
+
 
 def _get_setting(key: str, default: str) -> str:
     """Read setting from DB, fallback to env, fallback to default."""
@@ -751,6 +808,9 @@ def start_scheduler(app=None):
 
         # First-run check: if no snapshots have source_url populated, trigger immediate full scan
         _check_first_run()
+
+        # Build URL→Chain cache for subscription chain matching
+        _build_url_chain_cache()
 
         # Session heartbeat: keep PHPSESSID alive (configurable interval)
         hb_interval = int(_get_setting('heartbeat_interval', '30'))

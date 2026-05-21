@@ -22,6 +22,45 @@
 
 ---
 
+## 2026-05-27 — 订阅规则条件细化：支持链路径匹配（方案设计）
+
+**根因**：现有 `filter_conditions` 为扁平三字段（products/versions/package_types），三个维度相互独立，无法精确表达"产品 → 子分类 → 版本 → 包类型"的层次结构，导致订阅粒度不可控。
+
+**设计目标**：支持用户精确选择 `产品 > 子分类 > 版本 > 包类型` 的完整路径，或选中中间节点订阅其下全部。
+
+**设计方案**：
+
+| 组件 | 改动 |
+|------|------|
+| `src/core/scheduler.py` | 启动时构建 `_url_chain_cache: dict[source_id, dict norm_url → chain]`，运行时提供 `_get_chain(source_id, source_url)` 从缓存反查 chain |
+| `src/detector/change.py` | 重写 `get_new_for_subscription`，用 `_get_chain()` 反查 chain 后按新结构匹配；新增 `_chain_matches(snap_chain, rule_chains)` |
+| `src/web/templates/index.html` | 订阅条件 UI 重写为树形选择器（复用 `buildDataTreeHtml`），支持 leaf/subtree 两种匹配模式 |
+
+**`filter_conditions` 新结构**：
+
+```json
+{
+  "chains": [
+    { "chain": ["WAF", "标准正式版", "V6.0.8", "规则"], "match": "leaf" },
+    { "chain": ["IPS", "V6.0.9"], "match": "subtree" }
+  ],
+  "keywords": ["漏洞"],
+  "urgency": ["high"]
+}
+```
+
+**关键设计决策**：
+- **不新增 chain 列**：snapshot 通过 `source_url` 在 `content_sources.package_type.paths[]` 中反查 chain，运行时解决，无需 schema 改动
+- **内存缓存**：scheduler 启动时加载所有 source 的 package_type 到 `_url_chain_cache`，避免每次匹配都查 DB
+- **复用产品管理树**：`buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid)` 直接复用，节点点击改为 toggle 选中而非过滤右侧面板
+- **不破坏现有数据**：旧规则（扁平结构）可继续使用，迁移策略待定
+
+**逻辑说明**：
+- `_chain_matches`：`leaf` 模式要求 snap_chain 与 rule_chain 完全相等；`subtree` 模式要求 snap_chain 以 rule_chain 为前缀
+- 匹配优先级：chain 过滤 → keywords → urgency，三者同时满足才推送
+
+---
+
 ## 2026-05-21 — 修复重复推送问题
 
 **根因**：rule 11（绿盟企业微信）和 rule 13（绿盟企业微信通知）同时绑定企业微信渠道，且 `filter_conditions={}` 均匹配全部产品，导致同一 snapshot 发往同一 channel 两次。
