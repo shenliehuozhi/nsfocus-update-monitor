@@ -263,8 +263,12 @@ def process_delayed_queue():
         return
     items = get_due_items()
     for item in items:
+        snap = get_snapshot(item['snapshot_id'])
+        if not snap:
+            mark_pushed(item['id'])
+            continue
         _send_immediate(
-            get_snapshot(item['snapshot_id']),
+            snap,
             {'id': item['rule_id'], 'name': f'delayed-{item["id"]}'},
             is_rollback=False
         )
