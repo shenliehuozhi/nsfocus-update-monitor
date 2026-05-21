@@ -2042,7 +2042,8 @@ async function loadDataAll() {
 // 链选择器弹窗（树形选择 + match 模式切换）
 async function openChainSelectorModal(existingChains) {
   // existingChains: 编辑时传入已有条件，供回显选中态
-  const chains = existingChains || [];
+  window._condChains = existingChains || [];
+  const chains = window._condChains;
 
   // 确保 _dataAll 已加载（从 /latest/snapshots 拉取产品路径数据）
   if (Object.keys(_dataAll).length === 0) {
@@ -2123,7 +2124,7 @@ function csTreeNodeClick(nodeEl) {
   const chainKey = JSON.stringify(chain);
 
   // 冲突检测：检查新 chain 与已选项是否有父子重叠
-  for (const existing of _condChains) {
+  for (const existing of window._condChains) {
     const existKey = JSON.stringify(existing.chain);
     if (existKey === chainKey) continue; // 取消选择不触发冲突
     // 新 chain 是否包含已选 chain（选了父，但子已存在）
@@ -2142,19 +2143,19 @@ function csTreeNodeClick(nodeEl) {
     }
   }
 
-  const idx = _condChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
+  const idx = window._condChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
   if (idx >= 0) {
-    _condChains.splice(idx, 1);
+    window._condChains.splice(idx, 1);
     nodeEl.setAttribute('data-sel', '0');
     nodeEl.style.background = '';
   } else {
-    _condChains.push({ chain, match });
+    window._condChains.push({ chain, match });
     nodeEl.setAttribute('data-sel', '1');
     nodeEl.style.background = '#dbeafe';
   }
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
-    rightDiv.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${_condChains.length}）</div>` + renderChainSelList(_condChains);
+    rightDiv.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
   }
 }
 
@@ -2282,13 +2283,8 @@ document.addEventListener('click', function(e) {
 
 // 确认链选择：将选中节点转为条件条目
 function confirmChainSelection() {
-  const selectedSet = window._csSelectedSet || new Set();
-  const chains = [];
-  selectedSet.forEach(chainStr => {
-    const chain = JSON.parse(chainStr);
-    chains.push({ chain, match: 'leaf' });  // 默认 leaf
-  });
-  window._condChains = chains;
+  // 直接使用 csTreeNodeClick 中已填充的 _condChains
+  window._condChains = window._condChains || [];
   renderCondPills();
   document.getElementById('chainSelModal').remove();
 }
