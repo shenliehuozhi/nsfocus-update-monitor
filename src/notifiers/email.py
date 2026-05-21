@@ -44,14 +44,14 @@ class EmailNotifier(BaseNotifier):
                                   'Missing SMTP config or recipient list')
 
         # ── Email rate limiting (3-layer) ──────────────────────────
-        ch_id = int(config.get('_channel_id', 0))
-        cust_id = int(config.get('_customer_id', 0))
-        ch_hourly = int(config.get('_email_hourly_limit', 0))
-        ch_daily = int(config.get('_email_daily_limit', 0))
-        cust_hourly = int(config.get('_cust_hourly_limit', 10))
-        cust_daily = int(config.get('_cust_daily_limit', 50))
-        global_hourly = int(config.get('_global_hourly_limit', 100))
-        global_daily = int(config.get('_global_daily_limit', 500))
+        ch_id = int(config.get('_channel_id') or 0)
+        cust_id = int(config.get('_customer_id') or 0)
+        ch_hourly = int(config.get('_email_hourly_limit') or 0)
+        ch_daily = int(config.get('_email_daily_limit') or 0)
+        cust_hourly = int(config.get('_cust_hourly_limit') or 10)
+        cust_daily = int(config.get('_cust_daily_limit') or 50)
+        global_hourly = int(config.get('_global_hourly_limit') or 100)
+        global_daily = int(config.get('_global_daily_limit') or 500)
 
         from src.core.email_rate_limiter import (
             check_channel, check_customer, check_global, record as limiter_record
