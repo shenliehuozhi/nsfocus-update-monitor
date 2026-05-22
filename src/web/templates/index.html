@@ -2469,17 +2469,17 @@ async function openRModal(id){
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
   modal.innerHTML=`<div class="card" style="width:520px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid">
-    <div class="form-section" style="background:#f8fbff"><div class="form-section-title">基本信息</div>
+    <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
     </div>
 
-    <div class="form-section" style="background:#fff8e8"><div class="form-section-title">订阅条件</div>
+    <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">订阅条件</div>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
     <div id="rcondsWrap"><div id="rconds" style="min-height:32px"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="(async ()=>{ await openChainSelectorModal(); })()">+ 添加路径</button></div>
     </div>
 
-    <div class="form-section" style="background:#f0fdf4"><div class="form-section-title">推送配置</div>
+    <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">推送配置</div>
     <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
     <div class="grid3"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，延迟多少小时再推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略 <span title="重置=重新计算推送周期；追加=在上一周期基础上追加；窗口=仅在指定时间窗口推送" style="cursor:help;color:var(--info)">ℹ️</span></label><select id="rst" onchange="onStrategyChange()"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h) <span title="同一版本两次推送之间的最小时间间隔，防止重复推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rin" type="number" value="0"></div></div>
@@ -2491,7 +2491,7 @@ async function openRModal(id){
     <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div>
     </div>
 
-    <div class="form-section" style="background:#fef9c3"><div class="form-section-title">通知渠道</div>
+    <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">通知渠道</div>
     <div id="rchansTags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin-bottom:8px"></div>
     <button class="btn btn-xs btn-outline" onclick="openChanSelModal()">+ 添加渠道</button>
     <div id="emailFields" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">

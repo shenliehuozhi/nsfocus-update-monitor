@@ -12,7 +12,7 @@ data/*.db-*
 *.bak
 
 # Logs
-logs/*.log
+logs/*
 
 # Environment
 .env
