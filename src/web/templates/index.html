@@ -39,6 +39,9 @@ td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 .btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:5px}
 .btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:#f8fafc}
 .form-group{margin-bottom:10px}
+.form-section{margin-bottom:18px;padding:14px 16px;border-bottom:2px solid #f0f0f0;border-radius:8px}
+.form-section:last-of-type{border-bottom:none}
+.form-section-title{font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid #e8eef8;display:inline-block}
 .cfg-section{margin-bottom:22px}
 .cfg-section-hd{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;padding:0 0 8px 0;border-bottom:1px solid var(--border);margin-bottom:12px}
 .cfg-section-sub{font-size:11.5px;color:var(--muted);margin:0 0 10px 0}
@@ -1999,7 +2002,7 @@ async function subscriptions(){
 
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16"><tr><th style="min-width:120px">名称</th><th>订阅条件</th><th>推送</th><th>有效期</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
-  window._custs=list;window._chOpts=chOpts;}
+  window._custs=list;window._chOpts=chOpts;window._chData=channels;}
 
 function onCustChange(){
   let cid=document.getElementById('rcust').value;
@@ -2011,7 +2014,11 @@ function onCustChange(){
 function toggleAllMode(){
   const on=document.getElementById('rall').checked;
   document.getElementById('rcondsWrap').style.display=on?'none':'';
-  if(on)document.getElementById('rconds').innerHTML='';
+  if(on){
+    // 订阅全部模式：清空路径
+    window._condChains=[];
+    renderCondPills();
+  }
 }
 
 // ── 订阅条件：链路径选择器 ─────────────────────────────────────────────────
@@ -2375,6 +2382,56 @@ function addCond(p,v,t){
   else{setTimeout(()=>loadCV(d.querySelector('.cp')),50);}
 }
 
+function renderChanTags(){
+  const container=document.getElementById('rchansTags');
+  if(!container)return;
+  const chData=window._chData||[];
+  const sel=window._selChans||[];
+  if(!sel.length){
+    container.innerHTML='<span style="color:var(--muted);font-size:12px">未选择渠道</span>';
+    return;
+  }
+  container.innerHTML=sel.map(cid=>{
+    const c=chData.find(x=>x.id===cid);
+    if(!c)return'';
+    const isEmail=c.type==='email';
+    const label=`${c.name}${isEmail?' ('+c.type+')':''}`;
+    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:${isEmail?'#fef3c7':'#e8f0fe'};border:1px solid ${isEmail?'#fbbf24':'#c2d8fc'};border-radius:16px;font-size:12px;color:${isEmail?'#92400e':'#1e40af'}"><span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</span><button onclick="removeChanTag(${cid})" style="background:none;border:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0;opacity:0.7">×</button></span>`;
+  }).join('');
+}
+
+function removeChanTag(cid){
+  window._selChans=(window._selChans||[]).filter(x=>x!==cid);
+  renderChanTags();
+  updateEmailFields();
+}
+
+function updateEmailFields(){
+  const ef=document.getElementById('emailFields');
+  if(!ef)return;
+  const chData=window._chData||[];
+  const sel=window._selChans||[];
+  const hasEmail=sel.some(cid=>{
+    const c=chData.find(x=>x.id===cid);
+    return c&&c.type==='email';
+  });
+  ef.classList.toggle('hidden',!hasEmail);
+}
+
+function openChanSelModal(){
+  const chData=window._chData||[];
+  const sel=window._selChans||[];
+  const avail=chData.filter(c=>!sel.includes(c.id));
+  if(!avail.length){toast('已添加所有渠道','warn');return;}
+  const opts=avail.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
+  const modal=document.createElement('div');
+  modal.id='chanSelModal';
+  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.onclick=function(e){if(e.target===this)this.remove();};
+  modal.innerHTML=`<div class="card" style="width:360px" onclick="event.stopPropagation()"><div class="card-hd">选择通知渠道 <button onclick="document.getElementById('chanSelModal').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><div class="form-group"><label>渠道</label><select id="newChanSel" style="width:100%">${opts}</select></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" style="flex:1" onclick="(function(){const v=parseInt(document.getElementById('newChanSel').value);if(v&&!(window._selChans||[]).includes(v)){window._selChans.push(v);renderChanTags();updateEmailFields();}document.getElementById('chanSelModal').remove();})()">添加</button><button class="btn btn-outline" onclick="document.getElementById('chanSelModal').remove()">取消</button></div></div></div>`;
+  document.body.appendChild(modal);
+}
+
 function addChan(cid){
   let c=document.getElementById('rchans');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center';
@@ -2400,8 +2457,10 @@ async function openRModal(id){
   let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join(''):'';
   if(!chOpts){
     const[cR,custR]=await Promise.all([api('/channels'),api('/customers')]);
-    chOpts=(cR.data||[]).map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
+    const chans=cR.data||[];
+    chOpts=chans.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
     window._chOpts=chOpts;
+    window._chData=chans; // [{id,name,type},...]
     if(custR?.data)window._custs=custR.data;
   }
 
@@ -2409,50 +2468,80 @@ async function openRModal(id){
   modal.id='rModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid"><div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
+  modal.innerHTML=`<div class="card" style="width:520px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid">
+    <div class="form-section" style="background:#f8fbff"><div class="form-section-title">基本信息</div>
+    <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
-    <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
+    </div>
+
+    <div class="form-section" style="background:#fff8e8"><div class="form-section-title">订阅条件</div>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
-    <div id="rcondsWrap"><div class="form-group"><label>订阅条件 <span style="font-weight:400;color:var(--muted);font-size:11px">选择产品路径后精确订阅</span></label><div id="rconds"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="(async ()=>{ await openChainSelectorModal(); })()">+ 添加路径</button></div></div>
-    <div class="grid3"><div class="form-group"><label>延迟(h)</label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略</label><select id="rst"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h)</label><input id="rin" type="number" value="0"></div></div>
-    <div class="form-group"><label>推送模式</label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
+    <div id="rcondsWrap"><div id="rconds" style="min-height:32px"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="(async ()=>{ await openChainSelectorModal(); })()">+ 添加路径</button></div>
+    </div>
+
+    <div class="form-section" style="background:#f0fdf4"><div class="form-section-title">推送配置</div>
+    <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div class="grid2"><div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>通知渠道 <span style="font-weight:400;color:var(--muted);font-size:11px">可添加多个</span></label><div id="rchans"></div><button class="btn btn-xs btn-outline mt8" onclick="addChan()">+ 添加渠道</button></div></div>
-    <div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="ratt" type="number" value="0" min="0" max="50"></div><div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:4px"><label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" checked> 📢 包回退通知</label></div></div>
+    <div class="grid3"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，延迟多少小时再推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略 <span title="重置=重新计算推送周期；追加=在上一周期基础上追加；窗口=仅在指定时间窗口推送" style="cursor:help;color:var(--info)">ℹ️</span></label><select id="rst" onchange="onStrategyChange()"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h) <span title="同一版本两次推送之间的最小时间间隔，防止重复推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rin" type="number" value="0"></div></div>
+    <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px">
+      <div style="font-weight:600;margin-bottom:6px">⏰ 推送时间窗口 <span style="color:#e53935;font-size:11px">窗口策略必须配置</span></div>
+      <div style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
+      <div><label style="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" style="width:100px"> ～ <input id="winEnd" type="time" value="23:59" style="width:100px"></div>
+    </div>
+    <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div>
+    </div>
+
+    <div class="form-section" style="background:#fef9c3"><div class="form-section-title">通知渠道</div>
+    <div id="rchansTags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin-bottom:8px"></div>
+    <button class="btn btn-xs btn-outline" onclick="openChanSelModal()">+ 添加渠道</button>
+    <div id="emailFields" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">
+      <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
+      <div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="ratt" type="number" value="0" min="0" max="50"></div>
+    </div>
+    </div>
+
+    <div style="margin-top:12px;padding-top:12px;border-top:2px solid #f0f0f0"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" style="margin:0"> 📢 包回退通知</label></div>
     <div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveRule()">保存</button><button class="btn btn-outline" onclick="document.getElementById('rModalWrap').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
+  // 推送模式 tooltip
+  const modeTips={'':'检测到版本变化立即推送','weekly':'每周汇总推送一次','monthly':'每月汇总推送一次','quarterly':'每季汇总推送一次'};
+  document.getElementById('rdm').addEventListener('mouseenter',function(){const v=this.value;document.getElementById('rmodeTip').textContent='ℹ️';document.getElementById('rmodeTip').title=modeTips[v]||'';});
 
   if(id){
     // Load existing rule
     const rR=await api('/subscriptions');const r=(rR.data||[]).find(x=>x.id===id);if(!r)return;
-    document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';
+    document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;window._selChans=r.channels||[];renderChanTags();
     document.getElementById('rcust').value=r.customer_id||'';
     document.getElementById('remails').value=r.customer_emails||'';
     document.getElementById('ratt').value=r.attachment_max_mb||0;
-    let f=r.filter_conditions||{},ps=f.products||[],vs=f.versions||[],ts=f.package_types||[];
-    const isAll=!ps.length && !vs.length && !ts.length;
+    let f=r.filter_conditions||{};
+    const isAll=!(f.chains||[]).length;
     document.getElementById('rall').checked=isAll;
     document.getElementById('rcondsWrap').style.display=isAll?'none':'';
     if(!isAll){
-      // 加载已有 chains 条件
       const chains = f.chains || [];
       window._condChains = chains.map(c => ({
         chain: c.chain || [],
         match: c.match || 'leaf'
       }));
       renderCondPills();
+    }else{
+      window._condChains=[];
+      renderCondPills();
     }
-    let chs=r.channels||[];chs.forEach(c=>addChan(c));
+    updateEmailFields();
     document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
-    document.getElementById('rnr').checked=r.notify_rollback!==0;
-    onDigestModeChange();
+    document.getElementById('rnr').checked=r.notify_rollback===1;
+    onDigestModeChange();onStrategyChange();
     const dc=r.digest_config||{};
     if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
     else if(r.digest_mode==='monthly'){setTimeout(()=>{if(document.getElementById('dc-month'))document.getElementById('dc-month').value=dc.month_day||'last';},100);}
     else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
+    // 恢复窗口配置
+    if(r.delay_strategy==='window'){setTimeout(()=>{const wc=r.window_config||{};if(wc.days){wc.days.forEach(d=>{const cb=document.querySelector('.win-day[value="'+d+'"]');if(cb)cb.checked=true;});}if(wc.start)document.getElementById('winStart').value=wc.start;if(wc.end)document.getElementById('winEnd').value=wc.end;},100);}
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rconds').innerHTML='';document.getElementById('rchans').innerHTML='';document.getElementById('rcust').value='';document.getElementById('remails').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=true;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';window._condChains=[];renderCondPills();addChan();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();
   }
 }
 
@@ -2468,16 +2557,45 @@ function onDigestModeChange(){
   }else if(m==='quarterly'){
     d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
   }
+}
+function onStrategyChange(){
+  const s=document.getElementById('rst').value;
+  const w=document.getElementById('winCfg');
+  if(s==='window'){w.classList.remove('hidden');}
+  else{w.classList.add('hidden');}
+}
+function validateRuleConf(){
+  const st=document.getElementById('rst').value;
+  const dm=document.getElementById('rdm').value;
+  const delay=parseInt(document.getElementById('rdl').value)||0;
+  // 硬拦截：策略=窗口但未配置时间窗口
+  if(st==='window'){
+    const checked=[...document.querySelectorAll('.win-day:checked')];
+    const winStart=document.getElementById('winStart').value;
+    const winEnd=document.getElementById('winEnd').value;
+    if(!checked.length){return {valid:false,message:'窗口策略必须选择至少一个周几',type:'block'};}
+    if(!winStart||!winEnd){return {valid:false,message:'窗口策略必须配置时间段',type:'block'};}
+  }
+  // 警告：延迟+汇总模式
+  if(delay>0&&dm){
+    const dmTxt=dm==='weekly'?'每周':dm==='monthly'?'每月':'每季';
+    return {valid:null,message:'延迟'+delay+'小时+'+dmTxt+'汇总，会打乱汇总周期。延迟会使版本进入下一个汇总周期，确认继续？',type:'warn'};
+  }
+  return {valid:true};
 }async function saveRule(){
   let id=document.getElementById('rid').value;
-  let chs=Array.from(document.querySelectorAll('#rchans .chsel')).map(s=>parseInt(s.value)).filter(Boolean);
+  const vc=validateRuleConf();
+  if(vc.type==='block'){toast(vc.message,'error');return;}
+  if(vc.type==='warn'&&!confirm(vc.message)){return;}
+  let chs=window._selChans||[];
   let cid=parseInt(document.getElementById('rcust').value)||0;
   if(!cid)return toast('请选择关联客户','error');
-  let emails=document.getElementById('remails').value.trim();
   const isAll=document.getElementById('rall').checked;
-  // 新结构：chains（链路径），keywords/urgency 从 UI 暂未支持，留空
   const fc=isAll?{}:{chains:window._condChains||[]};
-  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:document.getElementById('rnr').checked?1:0,customer_emails:emails,attachment_max_mb:parseInt(document.getElementById('ratt').value)||0};
+  const emails=document.getElementById('remails')?.value.trim()||'';
+  const attMb=parseInt(document.getElementById('ratt')?.value)||0;
+  const nrr=document.getElementById('rnr')?.checked?1:0;
+  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,attachment_max_mb:attMb};
   const dm=d.digest_mode;
   if(dm){
     let dc={};
@@ -2485,6 +2603,11 @@ function onDigestModeChange(){
     else if(dm==='monthly'){const el=document.getElementById('dc-month');dc.month_day=el?(el.value==='last'?'last':parseInt(el.value)):'last';}
     else if(dm==='quarterly'){const el=document.getElementById('dc-quarter');dc.quarter_day=el?el.value:'last';}
     d.digest_config=dc;
+  }
+  // 窗口配置
+  if(d.delay_strategy==='window'){
+    const days=[...document.querySelectorAll('.win-day:checked')].map(c=>parseInt(c.value));
+    d.window_config={days,start:document.getElementById('winStart').value,end:document.getElementById('winEnd').value};
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('rModalWrap')?.remove();}else toast(r.message,'error');

@@ -95,3 +95,25 @@
 - snapshot 不存在 → mark_pushed 清理队列项，继续下一个
 - snapshot 存在 → 正常走 `_send_immediate` 去重检查
 
+## 2026-05-23 — 订阅规则参数冲突校验与窗口策略UI
+
+**背景**：延迟/策略/最小间隔三参数存在语义歧义和组合冲突，用户未配置时间窗口时选了窗口策略会导致功能完全失效。
+
+**改动**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/web/templates/index.html` | 新增时间窗口配置面板（周几+时间段）；新增 validateRuleConf() 冲突校验；新增 onStrategyChange() 控制窗口面板显隐；编辑/重置时恢复窗口配置；saveRule() 收集 window_config 写入请求体 |
+
+**设计决策**：
+- 策略=窗口 + 未配置周几或时间段 → **硬拦截**，toast 报错，禁止保存
+- 延迟>0 + 汇总模式 → **警告提示**（confirm 对话框），用户确认后可继续
+- 窗口配置数据结构：`{days: [1,2,3,4,5], start: "09:00", end: "18:00"}`（days 为 0-6 数字数组）
+
+**校验逻辑**（validateRuleConf）：
+```
+if 策略==窗口 and (未选周几 or 未配时间段) → block
+if 延迟>0 and 汇总模式 != '' → warn
+else → valid
+```
+
