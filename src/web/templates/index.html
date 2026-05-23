@@ -288,7 +288,11 @@ async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
   if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);document.body.className='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
 }
-function logout(){T=null;U=null;localStorage.removeItem('token');renderLogin();}
+function logout(){
+  if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
+  if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
+  T=null;U=null;localStorage.removeItem('token');renderLogin();
+}
 
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
