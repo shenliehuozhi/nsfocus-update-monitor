@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS subscription_rules (
     name TEXT NOT NULL,
     enabled INTEGER DEFAULT 1,
     filter_conditions TEXT DEFAULT '{}',
-    delay_hours INTEGER DEFAULT 0,
+    delay_days INTEGER DEFAULT 0,
     delay_strategy TEXT DEFAULT 'reset' CHECK(delay_strategy IN ('reset', 'append', 'window')),
     min_interval_hours INTEGER DEFAULT 0,
     digest_mode TEXT DEFAULT '' CHECK(digest_mode IN ('', 'weekly', 'monthly', 'quarterly')),
@@ -34,7 +34,7 @@ def create_rule(user_id: int, **kwargs) -> int:
     if 'window_config' in kwargs and not isinstance(kwargs['window_config'], str):
         kwargs['window_config'] = json.dumps(kwargs['window_config'], ensure_ascii=False)
     kwargs['user_id'] = user_id
-    fields = ['user_id', 'name', 'enabled', 'filter_conditions', 'delay_hours',
+    fields = ['user_id', 'name', 'enabled', 'filter_conditions', 'delay_days',
               'delay_strategy', 'min_interval_hours', 'digest_mode', 'digest_config',
               'customer_id', 'valid_until', 'quiet_start', 'quiet_end', 'notify_rollback',
               'customer_emails', 'attachment_max_mb', 'window_config']
@@ -393,6 +393,14 @@ def create_tables(db):
         pass
     try:
         db.execute("ALTER TABLE subscription_rules ADD COLUMN window_config TEXT DEFAULT '{}'")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE subscription_rules ADD COLUMN delay_days INTEGER DEFAULT 0")
+    except Exception:
+        pass
+    try:
+        db.execute("UPDATE subscription_rules SET delay_days = CAST(delay_hours AS INTEGER) / 24 WHERE delay_days = 0 AND delay_hours > 0")
     except Exception:
         pass
 

@@ -2482,7 +2482,7 @@ async function openRModal(id){
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">推送配置</div>
     <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div id="delayWrap"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" style="width:80px"></div></div>
+    <div id="delayWrap"><div class="form-group"><label>延迟(d) <span title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" min="0" style="width:80px"></div></div>
     <div id="winSection" class="hidden" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" onchange="onWinToggle()"> ⏰ 启用推送时间窗口</label></div>
     <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
       <div id="winDaysRow" style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
@@ -2530,7 +2530,7 @@ async function openRModal(id){
       renderCondPills();
     }
     updateEmailFields();
-    document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
+    document.getElementById('rdl').value=r.delay_days||r.delay_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
     document.getElementById('rnr').checked=r.notify_rollback===1;
     onDigestModeChange();
     const dc=r.digest_config||{};
@@ -2588,18 +2588,13 @@ function onWinToggle(){
   else{w.classList.add('hidden');}
 }
 function validateRuleConf(){
-  // 窗口策略：勾选启用时，必须配置时间段；即时模式还需选周几
+  // 窗口策略：汇总模式下勾选启用时，必须配置时间段
   const enWin=document.getElementById('rwin')?.checked;
-  if(enWin){
+  const dm=document.getElementById('rdm').value;
+  if(enWin && dm){
     const winStart=document.getElementById('winStart').value;
     const winEnd=document.getElementById('winEnd').value;
     if(!winStart||!winEnd){return {valid:false,message:'窗口策略必须配置时间段',type:'block'};}
-    // 即时模式：必须选周几
-    const dm=document.getElementById('rdm').value;
-    if(!dm){
-      const checked=[...document.querySelectorAll('.win-day:checked')];
-      if(!checked.length){return {valid:false,message:'窗口策略必须选择至少一个周几',type:'block'};}
-    }
   }
   return {valid:true};
 }async function saveRule(){
@@ -2614,7 +2609,7 @@ function validateRuleConf(){
   const emails=document.getElementById('remails')?.value.trim()||'';
   const attMb=parseInt(document.getElementById('ratt')?.value)||0;
   const nrr=document.getElementById('rnr')?.checked?1:0;
-  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_hours:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,attachment_max_mb:attMb};
+  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,attachment_max_mb:attMb};
   const dm=d.digest_mode;
   if(dm){
     let dc={};
@@ -2623,18 +2618,11 @@ function validateRuleConf(){
     else if(dm==='quarterly'){const el=document.getElementById('dc-quarter');dc.quarter_day=el?el.value:'last';}
     d.digest_config=dc;
   }
-  // 窗口配置：勾选启用时收集
-  // 即时模式：收集完整配置（周几+时间段）；汇总模式：只收集时间段（无周几）
-  if(document.getElementById('rwin')?.checked){
-    const dm=document.getElementById('rdm').value;
+  // 窗口配置：仅汇总模式可配置（勾选启用时）
+  if(document.getElementById('rwin')?.checked && dm){
     const start=document.getElementById('winStart').value;
     const end=document.getElementById('winEnd').value;
-    if(dm){
-      d.window_config={start,end}; // 汇总模式：无周几限制，只限制时间段
-    }else{
-      const days=[...document.querySelectorAll('.win-day:checked')].map(c=>parseInt(c.value));
-      d.window_config={days,start,end}; // 即时模式：周几+时间段
-    }
+    d.window_config={start,end}; // 汇总模式：只限制时间段
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('rModalWrap')?.remove();}else toast(r.message,'error');

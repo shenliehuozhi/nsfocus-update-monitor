@@ -257,11 +257,11 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
     return matched
 
 
-def compute_push_time(delay_hours: int) -> str:
-    """Compute the push_after timestamp for a delayed push."""
-    if delay_hours <= 0:
+def compute_push_time(delay_days: int) -> str:
+    """Compute the push_after timestamp for a delayed push (unit: days)."""
+    if delay_days <= 0:
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    target = datetime.now() + timedelta(hours=delay_hours)
+    target = datetime.now() + timedelta(days=delay_days)
     return target.strftime('%Y-%m-%d %H:%M:%S')
 
 

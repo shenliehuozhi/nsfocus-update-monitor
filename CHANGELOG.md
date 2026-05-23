@@ -22,6 +22,27 @@
 
 ---
 
+## 2026-05-23 — 即时模式 delay 字段单位改为天(d)
+
+**背景**：即时推送模式延迟字段原单位为小时(h)，业务上用于"等几天确认无负面反馈再推"，改为天(d)更直观。
+
+**改动**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/web/templates/index.html` | label `延迟(h)` → `延迟(d)`；tooltip 更新为"观察 N 天"；`saveRule` 字段名 `delay_hours` → `delay_days`；编辑分支兼容旧 `delay_hours` 字段；即时模式移除窗口策略相关校验和收集逻辑 |
+| `src/detector/change.py` | `compute_push_time(delay_hours)` → `compute_push_time(delay_days)`，`timedelta(hours=)` → `timedelta(days=)` |
+| `src/notifiers/router.py` | `delay_hours` → `delay_days`；`has_window` 从检查 `days` 存在改为检查 `start && end`（仅汇总模式）；日志改为 `{delay_days}d` |
+| `src/models/subscription.py` | schema `delay_hours` → `delay_days`；`create_rule` 字段同步；迁移添加 `delay_days` 列，从 `delay_hours / 24` 迁移旧数据 |
+
+**DB 迁移**：`ALTER TABLE subscription_rules ADD COLUMN delay_days`，旧数据按 `delay_hours / 24` 换算（小时转天，向下取整）。
+
+**语义**：
+- 即时模式：仅 `delay_days`，无窗口策略
+- 汇总模式：有窗口策略（时间段），无 delay
+
+---
+
 ## 2026-05-23 — P1-1 精简订阅规则推送配置：移除死代码字段
 
 **背景**：即时推送模式（delay=0）下，策略（reset/append）和最小间隔两个字段为死代码；汇总模式下最小间隔从未生效。窗口策略独立为 checkbox，与推送模式解耦。
