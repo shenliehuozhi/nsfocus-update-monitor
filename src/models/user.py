@@ -43,7 +43,7 @@ def is_ip_banned(ip: str) -> bool:
         return False
     from datetime import datetime
     banned_until = rows[0]['banned_until']
-    if datetime.now().isoformat() > banned_until:
+    if datetime.utcnow().isoformat() > banned_until:
         # Ban expired, clear it
         clear_login_failure(ip)
         return False

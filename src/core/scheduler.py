@@ -480,7 +480,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if mode == 'full':
             _last_full_run = datetime.utcnow()
             _save_last_full_scan()
-            _check_package_types_fresh(existing_sources, cookie, emit)
+            _check_package_types_fresh(existing_sources, cookie, _emit)
 
         # WAL checkpoint: prevent unlimited WAL file growth
         try:

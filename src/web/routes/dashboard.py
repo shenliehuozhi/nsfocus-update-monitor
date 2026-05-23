@@ -2,10 +2,13 @@
 
 from flask import Blueprint, jsonify, request
 
+from src.web.auth import require_auth
+
 bp = Blueprint('dashboard', __name__, url_prefix='/api')
 
 
 @bp.route('/dashboard', methods=['GET'])
+@require_auth
 def get_dashboard():
     from src.models.user_session import count_by_status, get_expired_active_count
     from src.models.snapshot import list_sources as list_src

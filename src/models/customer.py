@@ -38,6 +38,11 @@ def create(created_by: int, **kwargs) -> int:
 def update(customer_id: int, **kwargs) -> None:
     from src.models.database import execute
     import json
+    # Whitelist: only allow actual columns to be updated
+    _ALLOWED = {'name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes'}
+    kwargs = {k: v for k, v in kwargs.items() if k in _ALLOWED}
+    if not kwargs:
+        return
     if 'owned_products' in kwargs and not isinstance(kwargs['owned_products'], str):
         kwargs['owned_products'] = json.dumps(kwargs['owned_products'], ensure_ascii=False)
     sets = ', '.join(f'{k} = ?' for k in kwargs)

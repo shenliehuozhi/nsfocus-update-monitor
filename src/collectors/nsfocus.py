@@ -514,7 +514,7 @@ class NsfocusCollector(BaseCollector):
                             desc_parsed = s.get('description_parsed', '{}')
                             if isinstance(desc_parsed, str):
                                 try: desc_parsed = json.loads(desc_parsed)
-                                except: desc_parsed = {}
+                                except Exception: desc_parsed = {}
                             item = UnifiedContentItem(
                                 source_id=source_id, source_type='nsfocus',
                                 product_name=s['product_name'], version_branch=s['version_branch'],
