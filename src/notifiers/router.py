@@ -145,7 +145,6 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         return
 
     results = []
-    im_channels_used = set()
 
     for binding in bindings:
         channel_id = binding.get('channel_id')
@@ -205,9 +204,6 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         result = notifier.send(message, ch_config)
         results.append(result)
 
-        if channel['type'] in ('wecom', 'dingtalk', 'feishu'):
-            im_channels_used.add(channel['type'])
-
         # Log delivery
         from src.models.subscription import log_delivery
         log_delivery(
@@ -220,19 +216,6 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
             status='sent' if result.success else 'failed',
             error=result.error_message
         )
-
-    # Send confirmation to IM channels
-    for ch_type in im_channels_used:
-        for binding in bindings:
-            channel_id = binding.get('channel_id')
-            if not channel_id:
-                continue
-            channel = get_by_id(channel_id)
-            if channel and channel['type'] == ch_type:
-                notifier = NOTIFIERS.get(ch_type)
-                if notifier:
-                    notifier.send_confirmation(message, results, channel['config'])
-                break  # One confirmation per IM type
 
     logger.info(f'Rule {rule["name"]}: {len(results)} deliveries, '
                 f'success={sum(1 for r in results if r.success)}')
