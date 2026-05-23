@@ -8,7 +8,7 @@ from flask import Flask, request, g
 def create_app(config_path=None):
     app = Flask(__name__,
                 template_folder='src/web/templates',
-                static_folder='src/web/static')
+                static_folder=os.path.join(os.path.dirname(__file__), 'web', 'static'))
 
     # ── CORS ─────────────────────────────────────────────────────────
     # Allow origins from env var, comma-separated. Empty = allow all (dev only).
