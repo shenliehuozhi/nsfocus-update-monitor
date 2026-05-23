@@ -59,15 +59,19 @@ def update_source_health(source_id: int, status: str, last_collected_at: str = N
         (status, last_collected_at, source_id)
     )
 
-def touch_active_snapshots(source_id: int):
-    """Update last_seen_at for all active snapshots of a source.
-    
-    Called after quick collection to reflect that collection ran,
-    even when pages were unchanged."""
+def touch_active_snapshots(source_ids: list):
+    """Update last_seen_at for all active snapshots of given sources (batch).
+
+    Called after quick/full collection to reflect that collection ran,
+    even when pages were unchanged. Uses a single SQL for all sources
+    to minimize SQLite lock contention."""
+    if not source_ids:
+        return
     from src.models.database import execute
+    placeholders = ','.join(['?'] * len(source_ids))
     execute(
-        "UPDATE snapshots SET last_seen_at = datetime('now') WHERE source_id = ? AND status = 'active'",
-        (source_id,)
+        f"UPDATE snapshots SET last_seen_at = datetime('now') WHERE source_id IN ({placeholders}) AND status = 'active'",
+        tuple(source_ids)
     )
 
 

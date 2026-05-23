@@ -98,6 +98,81 @@ def _get_setting(key: str, default: str) -> str:
     return os.getenv(f'MONITOR_{key.upper()}', default)
 
 
+def _set_collection_running(mode: str):
+    """Persist collection running state to DB. Retries on lock contention."""
+    import json, time
+    from src.models.database import execute
+    for attempt in range(30):  # 30 attempts × 1s = 30s max wait
+        try:
+            execute(
+                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
+                (json.dumps({"status": "1", "started_at": datetime.utcnow().isoformat(), "mode": mode}),)
+            )
+            return
+        except Exception as e:
+            if 'locked' in str(e):
+                time.sleep(1)
+                continue
+            raise
+    logger.warning(f'_set_collection_running: failed after 30 retries, continuing anyway')
+
+
+def _clear_collection_running():
+    """Clear collection running state from DB."""
+    import json
+    from src.models.database import execute
+    execute(
+        "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
+        (json.dumps({"status": "0", "started_at": "", "mode": ""}),)
+    )
+
+
+def _check_concurrent_stale() -> bool:
+    """
+    Check if a previous collection is still running (or crashed while running).
+    Returns True if we should skip this trigger, False if safe to start.
+
+    Persists state to DB so it survives process restarts.
+    """
+    from src.models.database import query
+    import json
+    rows = query("SELECT value FROM system_settings WHERE key = 'collection_running'")
+    if not rows or not rows[0]['value']:
+        return False
+
+    try:
+        data = json.loads(rows[0]['value'])
+    except Exception:
+        return False
+
+    if data.get('status') == '0':
+        return False  # Idle, safe to start
+
+    # status='1' means previous collection did not end normally
+    started_str = data.get('started_at', '')
+    if not started_str:
+        return False
+
+    try:
+        started = datetime.fromisoformat(started_str)
+    except Exception:
+        return False
+
+    elapsed_hours = (datetime.utcnow() - started).total_seconds() / 3600
+    threshold = COLLECT_INTERVAL * 2  # 2x collection interval
+
+    if elapsed_hours > threshold:
+        logger.warning(f'Previous collection (mode={data["mode"]}) '
+                       f'started {elapsed_hours:.1f}h ago (> {threshold}h threshold), '
+                       f'treating as stale, clearing and allowing this trigger')
+        _clear_collection_running()
+        return False
+
+    logger.info(f'Previous collection (mode={data["mode"]}) still running '
+                f'({elapsed_hours:.1f}h < {threshold}h threshold), skipping trigger')
+    return True  # Previous still running, skip
+
+
 COLLECT_INTERVAL = int(_get_setting('collect_interval', '4'))
 ROLLBACK_CONFIRM = int(_get_setting('rollback_confirm', '2'))
 FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '24'))  # hours, default 1 day
@@ -189,10 +264,16 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
     """
     global _last_run, _last_full_run, _is_running, _progress, _last_mode
 
+    # Prevent concurrent collection across process restarts
+    if mode in ('quick', 'delta', 'full'):
+        if _check_concurrent_stale():
+            return {'status': 'skipped', 'reason': 'Previous collection still running'}
+
     if _is_running:
-        return {'status': 'skipped', 'reason': 'Already running'}
+        return {'status': 'skipped', 'reason': 'Already running (memory)'}
 
     _is_running = True
+    _set_collection_running(mode)
     _last_mode = mode
     logger.info(f'Collection starting: mode={mode}')
     start = time.time()
@@ -241,7 +322,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if not sessions:
             summary['status'] = 'error'
             summary['errors'].append('No active sessions')
-            _is_running = False
             _last_run = datetime.utcnow()
             logger.warning('Collection aborted: no active sessions')
             with _progress_lock:
@@ -266,14 +346,12 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                     update_status(sessions[1]['id'], 'expired')
                     summary['status'] = 'error'
                     summary['errors'].append('All sessions expired — collection aborted')
-                    _is_running = False
                     _last_run = datetime.utcnow()
                     return summary
                 logger.info('Switched to backup session')
             else:
                 summary['status'] = 'error'
                 summary['errors'].append('Session expired — collection aborted')
-                _is_running = False
                 _last_run = datetime.utcnow()
                 return summary
 
@@ -304,7 +382,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if not all_items:
             summary['status'] = 'warning' if summary['errors'] else 'ok'
             summary['duration_s'] = int(time.time() - start)
-            _is_running = False
             _last_run = datetime.utcnow()
             if mode == 'full':
                 _last_full_run = datetime.utcnow()
@@ -399,7 +476,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         process_delayed_queue()
 
         summary['duration_s'] = int(time.time() - start)
-        _is_running = False
         _last_run = datetime.utcnow()
         if mode == 'full':
             _last_full_run = datetime.utcnow()
@@ -432,7 +508,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         summary['status'] = 'error'
         summary['errors'].append(str(e)[:200])
         summary['duration_s'] = int(time.time() - start)
-        _is_running = False
         _last_run = datetime.utcnow()  # Prevent dashboard showing — forever
         with _progress_lock:
             _progress['active'] = False
@@ -441,6 +516,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['duration_s'] = summary['duration_s']
             _progress['finished_at'] = datetime.utcnow().isoformat()
         return summary
+
+    finally:
+        _is_running = False
+        try:
+            _clear_collection_running()
+        except Exception as e:
+            logger.warning(f'Failed to clear collection_running in finally block: {e}')
 
 
 def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bool = False) -> list:
@@ -467,6 +549,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bo
     all_items = []
     products = list(_collector_products().items())
     done = 0
+    touched_source_ids = []  # batch: collect all touched source_ids for single SQL
 
     for name, url in products:
         done += 1
@@ -496,8 +579,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bo
             emit('collecting', product=name, items=len(new_items))
             update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
             # Bump last_seen_at for unchanged packages too (reflects collection ran)
-            from src.models.snapshot import touch_active_snapshots
-            touch_active_snapshots(src['id'])
+            touched_source_ids.append(src['id'])
 
         except SessionExpiredError:
             logger.error(f'Quick {name}: Session expired')
@@ -508,6 +590,11 @@ def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bo
             _progress['errors'].append(f'{name}: {str(e)[:100]}')
 
         _progress['products_done'] = done
+
+    # Batch update: single SQL for all sources (minimizes SQLite lock contention)
+    if touched_source_ids:
+        from src.models.snapshot import touch_active_snapshots
+        touch_active_snapshots(touched_source_ids)
 
     return all_items
 
@@ -522,6 +609,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
     all_items = []
     products = list(_collector_products().items())
     done = 0
+    touched_source_ids = []  # batch: collect all touched source_ids for single SQL
 
     for name, url in products:
         done += 1
@@ -538,8 +626,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
                 all_items.extend(items)
                 emit('collecting', product=name, items=len(items))
                 update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
-                from src.models.snapshot import touch_active_snapshots
-                touch_active_snapshots(src['id'])
+                touched_source_ids.append(src['id'])
                 break  # success, move to next product
             except SessionExpiredError:
                 session_idx += 1
@@ -559,6 +646,11 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
                 break
 
         _progress['products_done'] = done
+
+    # Batch update: single SQL for all sources (minimizes SQLite lock contention)
+    if touched_source_ids:
+        from src.models.snapshot import touch_active_snapshots
+        touch_active_snapshots(touched_source_ids)
 
     return all_items
 

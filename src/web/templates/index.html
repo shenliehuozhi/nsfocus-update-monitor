@@ -218,7 +218,10 @@ let T=localStorage.getItem('token'),U=null;
  function api(path,opts={}){
   const h={'Content-Type':'application/json'};
   if(T)h['Authorization']='Bearer '+T;
-  return fetch(API+path,{...opts,headers:h}).then(r=>r.json());
+  return fetch(API+path,{...opts,headers:h}).then(r=>{
+    if(!r.ok)return Promise.reject({code:r.status,message:`服务器错误 ${r.status}`});
+    return r.json();
+  }).catch(e=>{console.error('API error:',e);return {code:-1,message:e.message||'网络错误'};});
 }
 
 function toast(m,s='success'){
