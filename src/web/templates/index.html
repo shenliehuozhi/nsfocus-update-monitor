@@ -284,7 +284,6 @@ function showLoginForm(){
   document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>🛡️ 绿盟升级监控</h2><div class="form-group"><label>用户名</label><input id="lu" placeholder="admin" autofocus></div><div class="form-group"><label>密码</label><input id="lp" type="password" onkeydown="if(event.key==='Enter')doLogin()"></div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">登录</button></div></div>`;
   document.getElementById('lu').focus();
 }
-}
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
   if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);document.body.className='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
