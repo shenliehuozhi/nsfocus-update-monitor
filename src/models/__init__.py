@@ -10,6 +10,7 @@ def init_all_tables():
 
     from src.models import user
     user.create_tables(db)
+    user.create_login_ban_table(db)
 
     from src.models import customer
     customer.create_tables(db)

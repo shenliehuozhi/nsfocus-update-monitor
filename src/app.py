@@ -4,16 +4,33 @@ import time
 import logging
 import logging.handlers
 from flask import Flask, request, g
-from flask_cors import CORS
-
 
 def create_app(config_path=None):
     app = Flask(__name__,
                 template_folder='src/web/templates',
                 static_folder='src/web/static')
 
-    # CORS
-    CORS(app)
+    # ── CORS ─────────────────────────────────────────────────────────
+    # Allow origins from env var, comma-separated. Empty = allow all (dev only).
+    # Production should set: CORS_ORIGINS=https://app.example.com
+    _cors_origins = os.getenv('CORS_ORIGINS', '')
+    if _cors_origins:
+        from flask_cors import CORS
+        origins = [o.strip() for o in _cors_origins.split(',') if o.strip()]
+        CORS(app, origins=origins, supports_credentials=True)
+    else:
+        # Dev mode: allow all origins but log warning
+        from flask_cors import CORS
+        CORS(app)
+        app.logger.warning('⚠️  CORS_ORIGINS not set — allowing all origins. Set CORS_ORIGINS for production.')
+
+    # ── Secrets validation ───────────────────────────────────────────
+    _secret_key = os.getenv('MONITOR_SECRET_KEY', '')
+    _jwt_secret = os.getenv('MONITOR_JWT_SECRET', '')
+    if not _secret_key or len(_secret_key) != 64 or _secret_key == 'dev-secret-change-me':
+        app.logger.warning('⚠️  MONITOR_SECRET_KEY is insecure or using dev fallback. Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"')
+    if not _jwt_secret or len(_jwt_secret) != 64 or _jwt_secret == 'dev-jwt-secret-change-me':
+        app.logger.warning('⚠️  MONITOR_JWT_SECRET is insecure or using dev fallback. Generate with: python3 -c "import secrets; print(secrets.token_hex(32))"')
 
     # Config
     app.config['SECRET_KEY'] = os.getenv('MONITOR_SECRET_KEY', 'dev-secret-change-me')

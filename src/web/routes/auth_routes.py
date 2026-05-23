@@ -4,16 +4,21 @@ from flask import Blueprint, request, jsonify, g
 import bcrypt
 
 from src.web.auth import create_token, require_auth
-from src.models.user import get_by_username, create_user as create_user_db
+from src.models.user import get_by_username, create_user as create_user_db, is_ip_banned, record_login_failure, clear_login_failure
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
+
+
+def _get_client_ip() -> str:
+    """Get client IP, respecting X-Forwarded-For if configured behind proxy."""
+    return request.headers.get('X-Forwarded-For', request.remote_addr) or ''
 
 
 def _audit(user_id, action: str, details: dict = None):
     """Log audit entry. Ignores errors (best-effort)."""
     try:
         from src.models.audit import log
-        ip = request.headers.get('X-Forwarded-For', request.remote_addr) or ''
+        ip = _get_client_ip()
         log(user_id, action, details or {}, ip)
     except Exception:
         pass
@@ -21,6 +26,12 @@ def _audit(user_id, action: str, details: dict = None):
 
 @bp.route('/login', methods=['POST'])
 def login():
+    client_ip = _get_client_ip()
+
+    # Check if IP is banned (brute-force protection)
+    if is_ip_banned(client_ip):
+        return jsonify({'code': 42900, 'message': '登录尝试次数过多，请15分钟后再试'}), 429
+
     data = request.get_json() or {}
     username = data.get('username', '')
     password = data.get('password', '')
@@ -31,12 +42,16 @@ def login():
     user = get_by_username(username)
     if not user:
         _audit(0, 'login_failed', {'username': username, 'reason': 'user_not_found'})
+        record_login_failure(client_ip)
         return jsonify({'code': 40100, 'message': '用户名或密码错误'}), 401
 
     if not bcrypt.checkpw(password.encode(), user['password_hash'].encode()):
         _audit(user['id'], 'login_failed', {'reason': 'wrong_password'})
+        record_login_failure(client_ip)
         return jsonify({'code': 40100, 'message': '用户名或密码错误'}), 401
 
+    # Login successful — clear failure record
+    clear_login_failure(client_ip)
     token = create_token(user['id'], user['username'])
     _audit(user['id'], 'login', {'username': user['username']})
     return jsonify({
