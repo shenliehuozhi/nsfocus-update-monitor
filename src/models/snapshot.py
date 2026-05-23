@@ -348,17 +348,27 @@ def mark_rollback_pending(seen_ids: set, source_id: int):
     First miss: status='rollback_pending', rollback_cycles=1
     Subsequent miss: rollback_cycles += 1
     Confirmation only when rollback_cycles >= ROLLBACK_CONFIRM.
+
+    Also cancels any pending push/digest entries so rolled-back packages
+    are never accidentally sent (P1-2 fix).
     """
     from src.models.database import execute, query
+    from src.models.subscription import cancel_for_snapshot, cancel_digest_for_snapshot
+
     active = query(
         "SELECT id FROM snapshots WHERE source_id = ? AND status = 'active'",
         (source_id,)
     )
     for row in active:
         if row['id'] not in seen_ids:
+            sid = row['id']
+            # Cancel pending push entries (both queues) so withdrawn packages
+            # are never accidentally pushed during the rollback window
+            cancel_for_snapshot(sid, reason='rollback_pending')
+            cancel_digest_for_snapshot(sid, reason='rollback_pending')
             execute(
                 "UPDATE snapshots SET status = 'rollback_pending', rollback_cycles = 1 WHERE id = ?",
-                (row['id'],)
+                (sid,)
             )
 
     # Increment rollback_cycles for already-pending snapshots (still missing)

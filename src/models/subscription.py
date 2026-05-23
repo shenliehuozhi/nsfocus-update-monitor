@@ -309,7 +309,26 @@ def enqueue(snapshot_id: int, rule_id: int, push_after: str) -> int:
     )
 
 
+def cancel_digest_for_snapshot(snapshot_id: int, reason: str = ''):
+    """Cancel all pending digest entries for a snapshot (package rolled back)."""
+    from src.models.database import execute
+    execute(
+        "UPDATE digest_queue SET status = 'cancelled' WHERE snapshot_id = ? AND status = 'pending'",
+        (snapshot_id,)
+    )
+
+
+def cancel_digest_item(dq_id: int):
+    """Mark a single digest_queue entry as cancelled (package no longer active)."""
+    from src.models.database import execute
+    execute(
+        "UPDATE digest_queue SET status = 'cancelled' WHERE id = ? AND status = 'pending'",
+        (dq_id,)
+    )
+
+
 def cancel_for_snapshot(snapshot_id: int, reason: str = ''):
+    """Cancel all pending delayed-queue entries for a snapshot (package rolled back)."""
     from src.models.database import execute
     execute(
         "UPDATE delayed_queue SET status = 'cancelled', cancelled_reason = ? WHERE snapshot_id = ? AND status = 'pending'",
@@ -386,7 +405,7 @@ CREATE TABLE IF NOT EXISTS digest_queue (
     rule_id INTEGER NOT NULL REFERENCES subscription_rules(id),
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
     period_key TEXT NOT NULL,
-    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent')),
+    status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'cancelled')),
     created_at TEXT DEFAULT (datetime('now'))
 )
 """
@@ -422,7 +441,7 @@ def get_digest_snapshots(rule_id: int = None, period_key: str = None) -> list:
         f"""SELECT dq.*, s.product_name, s.version_branch, s.package_type,
                    s.file_name, s.package_version, s.md5_hash, s.file_size,
                    s.description_raw, s.urgency, s.download_id, s.published_at,
-                   s.min_sys_version
+                   s.min_sys_version, s.status AS snapshot_status
             FROM digest_queue dq JOIN snapshots s ON dq.snapshot_id = s.id
             WHERE {where}
             ORDER BY s.product_name, s.published_at""",

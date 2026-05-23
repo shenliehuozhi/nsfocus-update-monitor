@@ -249,6 +249,12 @@ def process_delayed_queue():
         if not snap:
             mark_pushed(item['id'])
             continue
+        # P1-2 fix: skip if snapshot is no longer active (package was withdrawn
+        # during the delay window — cancelled_reason is set by mark_rollback_pending)
+        if snap.get('status') != 'active':
+            logger.info(f'Skip delayed push {item["id"]}: snapshot status={snap.get("status")}')
+            mark_pushed(item['id'])
+            continue
         rule = get_rule(item['rule_id'])
         if not rule:
             mark_pushed(item['id'])
@@ -263,7 +269,7 @@ def process_digests():
         return
     from src.models.subscription import (
         get_rules_due_for_digest, get_digest_snapshots,
-        mark_digest_sent, mark_digest_rule_sent,
+        mark_digest_sent, mark_digest_rule_sent, cancel_digest_item,
     )
     from src.notifiers.base import NotificationMessage
 
@@ -276,6 +282,21 @@ def process_digests():
         snaps = get_digest_snapshots(rule_id=rule['id'], period_key=period_key)
         if not snaps:
             # No snapshots accumulated, mark as sent to prevent re-checking
+            mark_digest_rule_sent(rule['id'], period_key)
+            continue
+
+        # P1-2 fix: filter out snapshots that are no longer active (package was
+        # withdrawn/rolled back during the digest window), cancel their queue entries
+        still_active = []
+        for s in snaps:
+            if s.get('snapshot_status') != 'active':
+                logger.info(f'Removing withdrawn snapshot {s["snapshot_id"]} from digest '
+                            f'queue item {s["id"]} for rule {rule["name"]}')
+                cancel_digest_item(s['id'])
+            else:
+                still_active.append(s)
+        snaps = still_active
+        if not snaps:
             mark_digest_rule_sent(rule['id'], period_key)
             continue
 

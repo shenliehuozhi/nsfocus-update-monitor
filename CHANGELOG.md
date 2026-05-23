@@ -22,6 +22,24 @@
 
 ---
 
+## 2026-05-23 — P1-2 包撤回时取消delay/digest队列
+
+**根因**：delay 推送模式下，包在延迟观察期内被官网撤回（rollback_pending），但 delayed_queue 中的条目仍在 push_after 时刻被发送，导致有问题的包仍然推送出去。digest 模式同理，汇总包里会混入已撤回的快照。
+
+**三处防线**：
+
+|| 位置 | 逻辑 |
+|---|---|---|
+| `snapshot.py::mark_rollback_pending` | 快照进入 rollback_pending 时，立即取消该 snapshot 在 delayed_queue 和 digest_queue 中的所有待处理条目 |
+| `router.py::process_delayed_queue` | 重放时二次检查 snapshot 状态，非 active 则跳过并 mark_pushed |
+| `router.py::process_digests` | 发送前逐个检查 snapshot_status，非 active 则 cancel_digest_item 并从列表移除 |
+
+**schema 变更**：`digest_queue.status` CHECK 新增 `'cancelled'`（原有 `'pending'|'sent'`）。
+
+**涉及文件**：`src/models/snapshot.py`、`src/models/subscription.py`（+cancel_digest_for_snapshot/cancel_digest_item）、`src/notifiers/router.py`。
+
+---
+
 ## 2026-05-27 — 订阅规则条件细化：支持链路径匹配（方案设计）
 
 **根因**：现有 `filter_conditions` 为扁平三字段（products/versions/package_types），三个维度相互独立，无法精确表达"产品 → 子分类 → 版本 → 包类型"的层次结构，导致订阅粒度不可控。
