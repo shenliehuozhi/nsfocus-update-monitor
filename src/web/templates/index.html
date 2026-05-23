@@ -2485,7 +2485,7 @@ async function openRModal(id){
     <div id="delayWrap"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" style="width:80px"></div></div>
     <div style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" onchange="onWinToggle()"> ⏰ 启用推送时间窗口</label></div>
     <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
-      <div style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
+      <div id="winDaysRow" style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
       <div><label style="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" style="width:100px"> ～ <input id="winEnd" type="time" value="23:59" style="width:100px"></div>
     </div>
     <div class="form-group" style="margin-top:8px"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div>
@@ -2549,17 +2549,26 @@ async function openRModal(id){
   }
 }
 
+function onWinToggle(){
+  const w=document.getElementById('winCfg');
+  const en=document.getElementById('rwin')?.checked;
+  if(en){w.classList.remove('hidden');}
+  else{w.classList.add('hidden');}
+}
 function onDigestModeChange(){
   const m=document.getElementById('rdm').value;
   const d=document.getElementById('dcfg');
   const dw=document.getElementById('delayWrap');
+  const wdr=document.getElementById('winDaysRow');
   // 延迟仅在即时推送模式显示（汇总模式下 delay 无语义）
   if(!m){
     d.classList.add('hidden');
     dw.classList.remove('hidden');
+    if(wdr)wdr.style.display=''; // 即时模式：显示周几
     return;
   }
   dw.classList.add('hidden');
+  if(wdr)wdr.style.display='none'; // 汇总模式：隐藏周几（只有时间段）
   d.classList.remove('hidden');
   if(m==='weekly'){
     d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每周推送日</label><select id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;
@@ -2576,14 +2585,18 @@ function onWinToggle(){
   else{w.classList.add('hidden');}
 }
 function validateRuleConf(){
-  // 窗口策略：勾选启用时，必须配置周几和时间段
+  // 窗口策略：勾选启用时，必须配置时间段；即时模式还需选周几
   const enWin=document.getElementById('rwin')?.checked;
   if(enWin){
-    const checked=[...document.querySelectorAll('.win-day:checked')];
     const winStart=document.getElementById('winStart').value;
     const winEnd=document.getElementById('winEnd').value;
-    if(!checked.length){return {valid:false,message:'窗口策略必须选择至少一个周几',type:'block'};}
     if(!winStart||!winEnd){return {valid:false,message:'窗口策略必须配置时间段',type:'block'};}
+    // 即时模式：必须选周几
+    const dm=document.getElementById('rdm').value;
+    if(!dm){
+      const checked=[...document.querySelectorAll('.win-day:checked')];
+      if(!checked.length){return {valid:false,message:'窗口策略必须选择至少一个周几',type:'block'};}
+    }
   }
   return {valid:true};
 }async function saveRule(){
@@ -2608,9 +2621,17 @@ function validateRuleConf(){
     d.digest_config=dc;
   }
   // 窗口配置：勾选启用时收集
+  // 即时模式：收集完整配置（周几+时间段）；汇总模式：只收集时间段（无周几）
   if(document.getElementById('rwin')?.checked){
-    const days=[...document.querySelectorAll('.win-day:checked')].map(c=>parseInt(c.value));
-    d.window_config={days,start:document.getElementById('winStart').value,end:document.getElementById('winEnd').value};
+    const dm=document.getElementById('rdm').value;
+    const start=document.getElementById('winStart').value;
+    const end=document.getElementById('winEnd').value;
+    if(dm){
+      d.window_config={start,end}; // 汇总模式：无周几限制，只限制时间段
+    }else{
+      const days=[...document.querySelectorAll('.win-day:checked')].map(c=>parseInt(c.value));
+      d.window_config={days,start,end}; // 即时模式：周几+时间段
+    }
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('rModalWrap')?.remove();}else toast(r.message,'error');

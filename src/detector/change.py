@@ -285,26 +285,37 @@ def is_window_time(rule: dict) -> bool:
 
     window_config: {days: [0-6], start: "HH:MM", end: "HH:MM"}
     Returns True if inside window, False if outside.
+
+    Semantic for empty days (digest mode):
+      - Only time-of-day restriction applies (any day is allowed)
+      - e.g. {start: "09:00", end: "18:00"} = only send during business hours
     """
     wc = rule.get('window_config') or {}
     days = wc.get('days', [])
     start = wc.get('start', '')
     end = wc.get('end', '')
-    if not days or not start or not end:
+    if not start or not end:
         return True  # No window configured = always OK
 
     now = datetime.now()
-    today_weekday = now.weekday()  # 0=Mon ... 6=Sun
-    if today_weekday not in days:
-        return False
-
     current_time = now.strftime('%H:%M')
+
+    # Time-of-day check (always applies)
     if start <= end:
         in_range = start <= current_time <= end
     else:
         # Crosses midnight
         in_range = current_time >= start or current_time <= end
-    return in_range
+
+    # Day-of-week check (only applies when days is non-empty)
+    if not in_range:
+        return False
+    if days:
+        today_weekday = now.weekday()  # 0=Mon ... 6=Sun
+        if today_weekday not in days:
+            return False
+
+    return True
 
 
 def compute_next_window_push_time(rule: dict) -> str:
@@ -312,6 +323,8 @@ def compute_next_window_push_time(rule: dict) -> str:
 
     For backward compatibility: if rule has delay_strategy='window' but no window_config,
     use default window (Mon-Fri 09:00-18:00).
+
+    For digest mode (days=[]): finds next time window opens today/tomorrow, ignoring day.
     """
     wc = rule.get('window_config') or {}
     # Backward compat: delay_strategy='window' without window_config gets default window
@@ -319,18 +332,28 @@ def compute_next_window_push_time(rule: dict) -> str:
         wc = {'days': [1, 2, 3, 4, 5], 'start': '09:00', 'end': '18:00'}
     days = wc.get('days', [])
     start = wc.get('start', '')
-    if not days or not start:
+    if not start:
         return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
     now = datetime.now()
-    today_weekday = now.weekday()
     current_time = now.strftime('%H:%M')
 
-    # Find next window day
+    if not days:
+        # Digest mode (days=[]): only time-of-day restriction, find next opening
+        if current_time < start:
+            # Window opens today
+            target = now.replace(hour=int(start.split(':')[0]), minute=int(start.split(':')[1]), second=0, microsecond=0)
+        else:
+            # Window already passed today, open tomorrow at start
+            target = now.replace(hour=int(start.split(':')[0]), minute=int(start.split(':')[1]), second=0, microsecond=0) + timedelta(days=1)
+        return target.strftime('%Y-%m-%d %H:%M:%S')
+
     days_sorted = sorted(days)
+    today_weekday = now.weekday()
+
+    # Find next window day
     next_day = None
     days_ahead = None
-
     for d in days_sorted:
         if d > today_weekday:
             next_day = d
@@ -344,7 +367,6 @@ def compute_next_window_push_time(rule: dict) -> str:
 
     # Compute target datetime
     target = now + timedelta(days=days_ahead)
-    # Parse start time "HH:MM"
     h, m = map(int, start.split(':'))
     target = target.replace(hour=h, minute=m, second=0, microsecond=0)
     return target.strftime('%Y-%m-%d %H:%M:%S')
