@@ -1315,7 +1315,7 @@ function dataRightToggleRow(rowId) {
   const detailHtml = `<div class="feed-detail" id="snap-detail-${snapId}">
   <div class="detail-inner">
     <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
-    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || '')}</span>
+    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || snap.version_branch || '')}</span>
     <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
     <span class="data-detail-k">紧急度</span><span style="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${snap.urgency || ''}</span></span>
     <span class="data-detail-k">文件大小</span><span style="font-size:12.5px" id="snap-fs-${snapId}">—</span>
