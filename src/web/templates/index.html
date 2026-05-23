@@ -1959,12 +1959,12 @@ function onCProdChange(el){
 }
 
 function addCProd(p){
-  // 已有具体产品时，禁止选"全部产品"
-  const existingSpecific=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value&&s.value!=='');
-  if(existingSpecific){toast('已添加具体产品，不能再选"全部产品"','warn');return;}
-  // 已有"全部产品"时，禁止再添加
-  const existingEmpty=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value==='');
-  if(existingEmpty){toast('已选"全部产品"，无需再添加','warn');return;}
+  // p 为空表示用户手动点"+添加产品"，此时校验互斥
+  if(p===undefined){
+    // 已有"全部产品"时，禁止再添加
+    const existingEmpty=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value==='');
+    if(existingEmpty){toast('已选"全部产品"，无需再添加','warn');return;}
+  }
   let c=document.getElementById('cprods');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
   d.innerHTML=`<select class="cp2" style="flex:1;min-width:0" onchange="onCProdChange(this)">${custProdOpts}</select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
@@ -1988,11 +1988,14 @@ function openCModal(id,n,co,em,ph,pr){
   document.getElementById('cph').value=ph||'';
   document.getElementById('cprods').innerHTML='';
   if(pr){
-    (pr||'').split('|').filter(Boolean).forEach(x=>{let[p]=x.split(':');addCProd(p||'');});
-    setTimeout(()=>addCProd(),50);
-  }else{
-    setTimeout(()=>addCProd(),50);
+    const prods=(pr||'').split('|').filter(Boolean);
+    prods.forEach(x=>{
+      const[p]=x.split(':');
+      addCProd(p||'');
+    });
   }
+  // 初始一行空选择提示
+  setTimeout(()=>{if(!document.querySelector('#cprods .cp2')||![...document.querySelectorAll('#cprods .cp2')].some(s=>s.value))addCProd('');},80);
 }
 
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
