@@ -1,9 +1,11 @@
 """Register all API routes on the Flask app."""
 
-from flask import Flask
+from flask import Flask, send_from_directory
+import os
 
 
 def register_routes(app: Flask):
+    """Register all route blueprints."""
     from src.web.routes.auth_routes import bp as auth_bp
     from src.web.routes.dashboard import bp as dashboard_bp
     from src.web.routes.session_routes import bp as session_bp
@@ -29,10 +31,13 @@ def register_routes(app: Flask):
     app.register_blueprint(bp_system)
 
     # Serve SPA index
-    from flask import send_from_directory
-    import os
     templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
 
     @app.route('/')
     def index():
         return send_from_directory(templates_dir, 'index.html')
+
+    @app.route('/favicon.ico')
+    def serve_favicon():
+        static_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'web', 'static')
+        return send_from_directory(static_dir, 'favicon.ico')
