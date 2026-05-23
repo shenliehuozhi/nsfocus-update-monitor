@@ -1936,8 +1936,8 @@ async function customers(){
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   custProdOpts=`<option value="">全部产品</option>`+PROD.map(p=>`<option>${p}</option>`).join('');
 
-  let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.warranty_start||''} ~ ${c.warranty_end||''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}','${c.warranty_start||''}','${c.warranty_end||''}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>维保</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
+  let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
 function addCProd(p){
   let c=document.getElementById('cprods');
@@ -1949,20 +1949,18 @@ function addCProd(p){
   }
 }
 
-function openCModal(id,n,co,em,ph,pr,ws,we){
+function openCModal(id,n,co,em,ph,pr){
   let modal=document.createElement('div');
   modal.id='cModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>维保开始</label><input id="cws" type="date" onclick="this.showPicker()" style="min-width:140px"></div><div class="form-group"><label>维保截止</label><input id="cwe" type="date" onclick="this.showPicker()" style="min-width:140px"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
   document.getElementById('cid').value=id||'';
   document.getElementById('cnm').value=n||'';
   document.getElementById('ccm').value=co||'';
   document.getElementById('cem').value=em||'';
   document.getElementById('cph').value=ph||'';
-  document.getElementById('cws').value=ws||'';
-  document.getElementById('cwe').value=we||'';
   document.getElementById('cprods').innerHTML='';
   if(pr){
     (pr||'').split('|').filter(Boolean).forEach(x=>{let[p]=x.split(':');addCProd(p||'');});
@@ -1975,13 +1973,13 @@ function openCModal(id,n,co,em,ph,pr,ws,we){
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 async function saveC(){
   const id=document.getElementById('cid').value;
-  const nm=document.getElementById('cnm').value.trim(),cm=document.getElementById('ccm').value.trim(),em=document.getElementById('cem').value.trim(),ph=document.getElementById('cph').value.trim(),ws=document.getElementById('cws').value,we=document.getElementById('cwe').value;
+  const nm=document.getElementById('cnm').value.trim(),cm=document.getElementById('ccm').value.trim(),em=document.getElementById('cem').value.trim(),ph=document.getElementById('cph').value.trim();
   if(!nm)return toast('名称必填','error');
   if(!cm)return toast('公司必填','error');
   if(!em)return toast('邮箱必填','error');
   if(!/^[^@]+@[^@]+$/.test(em))return toast('邮箱格式错误','error');
   let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value;if(p)prods.push(esc(p));});
-  const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),warranty_start:ws,warranty_end:we,owned_products:prods};
+  const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),owned_products:prods};
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('cModalWrap')?.remove();}else toast(r.message,'error');
 }
@@ -2006,9 +2004,19 @@ async function subscriptions(){
 
 function onCustChange(){
   let cid=document.getElementById('rcust').value;
-  if(!cid||!window._custs)return;
+  let row=document.getElementById('custInfoRow');
+  let emailSpan=document.getElementById('custEmailDisplay');
+  if(!cid||!window._custs){
+    if(row)row.style.display='none';
+    return;
+  }
   let c=window._custs.find(x=>x.id==cid);
-  if(c&&c.warranty_end)document.getElementById('rvu').value=c.warranty_end;
+  if(c&&emailSpan){
+    emailSpan.textContent=c.email||'（未设置）';
+    row.style.display='';
+  }else if(row){
+    row.style.display='none';
+  }
 }
 
 function toggleAllMode(){
@@ -2471,7 +2479,9 @@ async function openRModal(id){
   modal.innerHTML=`<div class="card" style="width:520px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid">
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
-    <div class="form-group"><label class="req">关联客户 <span style="font-weight:400;color:var(--muted);font-size:11px">（有效期默认同步维保截止日）</span></label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
+    <div class="form-group"><label class="req">关联客户</label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
+    <div id="custInfoRow" class="form-group" style="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
+    <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px" placeholder="不限制"></div>
     </div>
 
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">订阅条件</div>
@@ -2488,7 +2498,6 @@ async function openRModal(id){
       <div id="winDaysRow" style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
       <div><label style="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" style="width:100px"> ～ <input id="winEnd" type="time" value="23:59" style="width:100px"></div>
     </div>
-    <div class="form-group" style="margin-top:8px"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div>
     </div>
 
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">通知渠道</div>
@@ -2513,6 +2522,7 @@ async function openRModal(id){
     document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;window._selChans=r.channels||[];renderChanTags();
     document.getElementById('rcust').value=r.customer_id||'';
     document.getElementById('remails').value=r.customer_emails||'';
+    onCustChange();
     document.getElementById('ratt').value=r.attachment_max_mb||0;
     let f=r.filter_conditions||{};
     const isAll=!(f.chains||[]).length;
@@ -2545,7 +2555,7 @@ async function openRModal(id){
     onWinToggle();
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();onCustChange();
   }
 }
 

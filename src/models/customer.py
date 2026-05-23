@@ -28,7 +28,7 @@ def create(created_by: int, **kwargs) -> int:
     # Ensure created_by is in kwargs for the field lookup
     kwargs['created_by'] = created_by
     fields = ['name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes',
-              'warranty_start', 'warranty_end', 'created_by']
+              'created_by']
     values = [kwargs.get(f, '') for f in fields]
     placeholders = ','.join(['?'] * len(fields))
     sql = f"INSERT INTO customers ({','.join(fields)}) VALUES ({placeholders})"
