@@ -63,7 +63,7 @@ select.ct[multiple]{display:none}
 .form-group input[required]{border-left:2.5px solid var(--primary)}
 .form-group input::placeholder{color:#b0b8c1}
 .login-box{max-width:400px;margin:auto;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:100%;padding:0 20px}
-body.login-bg{background:url('/static/wallhaven-eyqeyl.png') center/cover no-repeat fixed;min-height:100vh}
+body.login-bg{background:center/cover no-repeat fixed;min-height:100vh;transition:background-image 1s ease-in-out}
 body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-content:center}
 .login-box h2{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
 .confirm-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center}
@@ -267,9 +267,20 @@ function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=fal
   overlay.querySelector('.confirm-btn-cancel').focus();
 }
 
+// ── Login Background Rotation ──
+const _bgImages=['wallhaven-6d1336_compressed.jpg','wallhaven-85w8xj_compressed.jpg','wallhaven-eyqeyl_compressed.jpg'];
+let _bgIdx=0,_bgTimer=null;
+function _startBgRotation(){
+  if(_bgTimer)return;
+  document.body.style.backgroundImage='url(/static/'+_bgImages[0]+')';
+  _bgTimer=setInterval(()=>{_bgIdx=(_bgIdx+1)%_bgImages.length;document.body.style.backgroundImage='url(/static/'+_bgImages[_bgIdx]+')';},5000);
+}
+function _stopBgRotation(){if(_bgTimer){clearInterval(_bgTimer);_bgTimer=null;}}
+
 // ── Auth ──
 function renderLogin(){
   document.body.className='login-bg';
+  _startBgRotation();
   document.getElementById('header').style.display='none';
   document.getElementById('app').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;gap:24px">
     <div style="text-align:center">
@@ -286,7 +297,7 @@ function showLoginForm(){
 }
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
-  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);document.body.className='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
+  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);_stopBgRotation();document.body.className='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
 }
 function logout(){
   if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
