@@ -98,13 +98,10 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
 
     # Apply delay strategy
     delay_hours = rule.get('delay_hours', 0)
-    # Window strategy: window_config takes priority; fall back to delay_strategy='window' for
-    # backward compatibility with old rules that stored window mode in delay_strategy
+    # Window strategy: only applies to digest mode, controlled by window_config.
+    #即时模式不使用窗口策略。has_window从window_config的days存在性判断（汇总模式才传days）
     window_config = rule.get('window_config') or {}
-    has_window = bool(
-        window_config.get('days') or window_config.get('start') or window_config.get('end')
-        or rule.get('delay_strategy') == 'window'
-    )
+    has_window = bool(window_config.get('days'))  # days非空=汇总模式窗口
 
     if has_window:
         # Window strategy: only send when inside time window
@@ -116,11 +113,10 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
         # Fall through to send immediately when in window
 
     if delay_hours > 0:
-        if not has_window:
-            # Only reset timer when not in window mode (window mode has its own timer logic)
-            from src.models.subscription import reset_timer_for_rule
-            reset_timer_for_rule(rule_id)
-
+        # Each package has its own independent delay timer — no reset.
+        # Package A arrives at 9am → enqueue at +48h → sends at 9am next day
+        # Package B arrives at 11am → enqueue at +48h → sends at 11am next day
+        # Both are sent independently; new packages do NOT cancel old timers.
         push_after = compute_push_time(delay_hours)
         enqueue(snapshot_id, rule_id, push_after)
         logger.info(f'Rule {rule["name"]}: delayed {delay_hours}h')

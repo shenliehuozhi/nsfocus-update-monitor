@@ -2483,7 +2483,7 @@ async function openRModal(id){
     <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
     <div id="delayWrap"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" style="width:80px"></div></div>
-    <div style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" onchange="onWinToggle()"> ⏰ 启用推送时间窗口</label></div>
+    <div id="winSection" class="hidden" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" onchange="onWinToggle()"> ⏰ 启用推送时间窗口</label></div>
     <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
       <div id="winDaysRow" style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
       <div><label style="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" style="width:100px"> ～ <input id="winEnd" type="time" value="23:59" style="width:100px"></div>
@@ -2537,7 +2537,7 @@ async function openRModal(id){
     if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
     else if(r.digest_mode==='monthly'){setTimeout(()=>{if(document.getElementById('dc-month'))document.getElementById('dc-month').value=dc.month_day||'last';},100);}
     else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
-    // 恢复窗口配置
+    // 恢复窗口配置（仅汇总模式显示）
     const wc=r.window_config||{};
     const hasWin=!!(wc.days?.length || wc.start || wc.end);
     document.getElementById('rwin').checked=hasWin;
@@ -2559,15 +2559,18 @@ function onDigestModeChange(){
   const m=document.getElementById('rdm').value;
   const d=document.getElementById('dcfg');
   const dw=document.getElementById('delayWrap');
+  const wsec=document.getElementById('winSection');
   const wdr=document.getElementById('winDaysRow');
-  // 延迟仅在即时推送模式显示（汇总模式下 delay 无语义）
   if(!m){
+    // 即时模式：只显示延迟，隐藏窗口策略
     d.classList.add('hidden');
     dw.classList.remove('hidden');
-    if(wdr)wdr.style.display=''; // 即时模式：显示周几
+    wsec.classList.add('hidden');
     return;
   }
+  // 汇总模式：隐藏延迟，显示窗口策略（只有时间段）
   dw.classList.add('hidden');
+  wsec.classList.remove('hidden');
   if(wdr)wdr.style.display='none'; // 汇总模式：隐藏周几（只有时间段）
   d.classList.remove('hidden');
   if(m==='weekly'){
