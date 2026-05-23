@@ -63,7 +63,20 @@ select.ct[multiple]{display:none}
 .form-group input[required]{border-left:2.5px solid var(--primary)}
 .form-group input::placeholder{color:#b0b8c1}
 .login-box{max-width:400px;margin:80px auto}.login-box h2{font-size:20px;font-weight:700;text-align:center;margin-bottom:20px}
-.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:10px 24px;border-radius:10px;color:#fff;font-size:13px;z-index:9999;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,.18);animation:fadeDown .3s;max-width:380px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.confirm-modal{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.5);z-index:99999;align-items:center;justify-content:center}
+.confirm-modal.active{display:flex}
+.confirm-box{background:#fff;border-radius:12px;padding:28px 28px 20px;width:360px;max-width:90vw;box-shadow:0 20px 60px rgba(0,0,0,.25)}
+.confirm-icon{text-align:center;font-size:42px;margin-bottom:14px}
+.confirm-title{text-align:center;font-size:15px;font-weight:700;color:#1a2332;margin-bottom:8px}
+.confirm-desc{text-align:center;font-size:13px;color:#6b7d95;margin-bottom:22px;line-height:1.5}
+.confirm-btns{display:flex;gap:10px}
+.confirm-btns button{flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:600;border:none;cursor:pointer}
+.confirm-btn-cancel{background:#f1f3f4;color:#444}
+.confirm-btn-cancel:hover{background:#e2e6ea}
+.confirm-btn-ok{background:var(--danger);color:#fff}
+.confirm-btn-ok:hover{filter:brightness(1.08)}
+.confirm-btn-ok.warning{background:var(--warn)}
+
 .toast-success{background:var(--success)}.toast-error{background:var(--danger)}
 @keyframes fadeDown{from{transform:translateX(-50%) translateY(-16px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
 .tp{position:relative;display:inline-flex;align-items:center;cursor:pointer;color:#9ca3af;font-size:13px;margin-left:4px}
@@ -226,6 +239,28 @@ let T=localStorage.getItem('token'),U=null;
 
 function toast(m,s='success'){
   const e=document.createElement('div');e.className=`toast toast-${s}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),2500);
+}
+
+// confirmAct(msg, asyncFn) — shows modal, calls asyncFn() on confirm
+// Replaces all browser confirm() calls for a consistent look
+function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=false) {
+  const id = '_confirmBox';
+  const existing = document.getElementById(id);
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-modal active';
+  overlay.id = id;
+  overlay.innerHTML = `<div class="confirm-box">
+    <div class="confirm-icon">${icon}</div>
+    <div class="confirm-title">${msg}</div>
+    <div class="confirm-btns">
+      <button class="confirm-btn-cancel" onclick="document.getElementById('${id}').remove()">取消</button>
+      <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="(async()=>{document.getElementById('${id}').remove();await (${asyncFn})()})()">${okLabel}</button>
+    </div>
+  </div>`;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+  overlay.querySelector('.confirm-btn-cancel').focus();
 }
 
 // ── Auth ──
@@ -1629,7 +1664,7 @@ function dataBackToAgg() {
 }
 
 function toggleRollback(v) { sessionStorage.setItem('dataShowRollback', v ? '1' : '0'); dataPage(); }
-async function manualPush(sid) { if (!confirm('确认推送?')) return; const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }
+async function manualPush(sid) { await confirmAct('确认推送？', async ()=>{ const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }, '📤', '确认推送'); }
 
 // ── Push Modal ──
 let _pushSid=0,_pushMode='customer',_pushTarget=0,_pushEmail='',_banTimer=null;
@@ -1696,11 +1731,7 @@ function startBanCountdown(seconds){
   tick();_banTimer=setInterval(tick,1000);
 }
 
-async function resendTargeted(sid,cid,custid){
-  if(!confirm('确认重新推送到该客户?'))return;
-  const r=await api('/history/'+sid+'/resend-targeted',{method:'POST',body:JSON.stringify({channel_id:cid,customer_id:custid})});
-  toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');
-}
+async function resendTargeted(sid,cid,custid){await confirmAct('确认重新推送到该客户？', async ()=>{const r=await api('/history/'+sid+'/resend-targeted',{method:'POST',body:JSON.stringify({channel_id:cid,customer_id:custid})});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}, '📤', '确认推送');}
 
 // ── Sessions ──
 const SES_PURPOSE={'discover':'发现','collect':'采集'};
@@ -1844,17 +1875,35 @@ async function confirmAddSes(){
   }
 }
 async function validateSes(id){const r=await api('/sessions/'+id+'/validate',{method:'POST'});toast(r.code===0?r.message:r.message,r.code===0?'success':'error');sessions();}
-async function delSes(id){if(confirm('删除此Session?')){const r=await api('/sessions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');sessions();}else toast(r.message,'error');}}
+async function delSes(id){await confirmAct('删除此Session？', async ()=>{const r=await api('/sessions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');sessions();}else toast(r.message,'error');}, '🗑️', '删除');}
 async function editSesType(id,curP,curM){
   const p=curP==='discover'?'discover':'collect';
   const m=curM==='vm'?'vm':'standard';
-  const sel=`<select id="etP" onchange="document.getElementById('etM').disabled=this.value==='discover';if(this.value==='discover')document.getElementById('etM').value='standard';"><option value="discover" ${p==='discover'?'selected':''}>发现</option><option value="collect" ${p==='collect'?'selected':''}>采集</option></select> <select id="etM" ${p==='discover'?'disabled':''}><option value="standard" ${m==='standard'?'selected':''}>标品</option><option value="vm" ${m==='vm'?'selected':''}>虚拟化</option></select>`;
-  if(!confirm(`修改 Session #${id} 类型：\n\n${sel}\n\n确认？`))return;
-  // Use PATCH to update
-  const newP=document.getElementById('etP')?.value||p;
-  const newM=document.getElementById('etM')?.value||m;
-  const r=await api('/sessions/'+id,{method:'PATCH',body:JSON.stringify({purpose:newP,collect_mode:newM})});
-  if(r.code===0){toast('已更新');sessions();}else toast(r.message,'error');
+  const mid='_sesTypeModal';
+  const existing=document.getElementById(mid);
+  if(existing)existing.remove();
+  const overlay=document.createElement('div');
+  overlay.className='confirm-modal active';
+  overlay.id=mid;
+  overlay.innerHTML=`<div class="confirm-box" style="width:400px">
+    <div class="confirm-title">修改 Session 类型</div>
+    <div style="display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px">
+      <select id="etP" onchange="document.getElementById('etM').disabled=this.value==='discover';if(this.value==='discover')document.getElementById('etM').value='standard';" style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px">
+        <option value="discover" ${p==='discover'?'selected':''}>发现</option>
+        <option value="collect" ${p==='collect'?'selected':''}>采集</option>
+      </select>
+      <select id="etM" ${p==='discover'?'disabled':''} style="padding:7px 10px;border:1px solid #d1d5db;border-radius:7px;font-size:13px">
+        <option value="standard" ${m==='standard'?'selected':''}>标品</option>
+        <option value="vm" ${m==='vm'?'selected':''}>虚拟化</option>
+      </select>
+    </div>
+    <div class="confirm-btns">
+      <button class="confirm-btn-cancel" onclick="document.getElementById('${mid}').remove()">取消</button>
+      <button class="confirm-btn-ok" onclick="(async()=>{const newP=document.getElementById('etP').value||'${p}',newM=document.getElementById('etM').value||'${m}';document.getElementById('${mid}').remove();const r=await api('/sessions/${id}',{method:'PATCH',body:JSON.stringify({protocol:newP,mode:newM})});if(r.code===0){toast('已更新');sessions();}else toast(r.message||'失败','error');})()">确认</button>
+    </div>
+  </div>`;
+  overlay.addEventListener('click',(e)=>{if(e.target===overlay)overlay.remove();});
+  document.body.appendChild(overlay);
 }
 
 
@@ -1929,7 +1978,7 @@ function openChModal(id){
 }
 async function saveCh(){const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();if(!n){toast('请输入渠道名称','error');return}let c={},eh=0,ed=0;if(t==='email'){const to_list=(document.getElementById('st')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);if(!to_list.length){toast('请填写至少一个收件人邮箱','error');return}const pw=document.getElementById('sw')?.value||'';c={smtp_host:document.getElementById('sh')?.value||'',smtp_port:parseInt(document.getElementById('sp')?.value||'465'),smtp_user:document.getElementById('su')?.value||'',smtp_password:pw||(_origChConfig.smtp_password||''),from_name:document.getElementById('sf')?.value||'绿盟升级通知',to_list};eh=parseInt(document.getElementById('seh')?.value)||0;ed=parseInt(document.getElementById('sed')?.value)||0}else{const wu=document.getElementById('cw')?.value||'';if(wu&&_origChConfig.webhook_url&&wu===_maskWebhook(_origChConfig.webhook_url))wu=_origChConfig.webhook_url;c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}}let r;if(editingChId){r=await api('/channels/'+editingChId,{method:'PUT',body:JSON.stringify({name:n,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}else{r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;document.getElementById('chModalWrap')?.remove();channels();}else toast(r.message,'error')}
 async function testCh(id){const r=await api('/channels/'+id+'/test',{method:'POST'});toast(r.data?.success?'已发送':r.data?.error||'失败',r.data?.success?'success':'error');}
-async function delCh(id){if(confirm('删除此渠道?')){const r=await api('/channels/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');channels();}else toast(r.message,'error');}}
+async function delCh(id){await confirmAct('删除此渠道？', async ()=>{const r=await api('/channels/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');channels();}else toast(r.message,'error');}, '🗑️', '删除');}
 // ── Customers ──
 let custProdOpts='';
 async function customers(){
@@ -2014,7 +2063,7 @@ async function saveC(){
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('cModalWrap')?.remove();customers();}else toast(r.message,'error');
 }
-async function delC(id){if(confirm('删除?')){const r=await api('/customers/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');customers();}else toast(r.message,'error');}}
+async function delC(id){await confirmAct('删除此客户？', async ()=>{const r=await api('/customers/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');customers();}else toast(r.message,'error');}, '🗑️', '删除');}
 
 // ── Subscriptions ──
 const PKG=[['sys','系统'],['rule','规则'],['nti','威胁情报'],['av','病毒库'],['apprule','应用规则'],['url','URL分类'],['wcs','恶意站点'],['judge','研判规则'],['geo','地理库'],['interface','接口'],['special','特殊'],['other','其他'],['merge','合并'],['client','客户端'],['av_stream','流式病毒库']];
@@ -2667,7 +2716,7 @@ function validateRuleConf(){
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('rModalWrap')?.remove();subscriptions();}else toast(r.message,'error');
-}async function delRule(id){if(confirm('删除?')){const r=await api('/subscriptions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');subscriptions();}else toast(r.message,'error');}}
+}async function delRule(id){await confirmAct('删除此订阅规则？', async ()=>{const r=await api('/subscriptions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');subscriptions();}else toast(r.message,'error');}, '🗑️', '删除');}
 
 // ── History ──
 async function history(){
@@ -2732,11 +2781,7 @@ async function history(){
 async function confirmClearHistory(){
   let days=document.querySelector('#app select')?.value||'30';
   let label=days==='0'?'全部':`最近${days}天之前的`;
-  if(!confirm(`⚠️ 确认清空${label}推送历史记录？此操作不可撤销。`))return;
-  if(!confirm(`再次确认：清空${label}推送历史？`))return;
-  const r=await api('/history?days='+(days==='0'?'':days),{method:'DELETE'});
-  toast(r.message||'已清空',r.code===0?'success':'error');
-  if(r.code===0)history();
+  await confirmAct(`⚠️ 确认清空${label}推送历史记录？此操作不可撤销。`, async ()=>{const r=await api('/history?days='+(days==='0'?'':days),{method:'DELETE'});toast(r.message||'已清空',r.code===0?'success':'error');if(r.code===0)history();}, '🗑️', '确认清空', true);
 }
 
 function _renderRecentDeliveries(deliveries,range){
@@ -2772,7 +2817,7 @@ async function settings(){
           <span class="cfg-flag-desc">开启后所有推送静默（采集照常），调试时避免误发通知</span>
         </div>
         <div class="cfg-flag" style="background:#ffeef0;border:1px solid #f5a0a8">
-          <label class="cfg-toggle"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="let v=this.checked?'1':'0';if(v==='1'&&!confirm('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\\n\\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。\\n\\n确认开启？')){this.checked=false;return;}api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:v})}).then(r=>toast(r.code===0?(v==='1'?'🔒 API 已锁定为 localhost':'🔓 API 已开放'):'失败',r.code===0?'success':'error'))"><span>🔒 API 仅限本机</span></label>
+          <label class="cfg-toggle"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="(async()=>{let v=this.checked?'1':'0';if(v==='1'){await confirmAct('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\n\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。', async()=>{api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'1'})}).then(r=>toast(r.code===0?'🔒 API 已锁定为 localhost':'失败',r.code===0?'success':'error'));},'⚠️','确认开启',true);this.checked=false;}else{api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'0'})}).then(r=>toast(r.code===0?'🔓 API 已开放':'失败',r.code===0?'success':'error'));}})()"><span>🔒 API 仅限本机</span></label>
           <span class="cfg-flag-desc">/api/* 仅允许 127.0.0.1 调用，TCP 层校验不可伪造</span>
         </div>
         <div class="cfg-flag" style="background:#f0f4ff;border:1px solid #b8d0ff">
@@ -4224,13 +4269,7 @@ async function confirmDiscoverResult(){
 }
 
 async function discardDiscoverResult(){
-  if(!confirm('确定丢弃当前发现结果？')) return;
-  window._pendingDiscResult=null;
-  window._pendingDiscStale=null;
-  window._discoverResult=null;
-  closeModal('disc');
-  // Tell server to clear pending file
-  try { await api('/system/products/discover/confirm', {method:'DELETE'}); } catch(e){}
+  await confirmAct('确定丢弃当前发现结果？', async ()=>{window._pendingDiscResult=null;window._pendingDiscStale=null;window._discoverResult=null;try{await api('/system/products/discover/confirm',{method:'DELETE'});}catch(e){}toast('已丢弃');}, '🗑️', '确认丢弃');
 }
 
 // 旧函数保留兼容（不再调用）
@@ -4275,8 +4314,8 @@ async function saveProductForm(id){
     toast(id?'已更新':'已添加','success');
     closeModal('pform');
     await products();
-    if(!id && r.data?.id && confirm('产品已添加，是否立即刷新包类型？')){
-      refreshPkgType(r.data.id);
+    if(!id && r.data?.id){
+      await confirmAct('产品已添加，是否立即刷新包类型？', async ()=>{refreshPkgType(r.data.id);}, '🔄', '刷新包类型');
     }
   }else{
     toast(r.message||'保存失败','error');
@@ -4343,8 +4382,7 @@ async function saveEditRow(id){
     toast('已更新','success');
     _editRowId = null;
     await products();
-    if(urlChanged && !confirm('⚠️ 入口URL已变更，是否立即刷新包类型？')) return;
-    if(urlChanged) refreshPkgType(id);
+    if(urlChanged){await confirmAct('⚠️ 入口URL已变更，是否立即刷新包类型？', async ()=>{if(urlChanged) refreshPkgType(id);}, '🔄', '刷新');}
   } else {
     toast(r.message || '保存失败','error');
   }
@@ -4353,15 +4391,7 @@ async function saveEditRow(id){
 // ── Settings ────────────────────────────────────────────────────────────────
 
 async function delProduct(id,name){
-  if(!confirm(`确定删除产品「${name}」？\n该操作将同时删除所有快照数据！`))return;
-  if(!confirm('再次确认：删除后无法恢复！'))return;
-  const r=await api(`/system/products/${id}`,{method:'DELETE'});
-  if(r.code===0){
-    toast('已删除','success');
-    await products();
-  }else{
-    toast(r.message||'删除失败','error');
-  }
+  await confirmAct(`确定删除产品「${name}」？\n该操作将同时删除所有快照数据，且无法恢复。`, async ()=>{const r=await api(`/system/products/${id}`,{method:'DELETE'});if(r.code===0){toast('已删除');products();}else toast(r.message,'error');}, '🗑️', '确认删除', true);
 }
 
 async function collectProduct(id,mode){
@@ -4640,29 +4670,7 @@ function toggleSection(key){
   icon.textContent=open?'▸':'▾';
 }
 
-async function confirmToggleActive(id,active,rowId){
-  if(!confirm(active?'确认要禁用该产品吗？':'确认要启用该产品吗？'))return;
-  const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});
-  if(r.code===0){
-    toast(active?'已启用':'已禁用','success');
-    // Update row in-place without full refresh
-    const row=document.getElementById('pr-'+id);
-    if(row){
-      row.style.opacity=active?'':'0.6';
-      // Update active badge
-      const badgeEl=row.querySelector('.active-badge');
-      if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'#16a34a':'#dc2626';}
-      // Update checkbox
-      const cb=row.querySelector('input[type="checkbox"]');
-      if(cb)cb.checked=active;
-      // Update action buttons
-      const btns=row.querySelectorAll('[data-action]');
-      btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});
-    }
-  }else{
-    toast(r.message||'操作失败','error');
-  }
-}
+async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要禁用该产品？':'确认要启用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'#16a34a':'#dc2626';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;const btns=row.querySelectorAll('[data-action]');btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'禁用':'启用');}
 _initDiscObserver();
 </script>
 </body>
