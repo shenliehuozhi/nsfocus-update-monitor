@@ -258,6 +258,13 @@ def process_delayed_queue():
         if not rule:
             mark_pushed(item['id'])
             continue
+        # C1-2: 重放时也要检查静默期和窗口时间，不在窗口内则跳过
+        if is_quiet_time(rule):
+            logger.info(f'Skip delayed push {item["id"]}: quiet time')
+            continue
+        if is_window_time(rule) is False:
+            logger.info(f'Skip delayed push {item["id"]}: outside window time')
+            continue
         _send_immediate(snap, rule, is_rollback=False)
         mark_pushed(item['id'])
 
@@ -297,6 +304,11 @@ def process_digests():
         snaps = still_active
         if not snaps:
             mark_digest_rule_sent(rule['id'], period_key)
+            continue
+
+        # C1-3: 汇总发送前检查窗口时间，不在窗口内则跳过（不标记为已发送，下次继续检查）
+        if is_window_time(rule) is False:
+            logger.info(f'Skip digest for rule {rule["name"]}: outside window time')
             continue
 
         # Filter: for full packages, only keep the latest per group

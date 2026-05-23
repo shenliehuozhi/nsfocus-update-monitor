@@ -2409,8 +2409,11 @@ function removeChainCond(idx) {
   if (removed.length) {
     const chain = removed[0].chain;
     const chainKey = JSON.stringify(chain);
+    // C2-1: 同步清理 _csSelectedSet，避免树节点状态残留
+    window._csSelectedSet.delete(chainKey);
     // 取消树的该节点高亮
-    const node = document.querySelector(`.tree-node[data-chain='${chainKey.replace(/"/g, '&quot;')}']`);
+    const safeChainKey = chainKey.replace(/"/g, '&quot;');
+    const node = document.querySelector('.tree-node[data-chain="' + safeChainKey + '"]');
     if (node) { node.setAttribute('data-sel', '0'); node.style.background = ''; }
   }
   renderCondPills();
@@ -2542,7 +2545,7 @@ async function loadCV(s,loadType){
 async function openRModal(id){
   // Ensure we have channels and customers loaded
   let chOpts=window._chOpts;
-  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join(''):'';
+  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}">${c.name}${c.email?' ('+c.email+')':''}</option>`).join(''):'';
   if(!chOpts){
     const[cR,custR]=await Promise.all([api('/channels'),api('/customers')]);
     const chans=cR.data||[];

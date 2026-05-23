@@ -181,15 +181,16 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
     chains = conditions.get('chains', [])
 
     if chains:
-        # 从 scheduler 获取 chain 反查函数（延迟 import 避免循环）
+        # 从 scheduler 获取 chain 反查函数（延迟 import 避免循环，每次调用都重试）
         _get_chain = None
         try:
             from src.core.scheduler import _get_chain as _resolve_chain
             _get_chain = _resolve_chain
-        except ImportError:
-            logger.warning('scheduler._get_chain not available, skipping chain filter')
+        except (ImportError, Exception):
+            logger.warning('scheduler._get_chain not available, falling back to legacy filter')
+            _get_chain = None
 
-        if _get_chain and chains:
+        if _get_chain:
             matched = []
             for sid, snap in new_items:
                 snap_chain = _get_chain(

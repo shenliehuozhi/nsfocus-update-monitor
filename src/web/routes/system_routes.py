@@ -434,6 +434,9 @@ def update_product(source_id: int):
                   force_type=force_type,
                   package_type_discovered=package_type_discovered if package_type_discovered is not None else None,
                   package_type_changed=int(package_type_changed) if package_type_changed is not None else None)
+    # 产品信息变更后失效 chain 缓存
+    from src.core.scheduler import invalidate_chain_cache
+    invalidate_chain_cache()
 
     _audit('product_update', {'source_id': source_id, 'fields': list(body.keys())})
     return {'code': 0, 'message': '已更新'}
@@ -820,6 +823,9 @@ def discover_products_confirm():
                     package_type=new_pkg_json,
                     package_type_discovered=new_pkg_json,
                     package_type_changed=1 if (change['added_paths'] or change['deleted_paths'] or change['modified_paths']) else 0)
+                # 产品路径变更后失效 chain 缓存，确保订阅条件能匹配新路径
+                from src.core.scheduler import invalidate_chain_cache
+                invalidate_chain_cache()
                 pkg_updated_prods.append(product_name)
 
             _audit_in_thread('product_discover_save', {
@@ -980,6 +986,9 @@ def discover_pkg_types_batch():
                 pkg_json = json.dumps(types_dict)
                 update_source(sid, package_type=pkg_json, package_type_discovered=pkg_json)
                 updated += 1
+                # 包类型刷新后失效 chain 缓存
+                from src.core.scheduler import invalidate_chain_cache
+                invalidate_chain_cache()
             else:
                 failed.append(sid)
         except Exception:
