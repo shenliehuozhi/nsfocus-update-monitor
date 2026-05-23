@@ -2482,7 +2482,7 @@ async function openRModal(id){
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">推送配置</div>
     <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div class="grid3"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，延迟多少小时再推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略 <span title="重置=重新计算推送周期；追加=在上一周期基础上追加；窗口=仅在指定时间窗口推送" style="cursor:help;color:var(--info)">ℹ️</span></label><select id="rst" onchange="onStrategyChange()"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h) <span title="同一版本两次推送之间的最小时间间隔，防止重复推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rin" type="number" value="0"></div></div>
+    <div class="grid3"><div class="form-group" id="delayWrap"><label>延迟(h) <span title="检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略 <span title="重置=重新计算推送周期；追加=在上一周期基础上追加；窗口=仅在指定时间窗口推送" style="cursor:help;color:var(--info)">ℹ️</span></label><select id="rst" onchange="onStrategyChange()"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h) <span title="同一版本两次推送之间的最小时间间隔，防止重复推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rin" type="number" value="0"></div></div>
     <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px">
       <div style="font-weight:600;margin-bottom:6px">⏰ 推送时间窗口 <span style="color:#e53935;font-size:11px">窗口策略必须配置</span></div>
       <div style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
@@ -2541,14 +2541,21 @@ async function openRModal(id){
     if(r.delay_strategy==='window'){setTimeout(()=>{const wc=r.window_config||{};if(wc.days){wc.days.forEach(d=>{const cb=document.querySelector('.win-day[value="'+d+'"]');if(cb)cb.checked=true;});}if(wc.start)document.getElementById('winStart').value=wc.start;if(wc.end)document.getElementById('winEnd').value=wc.end;},100);}
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();
   }
 }
 
 function onDigestModeChange(){
   const m=document.getElementById('rdm').value;
   const d=document.getElementById('dcfg');
-  if(!m){d.classList.add('hidden');return;}
+  const dw=document.getElementById('delayWrap');
+  // 延迟仅在即时推送模式显示（汇总模式下 delay 无语义）
+  if(!m){
+    d.classList.add('hidden');
+    dw.classList.remove('hidden');
+    return;
+  }
+  dw.classList.add('hidden');
   d.classList.remove('hidden');
   if(m==='weekly'){
     d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每周推送日</label><select id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;
@@ -2566,8 +2573,6 @@ function onStrategyChange(){
 }
 function validateRuleConf(){
   const st=document.getElementById('rst').value;
-  const dm=document.getElementById('rdm').value;
-  const delay=parseInt(document.getElementById('rdl').value)||0;
   // 硬拦截：策略=窗口但未配置时间窗口
   if(st==='window'){
     const checked=[...document.querySelectorAll('.win-day:checked')];
@@ -2576,17 +2581,11 @@ function validateRuleConf(){
     if(!checked.length){return {valid:false,message:'窗口策略必须选择至少一个周几',type:'block'};}
     if(!winStart||!winEnd){return {valid:false,message:'窗口策略必须配置时间段',type:'block'};}
   }
-  // 警告：延迟+汇总模式
-  if(delay>0&&dm){
-    const dmTxt=dm==='weekly'?'每周':dm==='monthly'?'每月':'每季';
-    return {valid:null,message:'延迟'+delay+'小时+'+dmTxt+'汇总，会打乱汇总周期。延迟会使版本进入下一个汇总周期，确认继续？',type:'warn'};
-  }
   return {valid:true};
 }async function saveRule(){
   let id=document.getElementById('rid').value;
   const vc=validateRuleConf();
   if(vc.type==='block'){toast(vc.message,'error');return;}
-  if(vc.type==='warn'&&!confirm(vc.message)){return;}
   let chs=window._selChans||[];
   let cid=parseInt(document.getElementById('rcust').value)||0;
   if(!cid)return toast('请选择关联客户','error');

@@ -135,3 +135,14 @@ else → valid
 - 窗口策略语义：当前在窗口内 → 立即发送；当前在窗口外 → 入 delayed_queue，等下一个窗口开启时刻触发。
 - `process_delayed_queue` 重放时不再跳过多层检查（直接查真实 rule），保证渠道override/附件限制生效。
 
+## 2026-05-23 — 汇总模式隐藏延迟字段
+
+**背景**：延迟在即时推送模式下有意义（安全观察期），汇总模式下 delay 字段无语义（被后端完全忽略）。原实现隐藏了逻辑但给了误报警告，用户困惑。
+
+**改动**：
+- 延迟字段包 `delayWrap`，`onDigestModeChange()` 在汇总模式下 `classList.add('hidden')`
+- `validateRuleConf()` 移除 delay+digest 警告（汇总模式已无法配置延迟，warn 永不触发）
+- `saveRule()` 移除 warn confirm 逻辑
+- tooltip 文案更新为："检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）"
+- 重置/编辑分支末尾调用 `onDigestModeChange()` 确保初始化状态一致
+
