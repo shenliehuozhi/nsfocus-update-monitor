@@ -1939,6 +1939,10 @@ async function customers(){
   let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
+function removeCProd(btn){
+  btn.closest('div').remove();
+}
+
 function addCProd(p){
   let c=document.getElementById('cprods');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
