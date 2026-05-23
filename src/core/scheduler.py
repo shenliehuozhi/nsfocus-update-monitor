@@ -389,6 +389,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 for rule in rules:
                     if not rule.get('notify_rollback', 1):
                         continue
+                    # 过滤订阅条件：回滚也要符合规则的 filter_conditions
+                    matched = get_new_for_subscription(rule, [(sid, snap)])
+                    if not matched:
+                        continue
                     route_notifications(sid, rule['id'], is_rollback=True)
 
         # 7. Process delayed queue

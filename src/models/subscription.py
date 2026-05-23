@@ -31,11 +31,13 @@ def create_rule(user_id: int, **kwargs) -> int:
         kwargs['filter_conditions'] = json.dumps(kwargs['filter_conditions'], ensure_ascii=False)
     if 'digest_config' in kwargs and not isinstance(kwargs['digest_config'], str):
         kwargs['digest_config'] = json.dumps(kwargs['digest_config'], ensure_ascii=False)
+    if 'window_config' in kwargs and not isinstance(kwargs['window_config'], str):
+        kwargs['window_config'] = json.dumps(kwargs['window_config'], ensure_ascii=False)
     kwargs['user_id'] = user_id
     fields = ['user_id', 'name', 'enabled', 'filter_conditions', 'delay_hours',
               'delay_strategy', 'min_interval_hours', 'digest_mode', 'digest_config',
               'customer_id', 'valid_until', 'quiet_start', 'quiet_end', 'notify_rollback',
-              'customer_emails', 'attachment_max_mb']
+              'customer_emails', 'attachment_max_mb', 'window_config']
     values = [kwargs.get(f, '') for f in fields]
     values[2] = int(values[2]) if values[2] != '' else 1
     values[4] = values[4] or 0
@@ -105,6 +107,13 @@ def _parse_rule(row: dict) -> dict:
             row['digest_config'] = {}
     else:
         row['digest_config'] = {}
+    if row.get('window_config'):
+        try:
+            row['window_config'] = json.loads(row['window_config'])
+        except (json.JSONDecodeError, TypeError):
+            row['window_config'] = {}
+    else:
+        row['window_config'] = {}
     return row
 
 
@@ -361,6 +370,10 @@ def create_tables(db):
         pass
     try:
         db.execute("ALTER TABLE subscription_rules ADD COLUMN digest_config TEXT DEFAULT '{}'")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE subscription_rules ADD COLUMN window_config TEXT DEFAULT '{}'")
     except Exception:
         pass
 

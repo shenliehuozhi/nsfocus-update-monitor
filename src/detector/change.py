@@ -280,6 +280,69 @@ def is_quiet_time(rule: dict) -> bool:
         return now >= quiet_start or now <= quiet_end
 
 
+def is_window_time(rule: dict) -> bool:
+    """Check if current time falls within the rule's push window.
+
+    window_config: {days: [0-6], start: "HH:MM", end: "HH:MM"}
+    Returns True if inside window, False if outside.
+    """
+    wc = rule.get('window_config') or {}
+    days = wc.get('days', [])
+    start = wc.get('start', '')
+    end = wc.get('end', '')
+    if not days or not start or not end:
+        return True  # No window configured = always OK
+
+    now = datetime.now()
+    today_weekday = now.weekday()  # 0=Mon ... 6=Sun
+    if today_weekday not in days:
+        return False
+
+    current_time = now.strftime('%H:%M')
+    if start <= end:
+        in_range = start <= current_time <= end
+    else:
+        # Crosses midnight
+        in_range = current_time >= start or current_time <= end
+    return in_range
+
+
+def compute_next_window_push_time(rule: dict) -> str:
+    """Compute the next window opening time for when outside the window."""
+    wc = rule.get('window_config') or {}
+    days = wc.get('days', [])
+    start = wc.get('start', '')
+    if not days or not start:
+        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    now = datetime.now()
+    today_weekday = now.weekday()
+    current_time = now.strftime('%H:%M')
+
+    # Find next window day
+    days_sorted = sorted(days)
+    next_day = None
+    days_ahead = None
+
+    for d in days_sorted:
+        if d > today_weekday:
+            next_day = d
+            days_ahead = d - today_weekday
+            break
+
+    if next_day is None:
+        # Wrap to next week
+        next_day = days_sorted[0]
+        days_ahead = 7 - today_weekday + next_day
+
+    # Compute target datetime
+    target = now + timedelta(days=days_ahead)
+    # Parse start time "HH:MM"
+    h, m = map(int, start.split(':'))
+    target = target.replace(hour=h, minute=m, second=0, microsecond=0)
+    return target.strftime('%Y-%m-%d %H:%M:%S')
+
+
 def check_min_interval(rule: dict, product_name: str) -> bool:
     """Check if minimum interval has passed since last notification for this product/rule.
 

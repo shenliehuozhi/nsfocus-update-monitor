@@ -117,3 +117,21 @@ if 延迟>0 and 汇总模式 != '' → warn
 else → valid
 ```
 
+## 2026-05-23 — P0 推送逻辑严重问题修复
+
+**根因**：路由逻辑存在 4 处设计缺陷，导致回滚通知不过滤订阅条件、窗口策略不生效、延迟队列渠道override失效、静默期两套实现冲突。
+
+**改动**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/core/scheduler.py` | 回滚通知增加 `get_new_for_subscription` 订阅条件过滤，与普通检测逻辑一致 |
+| `src/notifiers/router.py` | `process_delayed_queue` 改用 `get_rule()` 查询真实 rule 对象，修复 customer_emails/attachment_max_mb override 失效；移除 `_is_quiet_hours()` 全局静默函数（与规则级 quiet_time 冲突），统一走规则级 `is_quiet_time(rule)` |
+| `src/detector/change.py` | 新增 `is_window_time(rule)` 和 `compute_next_window_push_time(rule)`；`route_notifications` 对策略=window 在窗口外时 enqueue 到下一个窗口开启时刻 |
+| `src/models/subscription.py` | `subscription_rules` 表增加 `window_config` TEXT 列；`create_rule` 支持 window_config 字段；`_parse_rule` 解析 window_config JSON |
+
+**设计说明**：
+- 静默期统一为**规则级别**（`quiet_start`/`quiet_end`），不再从 system_settings 全局读取。全局静默期概念移除。
+- 窗口策略语义：当前在窗口内 → 立即发送；当前在窗口外 → 入 delayed_queue，等下一个窗口开启时刻触发。
+- `process_delayed_queue` 重放时不再跳过多层检查（直接查真实 rule），保证渠道override/附件限制生效。
+

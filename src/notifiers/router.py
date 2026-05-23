@@ -11,9 +11,9 @@ from src.notifiers.feishu import FeishuNotifier
 from src.notifiers.email import EmailNotifier
 from src.notifiers.apprise import AppriseNotifier
 from src.models.channel import get_by_id, list_active
-from src.models.subscription import get_rule_channels, enqueue, get_due_items, mark_pushed, cancel_for_snapshot
+from src.models.subscription import get_rule_channels, enqueue, get_due_items, mark_pushed, cancel_for_snapshot, get_rule
 from src.models.snapshot import get_snapshot
-from src.detector.change import compute_push_time, is_quiet_time, check_min_interval
+from src.detector.change import compute_push_time, is_quiet_time, check_min_interval, is_window_time, compute_next_window_push_time
 
 logger = get_logger('router')
 
@@ -40,31 +40,6 @@ def _is_maintenance_mode() -> bool:
         return False
 
 
-def _is_quiet_hours() -> bool:
-    """Check if current time falls within the global quiet hours window (system_settings)."""
-    from datetime import datetime as _dt
-    try:
-        from src.models.database import query
-        rows = query("SELECT value FROM system_settings WHERE key = 'quiet_hours_enabled'")
-        if not rows or rows[0]['value'] != '1':
-            return False
-        start_rows = query("SELECT value FROM system_settings WHERE key = 'quiet_hours_start'")
-        end_rows = query("SELECT value FROM system_settings WHERE key = 'quiet_hours_end'")
-        if not start_rows or not end_rows:
-            return False
-        quiet_start = start_rows[0]['value']
-        quiet_end = end_rows[0]['value']
-        if not quiet_start or not quiet_end:
-            return False
-        now_str = _dt.now().strftime('%H:%M')
-        if quiet_start <= quiet_end:
-            return quiet_start <= now_str <= quiet_end
-        else:
-            return now_str >= quiet_start or now_str <= quiet_end
-    except Exception:
-        return False
-
-
 def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = False):
     """Route a snapshot through its matched channels.
 
@@ -72,9 +47,6 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
     """
     if _is_maintenance_mode():
         logger.info(f'Maintenance mode: suppressed notification for snapshot {snapshot_id}')
-        return
-    if _is_quiet_hours():
-        logger.info(f'Quiet hours: suppressed notification for snapshot {snapshot_id}')
         return
 
     snap = get_snapshot(snapshot_id)
@@ -126,8 +98,18 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
 
     # Apply delay strategy
     delay_hours = rule.get('delay_hours', 0)
+    strategy = rule.get('delay_strategy', 'reset')
+
+    if strategy == 'window':
+        # Window strategy: only send when inside time window
+        if not is_window_time(rule):
+            push_after = compute_next_window_push_time(rule)
+            enqueue(snapshot_id, rule_id, push_after)
+            logger.info(f'Rule {rule["name"]}: outside window, enqueued for {push_after}')
+            return
+        # Fall through to send immediately when in window
+
     if delay_hours > 0:
-        strategy = rule.get('delay_strategy', 'reset')
         if strategy == 'reset':
             from src.models.subscription import reset_timer_for_rule
             reset_timer_for_rule(rule_id)
@@ -267,11 +249,11 @@ def process_delayed_queue():
         if not snap:
             mark_pushed(item['id'])
             continue
-        _send_immediate(
-            snap,
-            {'id': item['rule_id'], 'name': f'delayed-{item["id"]}'},
-            is_rollback=False
-        )
+        rule = get_rule(item['rule_id'])
+        if not rule:
+            mark_pushed(item['id'])
+            continue
+        _send_immediate(snap, rule, is_rollback=False)
         mark_pushed(item['id'])
 
 
