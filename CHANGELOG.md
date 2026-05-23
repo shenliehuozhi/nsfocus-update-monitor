@@ -214,6 +214,17 @@ else → valid
 - 窗口策略语义：当前在窗口内 → 立即发送；当前在窗口外 → 入 delayed_queue，等下一个窗口开启时刻触发。
 - `process_delayed_queue` 重放时不再跳过多层检查（直接查真实 rule），保证渠道override/附件限制生效。
 
+## 2026-05-23 — 展开收缩再次展开时API缓存导致字段空白
+
+**根因**：detail DOM 收缩时被移除，但 `_snapDetailCache[snapId]` 未清除。再次展开时直接复用缓存 promise（列表数据，无 md5/file_size/page_hash 字段），且 promise resolved 后 DOM 已不存在无法写入。
+
+**修复内容**：
+- `index.html` 行 1225：collapse 时 `delete _snapDetailCache[snapId]`
+
+**影响**：仅影响"展开→收缩→再次展开"场景，首次展开正常。
+
+---
+
 ## 2026-05-23 — 汇总模式隐藏延迟字段
 
 **背景**：延迟在即时推送模式下有意义（安全观察期），汇总模式下 delay 字段无语义（被后端完全忽略）。原实现隐藏了逻辑但给了误报警告，用户困惑。

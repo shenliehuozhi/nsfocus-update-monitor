@@ -77,7 +77,8 @@ select.ct[multiple]{display:none}
 .confirm-btn-ok:hover{filter:brightness(1.08)}
 .confirm-btn-ok.warning{background:var(--warn)}
 
-.toast-success{background:var(--success)}.toast-error{background:var(--danger)}
+.toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;font-weight:600;padding:10px 22px;border-radius:8px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.25);animation:fadeDown .2s ease;white-space:nowrap;max-width:90vw;overflow:hidden;text-overflow:ellipsis}
+.toast-success{background:var(--success)}.toast-error{background:var(--danger)}.toast-warn{background:var(--warn)}
 @keyframes fadeDown{from{transform:translateX(-50%) translateY(-16px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
 .tp{position:relative;display:inline-flex;align-items:center;cursor:pointer;color:#9ca3af;font-size:13px;margin-left:4px}
 .tp::after{content:attr(data-tip);position:absolute;bottom:calc(100%+6px);left:50%;transform:translateX(-50%);background:#1f2937;color:#fff;font-size:12px;padding:6px 10px;border-radius:6px;white-space:pre-line;width:220px;text-align:left;line-height:1.5;pointer-events:none;opacity:0;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.2)}
@@ -1222,6 +1223,10 @@ function dataRightToggleRow(rowId) {
       if (arrow) arrow.textContent = '▶';
     }
     openDetail.remove();
+    const snapId = prevRow ? prevRow.dataset.sid : null;
+    if (snapId && _snapDetailCache[snapId]) {
+      delete _snapDetailCache[snapId];
+    }
   }
 
   if (rowEl.classList.contains('feed-expanded')) {
@@ -1315,7 +1320,7 @@ function dataRightToggleRow(rowId) {
   const detailHtml = `<div class="feed-detail" id="snap-detail-${snapId}">
   <div class="detail-inner">
     <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
-    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || snap.version_branch || '')}</span>
+    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || '')}</span>
     <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
     <span class="data-detail-k">紧急度</span><span style="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${snap.urgency || ''}</span></span>
     <span class="data-detail-k">文件大小</span><span style="font-size:12.5px" id="snap-fs-${snapId}">—</span>
