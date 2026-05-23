@@ -2081,7 +2081,7 @@ async function subscriptions(){
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   let pOpts=PROD.map(p=>`<option>${p}</option>`).join('');
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
-  let custOpts=list.map(c=>`<option value="${c.id}">${c.name}${c.warranty_end?' (维保至'+c.warranty_end+')':''}</option>`).join('');
+  let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
   let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condLabel=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?`<span style="color:var(--primary)">📂 ${chains.length}条路径</span>`:`<span style="color:var(--muted)">—</span>`);return `<tr><td>${rb} ${r.name}</td><td colspan="3" style="font-size:11px">${condLabel}</td><td>${digestLabel}</td><td>${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
 
