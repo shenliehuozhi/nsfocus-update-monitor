@@ -34,9 +34,13 @@
 
 **后端变更**：
 - `router.py`：`has_window` 判断从 `delay_strategy=='window'` 改为 `window_config` 存在性 + `delay_strategy=='window'` 兜底（兼容旧数据）
-- `change.py`：`compute_next_window_push_time` 新增旧数据兼容：无 `window_config` 时用默认窗口（周一至周五 09:00-18:00）兜底
+- `change.py`：`compute_next_window_push_time` 新增旧数据兼容；`is_window_time` 对 `days=[]`（汇总模式）退化为仅时间检查，`compute_next_window_push_time` 对 `days=[]` 找今天/明天窗口开启时刻
 
 **字段清理**：`delay_strategy`（reset/append/window）和 `min_interval_hours` 不再通过 UI 配置，但 DB 列保留（向后兼容旧数据）。
+
+**窗口策略行为**：
+- 即时模式：周几 + 时间段都限制
+- 汇总模式：只限制时间段（周几由汇总周期决定，如每周日），`days=[]` 后端解释为仅时间限制
 
 ---
 
