@@ -64,7 +64,11 @@ def query(sql: str, params: tuple = ()) -> list:
 
 
 def execute(sql: str, params: tuple = ()) -> int:
-    """Execute an INSERT/UPDATE/DELETE, return lastrowid."""
+    """Execute an INSERT/UPDATE/DELETE, return lastrowid.
+
+    The connection uses busy_timeout=10000ms so SQLite will wait up to 10s
+    for a lock to be released before raising "database is locked".
+    """
     db = get_db()
     cur = db.execute(sql, params)
     db.commit()

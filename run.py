@@ -23,4 +23,4 @@ if __name__ == '__main__':
     port = int(os.getenv('MONITOR_PORT', '9999'))
     host = os.getenv('MONITOR_HOST', '0.0.0.0')
     debug = os.getenv('MONITOR_DEBUG', 'false').lower() == 'true'
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=host, port=port, debug=debug, threaded=False)
