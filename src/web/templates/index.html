@@ -1943,28 +1943,34 @@ function removeCProd(btn){
   btn.closest('div').remove();
 }
 
+function onCProdChange(el){
+  if(el.value===''){
+    // 选"全部产品"：已有具体产品时拦截
+    const existingSpecific=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value&&s.value!==''&&s!==el);
+    if(existingSpecific){toast('已有具体产品，不能选"全部产品"','warn');el.value='';return;}
+    // 清空其他行
+    const rows=document.querySelectorAll('#cprods > div');
+    rows.forEach(r=>{const s=r.querySelector('.cp2');if(s&&s!==el)s.value='';});
+  }else{
+    // 选具体产品：清除其他行的"全部产品"
+    const rows=document.querySelectorAll('#cprods > div');
+    rows.forEach(r=>{const s=r.querySelector('.cp2');if(s&&s.value===''&&s!==el)s.value='';});
+  }
+}
+
 function addCProd(p){
-  // 已有"全部产品"时，禁止添加具体产品
+  // 已有具体产品时，禁止选"全部产品"
+  const existingSpecific=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value&&s.value!=='');
+  if(existingSpecific){toast('已添加具体产品，不能再选"全部产品"','warn');return;}
+  // 已有"全部产品"时，禁止再添加
   const existingEmpty=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value==='');
-  if(existingEmpty){toast('已选"全部产品"，无需再添加具体产品','warn');return;}
+  if(existingEmpty){toast('已选"全部产品"，无需再添加','warn');return;}
   let c=document.getElementById('cprods');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
   d.innerHTML=`<select class="cp2" style="flex:1;min-width:0" onchange="onCProdChange(this)">${custProdOpts}</select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
   c.appendChild(d);
   if(p){
     setTimeout(()=>{d.querySelector('.cp2').value=p;},80);
-  }
-}
-
-function onCProdChange(el){
-  if(el.value===''){
-    // 选"全部产品"：清空其他具体产品行
-    const rows=document.querySelectorAll('#cprods > div');
-    rows.forEach(r=>{const s=r.querySelector('.cp2');if(s&&s!==el)s.value='';});
-  }else{
-    // 选具体产品：如已有"全部产品"，清除它
-    const rows=document.querySelectorAll('#cprods > div');
-    rows.forEach(r=>{const s=r.querySelector('.cp2');if(s&&s.value===''&&s!==el)s.value='';});
   }
 }
 
