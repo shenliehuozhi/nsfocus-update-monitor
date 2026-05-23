@@ -2482,13 +2482,13 @@ async function openRModal(id){
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">推送配置</div>
     <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:#f0f4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div class="grid3"><div class="form-group" id="delayWrap"><label>延迟(h) <span title="检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0"></div><div class="form-group"><label>策略 <span title="重置=重新计算推送周期；追加=在上一周期基础上追加；窗口=仅在指定时间窗口推送" style="cursor:help;color:var(--info)">ℹ️</span></label><select id="rst" onchange="onStrategyChange()"><option value="reset">重置</option><option value="append">追加</option><option value="window">窗口</option></select></div><div class="form-group"><label>最小间隔(h) <span title="同一版本两次推送之间的最小时间间隔，防止重复推送" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rin" type="number" value="0"></div></div>
-    <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:8px;font-size:12px">
-      <div style="font-weight:600;margin-bottom:6px">⏰ 推送时间窗口 <span style="color:#e53935;font-size:11px">窗口策略必须配置</span></div>
+    <div id="delayWrap"><div class="form-group"><label>延迟(h) <span title="检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" style="width:80px"></div></div>
+    <div style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" onchange="onWinToggle()"> ⏰ 启用推送时间窗口</label></div>
+    <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
       <div style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
       <div><label style="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" style="width:100px"> ～ <input id="winEnd" type="time" value="23:59" style="width:100px"></div>
     </div>
-    <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div>
+    <div class="form-group" style="margin-top:8px"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px"></div>
     </div>
 
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">通知渠道</div>
@@ -2530,18 +2530,22 @@ async function openRModal(id){
       renderCondPills();
     }
     updateEmailFields();
-    document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rst').value=r.delay_strategy||'reset';document.getElementById('rin').value=r.min_interval_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
+    document.getElementById('rdl').value=r.delay_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
     document.getElementById('rnr').checked=r.notify_rollback===1;
-    onDigestModeChange();onStrategyChange();
+    onDigestModeChange();
     const dc=r.digest_config||{};
     if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
     else if(r.digest_mode==='monthly'){setTimeout(()=>{if(document.getElementById('dc-month'))document.getElementById('dc-month').value=dc.month_day||'last';},100);}
     else if(r.digest_mode==='quarterly'){setTimeout(()=>{if(document.getElementById('dc-quarter'))document.getElementById('dc-quarter').value=dc.quarter_day||'last';},100);}
     // 恢复窗口配置
-    if(r.delay_strategy==='window'){setTimeout(()=>{const wc=r.window_config||{};if(wc.days){wc.days.forEach(d=>{const cb=document.querySelector('.win-day[value="'+d+'"]');if(cb)cb.checked=true;});}if(wc.start)document.getElementById('winStart').value=wc.start;if(wc.end)document.getElementById('winEnd').value=wc.end;},100);}
+    const wc=r.window_config||{};
+    const hasWin=!!(wc.days?.length || wc.start || wc.end);
+    document.getElementById('rwin').checked=hasWin;
+    if(hasWin){setTimeout(()=>{if(wc.days){wc.days.forEach(d=>{const cb=document.querySelector('.win-day[value="'+d+'"]');if(cb)cb.checked=true;});}if(wc.start)document.getElementById('winStart').value=wc.start;if(wc.end)document.getElementById('winEnd').value=wc.end;},100);}
+    onWinToggle();
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rin').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();
   }
 }
 
@@ -2565,16 +2569,16 @@ function onDigestModeChange(){
     d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
   }
 }
-function onStrategyChange(){
-  const s=document.getElementById('rst').value;
+function onWinToggle(){
   const w=document.getElementById('winCfg');
-  if(s==='window'){w.classList.remove('hidden');}
+  const en=document.getElementById('rwin')?.checked;
+  if(en){w.classList.remove('hidden');}
   else{w.classList.add('hidden');}
 }
 function validateRuleConf(){
-  const st=document.getElementById('rst').value;
-  // 硬拦截：策略=窗口但未配置时间窗口
-  if(st==='window'){
+  // 窗口策略：勾选启用时，必须配置周几和时间段
+  const enWin=document.getElementById('rwin')?.checked;
+  if(enWin){
     const checked=[...document.querySelectorAll('.win-day:checked')];
     const winStart=document.getElementById('winStart').value;
     const winEnd=document.getElementById('winEnd').value;
@@ -2594,7 +2598,7 @@ function validateRuleConf(){
   const emails=document.getElementById('remails')?.value.trim()||'';
   const attMb=parseInt(document.getElementById('ratt')?.value)||0;
   const nrr=document.getElementById('rnr')?.checked?1:0;
-  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_hours:parseInt(document.getElementById('rdl').value)||0,delay_strategy:document.getElementById('rst').value,min_interval_hours:parseInt(document.getElementById('rin').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,attachment_max_mb:attMb};
+  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_hours:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,attachment_max_mb:attMb};
   const dm=d.digest_mode;
   if(dm){
     let dc={};
@@ -2603,8 +2607,8 @@ function validateRuleConf(){
     else if(dm==='quarterly'){const el=document.getElementById('dc-quarter');dc.quarter_day=el?el.value:'last';}
     d.digest_config=dc;
   }
-  // 窗口配置
-  if(d.delay_strategy==='window'){
+  // 窗口配置：勾选启用时收集
+  if(document.getElementById('rwin')?.checked){
     const days=[...document.querySelectorAll('.win-day:checked')].map(c=>parseInt(c.value));
     d.window_config={days,start:document.getElementById('winStart').value,end:document.getElementById('winEnd').value};
   }

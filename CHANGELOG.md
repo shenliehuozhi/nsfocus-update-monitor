@@ -22,6 +22,24 @@
 
 ---
 
+## 2026-05-23 — P1-1 精简订阅规则推送配置：移除死代码字段
+
+**背景**：即时推送模式（delay=0）下，策略（reset/append）和最小间隔两个字段为死代码；汇总模式下最小间隔从未生效。窗口策略独立为 checkbox，与推送模式解耦。
+
+**UI 变更**：
+- 移除策略 select（`rst`）和最小间隔输入（`rin`）
+- 延迟(h) 独占一行
+- 窗口策略改为独立 checkbox「⏰ 启用推送时间窗口」，勾选后展开配置
+- 重置/编辑分支：窗口配置恢复逻辑从 `delay_strategy='window'` 改为 `window_config` 存在性判断
+
+**后端变更**：
+- `router.py`：`has_window` 判断从 `delay_strategy=='window'` 改为 `window_config` 存在性 + `delay_strategy=='window'` 兜底（兼容旧数据）
+- `change.py`：`compute_next_window_push_time` 新增旧数据兼容：无 `window_config` 时用默认窗口（周一至周五 09:00-18:00）兜底
+
+**字段清理**：`delay_strategy`（reset/append/window）和 `min_interval_hours` 不再通过 UI 配置，但 DB 列保留（向后兼容旧数据）。
+
+---
+
 ## 2026-05-23 — P1-2 包撤回时取消delay/digest队列
 
 **根因**：delay 推送模式下，包在延迟观察期内被官网撤回（rollback_pending），但 delayed_queue 中的条目仍在 push_after 时刻被发送，导致有问题的包仍然推送出去。digest 模式同理，汇总包里会混入已撤回的快照。

@@ -308,8 +308,15 @@ def is_window_time(rule: dict) -> bool:
 
 
 def compute_next_window_push_time(rule: dict) -> str:
-    """Compute the next window opening time for when outside the window."""
+    """Compute the next window opening time for when outside the window.
+
+    For backward compatibility: if rule has delay_strategy='window' but no window_config,
+    use default window (Mon-Fri 09:00-18:00).
+    """
     wc = rule.get('window_config') or {}
+    # Backward compat: delay_strategy='window' without window_config gets default window
+    if not wc and rule.get('delay_strategy') == 'window':
+        wc = {'days': [1, 2, 3, 4, 5], 'start': '09:00', 'end': '18:00'}
     days = wc.get('days', [])
     start = wc.get('start', '')
     if not days or not start:

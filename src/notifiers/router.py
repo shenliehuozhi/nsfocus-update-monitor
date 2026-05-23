@@ -98,9 +98,15 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
 
     # Apply delay strategy
     delay_hours = rule.get('delay_hours', 0)
-    strategy = rule.get('delay_strategy', 'reset')
+    # Window strategy: window_config takes priority; fall back to delay_strategy='window' for
+    # backward compatibility with old rules that stored window mode in delay_strategy
+    window_config = rule.get('window_config') or {}
+    has_window = bool(
+        window_config.get('days') or window_config.get('start') or window_config.get('end')
+        or rule.get('delay_strategy') == 'window'
+    )
 
-    if strategy == 'window':
+    if has_window:
         # Window strategy: only send when inside time window
         if not is_window_time(rule):
             push_after = compute_next_window_push_time(rule)
@@ -110,13 +116,14 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
         # Fall through to send immediately when in window
 
     if delay_hours > 0:
-        if strategy == 'reset':
+        if not has_window:
+            # Only reset timer when not in window mode (window mode has its own timer logic)
             from src.models.subscription import reset_timer_for_rule
             reset_timer_for_rule(rule_id)
 
         push_after = compute_push_time(delay_hours)
         enqueue(snapshot_id, rule_id, push_after)
-        logger.info(f'Rule {rule["name"]}: delayed {delay_hours}h, strategy={strategy}')
+        logger.info(f'Rule {rule["name"]}: delayed {delay_hours}h')
         return
 
     # No delay — send immediately
