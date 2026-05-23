@@ -174,6 +174,18 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
         匹配的 [(snapshot_id, snapshot_dict), ...]
     """
     conditions = rule.get('filter_conditions', {})
+
+    # 校验 valid_until：过期规则不匹配任何新包
+    valid_until = rule.get('valid_until', '')
+    if valid_until:
+        from datetime import datetime, timezone
+        try:
+            expiry = datetime.fromisoformat(valid_until.replace(' ', 'T'))
+            if datetime.now(timezone.utc) > expiry:
+                return []  # 规则已过期，跳过
+        except (ValueError, TypeError):
+            pass  # 格式错误视为不限制
+
     if not conditions:
         return new_items  # 空条件 = 匹配全部
 

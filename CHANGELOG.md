@@ -91,9 +91,16 @@
 
 ---
 
-## 2026-05-23 — P1-2 包撤回时取消delay/digest队列
+## 2026-05-23 — P1-3 valid_until 过期规则不触发推送
 
-**根因**：delay 推送模式下，包在延迟观察期内被官网撤回（rollback_pending），但 delayed_queue 中的条目仍在 push_after 时刻被发送，导致有问题的包仍然推送出去。digest 模式同理，汇总包里会混入已撤回的快照。
+- `get_new_for_subscription` 入口处加 `valid_until` 时间校验
+- 有值且已过期：返回空列表，跳过匹配
+- 有值但格式错误 / 空值：视为不限制
+- 调测：过期规则不匹配任何新包
+
+---
+
+## 2026-05-23 — P1-2 包撤回时取消delay/digest队列
 
 **三处防线**：
 
