@@ -936,68 +936,58 @@ def _clear_stale_collection_running(force=False):
     except Exception:
         pass
 
+def refresh_scheduler_jobs():
+    """Add or remove all scheduled jobs based on scheduler_enabled setting."""
+    global _scheduler
+    if not _scheduler:
+        return
+    enabled = _get_setting('scheduler_enabled', '1') == '1'
+    if enabled:
+        interval_hours = int(_get_setting('collect_interval', '4'))
+        hb_interval = int(_get_setting('heartbeat_interval', '30'))
+        if not _scheduler.get_job('nsfocus_collect'):
+            _scheduler.add_job(_smart_collect, 'interval', hours=interval_hours,
+                                id='nsfocus_collect', name='NSFOCUS Smart Collection',
+                                next_run_time=datetime.utcnow())
+            logger.info(f'Collection job added: every {interval_hours}h')
+        else:
+            _scheduler.reschedule_job('nsfocus_collect', trigger='interval', hours=interval_hours)
+        if not _scheduler.get_job('nsfocus_heartbeat'):
+            _scheduler.add_job(_session_heartbeat, 'interval', minutes=hb_interval,
+                                id='nsfocus_heartbeat', name='Session Heartbeat',
+                                next_run_time=datetime.utcnow())
+        else:
+            _scheduler.reschedule_job('nsfocus_heartbeat', trigger='interval', minutes=hb_interval)
+        if not _scheduler.get_job('nsfocus_digest'):
+            _scheduler.add_job(_digest_check, 'interval', hours=6,
+                                id='nsfocus_digest', name='Digest Summary Check',
+                                next_run_time=datetime.utcnow())
+    else:
+        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest']:
+            job = _scheduler.get_job(job_id)
+            if job:
+                _scheduler.remove_job(job_id)
+                logger.info(f'Job removed: {job_id}')
+    logger.info(f'Scheduler jobs refreshed (enabled={enabled})')
+
+
 def start_scheduler(app=None):
     """Start the APScheduler background scheduler."""
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
 
-        # Check if scheduler is enabled
-        scheduler_enabled = _get_setting('scheduler_enabled', '1')
-        if scheduler_enabled != '1':
-            logger.info('Scheduler disabled via scheduler_enabled=0, skipping all jobs')
-            # Still create scheduler instance so API can report status
-            sched = BackgroundScheduler()
-            sched.start()
-            _scheduler = sched
-            return sched
-
-        # Unconditionally clear any stale collection_running from crashed predecessor
-        # BEFORE starting APScheduler (which would trigger collection immediately)
-        _clear_stale_collection_running(force=True)
-
         sched = BackgroundScheduler()
-
-        # Smart collection: checks if full scan is due, otherwise runs quick
-        sched.add_job(
-            _smart_collect,
-            'interval',
-            hours=COLLECT_INTERVAL,
-            id='nsfocus_collect',
-            name='NSFOCUS Smart Collection',
-            next_run_time=datetime.utcnow(),
-        )
-
         sched.start()
         _scheduler = sched
-        logger.info(f'Scheduler started: collection every {COLLECT_INTERVAL}h, '
-                    f'full scan every {FULL_SCAN_INTERVAL}h')
+
+        _clear_stale_collection_running(force=True)
+        refresh_scheduler_jobs()
 
         # First-run check: if no snapshots have source_url populated, trigger immediate full scan
         _check_first_run()
 
         # Build URL→Chain cache for subscription chain matching
         _build_url_chain_cache()
-
-        # Session heartbeat: keep PHPSESSID alive (configurable interval)
-        hb_interval = int(_get_setting('heartbeat_interval', '30'))
-        sched.add_job(
-            _session_heartbeat,
-            'interval',
-            minutes=hb_interval,
-            id='nsfocus_heartbeat',
-            name='Session Heartbeat',
-            next_run_time=datetime.utcnow(),
-        )
-
-        # Digest check: run daily to send weekly/monthly/quarterly summaries
-        sched.add_job(
-            _digest_check,
-            'interval',
-            hours=6,  # Check every 6 hours
-            id='nsfocus_digest',
-            name='Digest Summary Check',
-            next_run_time=datetime.utcnow(),
-        )
 
         return sched
     except ImportError:
