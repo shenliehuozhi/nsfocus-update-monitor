@@ -2876,7 +2876,7 @@ async function settings(){
       <div class="cfg-section-hd">📡 采集设置</div>
       <div class="cfg-row">
         <div class="cfg-toggle">
-          <input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''}>
+          <input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''} onchange="handleSchedulerToggle(this)">
           <span>启用调度器</span>
         </div>
         <p class="cfg-hint">关闭后采集和心跳任务暂停，可用于维护调试</p>
@@ -4449,6 +4449,26 @@ async function delProduct(id,name){
 async function collectProduct(id,mode){
   const r=await api(`/system/products/${id}/collect`,{method:'POST',body:JSON.stringify({mode})});
   toast(r.message||'已触发','success');
+}
+
+async function handleSchedulerToggle(cb){
+  if(!cb.checked){
+    // 关闭调度器，先检查是否正在采集
+    const sr=await api('/settings/scheduler');
+    if(sr.data?.scheduler?.is_running){
+      const ok=confirm('调度器正在采集中，现在关闭将中断本次采集。\n\n确定要关闭吗？');
+      if(!ok){cb.checked=true;return;}
+    }
+  }
+  // 保存并实时生效
+  const d={scheduler_enabled:cb.checked?'1':'0'};
+  const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
+  if(r.code===0){
+    toast(cb.checked?'调度器已启用':'调度器已关闭', cb.checked?'success':'warn');
+  }else{
+    toast('保存失败','error');
+    cb.checked=!cb.checked; // 还原
+  }
 }
 
 async function saveSettings(){
