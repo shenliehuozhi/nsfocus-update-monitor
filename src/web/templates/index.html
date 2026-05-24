@@ -368,7 +368,7 @@ async function dashboard(range){
     `<div class="grid3">
       <div class="stat green"><div class="num">${d.session_status?.active||0}</div><div class="label">活跃 Session</div></div>
       <div class="stat"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
-      <div class="stat"><div class="num">${sch.is_running?'采集中':'就绪'}</div><div class="label">调度器</div></div>
+      <div class="stat"><div class="num">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</div><div class="label">调度器</div></div>
     </div>
     <div class="grid3" style="margin-top:12px">
       <div class="stat"><div class="num" style="color:var(--primary)">${d.push_today?.total||0}</div><div class="label">今日推送</div></div>
