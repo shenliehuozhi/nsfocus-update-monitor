@@ -195,9 +195,13 @@ def emit_collection_summary(summary: dict, mode: str):
             description_full=message_text,
         )
         try:
-            notifier.send(msg, channel.get('config', {}))
+            result = notifier.send(msg, channel.get('config', {}))
+            if result.success:
+                logger.info(f'Event notification sent: {event_type}, result=success')
+            else:
+                logger.error(f'Event notification failed: {event_type}, error={result.error_message}')
         except Exception as e:
-            logger.error(f'Failed to send collection summary: {e}')
+            logger.error(f'Failed to send event notification: {e}')
 
 
 def emit_session_error(username: str, product_name: str, reason: str):

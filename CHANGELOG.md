@@ -37,7 +37,7 @@
 - 系统事件通知走 `event_handler.emit_*()` → `get_notify_channel()` → 直接查 DB → 原始加密串 → 失败
 - 修复：统一走 `get_by_id()` 解密渠道配置
 
-**调测**：企业微信 channel_id=4，`get_notify_channel()` 返回 `config={'webhook_url': '...', 'secret': ''}` ✓
+**调测**：企业微信 channel_id=4，`get_notify_channel()` 返回 `config={'webhook_url': '...'}` ✓；手动 `emit_collection_summary()` 测试通知发送成功，event_log id=5 写入 ✓
 
 ---
 
