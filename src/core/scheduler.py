@@ -1002,7 +1002,7 @@ def start_scheduler(app=None):
 
         global _scheduler, _start_time
         _start_time = datetime.utcnow()
-        sched = BackgroundScheduler()
+        sched = BackgroundScheduler(max_workers=1)
         sched.start()
         _scheduler = sched
 
