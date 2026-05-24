@@ -91,6 +91,7 @@ def delete_rule(rule_id: int) -> None:
     execute("DELETE FROM rule_channels WHERE rule_id = ?", (rule_id,))
     execute("DELETE FROM digest_queue WHERE rule_id = ?", (rule_id,))
     execute("DELETE FROM delayed_queue WHERE rule_id = ?", (rule_id,))
+    execute("DELETE FROM delivery_log WHERE rule_id = ?", (rule_id,))  # delivery_log has FK to subscription_rules
     execute("DELETE FROM subscription_rules WHERE id = ?", (rule_id,))
 
 
