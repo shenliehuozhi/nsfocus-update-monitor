@@ -227,8 +227,14 @@ def update_subscription(rid: int):
 @bp_subscriptions.route('/<int:rid>', methods=['DELETE'])
 @require_auth
 def delete_subscription(rid: int):
+    import traceback
     from src.models.subscription import delete_rule
-    delete_rule(rid)
+    try:
+        delete_rule(rid)
+    except Exception as e:
+        import sys, logging
+        logging.getLogger('api').critical(f'delete_rule({rid}) FAILED: {e}\n{traceback.format_exc()}')
+        raise
     _audit('subscription_delete', {'id': rid})
     return jsonify({'code': 0})
 

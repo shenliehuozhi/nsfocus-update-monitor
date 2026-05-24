@@ -265,6 +265,7 @@ def get_status() -> dict:
         'full_scan_interval_hours': full_interval_hours,
         'next_mode': next_mode,
         'next_full_scan': next_full,
+        'enabled': _get_setting('scheduler_enabled', '1') == '1',
     }
 
 
@@ -939,6 +940,16 @@ def start_scheduler(app=None):
     """Start the APScheduler background scheduler."""
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
+
+        # Check if scheduler is enabled
+        scheduler_enabled = _get_setting('scheduler_enabled', '1')
+        if scheduler_enabled != '1':
+            logger.info('Scheduler disabled via scheduler_enabled=0, skipping all jobs')
+            # Still create scheduler instance so API can report status
+            sched = BackgroundScheduler()
+            sched.start()
+            _scheduler = sched
+            return sched
 
         # Unconditionally clear any stale collection_running from crashed predecessor
         # BEFORE starting APScheduler (which would trigger collection immediately)

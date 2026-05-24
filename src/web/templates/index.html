@@ -247,10 +247,15 @@ function toast(m,s='success'){
 
 // confirmAct(msg, asyncFn) — shows modal, calls asyncFn() on confirm
 // Replaces all browser confirm() calls for a consistent look
+// 闭包不再通过字符串序列化传递，改用全局回调表（避免某些 WebView 环境下闭包上下文丢失）
+window._confirmCBs = {};
+window._confirmCtr = 0;
 function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=false) {
   const id = '_confirmBox';
   const existing = document.getElementById(id);
   if (existing) existing.remove();
+  const ctr = window._confirmCtr++;
+  window._confirmCBs[ctr] = asyncFn;
   const overlay = document.createElement('div');
   overlay.className = 'confirm-modal active';
   overlay.id = id;
@@ -259,7 +264,7 @@ function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=fal
     <div class="confirm-title">${msg}</div>
     <div class="confirm-btns">
       <button class="confirm-btn-cancel" onclick="document.getElementById('${id}').remove()">取消</button>
-      <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="(async()=>{document.getElementById('${id}').remove();await (${asyncFn})()})()">${okLabel}</button>
+      <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="document.getElementById('${id}').remove();window._confirmCBs[${ctr}]&&window._confirmCBs[${ctr}]()">${okLabel}</button>
     </div>
   </div>`;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
@@ -2870,6 +2875,13 @@ async function settings(){
     <div class="cfg-section">
       <div class="cfg-section-hd">📡 采集设置</div>
       <div class="cfg-row">
+        <div class="cfg-toggle">
+          <input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''}>
+          <span>启用调度器</span>
+        </div>
+        <p class="cfg-hint">关闭后采集和心跳任务暂停，可用于维护调试</p>
+      </div>
+      <div class="cfg-row">
         <div class="form-group"><label>采集间隔 <span class="cfg-unit">(小时)</span></label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"><p class="cfg-hint">快速采集周期，建议1-4小时；过短易被封IP</p></div>
         <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"><p class="cfg-hint">包版本降低需连续N次确认才通知，防止误报</p></div>
       </div>
@@ -4440,7 +4452,7 @@ async function collectProduct(id,mode){
 }
 
 async function saveSettings(){
-  const d={collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,

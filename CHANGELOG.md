@@ -22,6 +22,22 @@
 
 ---
 
+## 2026-05-24 — 调度器全局开关 + 订阅规则删除诊断埋点
+
+**背景**：调试时每次重启进程，`start_scheduler()` 强制清除 `collection_running` 导致采集立即重新进行，DB 被 Flask 持 WAL 锁无法连接诊断。
+
+**新增 — 调度器全局开关**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/core/scheduler.py` | `start_scheduler()` 启动时检查 `scheduler_enabled` 设置，为 `'0'` 时创建空 scheduler 实例（无 job）；`get_status()` 返回 `enabled` 字段 |
+| `src/web/templates/index.html` | 系统设置 → 采集设置区加 toggle 开关，默认开启；`saveSettings()` 保存 `scheduler_enabled` |
+| `src/web/routes/api_routes.py` | `delete_subscription()` 加 try/catch + `logging.critical(traceback)` 诊断埋点 |
+
+**用途**：维护调试期间关闭采集开关 → DB 锁释放 → 可正常连接诊断。诊断完毕后重新开启。
+
+---
+
 ## 2026-05-23 — 订阅规则基本信息重构 + 删除客户维保字段
 
 **背景**：valid_until 应由用户在订阅规则页面独立设置，不应隐式关联客户维保期。简化设计：客户管理删除维保字段，订阅规则基本信息展示客户邮箱 + 独立有效期至。
