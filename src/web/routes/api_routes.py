@@ -132,6 +132,11 @@ def create_customer():
     for k in data:
         if isinstance(data[k], str):
             data[k] = data[k].strip()
+    # Check duplicate name
+    from src.models.database import query
+    existing = list(query("SELECT id FROM customers WHERE name = ?", (data['name'],)))
+    if existing:
+        return jsonify({'code': 40001, 'message': '客户名称已存在'}), 400
     from src.models.customer import create
     cid = create(g.user_id, **data)
     _audit('customer_create', {'id': cid, 'name': data.get('name'), 'company': data.get('company')})
@@ -141,6 +146,13 @@ def create_customer():
 @require_auth
 def update_customer(cid: int):
     data = request.get_json() or {}
+    if 'name' in data and isinstance(data['name'], str):
+        data['name'] = data['name'].strip()
+        # Check duplicate name (exclude self)
+        from src.models.database import query
+        existing = list(query("SELECT id FROM customers WHERE name = ? AND id != ?", (data['name'], cid)))
+        if existing:
+            return jsonify({'code': 40001, 'message': '客户名称已存在'}), 400
     from src.models.customer import update
     update(cid, **data)
     _audit('customer_update', {'id': cid})

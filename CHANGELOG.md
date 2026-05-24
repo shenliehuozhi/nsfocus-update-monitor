@@ -243,3 +243,20 @@ else → valid
 - tooltip 文案更新为："检测到新版本后，观察 N 小时确认无问题再推送（仅即时推送模式）"
 - 重置/编辑分支末尾调用 `onDigestModeChange()` 确保初始化状态一致
 
+## 2026-05-24 — 客户名称唯一性校验
+
+**根因**：客户名称字段未校验重复，数据库虽有 UNIQUE 约束但 API 层无友好提示，重复插入时直接暴露 constraint violation。
+
+**修复内容**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/web/routes/api_routes.py` | `create_customer()` 新增 name 查重，存在则返回 40001 "客户名称已存在"；`update_customer()` 同样校验（排除自身） |
+| `data/nsfocus_monitor.db` | 清理测试产生的重复数据（id=12/13/15/16） |
+
+**逻辑说明**：
+- 数据库层面已有 NOT NULL + 隐式 UNIQUE 约束，修复的是 API 层友好提示
+- 查询使用 `SELECT id FROM customers WHERE name = ?`，返回非空即重复
+
+**后续**：无
+
