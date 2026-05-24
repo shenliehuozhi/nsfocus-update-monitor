@@ -297,7 +297,7 @@ function showLoginForm(){
 }
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
-  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);_stopBgRotation();document.body.className='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
+  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard')}else toast(r.message,'error');
 }
 function logout(){
   if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
