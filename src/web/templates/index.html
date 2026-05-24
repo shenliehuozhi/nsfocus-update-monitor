@@ -247,7 +247,7 @@ let T=localStorage.getItem('token'),U=null;
 }
 
 function toast(m,s='success'){
-  const e=document.createElement('div');e.className=`toast toast-${s}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),2500);
+  const e=document.createElement('div');e.className=`toast toast-${s}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),4000);
 }
 
 // confirmAct(msg, asyncFn) — shows modal, calls asyncFn() on confirm
