@@ -64,17 +64,37 @@ def update_channel(ch_id: int):
 @bp_channels.route('/<int:ch_id>', methods=['DELETE'])
 @require_auth
 def delete_channel(ch_id: int):
-    from src.models.channel import delete
+    from src.models.channel import get_by_id
+    ch = get_by_id(ch_id)
+    ch_name = ch['name'] if ch else f'id={ch_id}'
+
     from src.models.database import query
-    # Check if referenced by any subscription rules
+    msgs = []
+
+    # subscription rules that reference this channel via rule_channels
     ref_rules = query(
         "SELECT sr.id, sr.name FROM subscription_rules sr "
         "INNER JOIN rule_channels rc ON sr.id = rc.rule_id "
         "WHERE rc.channel_id = ?", (ch_id,))
     if ref_rules:
-        names = ', '.join(f'「{r["name"]}」' for r in ref_rules)
-        return jsonify({'code': 40900, 'message': f'该渠道被以下订阅规则引用，请先取消引用再删除：{names}'}), 409
-    delete(ch_id)
+        names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rules)
+        msgs.append(f'订阅规则：{names}')
+
+    # delivery_log history records for this channel
+    ref_dl = query(
+        "SELECT sr.id, sr.name, COUNT(*) as cnt FROM delivery_log dl "
+        "INNER JOIN subscription_rules sr ON dl.rule_id = sr.id "
+        "WHERE dl.channel_id = ? GROUP BY sr.id, sr.name", (ch_id,))
+    if ref_dl:
+        detail = '、'.join(f'「{r["name"]}」({r["cnt"]}条历史记录)' for r in ref_dl)
+        msgs.append(f'历史推送记录：{detail}')
+
+    if msgs:
+        msg = f'渠道「{ch_name}」存在以下关联，无法删除：\n  • ' + '\n  • '.join(msgs) + '\n\n请先在订阅规则中取消该渠道的绑定后再试。'
+        return jsonify({'code': 40900, 'message': msg}), 409
+
+    from src.models.channel import delete as ch_delete
+    ch_delete(ch_id)
     _audit('channel_delete', {'id': ch_id})
     return jsonify({'code': 0})
 
@@ -162,19 +182,42 @@ def update_customer(cid: int):
 @bp_customers.route('/<int:cid>', methods=['DELETE'])
 @require_auth
 def delete_customer(cid: int):
+    from src.models.customer import get_by_id
+    cust = get_by_id(cid)
+    cust_name = cust['name'] if cust else f'id={cid}'
+
     from src.models.customer import delete
     from src.models.database import query
-    # Check if referenced by any subscription rules or rule_channels
-    ref_rules = query(
-        "SELECT id, name FROM subscription_rules WHERE customer_id = ?", (cid,))
-    ref_channels = query(
+    msgs = []
+
+    # subscription_rules that set this customer
+    ref_rules = query("SELECT id, name FROM subscription_rules WHERE customer_id = ?", (cid,))
+    if ref_rules:
+        names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rules)
+        msgs.append(f'订阅规则：{names}')
+
+    # rule_channels that bind this customer
+    ref_rc = query(
         "SELECT sr.id, sr.name FROM subscription_rules sr "
         "INNER JOIN rule_channels rc ON sr.id = rc.rule_id "
         "WHERE rc.customer_id = ?", (cid,))
-    refs = list(ref_rules) + list(ref_channels)
-    if refs:
-        names = ', '.join(f'「{r["name"]}」' for r in refs)
-        return jsonify({'code': 40900, 'message': f'该客户被以下订阅规则引用，请先取消引用再删除：{names}'}), 409
+    if ref_rc:
+        names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rc)
+        msgs.append(f'渠道绑定：{names}')
+
+    # delivery_log history records
+    ref_dl = query(
+        "SELECT sr.id, sr.name, COUNT(*) as cnt FROM delivery_log dl "
+        "INNER JOIN subscription_rules sr ON dl.rule_id = sr.id "
+        "WHERE dl.customer_id = ? GROUP BY sr.id, sr.name", (cid,))
+    if ref_dl:
+        detail = '、'.join(f'「{r["name"]}」({r["cnt"]}条历史记录)' for r in ref_dl)
+        msgs.append(f'历史推送记录：{detail}')
+
+    if msgs:
+        msg = f'客户「{cust_name}」存在以下关联，无法删除：\n  • ' + '\n  • '.join(msgs) + '\n\n请先删除或解绑相关订阅规则后再试。'
+        return jsonify({'code': 40900, 'message': msg}), 409
+
     delete(cid)
     _audit('customer_delete', {'id': cid})
     return jsonify({'code': 0})
