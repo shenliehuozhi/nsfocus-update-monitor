@@ -127,6 +127,10 @@ def _clear_collection_running():
     )
 
 
+# Record process start time for stale detection
+_process_start_time = datetime.utcnow()
+
+
 def _check_concurrent_stale() -> bool:
     """
     Check if a previous collection is still running (or crashed while running).
@@ -156,6 +160,15 @@ def _check_concurrent_stale() -> bool:
     try:
         started = datetime.fromisoformat(started_str)
     except Exception:
+        return False
+
+    # Defense-in-depth: if collection_running was set BEFORE current process started,
+    # it is a leftover from a crashed predecessor — treat as stale regardless of elapsed time
+    if started < _process_start_time:
+        logger.warning(f'Previous collection started {started} '
+                       f'before this process ({_process_start_time}), '
+                       f'treating as stale, clearing and allowing this trigger')
+        _clear_collection_running()
         return False
 
     elapsed_hours = (datetime.utcnow() - started).total_seconds() / 3600
@@ -880,10 +893,56 @@ def refresh_pkg_type_single(source_id: int, session_cookie: str):
             _pkg_refresh_state['finished_at'] = datetime.utcnow().isoformat()
 
 
+def _clear_stale_collection_running(force=False):
+    """Clear stale collection_running state on startup if it's older than threshold.
+
+    Args:
+        force: if True, unconditionally clear any collection_running record
+               (used on process startup to handle crashed predecessor)
+    """
+    try:
+        from src.models.database import query
+        import json
+        rows = query("SELECT value FROM system_settings WHERE key = 'collection_running'")
+        if not rows or not rows[0]['value']:
+            return
+        try:
+            data = json.loads(rows[0]['value'])
+        except Exception:
+            return
+        if data.get('status') != '1':
+            return
+        started_str = data.get('started_at', '')
+        if not started_str:
+            return
+        try:
+            started = datetime.fromisoformat(started_str)
+        except Exception:
+            return
+
+        if force:
+            logger.warning(f'Auto-clearing collection_running on startup (force=true, '
+                           f'started {started_str})')
+            _clear_collection_running()
+            return
+
+        # Normal: only clear if elapsed exceeds threshold (handles in-process timeout)
+        elapsed_hours = (datetime.utcnow() - started).total_seconds() / 3600
+        threshold = COLLECT_INTERVAL * 2
+        if elapsed_hours > threshold:
+            logger.warning(f'Auto-clearing stale collection_running (started {elapsed_hours:.1f}h ago)')
+            _clear_collection_running()
+    except Exception:
+        pass
+
 def start_scheduler(app=None):
     """Start the APScheduler background scheduler."""
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
+
+        # Unconditionally clear any stale collection_running from crashed predecessor
+        # BEFORE starting APScheduler (which would trigger collection immediately)
+        _clear_stale_collection_running(force=True)
 
         sched = BackgroundScheduler()
 
