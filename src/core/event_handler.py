@@ -126,6 +126,20 @@ def emit_collection_summary(summary: dict, mode: str):
     if not is_event_enabled(event_type):
         return
 
+    # 防重：最近 5 分钟内已有相同 finished_at 的记录则跳过
+    finished_at = summary.get('finished_at') or datetime.utcnow().isoformat()
+    try:
+        from src.models.database import query
+        rows = query(
+            "SELECT id FROM system_event_log WHERE event_type=? AND created_at>=datetime('now','-5 minutes') LIMIT 1",
+            (event_type,)
+        )
+        if rows:
+            logger.debug(f'Skip duplicate collection_summary (recent event already sent)')
+            return
+    except Exception:
+        pass
+
     channel = get_notify_channel()
     if not channel:
         return
