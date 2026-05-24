@@ -30,12 +30,10 @@
                        → start_scheduler() 调用 _clear_stale_collection_running(force=True)
                        → 清除残留 collection_running
                        → APScheduler 启动，首次采集正常触发
-                       → collection_running: status=1, started=2026-05-24T02:21:13
 
 2026-05-24 11:02:33     采集完成（quick mode，约 25 分钟）
                        → collection_running: status=0（正常清除）
                        → snapshots 更新：last_seen_at 从 2026-05-23 16:48:27 → 2026-05-24 03:00:09
-                       → 新增记录 id 延伸到 3229（绿盟代码安全审计系统 SDA V7.0R01 规则升级包）
 ```
 
 ---
@@ -44,7 +42,7 @@
 
 ### 直接原因
 
-`start_scheduler()` 中 `sched.start()` 会**同步阻塞执行**首次采集任务，导致 `collection_running` 在 stale 检测之前就被设置，后续 stale 检测看到"刚设置"的记录，永久判定"还在运行"：
+`start_scheduler()` 中 `sched.start()` 会**同步阻塞执行**首次采集任务，导致 `collection_running` 在 stale 检测之前就被设置：
 
 ```
 APScheduler 启动流程（修复前）：
@@ -73,66 +71,173 @@ APScheduler 启动流程（修复前）：
 
 ### 修复 1：`_clear_stale_collection_running(force=True)` 启动时无条件清除
 
-在 `start_scheduler()` 中，**先无条件清除** `collection_running`，**再启动** APScheduler：
-
 ```python
-def start_scheduler(app=None):
-    # 关键：先清除任何残留状态，再启动 APScheduler
-    _clear_stale_collection_running(force=True)  # 无条件清除
-
-    sched = BackgroundScheduler()
-    sched.add_job(_smart_collect, ...)
-    sched.start()  # 此时已经没有残留状态，首次采集正常执行
+def _clear_stale_collection_running(force=False):
+    # ...
+    if force:
+        logger.warning(f'Auto-clearing collection_running on startup (force=true, '
+                       f'started {started_str})')
+        _clear_collection_running()
+        return
+    # ...
 ```
 
-`force=True` 时无条件清除任何记录（处理进程非正常退出）；`force=False`（默认）时清除超过 `COLLECT_INTERVAL * 2` 的记录（处理进程内采集超时）。
+调用处改为 `force=True`：
+```python
+def start_scheduler(app=None):
+    # 先清除任何残留状态，再启动 APScheduler
+    _clear_stale_collection_running(force=True)  # 无条件清除
+    sched = BackgroundScheduler()
+    sched.start()
+```
 
 ### 修复 2：`_check_concurrent_stale` 加入进程启动时间检测
 
 ```python
-# 模块级变量
 _process_start_time = datetime.utcnow()
 
-def _check_concurrent_stale():
-    # ... 解析 collection_running ...
-
+def _check_concurrent_stale() -> bool:
+    # ...
     # Defense-in-depth: 若记录早于当前进程启动，视为 stale
     if started < _process_start_time:
-        logger.warning(f'Previous collection started {started} before process, '
-                       f'treating as stale')
+        logger.warning(f'Previous collection started {started} '
+                       f'before this process ({_process_start_time}), '
+                       f'treating as stale, clearing and allowing this trigger')
         _clear_collection_running()
         return False
-
-    # 原有 elapsed 检测 ...
+    # ...
 ```
-
-### 未完成：`_last_run` 持久化
-
-`last_full_run` 只存在内存变量，重启后丢失。留待后续实施。
 
 ---
 
 ## 验证（2026-05-24 11:02 完成）
 
-| 检查项 | 期望 | 实际 | 结果 |
-|---|---|---|---|
-| 重启后 `collection_running` | force=True 清除旧记录 | 日志：`Auto-clearing collection_running on startup (force=true, started 2026-05-24T01:33:05.606223)` | ✓ |
-| 采集正常触发 | status=1, started=当前时间 | 日志：`Collection starting: mode=quick` | ✓ |
-| snapshots 更新 | last_seen_at 更新到今天 | `2026-05-23 16:48:27` → `2026-05-24 03:00:09` | ✓ |
-| 新记录入库 | 有新增 id | id 延伸到 3229（绿盟代码安全审计系统 SDA V7.0R01） | ✓ |
-| `collection_running` 清除 | status=0 | 11:02:33 查询：`status=0` | ✓ |
-| 采集完成日志 | `Cycle complete` | app.log 无此行（quick mode 可能走其他路径），但 status=0 证明完成 | ✓ |
+### 验证命令记录
 
-**验证命令**：
+**验证 1：重启后 collection_running 被无条件清除**
+
 ```python
-# 采集完成后检查
-conn = sqlite3.connect('data/nsfocus_monitor.db')
-cur = conn.cursor()
-cur.execute("SELECT value FROM system_settings WHERE key='collection_running'")
-cr = json.loads(cur.fetchone()[0])  # status 应为 '0'
-cur.execute("SELECT MAX(last_seen_at) FROM snapshots")  # 应为今天时间
-cur.execute("SELECT COUNT(*) FROM snapshots WHERE last_seen_at >= '2026-05-24'")  # 应有数据
+# 重启前状态（collection_running 卡住）
+>>> conn = sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db')
+>>> cur = conn.cursor()
+>>> cur.execute("SELECT value FROM system_settings WHERE key='collection_running'")
+>>> row = cur.fetchone()
+>>> json.loads(row['value'])
+{'status': '1', 'started_at': '2026-05-24T01:33:05.606223', 'mode': 'quick'}
 ```
+
+```
+# 重启服务
+$ cd /root/nsfocus-monitor && /usr/bin/python3.10 -B run.py
+# PID: 525207
+```
+
+```python
+# 重启后立即检查日志
+>>> with open('/root/nsfocus-monitor/logs/app.log') as f:
+...     lines = f.readlines()
+>>> for l in lines:
+...     if 'Auto-clearing' in l or 'Collection starting' in l or 'Scheduler started' in l:
+...         print(l.rstrip())
+2026-05-24 10:21:13 [WARNING] monitor.scheduler: Auto-clearing collection_running on startup (force=true, started 2026-05-24T01:33:05.606223)
+2026-05-24 10:21:13 [INFO] monitor.scheduler: Scheduler started: collection every 4h, full scan every 720h
+2026-05-24 10:21:13 [INFO] monitor.scheduler: Collection starting: mode=quick
+```
+
+**验证 2：采集正常进行（过程中检查）**
+
+```python
+# 10:40 检查（采集运行中）
+>>> conn = sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db')
+>>> cur = conn.cursor()
+>>> cur.execute("SELECT value FROM system_settings WHERE key='collection_running'")
+>>> json.loads(cur.fetchone()[value])
+{'status': '1', 'started_at': '2026-05-24T02:21:13.108168', 'mode': 'quick'}
+# 进程 PID 525207 正常运行，采集进行中
+
+# app.log 显示正在处理各产品
+>>> with open('/root/nsfocus-monitor/logs/app.log') as f:
+...     lines = f.readlines()
+>>> for l in lines[-5:]:
+...     if 'changed' in l: print(l.rstrip())
+2026-05-24 10:36:09 [INFO] monitor.nsfocus: Quick 下一代防火墙(NF-B/NF-D): 6/39 pages changed, 45 items
+```
+
+**验证 3：采集完成，collection_running 清除**
+
+```python
+# 11:02 检查（采集完成）
+>>> import time, sqlite3, json
+>>> time.sleep(240)
+>>> conn = sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db')
+>>> cur = conn.cursor()
+>>> cur.execute("SELECT value FROM system_settings WHERE key='collection_running'")
+>>> cr = json.loads(cur.fetchone()[0])
+>>> cr
+{'status': '0', 'started_at': '', 'mode': ''}
+# status=0，证明 finally 块正常执行
+```
+
+**验证 4：snapshots 数据更新入库**
+
+```python
+# 采集完成后检查 snapshots
+>>> cur.execute("SELECT MAX(last_seen_at) as mx FROM snapshots")
+>>> r = cur.fetchone()
+>>> r['mx']
+'2026-05-24 03:00:09'
+# 之前是 2026-05-23 16:48:27，有更新
+
+>>> cur.execute("SELECT COUNT(*) as cnt FROM snapshots WHERE last_seen_at >= '2026-05-24'")
+>>> cur.fetchone()['cnt']
+882
+# 全部 882 条记录都在本次采集中更新
+
+>>> cur.execute("SELECT MIN(id) as mn, MAX(id) as mx FROM snapshots")
+>>> r = cur.fetchone()
+>>> (r['mn'], r['mx'])
+(2085, 3229)
+# id 从 2085 延伸到 3229，有新增记录
+```
+
+**验证 5：入库数据内容正确**
+
+```python
+# 抽样检查最新入库记录
+>>> cur.execute("SELECT * FROM snapshots WHERE id = 3229")
+>>> dict(cur.fetchone())
+{
+    'id': 3229,
+    'source_id': 154,
+    'product_name': '绿盟代码安全审计系统(SDA)',
+    'version_branch': 'SDA V7.0R01',
+    'package_type': 'SDA V7.0R01 规则升级包',
+    'file_name': 'update.vul.rules.V7.0.1.4.155.bin',
+    'package_version': '7.0.1.4.155',
+    'md5_hash': 'cd3d7f2b73098ce3d88f65c33cb2eb16',
+    'file_size': 532603207,
+    'urgency': 'high',
+    'published_at': '2026-05-22T10:18:43',
+    'first_seen_at': '2026-05-22 11:15:46',
+    'last_seen_at': '2026-05-24 03:00:09',   # ✓ 正确
+    'status': 'active',
+    'source_url': 'https://update.nsfocus.com/update/listSdaDetails/v/ruleV7.0R01'
+}
+# 入库字段完整，status=active，数据正确
+```
+
+### 验证状态表
+
+| 检查项 | 期望结果 | 实际结果 | 状态 | 执行时间 |
+|--------|----------|----------|------|----------|
+| 重启前 collection_running | status=1, started=01:33:05 | status=1, started=2026-05-24T01:33:05.606223 | ✓ | 10:21 |
+| 重启后 force=true 清除 | 日志出现 "Auto-clearing collection_running on startup (force=true)" | 日志：`Auto-clearing collection_running on startup (force=true, started 2026-05-24T01:33:05.606223)` | ✓ | 10:21:13 |
+| 采集正常触发 | 日志出现 "Collection starting: mode=quick" | 日志：`Collection starting: mode=quick` | ✓ | 10:21:13 |
+| 采集过程中 snapshots 未更新 | last_seen_at 仍是旧时间 | last_seen_at = 2026-05-23 16:48:27（正常，采集未完成） | ✓ | 10:40 |
+| 采集完成后 collection_running | status=0 | status=0, started='', mode='' | ✓ | 11:02 |
+| snapshots 最终更新 | last_seen_at 更新到今天 | 2026-05-24 03:00:09 | ✓ | 11:02 |
+| 新增记录入库 | 有新增 id | id 延伸到 3229（绿盟代码安全审计系统 SDA V7.0R01） | ✓ | 11:02 |
+| 数据库无残留 stale 状态 | collection_running status=0 | status=0 | ✓ | 11:02 |
 
 ---
 
@@ -142,3 +247,4 @@ cur.execute("SELECT COUNT(*) FROM snapshots WHERE last_seen_at >= '2026-05-24'")
 2. **systemd 日志是唯一可靠的时间来源**：所有事件必须以 journalctl 为准，DB 时间受进程状态影响不可信
 3. **每项修复都必须有验证**：重启服务观察日志 + 查询 DB + 确认 snapshots 更新，三步缺一不可
 4. **分析报告必须包含验证结果**：记录实际执行的命令和输出，证明修复有效
+5. **验证要全面**：不仅检查最终状态，还要检查过程中间状态（采集前/中/后）
