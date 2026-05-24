@@ -22,6 +22,25 @@
 
 ---
 
+## 2026-05-24 — 系统事件通知发送失败修复 + 调度器全局开关
+
+**根因**：`get_notify_channel()` 直接查 DB 返回原始记录，`config` 字段是加密字符串而非 dict。传给 `WecomNotifier.send()` 时 `config.get('webhook_url', '')` 返回空字符串，通知静默失败（无错误日志）。
+
+**修复内容**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/models/event_log.py` | `get_notify_channel()` 改用 `channel.get_by_id()` 查询，拿到解密后的 dict |
+
+**逻辑说明**：
+- 订阅规则推送走 `router._send_immediate()` → `get_by_id()` → 解密 config → 正常
+- 系统事件通知走 `event_handler.emit_*()` → `get_notify_channel()` → 直接查 DB → 原始加密串 → 失败
+- 修复：统一走 `get_by_id()` 解密渠道配置
+
+**调测**：企业微信 channel_id=4，`get_notify_channel()` 返回 `config={'webhook_url': '...', 'secret': ''}` ✓
+
+---
+
 ## 2026-05-24 — 调度器全局开关 + 订阅规则删除根因修复
 
 **背景**：调试时每次重启进程，`start_scheduler()` 强制清除 `collection_running` 导致采集立即重新进行，DB 被 Flask 持 WAL 锁无法连接诊断。

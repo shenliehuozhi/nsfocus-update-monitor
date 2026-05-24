@@ -97,17 +97,13 @@ def is_event_enabled(event_type: str) -> bool:
     return event_type in config['event_types']
 
 
-def get_notify_channel() -> dict:
+def get_notify_channel() -> dict | None:
     """获取通知渠道配置"""
-    from src.models.database import query
+    from src.models.channel import get_by_id
     config = get_config()
-    if not config['channel_id']:
+    if not config.get('channel_id'):
         return None
-    rows = query(
-        "SELECT * FROM channels WHERE id = ? AND is_active = 1",
-        (config['channel_id'],)
-    )
-    return rows[0] if rows else None
+    return get_by_id(config['channel_id'])
 
 
 # ── Event Log ─────────────────────────────────────────────
