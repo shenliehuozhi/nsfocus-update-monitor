@@ -260,3 +260,19 @@ else → valid
 
 **后续**：无
 
+## 2026-05-24 — DELETE /customers/<id> 尾部斜杠 404
+
+**根因**：Flask strict_slashes 对参数化 DELETE 路由（`/api/customers/<int:cid>`）不自动重定向尾部斜杠，`curl -X DELETE /customers/11/` 触发 404。
+
+**修复内容**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/web/routes/api_routes.py` | 新增 `@bp_customers.route('/<int:cid>/', methods=['DELETE'], strict_slashes=False)` 显式支持尾部斜杠 |
+
+**逻辑说明**：
+- 单独路由 `strict_slashes=False` 覆盖 Blueprint 层级的 strict_slashes=True
+- 同时保留 `/<int:cid>` 路由（无尾部斜杠），两条路由指向同一函数
+
+**后续**：无
+
