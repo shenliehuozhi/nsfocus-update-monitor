@@ -439,6 +439,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
             summary['products'][name]['new'] = len(result.new_items)
+            by_type = {}
+            for _, snap in result.new_items:
+                pt = snap.get('package_type') or 'other'
+                by_type[pt] = by_type.get(pt, 0) + 1
+            summary['products'][name]['by_type'] = by_type
 
             # ── Detailed Chinese logging ──────────────────────────────
             after_files = before_files.copy()

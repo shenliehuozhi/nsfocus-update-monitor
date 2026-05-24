@@ -14,8 +14,18 @@ from src.core.logger import get_logger
 from src.models.event_log import (
     log_event, get_config, get_notify_channel, is_event_enabled
 )
+from src.notifiers.base import _utc_to_cst_display
 
 logger = get_logger('event_handler')
+
+_MODE_LABELS = {'quick': 'Quick Scan', 'full': 'Full Scan', 'delta': 'Delta Scan'}
+
+_PKG_TYPE_CN = {
+    'sys': '系统', 'rule': '规则', 'nti': '威胁情报', 'av': '病毒库',
+    'apprule': '应用规则', 'url': 'URL库', 'wcs': '恶意站点', 'judge': '研判',
+    'geo': '地理库', 'interface': '接口', 'special': '特殊', 'other': '其他',
+    'merge': '合并', 'client': '客户端', 'av_stream': '流式病毒库',
+}
 
 
 def _get_notifier(channel: dict):
@@ -119,6 +129,76 @@ def emit_push(snap: dict, rule: dict, success: bool, error: str = None,
             logger.error(f'Failed to send event notification: {e}')
 
 
+def _fmt_duration(seconds: int) -> str:
+    """Format duration in human-readable form."""
+    if seconds < 60:
+        return f'{seconds}秒'
+    elif seconds < 3600:
+        m, s = divmod(seconds, 60)
+        return f'{m}分{s}秒'
+    else:
+        total_m = seconds // 60
+        h = total_m // 60
+        m = total_m % 60
+        return f'{h}小时{m}分'
+
+
+def _build_summary_message(summary: dict, mode: str) -> str:
+    """Build collection summary notification message (three modes)."""
+    total_new = summary.get('total_new', 0)
+    errors = summary.get('errors', [])
+    products = summary.get('products', {})
+
+    started_at = summary.get('started_at', '')
+    finished_at = summary.get('finished_at', '') or datetime.utcnow().isoformat()
+    duration = summary.get('duration_s', 0)
+
+    # Determine icon and label
+    if total_new > 0:
+        icon = '🔔'
+        severity = 'normal'
+    elif errors:
+        icon = '⚠️'
+        severity = 'high'
+    else:
+        icon = 'ℹ️'
+        severity = 'normal'
+
+    mode_label = _MODE_LABELS.get(mode, mode)
+    product_count = len(products)
+    lines = [
+        f"{icon} {mode_label} 完成 | {product_count}产品 | 新增 {total_new} 个包",
+        f"耗时：{_fmt_duration(duration)}",
+    ]
+
+    # --- 有新包：按产品→类型两级展开 ---
+    if total_new > 0:
+        lines.append('─' * 30)
+        for pname, pdata in sorted(products.items()):
+            new_count = pdata.get('new', 0)
+            if new_count == 0:
+                continue
+            by_type = pdata.get('by_type', {})
+            type_lines = []
+            for pkg_type, count in sorted(by_type.items(), key=lambda x: -x[1]):
+                label = _PKG_TYPE_CN.get(pkg_type, pkg_type)
+                type_lines.append(f'{label}：{count}个包')
+            type_str = '，'.join(type_lines)
+            lines.append(f'📦 {pname}')
+            lines.append(f'   └─ {type_str}')
+
+    # --- 无新包但有错误 ---
+    elif errors:
+        lines.append('─' * 30)
+        lines.append('错误摘要：')
+        for err in errors[:5]:
+            # 截断超长错误
+            msg = err[:120] if len(err) > 120 else err
+            lines.append(f'• {msg}')
+
+    return '\n'.join(lines)
+
+
 def emit_collection_summary(summary: dict, mode: str):
     """采集任务入库完成后调用"""
     event_type = 'collection_summary'
@@ -126,8 +206,7 @@ def emit_collection_summary(summary: dict, mode: str):
     if not is_event_enabled(event_type):
         return
 
-    # 防重：最近 5 分钟内已有相同 finished_at 的记录则跳过
-    finished_at = summary.get('finished_at') or datetime.utcnow().isoformat()
+    # 防重：最近 5 分钟内已有相同 event_type 的记录则跳过
     try:
         from src.models.database import query
         rows = query(
@@ -144,46 +223,19 @@ def emit_collection_summary(summary: dict, mode: str):
     if not channel:
         return
 
-    # 构建消息
-    started_at = summary.get('started_at', '')
-    finished_at = datetime.utcnow().isoformat() if not summary.get('finished_at') else summary.get('finished_at')
-    duration = summary.get('duration_s', 0)
-
-    lines = [
-        "【采集任务完成】" + {'quick': 'Quick Scan', 'full': 'Full Scan', 'delta': 'Delta Scan'}.get(mode, mode),
-        f"开始：{started_at[:19] if started_at else '—'}",
-        f"结束：{finished_at[:19] if finished_at else '—'}",
-        f"耗时：{duration}秒",
-        "",
-        "采集概况",
-    ]
-
     total_new = summary.get('total_new', 0)
     total_rollback = summary.get('total_rollback', 0)
     errors = summary.get('errors', [])
-
-    # 简化产品更新统计
     products = summary.get('products', {})
-    if products:
-        for name, pdata in products.items():
-            new_count = pdata.get('new', 0)
-            if new_count > 0:
-                lines.append(f"├── {name}：新增 {new_count} 个包")
-    else:
-        lines.append("└── 无新增包")
+    duration = summary.get('duration_s', 0)
 
-    if errors:
-        lines.append("")
-        lines.append("错误列表")
-        for err in errors[:5]:  # 最多显示5个
-            lines.append(f"└── {err[:100]}")
-
-    message_text = '\n'.join(lines)
+    # 构建消息
+    message_text = _build_summary_message(summary, mode)
 
     # 记录到日志表
     log_event(
         event_type=event_type,
-        severity='INFO',
+        severity='WARNING' if errors else 'INFO',
         message={
             'mode': mode,
             'total_new': total_new,
@@ -199,7 +251,7 @@ def emit_collection_summary(summary: dict, mode: str):
     if notifier:
         from src.notifiers.base import NotificationMessage
         msg = NotificationMessage(
-            title='绿盟监控 - 采集任务完成',
+            title=f'绿盟监控 - 采集任务完成',
             product_name='',
             version_branch='',
             package_type='',
