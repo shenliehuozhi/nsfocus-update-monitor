@@ -811,6 +811,46 @@ def get_config():
     return jsonify({'code': 0, 'data': config})
 
 
+@bp_settings.route('/force-stop', methods=['POST'])
+@require_auth
+def force_stop_and_save():
+    """强制停止采集并保存系统配置。"""
+    data = request.get_json() or {}
+    from src.models.database import execute
+
+    # Step 1: 强制停止采集（清 collection_running + 临时关闭调度器）
+    try:
+        import json
+        running_val = json.dumps({'status': '0', 'started_at': '', 'mode': ''})
+        execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
+               (running_val,))
+        # 临时将 scheduler_enabled 设为 0，防止保存配置时触发采集
+        execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('scheduler_enabled', '0', datetime('now'))")
+    except Exception:
+        pass  # 忽略错误，继续保存配置
+
+    # Step 2: 保存所有配置项
+    for key, value in data.items():
+        execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))",
+                (key, str(value)))
+
+    _audit('force_stop_settings', {'keys': list(data.keys())})
+
+    # Step 3: 重新调度（如果用户开了调度器）
+    if data.get('scheduler_enabled') == '1':
+        from src.core.scheduler import refresh_scheduler_jobs
+        refresh_scheduler_jobs()
+
+    if data.get('collect_interval'):
+        from src.core.scheduler import reschedule_collect
+        reschedule_collect()
+    if data.get('heartbeat_interval'):
+        from src.core.scheduler import reschedule_heartbeat
+        reschedule_heartbeat()
+
+    return jsonify({'code': 0, 'message': '采集已停止，配置已保存'})
+
+
 @bp_settings.route('/config', methods=['PUT'])
 @require_auth
 def update_config():
@@ -871,3 +911,41 @@ def update_classification():
     )
     _audit('classification_update', {'keys': list(data.keys())})
     return jsonify({'code': 0, 'message': '分类配置已保存'})
+
+
+# ── System Event Config ───────────────────────────────────
+
+@bp_settings.route('/event-config', methods=['GET'])
+@require_auth
+def get_event_config():
+    """获取系统事件通知配置"""
+    from src.models.event_log import get_config
+    return jsonify({'code': 0, 'data': get_config()})
+
+
+@bp_settings.route('/event-config', methods=['PUT'])
+@require_auth
+def update_event_config():
+    """更新系统事件通知配置"""
+    data = request.get_json() or {}
+    from src.models.event_log import update_config
+
+    enabled = data.get('enabled')
+    channel_id = data.get('channel_id')
+    event_types = data.get('event_types')
+
+    # Handle enabled: can be None (no update), True, or False
+    if enabled is not None:
+        enabled = bool(enabled)
+
+    result = update_config(
+        enabled=enabled,
+        channel_id=channel_id,
+        event_types=event_types
+    )
+    _audit('event_config_update', {
+        'enabled': enabled,
+        'channel_id': channel_id,
+        'event_types': event_types,
+    })
+    return jsonify({'code': 0, 'data': result, 'message': '配置已保存'})

@@ -132,4 +132,8 @@ def create_app(config_path=None):
     from src.core.scheduler import start_scheduler
     app.scheduler = start_scheduler(app)
 
+    # Start log scanner
+    from src.core.log_scanner import start
+    start()
+
     return app

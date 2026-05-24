@@ -217,6 +217,16 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
             error=result.error_message
         )
 
+        # Emit system event notification
+        from src.core.event_handler import emit_push
+        emit_push(
+            snap=snap,
+            rule=rule,
+            success=result.success,
+            error=result.error_message,
+            is_rollback=is_rollback
+        )
+
     logger.info(f'Rule {rule["name"]}: {len(results)} deliveries, '
                 f'success={sum(1 for r in results if r.success)}')
 

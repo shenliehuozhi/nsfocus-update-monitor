@@ -218,6 +218,10 @@ _progress = {
 _progress_lock = threading.Lock()
 
 _scheduler = None  # APScheduler instance, for runtime rescheduling
+_last_heartbeat_run = None    # datetime of last heartbeat invocation
+_last_heartbeat_success = None  # datetime of last heartbeat with ≥1 healthy session
+_last_health_alert_at = None   # datetime of last health alert sent (avoid spam)
+_start_time = None            # datetime of process start (for startup grace period)
 
 # ── Package-type refresh progress (per-source) ──────────────────
 _pkg_refresh_state = {
@@ -405,6 +409,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 _progress['phase'] = 'done'
                 _progress['duration_s'] = summary['duration_s']
                 _progress['finished_at'] = datetime.utcnow().isoformat()
+            # 发送采集完成通知（即使无新包）
+            summary['finished_at'] = datetime.utcnow().isoformat()
+            from src.core.event_handler import emit_collection_summary
+            emit_collection_summary(summary, mode)
             return summary
 
         # 4. Run detection per source
@@ -514,6 +522,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['total_new'] = summary['total_new']
             _progress['total_rollback'] = summary['total_rollback']
 
+        # Emit collection summary event
+        from src.core.event_handler import emit_collection_summary
+        emit_collection_summary(summary, mode)
+
         return summary
 
     except Exception as e:
@@ -522,6 +534,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         summary['status'] = 'error'
         summary['errors'].append(str(e)[:200])
         summary['duration_s'] = int(time.time() - start)
+        summary['finished_at'] = datetime.utcnow().isoformat()
         _last_run = datetime.utcnow()  # Prevent dashboard showing — forever
         with _progress_lock:
             _progress['active'] = False
@@ -529,6 +542,9 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['errors'].append(str(e)[:200])
             _progress['duration_s'] = summary['duration_s']
             _progress['finished_at'] = datetime.utcnow().isoformat()
+        # 发送采集失败通知
+        from src.core.event_handler import emit_collection_summary
+        emit_collection_summary(summary, mode)
         return summary
 
     finally:
@@ -956,14 +972,22 @@ def refresh_scheduler_jobs():
             _scheduler.add_job(_session_heartbeat, 'interval', minutes=hb_interval,
                                 id='nsfocus_heartbeat', name='Session Heartbeat',
                                 next_run_time=datetime.utcnow())
+            logger.info('[HEARTBEAT] nsfocus_heartbeat job ADDED, interval=%d min', hb_interval)
         else:
             _scheduler.reschedule_job('nsfocus_heartbeat', trigger='interval', minutes=hb_interval)
+            logger.info('[HEARTBEAT] nsfocus_heartbeat job RESCHEDULED, interval=%d min', hb_interval)
         if not _scheduler.get_job('nsfocus_digest'):
             _scheduler.add_job(_digest_check, 'interval', hours=6,
                                 id='nsfocus_digest', name='Digest Summary Check',
                                 next_run_time=datetime.utcnow())
+        if not _scheduler.get_job('nsfocus_health'):
+            _scheduler.add_job(_health_check, 'interval', minutes=hb_interval * 2,
+                                id='nsfocus_health', name='Scheduler Health Check',
+                                next_run_time=datetime.utcnow())
+        else:
+            _scheduler.reschedule_job('nsfocus_health', trigger='interval', minutes=hb_interval * 2)
     else:
-        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest']:
+        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest', 'nsfocus_health']:
             job = _scheduler.get_job(job_id)
             if job:
                 _scheduler.remove_job(job_id)
@@ -976,6 +1000,8 @@ def start_scheduler(app=None):
     try:
         from apscheduler.schedulers.background import BackgroundScheduler
 
+        global _scheduler, _start_time
+        _start_time = datetime.utcnow()
         sched = BackgroundScheduler()
         sched.start()
         _scheduler = sched
@@ -1049,11 +1075,15 @@ def _session_heartbeat():
     should prevent server-side session expiry between collection cycles.
     Skips heartbeat if collection is in progress to avoid cookie conflicts.
 
-    Anti-detection: jitter + skip probability to avoid periodic patterns.
+    Anti-detection: jitter + skip probability to break periodic patterns.
 
     All active sessions (collect + discover) get a heartbeat.
     Pollution detection (format check) only applies to collect sessions.
     """
+    global _last_heartbeat_run, _last_heartbeat_success
+    _last_heartbeat_run = datetime.utcnow()
+
+    logger.info('[HEARTBEAT] _session_heartbeat invoked, _is_running=%s', _is_running)
     import time as _time
 
     # Anti-detection: random initial delay (0-30s) to break periodic pattern
@@ -1067,7 +1097,7 @@ def _session_heartbeat():
     from src.models.user_session import update_heartbeat, log_heartbeat, update_status
 
     if _is_running:
-        logger.debug('Heartbeat skipped: collection in progress')
+        logger.info('[HEARTBEAT] skipped: collection in progress')
         return
 
     sessions = get_active_sessions()
@@ -1102,6 +1132,12 @@ def _session_heartbeat():
                     update_heartbeat(session_id, '污染')
                     log_heartbeat(session_id, '污染', error_msg='collect session 返回 downloadsVm/id，说明上下文被 upLic/Vm 格式污染')
                     logger.warning(f'Session {session_id} 污染 (downloadsVm/id detected)')
+                    from src.core.event_handler import emit_session_error
+                    emit_session_error(
+                        username=sess.get('username', ''),
+                        product_name=sess.get('product_name', ''),
+                        reason='Session 污染（上下文被 upLic/Vm 格式污染）'
+                    )
                     continue
 
             # Session expiry: 302 redirect → expired (all sessions)
@@ -1112,12 +1148,20 @@ def _session_heartbeat():
                     update_heartbeat(session_id, '过期')
                     log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效')
                     logger.warning(f'Session {session_id} 过期 (redirect to {loc})')
+                    from src.core.event_handler import emit_session_error
+                    emit_session_error(
+                        username=sess.get('username', ''),
+                        product_name=sess.get('product_name', ''),
+                        reason=f'Session 过期（302 跳转 {loc}）'
+                    )
                     continue
 
             # 200 OK + no pollution + no portal redirect → session alive
             update_heartbeat(session_id, '正常')
             log_heartbeat(session_id, '正常', latency_ms=latency, error_msg='200 OK，session 存活')
             logger.debug(f'Heartbeat OK session={session_id} purpose={purpose} ({latency}ms)')
+            if session_id:
+                _last_heartbeat_success = datetime.utcnow()
 
         except _requests.RequestException as e:
             err_str = str(e)
@@ -1137,6 +1181,12 @@ def _session_heartbeat():
             update_heartbeat(session_id, '错误')
             log_heartbeat(session_id, '错误', error_msg=f'网络错误: {detail}')
             logger.warning(f'Heartbeat failed session={session_id}: {detail}')
+            from src.core.event_handler import emit_session_error
+            emit_session_error(
+                username=sess.get('username', ''),
+                product_name=sess.get('product_name', ''),
+                reason=f'网络错误: {detail}'
+            )
 
 
 def _digest_check():
@@ -1146,3 +1196,81 @@ def _digest_check():
         process_digests()
     except Exception as e:
         logger.error(f'Digest check failed: {e}')
+
+
+def _health_check():
+    """Monitor scheduler health: heartbeat invocation and collection status.
+
+    Alerts if:
+    - Heartbeat job hasn't run in > 2x interval (missing scheduler execution)
+    - Collection hasn't succeeded in > 2x collection interval (stuck collection)
+    - Both send via emit_session_error so the system_event notification handles delivery
+    """
+    global _last_health_alert_at
+    import time as _time
+
+    now = datetime.utcnow()
+    hb_interval_min = int(_get_setting('heartbeat_interval', '10'))
+    collect_interval_h = int(_get_setting('collect_interval', '4'))
+    collect_interval_s = collect_interval_h * 3600
+
+    # Grace period: skip alerts in first 15 minutes after startup
+    if _start_time and (now - _start_time).total_seconds() < 900:
+        return
+
+    # Cooldown: at most one health alert per collection interval to avoid spam
+    if _last_health_alert_at and (now - _last_health_alert_at).total_seconds() < collect_interval_s:
+        return
+
+    alerts = []
+
+    # Check 1: heartbeat job invocation lag
+    if _last_heartbeat_run:
+        hb_lag_min = (now - _last_heartbeat_run).total_seconds() / 60
+        if hb_lag_min > hb_interval_min * 2:
+            alerts.append(f'心跳任务已有 {int(hb_lag_min)} 分钟未执行（间隔 {hb_interval_min} 分钟）')
+            logger.warning('[HEALTH] Heartbeat job lag: %.0f min since last run', hb_lag_min)
+    else:
+        # Never run
+        alerts.append(f'心跳任务从未执行（配置间隔 {hb_interval_min} 分钟）')
+        logger.warning('[HEALTH] Heartbeat job has never run')
+
+    # Check 2: heartbeat success lag (≥1 healthy session)
+    if _last_heartbeat_success:
+        hb_ok_lag_min = (now - _last_heartbeat_success).total_seconds() / 60
+        hb_ok_lag_h = hb_ok_lag_min / 60
+        if hb_ok_lag_min > hb_interval_min * 2:
+            alerts.append(f'心跳健康检查已有 {hb_ok_lag_h:.1f} 小时未成功（Session 可能失效）')
+            logger.warning('[HEALTH] Heartbeat success lag: %.1f hours since last healthy heartbeat', hb_ok_lag_h)
+    else:
+        # No successful heartbeat ever
+        alerts.append('从未有成功的心跳健康检查')
+        logger.warning('[HEALTH] No successful heartbeat ever recorded')
+
+    # Check 3: collection stuck
+    collect_interval_s = collect_interval_h * 3600
+    last_collect = _get_setting('last_collect_at', '')
+    if last_collect:
+        try:
+            from datetime import datetime as dt
+            last_ts = dt.fromisoformat(last_collect.replace('Z', '+00:00'))
+            collect_lag_h = (now - last_ts.replace(tzinfo=None)).total_seconds() / 3600
+            if collect_lag_h > collect_interval_h * 2:
+                alerts.append(f'采集任务已有 {collect_lag_h:.1f} 小时未成功（超过间隔 {collect_interval_h} 小时×2）')
+                logger.warning('[HEALTH] Collection lag: %.1f hours since last success', collect_lag_h)
+        except Exception:
+            pass
+
+    if alerts:
+        reason = '；'.join(alerts)
+        try:
+            from src.core.event_handler import emit_session_error
+            emit_session_error(
+                username='scheduler',
+                product_name='调度器健康检查',
+                reason=reason
+            )
+            _last_health_alert_at = now
+            logger.info('[HEALTH] Health alert sent: %s', reason)
+        except Exception as e:
+            logger.error('[HEALTH] Failed to send health alert: %s', e)

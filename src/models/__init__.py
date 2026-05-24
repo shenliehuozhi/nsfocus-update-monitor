@@ -30,6 +30,9 @@ def init_all_tables():
     from src.models import audit
     audit.create_tables(db)
 
+    from src.models import event_log
+    event_log.create_tables(db)
+
     from src.core.rate_limiter import create_tables as create_rate_limit_table
     create_rate_limit_table(db)
 

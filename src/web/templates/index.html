@@ -96,6 +96,7 @@ body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-cont
 .mono{font-family:'SF Mono','Fira Code',monospace}
 .desc-box{background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto;font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-all;color:#555}
 .info-bar{background:#eef4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#3a5080}
+.warning-banner{background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#856404}
 .push-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center}
 .push-modal .card{width:480px;max-height:75vh;overflow-y:auto}
 .push-modes{display:flex;gap:6px;margin-bottom:14px}
@@ -2858,7 +2859,20 @@ function _renderRecentDeliveries(deliveries,range){
 async function settings(){
   const r=await api('/settings/config').catch(()=>({data:{}}));
   const cfg=r.data||{};
+  // 获取渠道列表（用于系统事件通知渠道选择）
+  const ch=await api('/channels').catch(()=>({data:[]}));
+  cfg.channels=ch.data||[];
+  // 获取系统事件配置
+  const ev=await api('/settings/event-config').catch(()=>({data:{}}));
+  cfg.event_enabled=ev.data?.enabled||false;
+  cfg.event_channel_id=ev.data?.channel_id||null;
+  cfg.event_types=ev.data?.event_types||[];
+  // 检查采集状态
+  let isCollecting=false;
+  try{const cr=JSON.parse(cfg.collection_running||'{}');isCollecting=cr.status==='1';}catch(e){}
+
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
+    ${isCollecting?'<div class="warning-banner">⚠️ 采集正在进行中，保存配置将同时停止采集</div>':''}
     <div class="cfg-section">
       <div class="cfg-section-hd">🔶 开关选项</div>
       <div class="cfg-row" style="grid-template-columns:1fr 1fr 1fr">
@@ -2946,7 +2960,44 @@ async function settings(){
       </div>
     </div>
 
-    <button class="btn btn-primary" onclick="saveSettings()">保存配置</button>
+    <div class="cfg-section">
+      <div class="cfg-section-hd">🔔 系统事件通知</div>
+      <p class="cfg-section-sub">系统异常时发送告警通知，与订阅规则推送独立</p>
+      <div class="cfg-row">
+        <div class="cfg-toggle">
+          <input id="cfg-event-enabled" type="checkbox" ${cfg.event_enabled?'checked':''} onchange="document.getElementById('event-config-area').style.display=this.checked?'block':'none'">
+          <span>启用系统事件通知</span>
+        </div>
+      </div>
+      <div id="event-config-area" style="display:${cfg.event_enabled?'block':'none'}">
+        <div class="cfg-row">
+          <div class="form-group"><label>通知渠道</label>
+            <select id="cfg-event-channel">
+              <option value="">-- 选择渠道 --</option>
+              ${(cfg.channels||[]).map(ch=>`<option value="${ch.id}" ${cfg.event_channel_id==ch.id?'selected':''}>${ch.name} (${ch.type})</option>`).join('')}
+            </select>
+            <p class="cfg-hint">通知将发送到此渠道（需先在渠道管理中添加）</p>
+          </div>
+        </div>
+        <div class="cfg-row">
+          <div class="form-group"><label>事件类型</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_success" ${(cfg.event_types||[]).includes('push_success')?'checked':''}> 推送成功</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_failed" ${(cfg.event_types||[]).includes('push_failed')?'checked':''}> 推送失败</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
+              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
+            </div>
+            <p class="cfg-hint">空=全部启用</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    ${isCollecting?
+      '<p class="cfg-hint" style="color:#c00;margin-bottom:12px">采集进行中，系统配置无法直接修改。点击"强制停止并保存"将中断采集。</p>':
+      ''}
+    <button class="btn btn-primary" onclick="${isCollecting?'forceStopAndSave':'saveSettings'}()">${isCollecting?'强制停止并保存':'保存配置'}</button>
   </div></div>
 `;}
 
@@ -4476,6 +4527,27 @@ async function handleSchedulerToggle(cb){
   }
 }
 
+async function forceStopAndSave(){
+  if(!confirm('采集将被迫停止，是否继续？')) return;
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+    feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
+    email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
+    email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
+    email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
+    email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value};
+  const r=await api('/settings/force-stop',{method:'POST',body:JSON.stringify(d)});
+  const eventEnabled=document.getElementById('cfg-event-enabled').checked;
+  const eventChannel=document.getElementById('cfg-event-channel').value;
+  const eventTypes=Array.from(document.querySelectorAll('.cfg-event-type:checked')).map(cb=>cb.value);
+  await api('/settings/event-config',{method:'PUT',body:JSON.stringify({
+    enabled:eventEnabled,
+    channel_id:eventChannel?parseInt(eventChannel):null,
+    event_types:eventTypes
+  })});
+  toast(r.code===0?'采集已停止，配置已保存':'保存失败',r.code===0?'success':'error');
+  if(r.code===0) settings();
+}
+
 async function saveSettings(){
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
@@ -4484,6 +4556,17 @@ async function saveSettings(){
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
     email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value};
   const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
+
+  // 保存系统事件配置
+  const eventEnabled=document.getElementById('cfg-event-enabled').checked;
+  const eventChannel=document.getElementById('cfg-event-channel').value;
+  const eventTypes=Array.from(document.querySelectorAll('.cfg-event-type:checked')).map(cb=>cb.value);
+  await api('/settings/event-config',{method:'PUT',body:JSON.stringify({
+    enabled:eventEnabled,
+    channel_id:eventChannel?parseInt(eventChannel):null,
+    event_types:eventTypes
+  })});
+
   toast(r.code===0?'配置已保存':'保存失败',r.code===0?'success':'error');
 }
 

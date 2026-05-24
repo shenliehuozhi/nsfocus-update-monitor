@@ -43,6 +43,16 @@
 
 ---
 
+## 2026-05-24 — 采集完成通知（无新包时也发送）
+
+**根因**：`_collect_quick` 的 dedup safety net 将所有 items 过滤掉时，`all_items` 为空 → scheduler 走 early return → `emit_collection_summary` 永不调用。导致无新包时完全没有结束信号。
+
+**修复内容**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/core/scheduler.py` | early return 前调用 `emit_collection_summary`，确保每次采集都发通知；`except` 块同样处理 |
+
 ## 2026-05-24 — 订阅规则删除诊断埋点
 
 **背景**：valid_until 应由用户在订阅规则页面独立设置，不应隐式关联客户维保期。简化设计：客户管理删除维保字段，订阅规则基本信息展示客户邮箱 + 独立有效期至。

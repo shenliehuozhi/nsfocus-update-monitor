@@ -1,0 +1,298 @@
+"""Log scanner — periodically scan log files for error keywords.
+
+Scans:
+- app.log + app.log.* (rotated backups)
+- service_error.log
+- access.log (for non-200 requests from 127.0.0.1)
+
+Runs every 30 minutes, skips if collection is running.
+"""
+
+import os
+import re
+import time
+from datetime import datetime
+from threading import Thread, Event
+from typing import Optional
+
+from src.core.logger import get_logger
+from src.models.event_log import is_event_enabled, get_config
+from src.core.event_handler import emit_log_error
+
+logger = get_logger('log_scanner')
+
+# ── Config ───────────────────────────────────────────────
+
+LOG_DIR = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
+SCAN_INTERVAL = 30 * 60  # 30 minutes
+TRACEBACK_LINES = 5  # lines to capture after Exception keyword
+
+# Keyword patterns grouped by error type
+ERROR_PATTERNS = {
+    'DB错误': [
+        re.compile(r'database is lock', re.IGNORECASE),
+        re.compile(r'OperationalError', re.IGNORECASE),
+        re.compile(r'database is closed', re.IGNORECASE),
+        re.compile(r'UNIQUE constraint failed', re.IGNORECASE),
+        re.compile(r'FOREIGN KEY constraint failed', re.IGNORECASE),
+    ],
+    '网络错误': [
+        re.compile(r'Connection refused', re.IGNORECASE),
+        re.compile(r'Connection timeout', re.IGNORECASE),
+        re.compile(r'Read timeout', re.IGNORECASE),
+        re.compile(r'HTTP 5\d{2}', re.IGNORECASE),
+    ],
+    '认证错误': [
+        re.compile(r'Session expired', re.IGNORECASE),
+        re.compile(r'Login failed', re.IGNORECASE),
+        re.compile(r'登录失败', re.IGNORECASE),
+        re.compile(r'authentication failed', re.IGNORECASE),
+    ],
+    '采集错误': [
+        re.compile(r'collection failed', re.IGNORECASE),
+        re.compile(r'fetch error', re.IGNORECASE),
+        re.compile(r'download failed', re.IGNORECASE),
+    ],
+    '系统错误': [
+        re.compile(r'disk full', re.IGNORECASE),
+        re.compile(r'No space left', re.IGNORECASE),
+        re.compile(r'Permission denied', re.IGNORECASE),
+        re.compile(r'MemoryError', re.IGNORECASE),
+    ],
+    'Python异常': [
+        re.compile(r'Exception', re.IGNORECASE),
+        re.compile(r'Traceback', re.IGNORECASE),
+    ],
+}
+
+# Access log pattern: non-200 from 127.0.0.1
+ACCESS_LOG_PATTERN = re.compile(
+    r'^(?P<time>\S+ \S+ \d+ \d+:\d+:\d+ \d+)\s+127\.0\.0\.1.*(?P<status>[4-5]\d{2})'
+)
+
+
+# ── Scanner State ─────────────────────────────────────────
+
+_scanner_thread: Optional[Thread] = None
+_stop_event = Event()
+_last_scan_file_positions: dict = {}  # {filepath: last_read_position}
+
+
+# ── Core Logic ────────────────────────────────────────────
+
+def _is_collection_running() -> bool:
+    """Check if collection is currently running"""
+    from src.models.database import query
+    rows = query("SELECT value FROM system_settings WHERE key = 'collection_running'")
+    return bool(rows and rows[0]['value'])
+
+
+def _get_log_files() -> list:
+    """Get all log files to scan (app.log and rotated backups, service_error.log)"""
+    files = []
+    
+    # app.log and rotated backups
+    for name in os.listdir(LOG_DIR):
+        if name.startswith('app.log'):
+            filepath = os.path.join(LOG_DIR, name)
+            if os.path.isfile(filepath):
+                files.append(filepath)
+    
+    # service_error.log
+    service_error = os.path.join(LOG_DIR, 'service_error.log')
+    if os.path.isfile(service_error):
+        files.append(service_error)
+    
+    return sorted(set(files))
+
+
+def _scan_file(filepath: str) -> list:
+    """Scan a single file for error patterns. Returns list of (error_type, keyword, context, line_no)"""
+    findings = []
+    last_pos = _last_scan_file_positions.get(filepath, 0)
+    
+    try:
+        file_size = os.path.getsize(filepath)
+        
+        # If file was rotated (size smaller than last position), start from beginning
+        if file_size < last_pos:
+            last_pos = 0
+        
+        with open(filepath, 'r', errors='replace') as f:
+            f.seek(last_pos)
+            
+            # Read new content
+            new_content = f.read()
+            
+            # Update position for next scan
+            new_pos = f.tell()
+            _last_scan_file_positions[filepath] = new_pos
+            
+            if not new_content.strip():
+                return findings
+            
+            lines = new_content.split('\n')
+            
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Check each error pattern
+                for error_type, patterns in ERROR_PATTERNS.items():
+                    for pattern in patterns:
+                        if pattern.search(line):
+                            # Capture context: current line + next few lines if Exception/Traceback
+                            context_lines = [line]
+                            if error_type == 'Python异常' and i + 1 < len(lines):
+                                for j in range(i + 1, min(i + 1 + TRACEBACK_LINES, len(lines))):
+                                    context_lines.append(lines[j].strip())
+                            
+                            findings.append({
+                                'error_type': error_type,
+                                'keyword': pattern.pattern,
+                                'context': '\n'.join(context_lines),
+                                'line_number': i + 1,
+                                'timestamp': lines[0][:19] if lines else '',
+                            })
+                            break  # Don't match same line multiple times for same error type
+        
+        # Update position
+        _last_scan_file_positions[filepath] = new_pos
+        
+    except Exception as e:
+        logger.warning(f'Error scanning {filepath}: {e}')
+    
+    return findings
+
+
+def _scan_access_log() -> list:
+    """Scan access.log for non-200 requests from 127.0.0.1"""
+    findings = []
+    filepath = os.path.join(LOG_DIR, 'access.log')
+    last_pos = _last_scan_file_positions.get(filepath, 0)
+    
+    try:
+        if not os.path.isfile(filepath):
+            return findings
+        
+        file_size = os.path.getsize(filepath)
+        if file_size < last_pos:
+            last_pos = 0
+        
+        with open(filepath, 'r', errors='replace') as f:
+            f.seek(last_pos)
+            new_content = f.read()
+            new_pos = f.tell()
+            _last_scan_file_positions[filepath] = new_pos
+            
+            if not new_content.strip():
+                return findings
+            
+            lines = new_content.split('\n')
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                
+                match = ACCESS_LOG_PATTERN.search(line)
+                if match:
+                    findings.append({
+                        'error_type': 'HTTP错误',
+                        'keyword': f"HTTP {match.group('status')}",
+                        'context': line,
+                        'line_number': 0,
+                        'timestamp': match.group('time')[:19] if match.group('time') else '',
+                    })
+        
+        _last_scan_file_positions[filepath] = new_pos
+        
+    except Exception as e:
+        logger.warning(f'Error scanning access.log: {e}')
+    
+    return findings
+
+
+def _do_scan() -> int:
+    """Perform one scan cycle. Returns number of errors found."""
+    if not is_event_enabled('log_error'):
+        return 0
+    
+    logger.info('Starting log scan...')
+    total_errors = 0
+    
+    # Scan regular log files
+    log_files = _get_log_files()
+    for filepath in log_files:
+        findings = _scan_file(filepath)
+        for finding in findings:
+            emit_log_error(
+                log_file=os.path.basename(filepath),
+                error_type=finding['error_type'],
+                keyword=finding['keyword'],
+                context=finding['context'],
+                line_number=finding.get('line_number'),
+            )
+            total_errors += 1
+    
+    # Scan access log
+    access_findings = _scan_access_log()
+    for finding in access_findings:
+        emit_log_error(
+            log_file='access.log',
+            error_type=finding['error_type'],
+            keyword=finding['keyword'],
+            context=finding['context'],
+            line_number=finding.get('line_number'),
+        )
+        total_errors += 1
+    
+    logger.info(f'Log scan complete: {total_errors} errors found')
+    return total_errors
+
+
+def _scan_loop():
+    """Main scan loop"""
+    logger.info(f'Log scanner started, interval={SCAN_INTERVAL}s')
+    
+    while not _stop_event.wait(SCAN_INTERVAL):
+        # Skip if collection is running
+        if _is_collection_running():
+            logger.info('Collection running, skipping this scan cycle')
+            continue
+        
+        try:
+            _do_scan()
+        except Exception as e:
+            logger.error(f'Error in scan loop: {e}')
+
+
+# ── Public API ────────────────────────────────────────────
+
+def start():
+    """Start the log scanner in a background thread"""
+    global _scanner_thread, _stop_event
+    
+    if _scanner_thread and _scanner_thread.is_alive():
+        logger.warning('Log scanner already running')
+        return
+    
+    _stop_event.clear()
+    _scanner_thread = Thread(target=_scan_loop, daemon=True, name='log_scanner')
+    _scanner_thread.start()
+    logger.info('Log scanner thread started')
+
+
+def stop():
+    """Stop the log scanner"""
+    global _stop_event, _scanner_thread
+    
+    _stop_event.set()
+    if _scanner_thread:
+        _scanner_thread.join(timeout=5)
+    logger.info('Log scanner stopped')
+
+
+def run_once() -> int:
+    """Run a single scan (for manual trigger). Returns error count."""
+    return _do_scan()
