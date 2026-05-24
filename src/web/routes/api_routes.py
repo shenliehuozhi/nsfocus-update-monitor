@@ -158,6 +158,7 @@ def update_customer(cid: int):
     _audit('customer_update', {'id': cid})
     return jsonify({'code': 0})
 
+@bp_customers.route('/<int:cid>/', methods=['DELETE'], strict_slashes=False)
 @bp_customers.route('/<int:cid>', methods=['DELETE'])
 @require_auth
 def delete_customer(cid: int):
