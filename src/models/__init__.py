@@ -47,3 +47,42 @@ def init_all_tables():
     if current == 0:
         db.execute("INSERT INTO schema_version (version, description) VALUES (1, 'Initial schema')")
         db.commit()
+
+    # Initialize nsfocus product data from bundled JSON (first deployment convenience)
+    _init_content_sources(db)
+
+
+def _init_content_sources(db):
+    """Bootstrap nsfocus content sources from bundled initial_sources.json.
+
+    Only inserts sources that don't already exist in the DB.
+    Discovered package_type (types/paths) are NOT bundled — those are
+    dynamically discovered on first collection and stored in DB.
+    """
+    import json, os
+
+    seed_path = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'initial_sources.json')
+    if not os.path.exists(seed_path):
+        return
+
+    with open(seed_path, encoding='utf-8') as f:
+        sources = json.load(f)
+
+    existing = set()
+    for row in db.execute("SELECT name FROM content_sources WHERE source_type=?", ('nsfocus',)):
+        existing.add(row['name'])
+
+    from src.models.snapshot import upsert_source
+    for src in sources:
+        if src['name'] in existing:
+            continue
+        upsert_source(
+            name=src['name'],
+            source_type='nsfocus',
+            entry_url=src.get('entry_url', ''),
+            strategy=src.get('strategy', 'standard'),
+            category=src.get('category', 'security'),
+            display_name=src.get('display_name', src['name']),
+            is_active=src.get('is_active', 1),
+            is_manual=src.get('is_manual', 0),
+        )
