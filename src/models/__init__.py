@@ -56,8 +56,8 @@ def _init_content_sources(db):
     """Bootstrap nsfocus content sources from bundled initial_sources.json.
 
     Only inserts sources that don't already exist in the DB.
-    Discovered package_type (types/paths) are NOT bundled — those are
-    dynamically discovered on first collection and stored in DB.
+    Discovered paths are bundled so first deployment shows full product tree
+    without needing manual "discover" step.
     """
     import json, os
 
@@ -76,6 +76,8 @@ def _init_content_sources(db):
     for src in sources:
         if src['name'] in existing:
             continue
+        pt = src.get('package_type') or {}
+        pkg_json = json.dumps(pt) if pt.get('paths') else None
         upsert_source(
             name=src['name'],
             source_type='nsfocus',
@@ -85,4 +87,5 @@ def _init_content_sources(db):
             display_name=src.get('display_name', src['name']),
             is_active=src.get('is_active', 1),
             is_manual=src.get('is_manual', 0),
+            package_type=pkg_json,
         )
