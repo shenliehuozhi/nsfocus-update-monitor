@@ -371,3 +371,4 @@ else → valid
 
 ### 修复
 - 心跳函数所有 DB 更新包裹 try-except，防止 `database is locked` 导致函数崩溃（commit 5edbb71）
+- `execute()` 增加 3 次重试机制（100/200ms 递增），根本解决采集结束后 DB 锁未释放导致的写入失败（commit ab9d3ef）

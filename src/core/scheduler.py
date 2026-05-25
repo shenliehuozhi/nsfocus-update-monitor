@@ -509,18 +509,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _save_last_full_scan()
             _check_package_types_fresh(existing_sources, cookie, _emit)
 
-        # WAL checkpoint: prevent unlimited WAL file growth and release locks promptly.
-        # TRUNCATE checkpoints and then truncates the WAL file to zero bytes,
-        # fully consolidating writes and releasing the WAL write-lock so
-        # subsequent transactions (heartbeat, log_scanner) don't hit "locked".
-        try:
-            # Emit aggregated push summary before checkpoint so it's committed
-            from src.notifiers.router import _emit_push_summary
-            _emit_push_summary()
-            from src.models.database import get_db
-            get_db().execute('PRAGMA wal_checkpoint(TRUNCATE)')
-        except Exception:
-            pass
+        # WAL checkpoint removed — was failing silently with TRUNCATE (requires exclusive lock).
+        # Replaced by a daemon thread doing PASSIVE checkpoint every 5 minutes (no lock needed).
+        # See: docs/database-is-locked-analysis.md
+        from src.notifiers.router import _emit_push_summary
+        _emit_push_summary()
 
         logger.info(f'Cycle complete ({mode}): {summary["total_new"]} new, '
                     f'{summary["total_rollback"]} rollbacks, {summary["duration_s"]}s')
@@ -1020,6 +1013,22 @@ def start_scheduler(app=None):
         sched = BackgroundScheduler(max_workers=1)
         sched.start()
         _scheduler = sched
+
+        # Daemon thread: PASSIVE WAL checkpoint every 5 minutes (no exclusive lock needed).
+        # This replaces the TRUNCATE checkpoint that was silently failing in the collection
+        # finally block (TRUNCATE requires exclusive lock which is held by the collector).
+        import threading, time as _time
+        def _wal_checkpoint_loop():
+            from src.models.database import get_db
+            while True:
+                _time.sleep(300)  # 5 minutes
+                try:
+                    get_db().execute('PRAGMA wal_checkpoint(PASSIVE)')
+                    logger.debug('PASSIVE WAL checkpoint OK')
+                except Exception as e:
+                    logger.warning(f'PASSIVE WAL checkpoint failed: {e}')
+        _cp_thread = threading.Thread(target=_wal_checkpoint_loop, daemon=True)
+        _cp_thread.start()
 
         _clear_stale_collection_running(force=True)
         refresh_scheduler_jobs()
