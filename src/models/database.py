@@ -16,8 +16,12 @@ logger = get_logger('database')
 
 # Thread-local connections
 _local = threading.local()
-
 DB_PATH: str = ''
+
+# Global write lock — serializes all DB writes across all threads.
+# Eliminates "database is locked" from concurrent write threads
+# (e.g. log_scanner daemon vs collection thread in run_detection).
+_write_lock = threading.Lock()
 
 
 def init_db(data_dir: str = None) -> str:
@@ -39,7 +43,7 @@ def get_db() -> sqlite3.Connection:
         _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         _local.conn.row_factory = sqlite3.Row
         _local.conn.execute("PRAGMA journal_mode=WAL")
-        _local.conn.execute("PRAGMA busy_timeout=10000")  # 10s, avoid "database is locked"
+        _local.conn.execute("PRAGMA busy_timeout=30000")  # 30s, avoid "database is locked"
         _local.conn.execute("PRAGMA foreign_keys=ON")
     return _local.conn
 
@@ -66,17 +70,20 @@ def query(sql: str, params: tuple = ()) -> list:
 def execute(sql: str, params: tuple = ()) -> int:
     """Execute an INSERT/UPDATE/DELETE, return lastrowid.
 
-    The connection uses busy_timeout=10000ms so SQLite will wait up to 10s
-    for a lock to be released before raising "database is locked".
+    Thread-safe: acquires _write_lock so all writes across all threads
+    are serialized.  Combined with WAL mode, this eliminates concurrent
+    write lock contention entirely.
     """
-    db = get_db()
-    cur = db.execute(sql, params)
-    db.commit()
-    return cur.lastrowid
+    with _write_lock:
+        db = get_db()
+        cur = db.execute(sql, params)
+        db.commit()
+        return cur.lastrowid
 
 
 def executemany(sql: str, params_list: list) -> None:
     """Execute multiple INSERT statements."""
-    db = get_db()
-    db.executemany(sql, params_list)
-    db.commit()
+    with _write_lock:
+        db = get_db()
+        db.executemany(sql, params_list)
+        db.commit()
