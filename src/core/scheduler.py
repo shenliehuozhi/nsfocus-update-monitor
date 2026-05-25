@@ -1143,9 +1143,12 @@ def _session_heartbeat():
             # Pollution detection: collect session only
             if purpose == 'collect':
                 if 'downloadsVm/id' in resp.text:
-                    update_status(session_id, 'expired')
-                    update_heartbeat(session_id, '污染')
-                    log_heartbeat(session_id, '污染', error_msg='collect session 返回 downloadsVm/id，说明上下文被 upLic/Vm 格式污染')
+                    try:
+                        update_status(session_id, 'expired')
+                        update_heartbeat(session_id, '污染')
+                        log_heartbeat(session_id, '污染', error_msg='collect session 返回 downloadsVm/id，说明上下文被 upLic/Vm 格式污染')
+                    except Exception as ex:
+                        logger.warning(f'Session {session_id} DB 更新失败（污染检测）: {ex}')
                     logger.warning(f'Session {session_id} 污染 (downloadsVm/id detected)')
                     from src.core.event_handler import emit_session_error
                     emit_session_error(
@@ -1159,9 +1162,12 @@ def _session_heartbeat():
             if resp.status_code == 302:
                 loc = resp.headers.get('Location', '')
                 if '/portal/index' in loc:
-                    update_status(session_id, 'expired')
-                    update_heartbeat(session_id, '过期')
-                    log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效')
+                    try:
+                        update_status(session_id, 'expired')
+                        update_heartbeat(session_id, '过期')
+                        log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效')
+                    except Exception as ex:
+                        logger.warning(f'Session {session_id} DB 更新失败（过期检测）: {ex}')
                     logger.warning(f'Session {session_id} 过期 (redirect to {loc})')
                     from src.core.event_handler import emit_session_error
                     emit_session_error(
@@ -1172,11 +1178,13 @@ def _session_heartbeat():
                     continue
 
             # 200 OK + no pollution + no portal redirect → session alive
-            update_heartbeat(session_id, '正常')
-            log_heartbeat(session_id, '正常', latency_ms=latency, error_msg='200 OK，session 存活')
+            try:
+                update_heartbeat(session_id, '正常')
+                log_heartbeat(session_id, '正常', latency_ms=latency, error_msg='200 OK，session 存活')
+            except Exception as ex:
+                logger.warning(f'Session {session_id} DB 更新失败（正常心跳）: {ex}')
             logger.debug(f'Heartbeat OK session={session_id} purpose={purpose} ({latency}ms)')
-            if session_id:
-                _last_heartbeat_success = datetime.utcnow()
+            _last_heartbeat_success = datetime.utcnow()
 
         except _requests.RequestException as e:
             err_str = str(e)
@@ -1193,8 +1201,11 @@ def _session_heartbeat():
                 detail = 'DNS 解析失败'
             else:
                 detail = err_str[:200]
-            update_heartbeat(session_id, '错误')
-            log_heartbeat(session_id, '错误', error_msg=f'网络错误: {detail}')
+            try:
+                update_heartbeat(session_id, '错误')
+                log_heartbeat(session_id, '错误', error_msg=f'网络错误: {detail}')
+            except Exception as ex:
+                logger.warning(f'Session {session_id} DB 更新失败（网络错误）: {ex}')
             logger.warning(f'Heartbeat failed session={session_id}: {detail}')
             from src.core.event_handler import emit_session_error
             emit_session_error(
