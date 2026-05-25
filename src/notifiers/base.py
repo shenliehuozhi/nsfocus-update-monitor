@@ -43,6 +43,42 @@ def _utc_to_cst_display(utc_str: str) -> str:
         return utc_str
 
 
+def _build_chain(msg: 'NotificationMessage', db_path: str = '/root/nsfocus-monitor/data/nsfocus_monitor.db') -> tuple[list[str], str]:
+    """Look up the chain for a notification message by matching source_url → relative path → paths chain.
+
+    Returns (chain_list, full_detail_url). chain_list is empty if not found.
+    """
+    import hashlib, json
+    if not msg.source_url:
+        return [], ''
+
+    BASE = 'https://update.nsfocus.com'
+    rel_url = msg.source_url
+    if rel_url.startswith(BASE):
+        rel_url = rel_url[len(BASE):]
+
+    try:
+        import sqlite3
+        conn = sqlite3.connect(db_path, timeout=10)
+        cur = conn.execute(
+            "SELECT package_type FROM content_sources WHERE id=? AND is_active=1",
+            (msg.source_id,) if msg.source_id else (0,)
+        )
+        row = cur.fetchone()
+        conn.close()
+        if not row or not row[0]:
+            return [], ''
+        cfg = json.loads(row[0])
+        paths = cfg.get('paths', [])
+        for p in paths:
+            if p.get('url', '') == rel_url:
+                chain = p.get('chain', [])
+                return chain, BASE + rel_url
+    except Exception:
+        pass
+    return [], ''
+
+
 @dataclass
 class NotificationMessage:
     """Unified notification message format."""
@@ -64,6 +100,9 @@ class NotificationMessage:
     source_url: str = ''          # detail page URL on update.nsfocus.com
     published_at: str = ''
     is_rollback: bool = False
+    source_id: int = 0           # content_sources.id, used for chain lookup
+    chain: list[str] = field(default_factory=list)      # hierarchical path chain
+    chain_url: str = ''           # full clickable detail page URL for the chain
 
     @property
     def urgency_label(self) -> str:
@@ -108,8 +147,8 @@ class NotificationMessage:
 
         dl_url = f'{download_base}{snap.get("download_id", "")}' if snap.get('download_id') else ''
 
-        return cls(
-            title=f'{snap.get("product_name", "")} {snap.get("version_branch", "")} {snap.get("package_type", "")}更新',
+        msg = cls(
+            title=f'{snap.get("product_name", "")} {snap.get("package_type", "")}更新',
             product_name=snap.get('product_name', ''),
             version_branch=snap.get('version_branch', ''),
             package_type=snap.get('package_type', ''),
@@ -127,7 +166,10 @@ class NotificationMessage:
             source_url=snap.get('source_url', ''),
             published_at=snap.get('published_at', ''),
             is_rollback=is_rollback,
+            source_id=int(snap.get('source_id') or 0),
         )
+        msg.chain, msg.chain_url = _build_chain(msg)
+        return msg
 
 
 @dataclass
@@ -173,16 +215,27 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         lines.append(f'> ⚠️ 软件包已被撤回，请暂缓升级')
         lines.append('')
 
+    # Chain / 类型 line — clickable if chain_url available, fallback text otherwise
+    if msg.chain:
+        chain_text = ' → '.join(msg.chain)
+        if msg.chain_url:
+            type_line = f'**类型**: [{chain_text}]({msg.chain_url})'
+        else:
+            type_line = f'**类型**: {chain_text}'
+    elif msg.source_url:
+        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
+    else:
+        type_line = f'**类型**: {msg.package_type}'
+
     meta = [
-        ('**产品**:', msg.product_name),
-        ('**版本**:', msg.version_branch),
-        ('**类型**:', _pkg_type_label(msg.package_type)),
         ('**文件**:', msg.file_name),
         ('**包版本**:', msg.package_version),
         ('**大小**:', msg.size_display if msg.file_size > 0 else None),
         ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**时间**:', _utc_to_cst_display(msg.published_at)),
     ]
+
+    lines.append(type_line)
 
     if skip_empty_meta:
         for label, val in meta:
@@ -205,9 +258,6 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
     if msg.download_url:
         lines.append('')
         lines.append(f'📥 下载地址: [{msg.file_name}]({msg.download_url})')
-
-    if msg.source_url:
-        lines.append(f'🔗 原始页面:[详情页，需登录查看]({msg.source_url})')
 
     return '\n'.join(lines)
 
@@ -237,16 +287,25 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if for_rollback:
         header_lines.append('> ⚠️ 软件包已被撤回，请暂缓升级')
         header_lines.append('')
+    # Chain / 类型 line (same logic as _format_markdown_body)
+    if msg.chain:
+        chain_text = ' → '.join(msg.chain)
+        type_line = (f'**类型**: [{chain_text}]({msg.chain_url})'
+                     if msg.chain_url else f'**类型**: {chain_text}')
+    elif msg.source_url:
+        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
+    else:
+        type_line = f'**类型**: {msg.package_type}'
+
     meta = [
-        ('**产品**:', msg.product_name),
-        ('**版本**:', msg.version_branch),
-        ('**类型**:', _pkg_type_label(msg.package_type)),
         ('**文件**:', msg.file_name),
         ('**包版本**:', msg.package_version),
         ('**大小**:', msg.size_display),
         ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**时间**:', _utc_to_cst_display(msg.published_at)),
     ]
+    header_lines.append(type_line)
+
     if skip_empty_meta:
         for label, val in meta:
             if val is not None and str(val).strip():
@@ -261,8 +320,6 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         extra_items.append('🔄 升级后需重启')
     if msg.download_url:
         extra_items.append(f'📥 下载地址: [{msg.file_name}]({msg.download_url})')
-    if msg.source_url:
-        extra_items.append(f'🔗 原始页面:[详情页，需登录查看]({msg.source_url})')
 
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
@@ -397,14 +454,15 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         </td></tr>
         '''
 
-    # Detail page link
-    detail_link = ''
-    if msg.source_url:
-        detail_link = f'''
-        <tr><td style="padding:8px 0 0 0">
-            <a href="{msg.source_url}" style="color:{color};text-decoration:none;font-size:13px">🔗 原始页面:[详情页，需登录查看]</a>
-        </td></tr>
-        '''
+    # 类型 row — chain link or fallback (same logic as markdown)
+    if msg.chain:
+        chain_text = ' → '.join(msg.chain)
+        type_cell = (f'<a href="{msg.chain_url}" style="color:{color};text-decoration:none">{chain_text}</a>'
+                     if msg.chain_url else chain_text)
+    elif msg.source_url:
+        type_cell = f'<a href="{msg.source_url}" style="color:{color};text-decoration:none">详情页，点击查看</a>'
+    else:
+        type_cell = msg.package_type
 
     return f'''<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -416,9 +474,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
 <tr><td style="padding:16px;border:1px solid #e0e0e0">
     {rollback_banner}
     <table style="width:100%">
-        <tr><td style="padding:4px 0;width:80px;color:#666">产品</td><td>{msg.product_name}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">版本</td><td>{msg.version_branch}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">类型</td><td>{_pkg_type_label(msg.package_type)}</td></tr>
+        <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
         <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
@@ -427,7 +483,6 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         {dep_html}
         {desc_html}
         {dl_btn}
-        {detail_link}
     </table>
 </td></tr>
 <tr><td style="padding:12px 16px;background:#f5f5f5;border-radius:0 0 8px 8px;color:#999;font-size:12px">
