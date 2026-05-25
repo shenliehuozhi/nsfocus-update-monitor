@@ -326,3 +326,14 @@ else → valid
 
 **后续**：无
 
+## 2026-05-25 — 采集汇总通知优化
+
+**根因**：通知内容未经过 `_format_markdown_body`，直接显示原始空字段行，且时间未做时区转换
+
+**修复内容**：
+- `_format_markdown_body`/`_format_markdown_bodies` 新增 `skip_empty_meta` 参数，为空时跳过元数据行
+- 企业微信渠道对系统通知直接发送纯文本（`description_full`）
+- session_error/log_error 通知时间改用 `_utc_to_cst_display()` 转 CST 时区
+- 钉钉/飞书/apprise 等渠道同步受益于 `skip_empty_meta`
+
+**后续**：无
