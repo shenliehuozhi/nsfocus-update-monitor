@@ -180,7 +180,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         ('**文件**:', msg.file_name),
         ('**包版本**:', msg.package_version),
         ('**大小**:', msg.size_display if msg.file_size > 0 else None),
-        ('**MD5**:', msg.md5_hash or None),
+        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**时间**:', _utc_to_cst_display(msg.published_at)),
     ]
 
@@ -244,15 +244,15 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         ('**文件**:', msg.file_name),
         ('**包版本**:', msg.package_version),
         ('**大小**:', msg.size_display),
-        ('**MD5**:', f'`{msg.md5_hash}`'),
+        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**时间**:', _utc_to_cst_display(msg.published_at)),
     ]
     if skip_empty_meta:
         for label, val in meta:
-            if val and val.strip():
+            if val is not None and str(val).strip():
                 header_lines.append(f'{label} {val}')
     else:
-        header_lines.extend(label + ' ' + val for label, val in meta)
+        header_lines.extend(label + ' ' + (val or '') for label, val in meta)
 
     extra_items = []
     if msg.min_sys_version:
