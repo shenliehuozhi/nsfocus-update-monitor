@@ -219,30 +219,31 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
     if msg.chain:
         chain_text = ' → '.join(msg.chain)
         if msg.chain_url:
-            type_line = f'**类型**: [{chain_text}]({msg.chain_url})'
+            type_line = f'**🏷️ 类型**: [{chain_text}]({msg.chain_url})'
         else:
-            type_line = f'**类型**: {chain_text}'
+            type_line = f'**🏷️ 类型**: {chain_text}'
     elif msg.source_url:
-        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
+        type_line = f'**🏷️ 类型**: [详情页，点击查看]({msg.source_url})'
     else:
-        type_line = f'**类型**: {msg.package_type}'
+        type_line = f'**🏷️ 类型**: {msg.package_type}'
 
     meta = [
-        ('**文件**:', msg.file_name),
-        ('**包版本**:', msg.package_version),
-        ('**大小**:', msg.size_display if msg.file_size > 0 else None),
-        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
-        ('**时间**:', _utc_to_cst_display(msg.published_at)),
+        ('**📦 文件**:', f'`{msg.file_name}`' if msg.file_name else None),
+        ('**🔖 包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
+        ('**💾 大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
+        ('**🔐 MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**🗓️ 发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
     ]
+    if msg.download_url:
+        meta.append(('**🔗 下载地址**:', f'<{msg.download_url}>'))
 
     lines.append(type_line)
 
-    if skip_empty_meta:
-        for label, val in meta:
-            if val is not None and str(val).strip():
-                lines.append(f'{label} {val}')
-    else:
-        lines.extend(label + ' ' + (val or '') for label, val in meta)
+    for label, val in meta:
+        if val is not None and str(val).strip():
+            lines.append(f'{label} {val}')
+        elif not skip_empty_meta:
+            lines.append(f'{label}')
 
     if msg.description_full:
         lines.append('')
@@ -290,28 +291,30 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     # Chain / 类型 line (same logic as _format_markdown_body)
     if msg.chain:
         chain_text = ' → '.join(msg.chain)
-        type_line = (f'**类型**: [{chain_text}]({msg.chain_url})'
-                     if msg.chain_url else f'**类型**: {chain_text}')
+        type_line = (f'**🏷️ 类型**: [{chain_text}]({msg.chain_url})'
+                     if msg.chain_url else f'**🏷️ 类型**: {chain_text}')
     elif msg.source_url:
-        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
+        type_line = f'**🏷️ 类型**: [详情页，点击查看]({msg.source_url})'
     else:
-        type_line = f'**类型**: {msg.package_type}'
+        type_line = f'**🏷️ 类型**: {msg.package_type}'
 
     meta = [
-        ('**文件**:', msg.file_name),
-        ('**包版本**:', msg.package_version),
-        ('**大小**:', msg.size_display),
-        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
-        ('**时间**:', _utc_to_cst_display(msg.published_at)),
+        ('**📦 文件**:', f'`{msg.file_name}`' if msg.file_name else None),
+        ('**🔖 包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
+        ('**💾 大小**:', f'`{msg.size_display}`'),
+        ('**🔐 MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**🗓️ 发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
     ]
+    if msg.download_url:
+        meta.append(('**🔗 下载地址**:', f'<{msg.download_url}>'))
     header_lines.append(type_line)
 
     if skip_empty_meta:
         for label, val in meta:
             if val is not None and str(val).strip():
-                header_lines.append(f'{label} {val}')
+                header_lines.append(f'{label}: {val}')
     else:
-        header_lines.extend(label + ' ' + (val or '') for label, val in meta)
+        header_lines.extend(f'{label} {val or ""}' for label, val in meta)
 
     extra_items = []
     if msg.min_sys_version:
@@ -474,12 +477,12 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
 <tr><td style="padding:16px;border:1px solid #e0e0e0">
     {rollback_banner}
     <table style="width:100%">
-        <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
+        <tr><td style="padding:4px 0;width:80px;color:#666">🏷️ 类型</td><td>{type_cell}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">📦 文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">🔖 包版本</td><td>{msg.package_version}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">💾 大小</td><td>{msg.size_display}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">🔐 MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">🗓️ 发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
         {dl_btn}
