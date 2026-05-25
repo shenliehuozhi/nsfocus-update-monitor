@@ -3,7 +3,7 @@
 import json
 import requests
 
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_body
 
 
 class WecomNotifier(BaseNotifier):
@@ -14,10 +14,16 @@ class WecomNotifier(BaseNotifier):
         if not webhook_url:
             return DeliveryResult(False, 'wecom', '', 'Missing webhook_url')
 
-        # 直接发送纯文本，不走 _format_markdown_bodies（它会补全空字段行）
-        content = message.description_full or ''
-        if not content:
-            return DeliveryResult(False, 'wecom', config.get('name', ''), 'Empty message body')
+        name = config.get('name', '')
+
+        # 产品通知（有 product_name）走完整格式，包含元数据行
+        # 系统事件通知（product_name 为空）直接发 description_full 纯文本
+        if message.product_name:
+            content = _format_markdown_body(message, for_rollback=message.is_rollback)
+        else:
+            content = message.description_full or ''
+            if not content:
+                return DeliveryResult(False, 'wecom', name, 'Empty message body')
 
         # 按 4096 字节硬限分割（WeCom 单条 markdown 上限）
         MAX_BYTES = 4000
