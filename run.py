@@ -21,6 +21,6 @@ app = create_app()
 
 if __name__ == '__main__':
     port = int(os.getenv('MONITOR_PORT', '9999'))
-    host = os.getenv('MONITOR_HOST', '0.0.0.0')
+    host = os.getenv('MONITOR_HOST', '127.0.0.1')
     debug = os.getenv('MONITOR_DEBUG', 'false').lower() == 'true'
     app.run(host=host, port=port, debug=debug, threaded=False)

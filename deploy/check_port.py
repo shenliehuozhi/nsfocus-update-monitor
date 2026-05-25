@@ -4,7 +4,7 @@ import os
 import socket
 import sys
 
-host = os.getenv('MONITOR_HOST', '0.0.0.0')
+host = os.getenv('MONITOR_HOST', '127.0.0.1')
 port = int(os.getenv('MONITOR_PORT', '9999'))
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
