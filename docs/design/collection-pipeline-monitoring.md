@@ -646,6 +646,86 @@ def is_round_completed(round_id) -> bool:
 
 **设计**：在 `collection_scan_slices` 中记录每个桶的**实际执行状态**（`skipped` 表示桶未被执行），漏扫的桶不计入任何URL的 `consecutive_skips`。
 
+#### 4.8.9 高频繁URL：优先级队列（方案B）
+
+**问题**：当前桶轮转设计中，每个URL每轮最多被扫1次（在自己的桶时间片）。高频繁URL（如每小时有新包）只能等自己的桶时间，实时性差。
+
+**方案B：优先级队列（推荐）**
+
+不改变桶分配结构，而是在每个 tick 内**优先处理高频繁URL**：
+
+```python
+def scheduler_tick():
+    bucket = get_current_bucket()
+    urls = get_urls_in_bucket(bucket)
+
+    # ── 高频繁URL：不受桶限制，每tick都处理 ──────────────────
+    HIGH_FREQ_THRESHOLD = 80  # priority >= 80 的URL视为高频繁
+
+    high_freq_urls = [u for u in urls if u.priority >= HIGH_FREQ_THRESHOLD]
+    normal_urls = [u for u in urls if u.priority < HIGH_FREQ_THRESHOLD]
+
+    # 高频繁URL：必须扫（不参与采样skip）
+    for url in high_freq_urls:
+        scan_url(url, reason='high_freq')
+        # 更新 priority（连续有变化则升高，连续无变化则降低）
+        adjust_priority(url, delta=+5)
+
+    # 普通URL：按桶轮转 + 采样v2
+    for url in normal_urls:
+        if must_scan_now(url) or url.scan_priority_score >= random.random():
+            scan_url(url, reason='sampled')
+        else:
+            skip_url(url, reason='prob_skip')
+```
+
+**优先级动态调整**：
+
+```python
+def adjust_priority(url, delta: int):
+    """
+    每次扫描后调整URL优先级：
+    - 发现变化 → priority += 5（最高100）
+    - 无变化且skip → priority -= 2（最低10）
+    """
+    new_priority = max(10, min(100, url.priority + delta))
+    update_url_priority(url.id, new_priority)
+```
+
+**扫描频率对比**：
+
+| URL类型 | priority | 每4小时扫描次数 | 说明 |
+|---|---|---|---|
+| 高频繁（每小时更新） | ≥80 | 12次（每5分钟1次） | 不受桶限制 |
+| 普通URL | 50-79 | 1次（仅在自己桶内） | 桶轮转 + 采样v2 |
+| 低活跃（>1年无变化） | <30 | 1次（概率skip） | 采样v2强制skip |
+
+**为什么不选方案A（多桶分配）**：
+
+| 问题 | 说明 |
+|---|---|
+| 浪费扫描 | URL刚扫完不到5分钟又到下一桶，大概率skip（HTTP请求浪费） |
+| skip状态复杂 | 同一URL在多个桶都有skip记录，连续skip计数逻辑混乱 |
+| checkpoint复杂 | 一个URL跨多桶，crash恢复要记录多个位置 |
+| 等效替代 | 高频繁URL每5分钟扫 ≈ 多桶效果，但实现更简单 |
+
+**方案B优势**：
+1. 不改变桶分配结构，checkpoint逻辑不变
+2. 优先级与采样v2共享 `priority` 字段，无需新增状态
+3. 高频繁URL每tick都处理，实时性最佳
+4. 优先级动态调整：新包越多 → priority越高 → 扫描越频繁
+
+**数据字段复用**：
+
+`collection_urls.priority` 同时服务于采样v2和高频繁URL判断，无需新增字段。
+
+```sql
+-- priority 字段语义：
+-- 1-29: 低活跃，采样v2强制skip
+-- 30-79: 普通，桶轮转 + 采样v2
+-- 80-100: 高频繁，每tick必扫
+```
+
 ---
 
 ### 4.9 与现有采集流程的兼容
@@ -762,14 +842,15 @@ CREATE TABLE collection_checkpoints (...);
 
 ### 4.11 预期效果（联合优化）
 
-| 指标 | 改造前 | 桶轮转 | 桶轮转+采样v2 |
-|------|--------|--------|---------------|
-| 峰值QPS | ~40 req/s | ~0.3 req/s | ~0.3 req/s |
-| 平均QPS | ~1.3 req/s | ~0.11 req/s | ~0.06 req/s |
-| 每轮HTTP请求 | 1606 | ~27 | ~14 |
-| 推送实时性 | 立即 | 立即 | 立即 |
-| 中断恢复 | 无 | 精确到桶 | 精确到URL |
-| 旧URL（>365天） | 每次必扫 | 每次必扫 | 约2%概率skip |
+| 指标 | 改造前 | 桶轮转 | 桶轮转+采样v2 | 桶轮转+采样v2+优先级队列 |
+|---|---|---|---|---|
+| 峰值QPS | ~40 req/s | ~0.3 req/s | ~0.3 req/s | ~0.5 req/s |
+| 平均QPS | ~1.3 req/s | ~0.11 req/s | ~0.06 req/s | ~0.08 req/s |
+| 每轮HTTP请求 | 1606 | ~27 | ~14 | ~20（高频繁URL额外12次） |
+| 推送实时性 | 立即 | 立即 | 立即 | 立即（高频繁URL更快） |
+| 中断恢复 | 无 | 精确到桶 | 精确到URL | 精确到URL |
+| 旧URL（>365天） | 每次必扫 | 每次必扫 | 约2% skip | 约2% skip |
+| 高频繁URL实时性 | N/A | 最多等4小时 | 最多等4小时 | 每5分钟扫 |
 
 ---
 
