@@ -1,3 +1,7 @@
+## v1.7 (2026-05-25)
+
+### Bug Fixes
+- **DB锁死锁**: `_write_lock` 从 `Lock()` 改为 `RLock()`，解决采集线程与日志扫描线程并发写DB时的重入死锁；`wal_checkpoint` 从 `PASSIVE` 改为 `TRUNCATE`，采集结束后主动释放WAL写锁，避免心跳和日志扫描被阻塞。(commit 833c442)
 # CHANGELOG — 绿盟监控项目
 
 每次重要改动完成后追加记录，格式如下：
