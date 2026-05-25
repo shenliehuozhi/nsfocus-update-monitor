@@ -60,13 +60,49 @@ fi
 mkdir -p data logs
 echo -e "${GREEN}✓${NC} 数据目录就绪: data/ logs/"
 
-# ── 6. 启动服务 ─────────────────────────────────────────────
+# ── 6. 检测并创建管理员账户（自动化） ──────────────────────
+ADMIN_GENERATED=""
+_check_admin() {
+    # 调用注册接口，无用户时自动创建并返回密码
+    RESPONSE=$(curl -s -X POST http://127.0.0.1:${MONITOR_PORT:-9999}/api/auth/register 2>/dev/null)
+    if echo "$RESPONSE" | grep -q '"code":0'; then
+        PASSWORD=$(echo "$RESPONSE" | $PYTHON -c "import sys,json; d=json.load(sys.stdin); print(d['data']['password'])" 2>/dev/null)
+        if [ -n "$PASSWORD" ]; then
+            ADMIN_GENERATED="$PASSWORD"
+        fi
+    fi
+}
+
+# 后台启动服务
+echo -e "${YELLOW}启动服务中...${NC}"
+python3 run.py &
+APP_PID=$!
+sleep 3
+
+# 检测管理员账户状态
+if [ -n "$APP_PID" ] && kill -0 $APP_PID 2>/dev/null; then
+    _check_admin
+    if [ -n "$ADMIN_GENERATED" ]; then
+        echo -e "${GREEN}✓${NC} 管理员账户已自动创建（首次部署）"
+    else
+        echo -e "${GREEN}✓${NC} 使用已有管理员账户"
+    fi
+fi
+
+# ── 7. 输出结果 ─────────────────────────────────────────────
 echo -e ""
 echo -e "${GREEN}✅ 启动完成！${NC}"
-echo -e "   访问地址: http://127.0.0.1:9999"
+echo -e "   访问地址: http://127.0.0.1:${MONITOR_PORT:-9999}"
 echo -e "   日志目录: logs/"
+if [ -n "$ADMIN_GENERATED" ]; then
+    echo -e ""
+    echo -e "${YELLOW}⚠️  首次部署 - 管理员密码（仅显示一次，务必保存）:${NC}"
+    echo -e "   用户名: admin"
+    echo -e "   密码: ${ADMIN_GENERATED}"
+fi
 echo -e ""
 echo -e "${YELLOW}按 Ctrl+C 停止服务${NC}"
 echo ""
 
-python3 run.py
+# 等待服务进程退出
+wait $APP_PID 2>/dev/null || true

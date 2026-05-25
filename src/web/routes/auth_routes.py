@@ -65,8 +65,31 @@ def login():
 
 @bp.route('/register', methods=['POST'])
 def register():
-    """Registration disabled — single-user deployment."""
-    return jsonify({'code': 40300, 'message': '注册功能已关闭'}), 403
+    """First-time setup: create admin account when no users exist.
+    Password is auto-generated and returned in the response — save it on first login.
+    Subsequent calls return 403 (registration closed after first user is created)."""
+    import secrets, bcrypt
+    from src.models.user import list_users, create_user
+
+    users = list_users()
+    if users:
+        return jsonify({'code': 40300, 'message': '注册功能已关闭'}), 403
+
+    # First-time setup: auto-generate admin password
+    raw_password = secrets.token_urlsafe(12)  # 16 chars, alphanumeric
+    password_hash = bcrypt.hashpw(raw_password.encode(), bcrypt.gensalt()).decode()
+
+    create_user('admin', password_hash, is_admin=True)
+
+    _audit(1, 'register', {'username': 'admin', 'mode': 'first_time_setup'})
+    return jsonify({
+        'code': 0,
+        'data': {
+            'username': 'admin',
+            'password': raw_password,   # only returned here — user must save it
+            'message': '初始管理员已创建，密码仅此一次显示，请妥善保存'
+        }
+    })
 
 
 @bp.route('/me', methods=['GET'])
