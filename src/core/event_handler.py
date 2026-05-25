@@ -283,12 +283,14 @@ def emit_session_error(username: str, product_name: str, reason: str):
     if not channel:
         return
 
+    from src.notifiers.base import _utc_to_cst_display
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
     message_text = '\n'.join([
         "【Session 异常】",
         f"用户名：{username}",
-        f"产品：{product_name}",
         f"异常原因：{reason}",
-        f"检测时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"检测时间：{cst_now}",
         "",
         "建议：请更新该用户的 Session",
     ])
@@ -345,9 +347,12 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
     if not channel:
         return
 
+    from src.notifiers.base import _utc_to_cst_display
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
     message_text = '\n'.join([
         "【日志异常检测】",
-        f"扫描时间：{datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"扫描时间：{cst_now}",
         f"异常类型：{error_type}",
         f"关键词：{keyword}",
         f"日志文件：{log_file}",
