@@ -1,5 +1,8 @@
 ## v1.7 (2026-05-25)
 
+### New Features
+- **推送汇总事件**：采集结束时将本次所有推送结果（文件名/客户/渠道/收件人/时间/状态）合并为一条 `push_summary` 事件写入 `system_event_log`，供前端事件列表查看。是否发企微通知由系统事件配置决定。(commit 69fba3d)
+
 ### Bug Fixes
 - **DB锁死锁**: `_write_lock` 从 `Lock()` 改为 `RLock()`，解决采集线程与日志扫描线程并发写DB时的重入死锁；`wal_checkpoint` 从 `PASSIVE` 改为 `TRUNCATE`，采集结束后主动释放WAL写锁，避免心跳和日志扫描被阻塞。(commit 833c442)
 # CHANGELOG — 绿盟监控项目
