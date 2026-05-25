@@ -2,6 +2,7 @@
 
 import os
 import time
+from datetime import datetime, timezone
 
 from src.core.logger import get_logger
 from src.notifiers.base import NotificationMessage, DeliveryResult
@@ -17,6 +18,9 @@ from src.detector.change import compute_push_time, is_quiet_time, check_min_inte
 
 logger = get_logger('router')
 
+# Push summary accumulator: key = cycle_marker, val = {total, success, failed, items: [], rule_info: {}, channel_info: {}}
+_push_summary_accumulator: dict = {}
+
 NOTIFIERS = {
     'wecom': WecomNotifier(),
     'dingtalk': DingtalkNotifier(),
@@ -28,6 +32,26 @@ NOTIFIERS = {
 # Rate-limit tracker: minimum seconds between sends to same channel type
 _RATE_LIMIT_INTERVAL = float(os.getenv('MONITOR_RATE_LIMIT_SEC', '3'))
 _last_send: dict[str, float] = {}
+
+# Push summary accumulator: key = cycle_marker, val = {total, success, failed, items: [], rule_info: {}, channel_info: {}}
+_push_summary_accumulator: dict = {}
+
+
+def _emit_push_summary():
+    """Emit a single push_summary system event for all accumulated push results.
+    Called at the end of a collection cycle to report aggregated push outcomes.
+    """
+    if not _push_summary_accumulator:
+        return
+    summaries = list(_push_summary_accumulator.values())
+    _push_summary_accumulator.clear()
+
+    total = sum(s['total'] for s in summaries)
+    success = sum(s['success'] for s in summaries)
+    failed = sum(s['failed'] for s in summaries)
+
+    from src.core.event_handler import emit_push_summary
+    emit_push_summary(summaries)
 
 
 def _is_maintenance_mode() -> bool:
@@ -217,15 +241,32 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
             error=result.error_message
         )
 
-        # Emit system event notification
-        from src.core.event_handler import emit_push
-        emit_push(
-            snap=snap,
-            rule=rule,
-            success=result.success,
-            error=result.error_message,
-            is_rollback=is_rollback
-        )
+        # Accumulate for push summary (replaces per-delivery emit_push)
+        key = (rule['id'], channel_id)
+        if key not in _push_summary_accumulator:
+            _push_summary_accumulator[key] = {
+                'total': 0, 'success': 0, 'failed': 0,
+                'rule_name': rule.get('name', ''),
+                'customer_name': rule.get('customer_name', ''),
+                'channel_type': channel['type'],
+                'channel_name': channel.get('name', ''),
+                'items': [],   # list of {file_name, product_name, package_type, success, error, pushed_at}
+                'pushed_at': datetime.now(timezone.utc).isoformat(),
+            }
+        accum = _push_summary_accumulator[key]
+        accum['total'] += 1
+        if result.success:
+            accum['success'] += 1
+        else:
+            accum['failed'] += 1
+        accum['items'].append({
+            'file_name': snap.get('file_name', ''),
+            'product_name': snap.get('product_name', ''),
+            'package_type': snap.get('package_type', ''),
+            'success': result.success,
+            'error': result.error_message or '',
+            'pushed_at': datetime.now(timezone.utc).isoformat(),
+        })
 
     logger.info(f'Rule {rule["name"]}: {len(results)} deliveries, '
                 f'success={sum(1 for r in results if r.success)}')

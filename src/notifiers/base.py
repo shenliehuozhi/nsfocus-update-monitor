@@ -219,24 +219,22 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
     if msg.chain:
         chain_text = ' → '.join(msg.chain)
         if msg.chain_url:
-            type_line = f'**🏷️ 类型**: [{chain_text}]({msg.chain_url})'
+            type_line = f'**类型**: [{chain_text}]({msg.chain_url})'
         else:
-            type_line = f'**🏷️ 类型**: {chain_text}'
+            type_line = f'**类型**: {chain_text}'
     elif msg.source_url:
-        type_line = f'**🏷️ 类型**: [详情页，点击查看]({msg.source_url})'
+        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
     else:
-        type_line = f'**🏷️ 类型**: {msg.package_type}'
+        type_line = f'**类型**: {msg.package_type}'
 
     meta = [
-        ('**📦 文件**:', f'`{msg.file_name}`' if msg.file_name else None),
-        ('**🔖 包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
-        ('**💾 大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
-        ('**🔐 MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
-        ('**🗓️ 发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('**文件**:', f'`{msg.file_name}`' if msg.file_name else None),
+        ('**包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
+        ('**大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
+        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('**下载地址**:', f'[{msg.file_name}]({msg.download_url})' if msg.download_url else None),
     ]
-    if msg.download_url:
-        meta.append(('**🔗 下载地址**:', f'<{msg.download_url}>'))
-
     lines.append(type_line)
 
     for label, val in meta:
@@ -245,20 +243,14 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         elif not skip_empty_meta:
             lines.append(f'{label}')
 
+    if msg.restart_required:
+        lines.append('🔄 升级后需重启')
+
     if msg.description_full:
         lines.append('')
-        lines.append(f'📋 {msg.description_full}')
-
-    if msg.min_sys_version:
+        lines.append('---')
         lines.append('')
-        lines.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
-
-    if msg.restart_required:
-        lines.append(f'🔄 升级后需重启')
-
-    if msg.download_url:
-        lines.append('')
-        lines.append(f'📥 下载地址: [{msg.file_name}]({msg.download_url})')
+        lines.append(msg.description_full)
 
     return '\n'.join(lines)
 
@@ -291,22 +283,21 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     # Chain / 类型 line (same logic as _format_markdown_body)
     if msg.chain:
         chain_text = ' → '.join(msg.chain)
-        type_line = (f'**🏷️ 类型**: [{chain_text}]({msg.chain_url})'
-                     if msg.chain_url else f'**🏷️ 类型**: {chain_text}')
+        type_line = (f'**类型**: [{chain_text}]({msg.chain_url})'
+                     if msg.chain_url else f'**类型**: {chain_text}')
     elif msg.source_url:
-        type_line = f'**🏷️ 类型**: [详情页，点击查看]({msg.source_url})'
+        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
     else:
-        type_line = f'**🏷️ 类型**: {msg.package_type}'
+        type_line = f'**类型**: {msg.package_type}'
 
     meta = [
-        ('**📦 文件**:', f'`{msg.file_name}`' if msg.file_name else None),
-        ('**🔖 包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
-        ('**💾 大小**:', f'`{msg.size_display}`'),
-        ('**🔐 MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
-        ('**🗓️ 发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('**文件**:', f'`{msg.file_name}`' if msg.file_name else None),
+        ('**包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
+        ('**大小**:', f'`{msg.size_display}`'),
+        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('**下载地址**:', f'[{msg.file_name}]({msg.download_url})' if msg.download_url else None),
     ]
-    if msg.download_url:
-        meta.append(('**🔗 下载地址**:', f'<{msg.download_url}>'))
     header_lines.append(type_line)
 
     if skip_empty_meta:
@@ -321,47 +312,13 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         extra_items.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
     if msg.restart_required:
         extra_items.append('🔄 升级后需重启')
-    if msg.download_url:
-        extra_items.append(f'📥 下载地址: [{msg.file_name}]({msg.download_url})')
-
+    if msg.description_full:
+        extra_items.append('')
+        extra_items.append('---')
+        extra_items.append('')
+        extra_items.append(msg.description_full)
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
-
-    # Part 2+: description (split by paragraphs, then by byte chunks if needed)
-    if msg.description_full:
-        desc_paragraphs = msg.description_full.split('\n')
-        current = ''
-        for para in desc_paragraphs:
-            para = para.strip()
-            if not para:
-                continue
-            overhead = len('📋 (2/9)\n\n'.encode('utf-8'))
-            candidate = current + ('\n' if current else '') + para
-            if len(candidate.encode('utf-8')) + overhead > max_bytes:
-                # Current batch is full, save it
-                if current:
-                    parts.append(f'📋 (_{len(parts)+1}_)\n\n{current}')
-                # If this single para itself exceeds limit, chunk it
-                if len(para.encode('utf-8')) + overhead > max_bytes:
-                    chunks = _chunk_text(para, max_bytes - overhead)
-                    for chunk in chunks:
-                        parts.append(f'📋 (_{len(parts)+1}_)\n\n{chunk}')
-                    current = ''
-                else:
-                    current = para
-            else:
-                current = candidate
-        if current:
-            parts.append(f'📋 (_{len(parts)+1}_)\n\n{current}')
-
-    # Fill in the actual total
-    total = len(parts)
-    for i in range(len(parts)):
-        if i == 0:
-            parts[i] = parts[i] + f'\n\n(1/{total})'
-        else:
-            parts[i] = parts[i].replace(f' (_{i+1}_)', f' ({i+1}/{total})')
-            parts[i] += f'\n\n({i+1}/{total})'
 
     return parts
 
@@ -452,9 +409,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     if msg.download_url:
         dl_btn = f'''
         <tr><td style="padding:16px 0 0 0">
-            <a href="{msg.download_url}" style="background:{color};color:#fff;padding:10px 24px;
-               text-decoration:none;border-radius:4px;font-weight:bold;white-space:nowrap;display:inline-block">📥 下载地址: {msg.file_name}</a>
-        </td></tr>
+</td></tr>
         '''
 
     # 类型 row — chain link or fallback (same logic as markdown)
@@ -477,12 +432,12 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
 <tr><td style="padding:16px;border:1px solid #e0e0e0">
     {rollback_banner}
     <table style="width:100%">
-        <tr><td style="padding:4px 0;width:80px;color:#666">🏷️ 类型</td><td>{type_cell}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">📦 文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">🔖 包版本</td><td>{msg.package_version}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">💾 大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">🔐 MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">🗓️ 发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
+        <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
         {dl_btn}

@@ -514,6 +514,9 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         # fully consolidating writes and releasing the WAL write-lock so
         # subsequent transactions (heartbeat, log_scanner) don't hit "locked".
         try:
+            # Emit aggregated push summary before checkpoint so it's committed
+            from src.notifiers.router import _emit_push_summary
+            _emit_push_summary()
             from src.models.database import get_db
             get_db().execute('PRAGMA wal_checkpoint(TRUNCATE)')
         except Exception:

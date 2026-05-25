@@ -8,7 +8,7 @@ Called by:
 """
 
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 import requests
 
@@ -129,6 +129,102 @@ def emit_push(snap: dict, rule: dict, success: bool, error: str = None,
             logger.info(f'Event notification sent: {event_type}, result={result.success}')
         except Exception as e:
             logger.error(f'Failed to send event notification: {e}')
+
+
+def _build_push_summary_message(summaries: list) -> str:
+    """Build a consolidated push summary message from all channel summaries."""
+    total_all = sum(s['total'] for s in summaries)
+    success_all = sum(s['success'] for s in summaries)
+    failed_all = sum(s['failed'] for s in summaries)
+
+    lines = [
+        f"【推送汇总】共 {total_all} 个包 | 成功 {success_all} | 失败 {failed_all}",
+    ]
+
+    for s in summaries:
+        rule_name = s.get('rule_name', '')
+        customer_name = s.get('customer_name', '')
+        channel_type = s.get('channel_type', '')
+        channel_name = s.get('channel_name', '')
+        pushed_at = s.get('pushed_at', '')
+        # Format pushed_at to CST
+        try:
+            from datetime import datetime, timezone
+            dt = datetime.fromisoformat(pushed_at.replace('Z', '+00:00'))
+            pushed_cst = dt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            pushed_cst = pushed_at
+
+        success = s.get('success', 0)
+        failed = s.get('failed', 0)
+
+        # Channel label
+        channel_label = {
+            'wecom': '企微', 'dingtalk': '钉钉', 'feishu': '飞书',
+            'email': '邮件', 'apprise': 'Apprise'
+        }.get(channel_type, channel_type)
+        channel_display = f"{channel_label} {channel_name}" if channel_name else channel_label
+
+        lines.append('─' * 30)
+        lines.append(f"规则：{rule_name} | 客户：{customer_name} | 渠道：{channel_display}")
+        lines.append(f"时间：{pushed_cst} | 成功：{success} | 失败：{failed}")
+
+        items = s.get('items', [])
+        if items:
+            for item in items:
+                fn = item.get('file_name', '')
+                ok = '✓' if item.get('success') else '✗'
+                err = item.get('error', '')
+                lines.append(f"  {ok} {fn}" + (f" | {err}" if err else ""))
+
+    return '\n'.join(lines)
+
+
+def emit_push_summary(summaries: list):
+    """Send an aggregated push summary to the system event notification channel.
+    Called once per collection cycle via _emit_push_summary in router.py.
+    """
+    if not summaries:
+        return
+
+    event_type = 'push_summary'
+    if not is_event_enabled(event_type):
+        return
+
+    # Build message
+    message_text = _build_push_summary_message(summaries)
+
+    total_all = sum(s['total'] for s in summaries)
+    success_all = sum(s['success'] for s in summaries)
+    failed_all = sum(s['failed'] for s in summaries)
+
+    # Log to DB
+    log_event(
+        event_type=event_type,
+        severity='WARNING' if failed_all > 0 else 'INFO',
+        message={
+            'total': total_all, 'success': success_all, 'failed': failed_all,
+            'summaries': summaries,
+        }
+    )
+
+    # Send to notification channel
+    channel = get_notify_channel()
+    if not channel:
+        return
+
+    notifier = _get_notifier(channel)
+    if notifier:
+        from src.notifiers.base import NotificationMessage
+        msg = NotificationMessage(
+            title='绿盟监控 - 推送汇总',
+            description_full=message_text,
+        )
+        try:
+            result = notifier.send(msg, channel.get('config', {}))
+            logger.info(f'Push summary sent: total={total_all}, success={success_all}, failed={failed_all}')
+        except Exception as e:
+            logger.error(f'Failed to send push summary: {e}')
 
 
 def _fmt_duration(seconds: int) -> str:
