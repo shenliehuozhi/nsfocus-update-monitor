@@ -19,9 +19,10 @@ _local = threading.local()
 DB_PATH: str = ''
 
 # Global write lock — serializes all DB writes across all threads.
-# Eliminates "database is locked" from concurrent write threads
-# (e.g. log_scanner daemon vs collection thread in run_detection).
-_write_lock = threading.Lock()
+# Uses RLock (re-entrant) so the same thread can re-acquire it safely,
+# preventing deadlocks when collector code paths call each other.
+# Combined with WAL mode, this eliminates "database is locked" errors.
+_write_lock = threading.RLock()
 
 
 def init_db(data_dir: str = None) -> str:

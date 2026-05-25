@@ -509,10 +509,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _save_last_full_scan()
             _check_package_types_fresh(existing_sources, cookie, _emit)
 
-        # WAL checkpoint: prevent unlimited WAL file growth
+        # WAL checkpoint: prevent unlimited WAL file growth and release locks promptly.
+        # TRUNCATE checkpoints and then truncates the WAL file to zero bytes,
+        # fully consolidating writes and releasing the WAL write-lock so
+        # subsequent transactions (heartbeat, log_scanner) don't hit "locked".
         try:
             from src.models.database import get_db
-            get_db().execute('PRAGMA wal_checkpoint(PASSIVE)')
+            get_db().execute('PRAGMA wal_checkpoint(TRUNCATE)')
         except Exception:
             pass
 
