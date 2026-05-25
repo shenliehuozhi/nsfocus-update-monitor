@@ -366,3 +366,8 @@ else → valid
 - 钉钉/飞书/apprise 等渠道同步受益于 `skip_empty_meta`
 
 **后续**：无
+
+## [1.7.x] (2026-05-25)
+
+### 修复
+- 心跳函数所有 DB 更新包裹 try-except，防止 `database is locked` 导致函数崩溃（commit 5edbb71）

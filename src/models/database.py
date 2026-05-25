@@ -68,18 +68,31 @@ def query(sql: str, params: tuple = ()) -> list:
     return [dict(r) for r in rows]
 
 
-def execute(sql: str, params: tuple = ()) -> int:
+def execute(sql: str, params: tuple = ()) -> int | None:
     """Execute an INSERT/UPDATE/DELETE, return lastrowid.
 
     Thread-safe: acquires _write_lock so all writes across all threads
     are serialized.  Combined with WAL mode, this eliminates concurrent
     write lock contention entirely.
+
+    Retries on "database is locked" (up to 3 attempts) to handle rare cases
+    where the WAL write lock is held by an ongoing checkpoint/commit.
     """
-    with _write_lock:
-        db = get_db()
-        cur = db.execute(sql, params)
-        db.commit()
-        return cur.lastrowid
+    import time as _time
+
+    for attempt in range(3):
+        with _write_lock:
+            try:
+                db = get_db()
+                cur = db.execute(sql, params)
+                db.commit()
+                return cur.lastrowid
+            except sqlite3.OperationalError as e:
+                if attempt < 2 and 'database is locked' in str(e):
+                    _time.sleep(0.1 * (attempt + 1))  # 100ms, 200ms
+                    continue
+                raise
+    return None  # unreachable, satisfies static analyzer
 
 
 def executemany(sql: str, params_list: list) -> None:
