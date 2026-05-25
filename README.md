@@ -2,6 +2,18 @@
 
 监控绿盟科技升级站点 (update.nsfocus.com) 的软件版本发布，发现新升级包后通过多渠道通知客户。
 
+## 一键部署
+
+```bash
+git clone https://github.com/shenliehuozhi/nsfocus-update-monitor.git
+cd nsfocus-monitor
+bash start.sh
+```
+
+首次部署自动完成：环境检测、依赖安装、随机密钥生成、78个产品导入、管理员账户创建。访问 `http://IP:9999` 即可。
+
+详细操作见 [用户手册](docs/用户手册.md)。
+
 ## 核心能力
 
 - **78 产品监控**: 覆盖 WAF / IPS / IDS / RSAS / UTS / 绿盟全产品线
@@ -10,25 +22,13 @@
 - **撤回检测**: 全模式支持，最少2次确认，间隔24h
 - **灵活推送**: 即时/延迟/汇总/维度选择（规则/渠道/客户）
 - **客户管理**: 客户档案、持有产品/版本、邮箱覆盖
-- **维保模式**: 一键静默所有推送，采集照常
 - **安全脱敏**: 渠道密钥编辑时掩码显示
-
-## 快速开始
-
-```bash
-cd /root/nsfocus-monitor
-pip install -r requirements.txt
-python run.py
-# 访问 http://127.0.0.1:9999
-```
-
-详细操作见 [用户手册](docs/用户手册.md)。
 
 ## 技术栈
 
 - 后端: Python 3 + Flask + APScheduler
 - 数据库: SQLite (WAL 模式)
-- 前端: 原生 HTML/CSS/JS (~950行，零依赖)
+- 前端: 原生 HTML/CSS/JS（零依赖）
 - 部署: systemd + 单机运行
 - 端口: 9999
 
@@ -37,12 +37,12 @@ python run.py
 | 文档 | 说明 |
 |------|------|
 | [用户手册](docs/用户手册.md) | 功能说明 + 参数配置 + FAQ |
+| [部署运维](docs/部署运维.md) | 一键部署 + systemd + 故障处理 |
 | [需求说明](docs/需求说明.md) | 业务需求 |
 | [架构设计](docs/系统架构.md) | 系统架构 |
 | [数据模型](docs/数据模型.md) | 数据库表结构 |
 | [API 设计](docs/API接口文档.md) | REST API 接口 |
-| [详细设计](docs/详细设计.md) | 函数级设计文档 |
-| [部署运维](docs/部署运维.md) | 部署指南 |
+| [迭代优化记录](docs/迭代优化记录.md) | 版本演进与优化设计 |
 
 ## 环境变量
 
@@ -54,23 +54,15 @@ python run.py
 | `MONITOR_RATE_LIMIT_SEC` | 3 | IM 渠道冷却间隔 |
 | `MONITOR_ATTACHMENT_MAX_SIZE` | 10485760 | 邮件附件上限(字节) |
 
-## 🔒 安全加固建议
-
-本系统面向公网部署场景，以下建议按优先级排列，**配置完成后逐项落实**，最小化暴露面。
-
-### 1. 网络层：限制源 IP（最优先）
+## 安全加固建议
 
 部署完成后，只允许可信 IP 访问 Web 端口。以下任选一种：
 
 **方案 A — iptables（推荐，零依赖）**
 ```bash
-# 仅允许特定 IP 访问 9999 端口
 iptables -A INPUT -p tcp --dport 9999 -s 你的办公IP -j ACCEPT
 iptables -A INPUT -p tcp --dport 9999 -s 127.0.0.1 -j ACCEPT
 iptables -A INPUT -p tcp --dport 9999 -j DROP
-
-# 持久化 (Debian/Ubuntu)
-apt install iptables-persistent && netfilter-persistent save
 ```
 
 **方案 B — 应用层开关**
