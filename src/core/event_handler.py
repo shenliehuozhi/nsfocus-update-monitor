@@ -272,8 +272,11 @@ def emit_collection_summary(summary: dict, mode: str):
             logger.error(f'Failed to send event notification: {e}')
 
 
-def emit_session_error(username: str, product_name: str, reason: str):
-    """Session心跳异常时调用"""
+def emit_session_error(username: str, product_name: str, reason: str, source: str = 'session'):
+    """Session心跳异常或系统健康检查告警时调用。
+    source: 'session' - 具体用户Session异常
+            'health_check' - 调度器健康检查失败
+    """
     event_type = 'session_error'
 
     if not is_event_enabled(event_type):
@@ -286,13 +289,20 @@ def emit_session_error(username: str, product_name: str, reason: str):
     from src.notifiers.base import _utc_to_cst_display
     cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
 
+    if source == 'health_check':
+        title = '【系统健康检查告警】'
+        suggestion = '建议：请检查调度器是否正常运行'
+    else:
+        title = '【Session 异常】'
+        suggestion = '建议：请更新该用户的 Session'
+
     message_text = '\n'.join([
-        "【Session 异常】",
+        title,
         f"用户名：{username}",
         f"异常原因：{reason}",
         f"检测时间：{cst_now}",
         "",
-        "建议：请更新该用户的 Session",
+        suggestion,
     ])
 
     # 记录到日志表

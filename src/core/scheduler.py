@@ -1273,7 +1273,8 @@ def _health_check():
             emit_session_error(
                 username='scheduler',
                 product_name='调度器健康检查',
-                reason=reason
+                reason=reason,
+                source='health_check'
             )
             _last_health_alert_at = now
             logger.info('[HEALTH] Health alert sent: %s', reason)
