@@ -272,6 +272,73 @@ def emit_collection_summary(summary: dict, mode: str):
             logger.error(f'Failed to send event notification: {e}')
 
 
+def emit_push_summary(finished_at: str = ''):
+    """采集结束时，将本次推送结果合并写入 system_event_log，不发通知。
+
+    只记录到日志表，供前端事件列表查看。是否发送企微通知由系统事件配置决定。
+    """
+    from src.models.event_log import is_event_enabled, get_notify_channel, log_event
+    from src.models.database import query
+
+    event_type = 'push_summary'
+
+    if not is_event_enabled(event_type):
+        return
+
+    # 查 delivery_log 中本次采集窗口内的推送记录
+    # finished_at 是采集结束时间（UTC ISO 格式），取前后 5 分钟窗口
+    cutoff = finished_at[:19] if finished_at else datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+    rows = query(
+        """SELECT dl.snapshot_id, dl.rule_id, dl.channel_id, dl.channel_type,
+                  dl.channel_name, dl.customer_id, dl.delivery_status,
+                  dl.error_message, dl.sent_at,
+                  s.file_name, s.product_name, s.version_branch, s.package_type,
+                  s.package_version,
+                  cu.name as customer_name, cu.email as customer_email,
+                  sr.name as rule_name
+           FROM delivery_log dl
+           JOIN snapshots s ON dl.snapshot_id = s.id
+           LEFT JOIN customers cu ON dl.customer_id = cu.id
+           LEFT JOIN subscription_rules sr ON dl.rule_id = sr.id
+           WHERE dl.sent_at >= datetime(?)
+             AND dl.delivery_status IN ('sent', 'failed')
+           ORDER BY dl.sent_at DESC""",
+        (cutoff,)
+    )
+
+    if not rows:
+        return
+
+    total = len(rows)
+    success_count = sum(1 for r in rows if r['delivery_status'] == 'sent')
+    failed_count = total - success_count
+
+    log_event(
+        event_type=event_type,
+        severity='WARNING' if failed_count > 0 else 'INFO',
+        message={
+            'total': total,
+            'success': success_count,
+            'failed': failed_count,
+            'deliveries': [
+                {
+                    'file_name': r['file_name'],
+                    'product_name': r.get('product_name', ''),
+                    'customer_name': r.get('customer_name', ''),
+                    'channel_name': r.get('channel_name', ''),
+                    'channel_type': r.get('channel_type', ''),
+                    'customer_email': r.get('customer_email', ''),
+                    'sent_at': r.get('sent_at', ''),
+                    'status': r['delivery_status'],
+                    'error': r.get('error_message', ''),
+                }
+                for r in rows
+            ],
+        }
+    )
+    logger.info(f'Push summary logged: total={total}, success={success_count}, failed={failed_count}')
+
+
 def emit_session_error(username: str, product_name: str, reason: str, source: str = 'session'):
     """Session心跳异常或系统健康检查告警时调用。
     source: 'session' - 具体用户Session异常
