@@ -153,8 +153,15 @@ class BaseNotifier(ABC):
         return DeliveryResult(success=True, channel_type=self.channel_type, channel_name='')
 
 
-def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) -> str:
-    """Format a NotificationMessage as markdown for IM channels (single message)."""
+def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
+                          skip_empty_meta: bool = False) -> str:
+    """Format a NotificationMessage as markdown for IM channels (single message).
+
+    Args:
+        skip_empty_meta: if True, omit metadata lines whose value is empty/whitespace.
+                         Use for system-event messages that carry meaningful body in
+                         description_full but have no product/version/pkg fields.
+    """
     icon = '⚠️' if for_rollback else msg.urgency_label
 
     lines = [
@@ -166,16 +173,23 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
         lines.append(f'> ⚠️ 软件包已被撤回，请暂缓升级')
         lines.append('')
 
-    lines.extend([
-        f'**产品**: {msg.product_name}',
-        f'**版本**: {msg.version_branch}',
-        f'**类型**: {_pkg_type_label(msg.package_type)}',
-        f'**文件**: {msg.file_name}',
-        f'**包版本**: {msg.package_version}',
-        f'**大小**: {msg.size_display}',
-        f'**MD5**: `{msg.md5_hash}`',
-        f'**时间**: {_utc_to_cst_display(msg.published_at)}',
-    ])
+    meta = [
+        ('**产品**:', msg.product_name),
+        ('**版本**:', msg.version_branch),
+        ('**类型**:', _pkg_type_label(msg.package_type)),
+        ('**文件**:', msg.file_name),
+        ('**包版本**:', msg.package_version),
+        ('**大小**:', msg.size_display if msg.file_size > 0 else None),
+        ('**MD5**:', msg.md5_hash or None),
+        ('**时间**:', _utc_to_cst_display(msg.published_at)),
+    ]
+
+    if skip_empty_meta:
+        for label, val in meta:
+            if val is not None and str(val).strip():
+                lines.append(f'{label} {val}')
+    else:
+        lines.extend(label + ' ' + (val or '') for label, val in meta)
 
     if msg.description_full:
         lines.append('')
@@ -199,13 +213,14 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False) 
 
 
 def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
-                            max_bytes: int = 4000) -> list[str]:
+                            max_bytes: int = 4000, skip_empty_meta: bool = False
+                            ) -> list[str]:
     """Format message as one or more markdown bodies, splitting at 4000-byte limit.
     
     Returns a list of body strings. Never truncates — splits into multiple messages.
     Each message respects the WeCom/DingTalk 4096-byte hard limit.
     """
-    full_body = _format_markdown_body(msg, for_rollback)
+    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta)
     if len(full_body.encode('utf-8')) <= max_bytes:
         return [full_body]
 
@@ -222,16 +237,22 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if for_rollback:
         header_lines.append('> ⚠️ 软件包已被撤回，请暂缓升级')
         header_lines.append('')
-    header_lines.extend([
-        f'**产品**: {msg.product_name}',
-        f'**版本**: {msg.version_branch}',
-        f'**类型**: {_pkg_type_label(msg.package_type)}',
-        f'**文件**: {msg.file_name}',
-        f'**包版本**: {msg.package_version}',
-        f'**大小**: {msg.size_display}',
-        f'**MD5**: `{msg.md5_hash}`',
-        f'**时间**: {_utc_to_cst_display(msg.published_at)}',
-    ])
+    meta = [
+        ('**产品**:', msg.product_name),
+        ('**版本**:', msg.version_branch),
+        ('**类型**:', _pkg_type_label(msg.package_type)),
+        ('**文件**:', msg.file_name),
+        ('**包版本**:', msg.package_version),
+        ('**大小**:', msg.size_display),
+        ('**MD5**:', f'`{msg.md5_hash}`'),
+        ('**时间**:', _utc_to_cst_display(msg.published_at)),
+    ]
+    if skip_empty_meta:
+        for label, val in meta:
+            if val and val.strip():
+                header_lines.append(f'{label} {val}')
+    else:
+        header_lines.extend(label + ' ' + val for label, val in meta)
 
     extra_items = []
     if msg.min_sys_version:

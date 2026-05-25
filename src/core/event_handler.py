@@ -10,6 +10,8 @@ Called by:
 import json
 from datetime import datetime
 
+import requests
+
 from src.core.logger import get_logger
 from src.models.event_log import (
     log_event, get_config, get_notify_channel, is_event_enabled
@@ -305,10 +307,10 @@ def emit_session_error(username: str, product_name: str, reason: str):
     # 发送通知
     notifier = _get_notifier(channel)
     if notifier:
-        from src.notifiers.base import NotificationMessage
+        from src.notifiers.base import NotificationMessage, _format_markdown_bodies
         msg = NotificationMessage(
             title='绿盟监控 - Session 异常',
-            product_name=product_name,
+            product_name='',
             version_branch='',
             package_type='',
             file_name='',
@@ -317,7 +319,16 @@ def emit_session_error(username: str, product_name: str, reason: str):
             description_full=message_text,
         )
         try:
-            notifier.send(msg, channel.get('config', {}))
+            bodies = _format_markdown_bodies(msg, skip_empty_meta=True)
+            name = channel.get('name', '')
+            for i, body in enumerate(bodies):
+                payload = {'msgtype': 'markdown', 'markdown': {'content': body}}
+                resp = requests.post(channel.get('config', {}).get('webhook_url'), json=payload, timeout=10)
+                result = resp.json()
+                if result.get('errcode') != 0:
+                    logger.error(f'Failed to send session error notification: {result.get("errmsg", "unknown")}')
+                    return
+            logger.info(f'Event notification sent: {event_type}')
         except Exception as e:
             logger.error(f'Failed to send session error notification: {e}')
 
@@ -361,7 +372,7 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
     # 发送通知
     notifier = _get_notifier(channel)
     if notifier:
-        from src.notifiers.base import NotificationMessage
+        from src.notifiers.base import NotificationMessage, _format_markdown_bodies
         msg = NotificationMessage(
             title='绿盟监控 - 日志异常',
             product_name='',
@@ -373,6 +384,14 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
             description_full=message_text,
         )
         try:
-            notifier.send(msg, channel.get('config', {}))
+            bodies = _format_markdown_bodies(msg, skip_empty_meta=True)
+            for i, body in enumerate(bodies):
+                payload = {'msgtype': 'markdown', 'markdown': {'content': body}}
+                resp = requests.post(channel.get('config', {}).get('webhook_url'), json=payload, timeout=10)
+                result = resp.json()
+                if result.get('errcode') != 0:
+                    logger.error(f'Failed to send log error notification: {result.get("errmsg", "unknown")}')
+                    return
+            logger.info(f'Event notification sent: {event_type}')
         except Exception as e:
             logger.error(f'Failed to send log error notification: {e}')
