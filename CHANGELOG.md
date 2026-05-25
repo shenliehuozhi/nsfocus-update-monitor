@@ -22,6 +22,28 @@
 
 ---
 
+## 2026-05-25 — 区分Session异常与系统健康检查告警
+
+**根因**：健康检查失败时通知标题固定为【Session 异常】，无法区分具体用户 Session 污染与调度器系统级告警，用户收到后无法判断问题来源。
+
+**修复内容**：
+
+| 文件 | 改动 |
+|---|---|
+| `src/core/event_handler.py` | `emit_session_error` 新增 `source` 参数，区分 `session`（具体用户）和 `health_check`（调度器） |
+| `src/core/scheduler.py` | `_health_check` 调用 `emit_session_error` 时传递 `source='health_check'` |
+
+**行为变化**：
+
+| source | 通知标题 | 建议 |
+|--------|---------|------|
+| `session`（默认） | 【Session 异常】 | 请更新该用户的 Session |
+| `health_check` | 【系统健康检查告警】 | 请检查调度器是否正常运行 |
+
+**通知内容改进**：health_check 告警的 `reason` 字段包含具体检查项（心跳任务未执行/心跳健康检查未成功/采集任务滞后），而非模糊的"从未有成功的心跳健康检查"。
+
+---
+
 ## 2026-05-24 — 系统事件通知发送失败修复 + 调度器全局开关
 
 **根因**：`get_notify_channel()` 直接查 DB 返回原始记录，`config` 字段是加密字符串而非 dict。传给 `WecomNotifier.send()` 时 `config.get('webhook_url', '')` 返回空字符串，通知静默失败（无错误日志）。

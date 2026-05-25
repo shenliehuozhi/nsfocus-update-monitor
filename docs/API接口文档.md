@@ -404,27 +404,54 @@ data: {"processed": 3, "errors": 0}
 ### DELETE /api/subscriptions/:id
 
 ```json
-// REQUEST
+// REQUEST（v2.0 — 即时模式）
 {
   "name": "WAF关键规则通知",
   "enabled": true,
   "filter_conditions": {
-    "source_types": ["nsfocus"],
-    "products": ["WAF"],
-    "versions": ["V6.0.9", "V6.0.8"],
-    "package_types": ["rule"],
-    "keywords": [],
+    "chains": [
+      { "chain": ["WAF", "标准正式版", "V6.0.8", "规则"], "match": "leaf" },
+      { "chain": ["IPS", "V6.0.9"], "match": "subtree" }
+    ],
+    "keywords": ["漏洞"],
     "urgency": ["high", "critical"]
   },
-  "delay_hours": 72,
-  "delay_strategy": "window",
-  "min_interval_hours": 168,
+  "delay_days": 3,
+  "push_mode": "instant",
   "quiet_start": "22:00",
   "quiet_end": "08:00",
+  "valid_until": "2026-12-31T00:00:00",
   "channels": [1, 2],
   "customers": [1]
 }
+
+// REQUEST（v2.0 — 汇总模式）
+{
+  "name": "WAF周汇总",
+  "enabled": true,
+  "filter_conditions": {
+    "chains": [
+      { "chain": ["WAF", "V6.0.9"], "match": "subtree" }
+    ],
+    "keywords": [],
+    "urgency": []
+  },
+  "push_mode": "digest",
+  "window_config": {
+    "days": [1, 2, 3, 4, 5],
+    "start": "09:00",
+    "end": "18:00"
+  },
+  "quiet_start": "22:00",
+  "quiet_end": "08:00",
+  "channels": [1],
+  "customers": [1, 2]
+}
 ```
+
+> 注意：v2.0 已移除 `delay_strategy`（reset/append/window）、`min_interval_hours`，改用 `push_mode`（instant/digest）和 `window_config`。
+> `delay_days` 仅在即时模式生效；汇总模式忽略 delay 字段。
+> `filter_conditions` 为空 `{}` 表示匹配全部（向后兼容旧数据）。
 
 ---
 
@@ -606,3 +633,111 @@ data: {"processed": 3, "errors": 0}
 ```json
 {"interval": "6h"}
 ```
+
+---
+
+## 11. 系统事件通知
+
+### GET /api/system/events/config
+获取系统事件通知配置：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "enabled": true,
+    "channel_id": 4,
+    "event_types": []       // 空=全部启用
+  }
+}
+```
+
+### PUT /api/system/events/config
+更新配置：
+
+```json
+// 开启全部事件，推送到 channel_id=4
+{"enabled": true, "channel_id": 4, "event_types": []}
+
+// 仅开启采集汇总和 Session 异常
+{"enabled": true, "channel_id": 4, "event_types": ["collection_summary", "session_error"]}
+```
+
+### GET /api/system/events
+查询最近事件记录：
+
+```json
+{
+  "code": 0,
+  "data": [
+    {
+      "id": 1,
+      "event_type": "collection_summary",
+      "severity": "INFO",
+      "product_name": "WAF",
+      "message": {"status": "success", "new_items": 1, "duration_ms": 8200},
+      "created_at": "2026-05-25T09:00:00"
+    },
+    {
+      "id": 2,
+      "event_type": "session_error",
+      "severity": "CRITICAL",
+      "product_name": "调度器健康检查",
+      "message": {"username": "scheduler", "reason": "心跳任务已有 45 分钟未执行"},
+      "created_at": "2026-05-25T09:44:34"
+    }
+  ]
+}
+```
+
+**事件类型**：
+
+| event_type | 说明 | 严重级别 |
+|-----------|------|---------|
+| `collection_summary` | 采集完成汇总 | INFO/WARNING |
+| `session_error` | Session 异常或健康检查失败 | CRITICAL/WARNING |
+| `log_error` | 日志扫描异常 | CRITICAL |
+
+**通知内容示例**：
+
+```
+【Session 异常】                       ← source='session'
+用户名：admin
+异常原因：Session 污染（上下文被 upLic/Vm 格式污染）
+检测时间：2026-05-25 09:44:34
+建议：请更新该用户的 Session
+```
+
+```
+【系统健康检查告警】                   ← source='health_check'
+用户名：scheduler
+异常原因：心跳任务已有 45 分钟未执行（配置间隔 15 分钟）；心跳健康检查已有 2.3 小时未成功
+检测时间：2026-05-25 09:44:34
+建议：请检查调度器是否正常运行
+```
+
+---
+
+## 12. 调度器状态
+
+### GET /api/settings/scheduler
+获取调度器运行状态：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "enabled": true,
+    "is_running": false,
+    "last_run": "2026-05-25T01:00:00",
+    "next_run": "2026-05-25T07:00:00",
+    "interval_h": 6
+  }
+}
+```
+
+### POST /api/settings/scheduler/enable
+开启调度器（scheduler_enabled=1）。
+
+### POST /api/settings/scheduler/disable
+关闭调度器（scheduler_enabled=0），当前采集任务继续完成但不排下次。
