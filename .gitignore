@@ -12,10 +12,12 @@ data/*.db-*
 *.bak
 
 # Logs
-logs/*
+logs/
 
 # Environment
 .env
+
+# Temp
 *.swp
 *.swo
 *~
@@ -27,3 +29,4 @@ logs/*
 # OS
 .DS_Store
 Thumbs.db
+data/*.log
