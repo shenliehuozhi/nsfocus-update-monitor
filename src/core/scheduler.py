@@ -530,10 +530,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         from src.core.event_handler import emit_collection_summary
         emit_collection_summary(summary, mode)
 
-        # Emit push summary event (consolidated delivery results for this collection)
-        from src.core.event_handler import emit_push_summary
-        emit_push_summary(summary.get('finished_at', ''))
-
         return summary
 
     except Exception as e:

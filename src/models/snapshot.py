@@ -365,35 +365,49 @@ def mark_rollback_pending(seen_ids: set, source_id: int):
     are never accidentally sent (P1-2 fix).
     """
     from src.models.database import execute, query
-    from src.models.subscription import cancel_for_snapshot, cancel_digest_for_snapshot
 
     active = query(
         "SELECT id FROM snapshots WHERE source_id = ? AND status = 'active'",
         (source_id,)
     )
-    for row in active:
-        if row['id'] not in seen_ids:
-            sid = row['id']
-            # Cancel pending push entries (both queues) so withdrawn packages
-            # are never accidentally pushed during the rollback window
-            cancel_for_snapshot(sid, reason='rollback_pending')
-            cancel_digest_for_snapshot(sid, reason='rollback_pending')
-            execute(
-                "UPDATE snapshots SET status = 'rollback_pending', rollback_cycles = 1 WHERE id = ?",
-                (sid,)
-            )
+    missing_sids = [row['id'] for row in active if row['id'] not in seen_ids]
 
-    # Increment rollback_cycles for already-pending snapshots (still missing)
     pending = query(
         "SELECT id FROM snapshots WHERE source_id = ? AND status = 'rollback_pending'",
         (source_id,)
     )
-    for row in pending:
-        if row['id'] not in seen_ids:
-            execute(
-                "UPDATE snapshots SET rollback_cycles = rollback_cycles + 1 WHERE id = ?",
-                (row['id'],)
-            )
+    pending_sids = [row['id'] for row in pending if row['id'] not in seen_ids]
+
+    if missing_sids:
+        # Cancel pending push entries in bulk (both queues)
+        placeholders = ','.join(['?'] * len(missing_sids))
+        # Cancel delayed_queue entries
+        execute(
+            f"UPDATE delayed_queue SET status = 'cancelled', cancelled_reason = 'rollback_pending' "
+            f"WHERE snapshot_id IN ({placeholders}) AND status = 'pending'",
+            tuple(missing_sids)
+        )
+        # Cancel digest_queue entries
+        execute(
+            f"UPDATE digest_queue SET status = 'cancelled', cancelled_reason = 'rollback_pending' "
+            f"WHERE snapshot_id IN ({placeholders}) AND status = 'pending'",
+            tuple(missing_sids)
+        )
+        # Batch update snapshots status
+        execute(
+            f"UPDATE snapshots SET status = 'rollback_pending', rollback_cycles = 1 "
+            f"WHERE id IN ({placeholders})",
+            tuple(missing_sids)
+        )
+
+    # Increment rollback_cycles for already-pending snapshots (still missing) — batch
+    if pending_sids:
+        placeholders = ','.join(['?'] * len(pending_sids))
+        execute(
+            f"UPDATE snapshots SET rollback_cycles = rollback_cycles + 1 "
+            f"WHERE id IN ({placeholders})",
+            tuple(pending_sids)
+        )
 
 
 def get_active_snapshots(source_id: int) -> list:

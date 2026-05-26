@@ -44,7 +44,7 @@ def get_db() -> sqlite3.Connection:
         _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         _local.conn.row_factory = sqlite3.Row
         _local.conn.execute("PRAGMA journal_mode=WAL")
-        _local.conn.execute("PRAGMA busy_timeout=30000")  # 30s, avoid "database is locked"
+        _local.conn.execute("PRAGMA busy_timeout=60000")  # 60s, avoid "database is locked"
         _local.conn.execute("PRAGMA foreign_keys=ON")
     return _local.conn
 

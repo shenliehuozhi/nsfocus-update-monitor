@@ -217,15 +217,11 @@ class NsfocusCollector(BaseCollector):
                     _log('  ' * (depth + 2) + f'  ► 最终页，包类型={type_name}，{len(table_items)} 条记录')
                     return
 
-                # Record this page's url even if table is empty (page might have packages later).
-                # No table + no sub_links → leaf, record it. No table + has sub_links → still record
-                # the current level before recursing further.
-                type_name = chain[-1] if chain else self._clean_version(name) or name
-                if type_name not in all_types:
-                    all_types.append(type_name)
-                paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
-
-                # Not final — keep recursing into sub-links
+                # Record current page only if it has no sub-links (true leaf).
+                # Pages with sub-links will be recorded when their children are visited,
+                # so we avoid creating spurious "intermediate" paths with only the
+                # version name as the type (e.g. "WAF V6.0.9" instead of
+                # "WAF V6.0.9系统升级包").
                 sub_links = self._extract_content_links(page_html)
                 sub_links = [(t.strip(), u) for t, u in sub_links
                               if not self._is_sidebar_link(u)
@@ -233,6 +229,10 @@ class NsfocusCollector(BaseCollector):
 
                 if not sub_links:
                     _log('  ' * (depth + 2) + f'  ► 空页（无子链接），记录: {page_url}')
+                    type_name = chain[-1] if chain else self._clean_version(name) or name
+                    if type_name not in all_types:
+                        all_types.append(type_name)
+                    paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
                     return
 
                 for sub_text, sub_url in sub_links:
@@ -347,6 +347,10 @@ class NsfocusCollector(BaseCollector):
         from src.models.database import execute as snap_exec
         items = []
         seen_ids = set()  # track snapshot IDs for rollback detection (Bug #006)
+        # Batch page_hash writes: collect and execute after all HTTP requests finish.
+        # Prevents DB writes inside the HTTP request loop (reduces lock contention).
+        pending_pagehash_inserts = []   # [(source_id, product_name, ver, pkg, page_hash, full_url), ...]
+        pending_pagehash_updates = []   # [(page_hash, source_id, full_url), ...]
 
         # ── Step 1: get final-page URLs from content_sources.package_type_discovered ──
         src_rows = snap_query(
@@ -452,20 +456,12 @@ class NsfocusCollector(BaseCollector):
                 # Without this INSERT, page_hash is never recorded and every
                 # subsequent quick scan re-visits the URL as if it were new.
                 if stored_hash is None:
-                    from src.models.database import execute as snap_exec
-                    snap_exec(
-                        """INSERT INTO snapshots
-                           (source_id, product_name, version_branch, package_type,
-                            file_name, md5_hash, page_hash, source_url, status)
-                           VALUES (?, ?, ?, ?, '', ?, ?, ?, 'active')""",
-                        (source_id, product_name, ver, pkg, page_hash, full_url)
-                    )
-                    # Re-fetch so subsequent logic sees the row we just inserted
-                    _stored = snap_query(
-                        "SELECT page_hash, prev_page_hash FROM snapshots WHERE source_id=? AND source_url=? LIMIT 1",
-                        (source_id, full_url))
-                    stored_hash = _stored[0]['page_hash'] if _stored else None
-                    prev_hash = _stored[0]['prev_page_hash'] if _stored else None
+                    # stored_hash is None → queue placeholder INSERT for after the loop
+                    # (DB writes moved outside HTTP loop to reduce lock contention)
+                    pending_pagehash_inserts.append((source_id, product_name, ver, pkg, page_hash, full_url))
+                    _stored = None
+                    stored_hash = None
+                    prev_hash = None
 
                 # ── Log hash change: prev → current ─────────────────────
                 # Display URL uses the clean original url (from DB paths, no corruption)
@@ -537,9 +533,8 @@ class NsfocusCollector(BaseCollector):
                         # Update prev_page_hash to track the change trail
                         # NOTE: do NOT update page_hash itself here — that would erase
                         # the "changed" signal for the next quick run (Bug #008 fix)
-                        from src.models.database import execute
-                        execute("UPDATE snapshots SET prev_page_hash=page_hash WHERE source_id=? AND source_url=?",
-                                (source_id, full_url))
+                        # Queue for batch execution after HTTP loop
+                        pending_pagehash_updates.append(('prev_page_hash', source_id, full_url))
                         continue
 
                 # --- Page changed (or login-collision forced re-extract) ---
@@ -593,15 +588,41 @@ class NsfocusCollector(BaseCollector):
                 # Also update page_hash on ALL snapshots for this URL,
                 # so the "unchanged path" works even if items don't match
                 # existing snapshots (due to md5 changes on the page).
-                from src.models.database import execute
-                execute("""UPDATE snapshots SET prev_page_hash = page_hash,
-                    page_hash = ? WHERE source_id=? AND source_url=?""",
-                        (page_hash, source_id, full_url))
+                # Queue for batch execution after HTTP loop to reduce DB lock contention.
+                pending_pagehash_updates.append(('prev_and_page', source_id, full_url, page_hash))
 
             except SessionExpiredError:
                 raise
             except Exception as e:
                 logger.warning(f'Quick {product_name}: {full_url[-60:]}: {e}')
+
+        # ── Flush all queued page_hash writes in a single batch ──
+        # This is the core DB lock fix: moves writes out of the HTTP request loop.
+        if pending_pagehash_inserts:
+            from src.models.database import execute as snap_exec
+            for (sid, pname, ver, pkg, phash, furl) in pending_pagehash_inserts:
+                snap_exec(
+                    """INSERT INTO snapshots
+                       (source_id, product_name, version_branch, package_type,
+                        file_name, md5_hash, page_hash, source_url, status)
+                       VALUES (?, ?, ?, ?, '', ?, ?, ?, 'active')""",
+                    (sid, pname, ver, pkg, phash, furl)
+                )
+        if pending_pagehash_updates:
+            from src.models.database import execute as snap_exec
+            for op in pending_pagehash_updates:
+                if op[0] == 'prev_page_hash':
+                    _, sid, furl = op
+                    snap_exec(
+                        "UPDATE snapshots SET prev_page_hash=page_hash WHERE source_id=? AND source_url=?",
+                        (sid, furl)
+                    )
+                elif op[0] == 'prev_and_page':
+                    _, sid, furl, phash = op
+                    snap_exec(
+                        "UPDATE snapshots SET prev_page_hash=page_hash, page_hash=? WHERE source_id=? AND source_url=?",
+                        (phash, sid, furl)
+                    )
 
         logger.info(f'Quick {product_name}: {changed}/{total} pages changed, {len(items)} items')
         return items
