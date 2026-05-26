@@ -89,6 +89,8 @@ if [ -n "$APP_PID" ] && kill -0 $APP_PID 2>/dev/null; then
     fi
 fi
 
+trap 'echo -e "\n${YELLOW}停止服务...${NC}"; kill $APP_PID 2>/dev/null; wait $APP_PID 2>/dev/null; echo -e "${GREEN}已停止${NC}"; exit 0' SIGINT SIGTERM
+
 # ── 7. 输出结果 ─────────────────────────────────────────────
 echo -e ""
 echo -e "${GREEN}✅ 启动完成！${NC}"
@@ -102,7 +104,4 @@ if [ -n "$ADMIN_GENERATED" ]; then
 fi
 echo -e ""
 echo -e "${YELLOW}按 Ctrl+C 停止服务${NC}"
-echo ""
-
-# 等待服务进程退出
 wait $APP_PID 2>/dev/null || true
