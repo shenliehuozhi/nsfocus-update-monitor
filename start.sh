@@ -27,7 +27,7 @@ if [ ! -d "venv" ]; then
     echo -e "${YELLOW}创建虚拟环境...${NC}"
     $PYTHON -m venv venv
 fi
-source venv/bin/activate
+. venv/bin/activate
 
 # ── 3. 依赖安装 ─────────────────────────────────────────────
 echo -e "${YELLOW}安装依赖...${NC}"
