@@ -4,6 +4,7 @@ flask-cors==4.0.0
 
 # HTTP
 requests==2.31.0
+beautifulsoup4==4.12.2
 
 # Auth
 pyjwt==2.8.0
