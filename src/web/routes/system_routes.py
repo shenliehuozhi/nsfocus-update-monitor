@@ -866,7 +866,15 @@ def discover_products_confirm():
 @require_auth
 def discover_confirm_discard():
     """Discard pending discover result and clear temp file."""
+    global _pending
     _clear_pending()
+    # Clear in-memory state so subsequent status calls return empty
+    if _auto_discover_lock:
+        with _auto_discover_lock:
+            if _auto_discover_state:
+                _auto_discover_state.update({'active': False, 'phase': 'done', 'error': 'discarded'})
+                _auto_discover_state.pop('result', None)
+    _pending = None
     if _confirm_lock:
         with _confirm_lock:
             if _confirm_state:
