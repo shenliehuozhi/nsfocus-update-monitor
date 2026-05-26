@@ -75,7 +75,7 @@ _check_admin() {
 
 # 后台启动服务
 echo -e "${YELLOW}启动服务中...${NC}"
-python3 run.py &
+nohup python3 run.py > logs/stdout.log 2>&1 &
 APP_PID=$!
 sleep 3
 
@@ -89,9 +89,7 @@ if [ -n "$APP_PID" ] && kill -0 $APP_PID 2>/dev/null; then
     fi
 fi
 
-trap 'echo -e "\n${YELLOW}停止服务...${NC}"; kill $APP_PID 2>/dev/null; wait $APP_PID 2>/dev/null; echo -e "${GREEN}已停止${NC}"; exit 0' SIGINT SIGTERM
-
-# ── 7. 输出结果 ─────────────────────────────────────────────
+echo -e "${YELLOW}按 Ctrl+C 停止服务${NC}"
 echo -e ""
 echo -e "${GREEN}✅ 启动完成！${NC}"
 echo -e "   访问地址: http://127.0.0.1:${MONITOR_PORT:-9999}"
