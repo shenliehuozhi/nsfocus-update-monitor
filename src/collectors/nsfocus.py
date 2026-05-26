@@ -158,7 +158,7 @@ class NsfocusCollector(BaseCollector):
             section_titles = {}
             import re as _re
             for sec_match in _re.finditer(r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html):
-                sec_title = sec_match.group(1).strip()
+                sec_title = sec_match.group(1).strip().lstrip('>')
                 if sec_title:
                     # Find all links within this section (until next ser_c_b_tit or end)
                     sec_start = sec_match.end()
