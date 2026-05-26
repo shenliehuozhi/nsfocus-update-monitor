@@ -368,10 +368,13 @@ def emit_collection_summary(summary: dict, mode: str):
             logger.error(f'Failed to send event notification: {e}')
 
 
-def emit_push_summary(finished_at: str = ''):
+def _write_push_summary_from_delivery_log(finished_at: str = ''):
     """采集结束时，将本次推送结果合并写入 system_event_log，不发通知。
 
     只记录到日志表，供前端事件列表查看。是否发送企微通知由系统事件配置决定。
+
+    注意：此函数已废弃。推送汇总已由 emit_push_summary(summaries: list) 统一处理
+    （包含写日志 + 发企微通知），不再需要此版本。
     """
     from src.models.event_log import is_event_enabled, get_notify_channel, log_event
     from src.models.database import query
