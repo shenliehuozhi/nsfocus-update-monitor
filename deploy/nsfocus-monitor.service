@@ -1,47 +1,20 @@
 [Unit]
-Description=NSFOCUS Update Monitor - 绿盟升级监控平台
-After=network.target network-online.target
-Wants=network-online.target
+Description=NSFOCUS Update Monitor
+After=network.target
 
 [Service]
 Type=simple
 User=root
-WorkingDirectory=/root/nsfocus-monitor
-EnvironmentFile=/root/nsfocus-monitor/.env
-
-# Port availability check before start (INC-001 lesson)
-ExecStartPre=/usr/bin/python3 -c "
-import socket, os, sys
-host = os.getenv('MONITOR_HOST', '0.0.0.0')
-port = int(os.getenv('MONITOR_PORT', '9999'))
-s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-try:
-    s.bind((host, port))
-    s.close()
-except OSError:
-    print(f'FATAL: {host}:{port} already in use', file=sys.stderr)
-    sys.exit(1)
-print(f'{host}:{port} available')
-"
-ExecStart=/usr/bin/python3 run.py
-
-# Circuit breaker: max 5 restarts in 60s, then stop (INC-001)
+WorkingDirectory={{WORKDIR}}
+EnvironmentFile={{WORKDIR}}/.env
+ExecStart={{WORKDIR}}/venv/bin/python {{WORKDIR}}/run.py
 Restart=on-failure
 RestartSec=30
 StartLimitBurst=5
 StartLimitIntervalSec=60
-
-# Resource limits (1.6GB server, no swap)
-MemoryMax=512M
-CPUQuota=50%
-
-# Logs to file
-StandardOutput=append:/root/nsfocus-monitor/logs/service.log
-StandardError=append:/root/nsfocus-monitor/logs/service_error.log
-
-KillMode=mixed
-KillSignal=SIGTERM
-TimeoutStopSec=30
+MemoryMax=400M
+StandardOutput=append:{{WORKDIR}}/logs/service_stdout.log
+StandardError=append:{{WORKDIR}}/logs/service_stderr.log
 
 [Install]
 WantedBy=multi-user.target
