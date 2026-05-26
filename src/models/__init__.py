@@ -33,6 +33,15 @@ def init_all_tables():
     from src.models import event_log
     event_log.create_tables(db)
 
+    # system_settings: key-value config store (used by app.py, scheduler.py, router.py, etc.)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT,
+            updated_at TEXT DEFAULT (datetime('now'))
+        )
+    """)
+
     from src.core.rate_limiter import create_tables as create_rate_limit_table
     create_rate_limit_table(db)
 
