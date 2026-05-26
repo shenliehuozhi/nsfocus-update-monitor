@@ -7,13 +7,20 @@ CREATE TABLE IF NOT EXISTS content_sources (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     source_type TEXT NOT NULL CHECK(source_type IN ('nsfocus', 'rss', 'wechat_mp')),
+    entry_url TEXT DEFAULT '',
+    strategy TEXT DEFAULT 'auto',
     category TEXT DEFAULT '',
     config TEXT DEFAULT '{}',
     is_active INTEGER DEFAULT 1,
+    is_manual INTEGER DEFAULT 0,
     created_by INTEGER REFERENCES users(id),
+    display_name TEXT DEFAULT '',
     last_collected_at TEXT,
     health_status TEXT DEFAULT 'unknown',
-    entry_url TEXT DEFAULT '',
+    package_type TEXT DEFAULT '',
+    package_type_discovered TEXT DEFAULT '',
+    package_type_changed INTEGER DEFAULT 0,
+    force_type TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now'))
 )
 """
