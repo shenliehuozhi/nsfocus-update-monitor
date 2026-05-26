@@ -214,41 +214,84 @@ def _scan_access_log() -> list:
 
 
 def _do_scan() -> int:
-    """Perform one scan cycle. Returns number of errors found."""
+    """Perform one scan cycle. Returns number of errors found.
+    
+    Sends alerts via HTTP POST to /api/events/ingest (DB-independent path)
+    so they bypass the main app's DB lock. Falls back to emit_log_error if
+    the HTTP endpoint is unavailable.
+    """
     if not is_event_enabled('log_error'):
         return 0
     
     logger.info('Starting log scan...')
     total_errors = 0
     
+    # Collect all findings first
+    all_findings = []
+    
     # Scan regular log files
     log_files = _get_log_files()
     for filepath in log_files:
         findings = _scan_file(filepath)
         for finding in findings:
-            emit_log_error(
-                log_file=os.path.basename(filepath),
-                error_type=finding['error_type'],
-                keyword=finding['keyword'],
-                context=finding['context'],
-                line_number=finding.get('line_number'),
-            )
-            total_errors += 1
+            all_findings.append({
+                'log_file': os.path.basename(filepath),
+                **finding,
+            })
     
     # Scan access log
     access_findings = _scan_access_log()
     for finding in access_findings:
-        emit_log_error(
-            log_file='access.log',
-            error_type=finding['error_type'],
-            keyword=finding['keyword'],
-            context=finding['context'],
-            line_number=finding.get('line_number'),
-        )
+        all_findings.append({
+            'log_file': 'access.log',
+            **finding,
+        })
+    
+    # Send each finding via DB-independent HTTP callback
+    for finding in all_findings:
+        _send_alert_via_http(finding)
         total_errors += 1
     
     logger.info(f'Log scan complete: {total_errors} errors found')
     return total_errors
+
+
+def _send_alert_via_http(finding: dict):
+    """Send alert via HTTP POST to /api/events/ingest (DB-independent).
+    
+    Falls back to emit_log_error() if the HTTP endpoint is unreachable.
+    """
+    import requests as _requests
+
+    try:
+        resp = _requests.post(
+            'http://127.0.0.1:9999/api/events/ingest',
+            json={
+                'log_file': finding.get('log_file', ''),
+                'error_type': finding.get('error_type', ''),
+                'keyword': finding.get('keyword', ''),
+                'context': finding.get('context', ''),
+                'line_number': finding.get('line_number'),
+            },
+            timeout=5,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get('skipped'):
+                logger.debug(f"Log alert deduped: {finding.get('keyword')}")
+            else:
+                logger.info(f"Log alert sent: [{finding.get('error_type')}] {finding.get('keyword')}")
+        else:
+            logger.warning(f"Log alert HTTP {resp.status_code}: {resp.text[:100]}")
+    except Exception:
+        # Fallback to DB path if HTTP endpoint unavailable
+        emit_log_error(
+            log_file=finding.get('log_file', ''),
+            error_type=finding.get('error_type', ''),
+            keyword=finding.get('keyword', ''),
+            context=finding.get('context', ''),
+            line_number=finding.get('line_number'),
+        )
 
 
 def _scan_loop():

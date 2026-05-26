@@ -1,3 +1,16 @@
+## v1.8 (2026-05-27)
+
+### Bug Fixes
+- **DB lock 根因修复**：采集时每个URL在HTTP请求循环内执行多次独立DB写（INSERT placeholder、UPDATE page_hash等），与WAL checkpoint竞争导致"database is locked"。三项修复：① busy_timeout从30s提升到60s；② mark_rollback_pending()循环内逐条execute改为批量IN SQL；③ _collect_quick()将所有page_hash写延迟到HTTP循环结束后批量执行，避免写入与HTTP请求交织。
+
+- **log_scanner DB独立告警**：log_scanner通过emit_log_error()→log_event()→execute()写DB，DB lock时通知无法发出（矛盾）。新增 /api/system/events/ingest HTTP回调端点，读取channel配置和发通知均不走主DB连接（独立sqlite3.connect + 5s timeout），彻底脱离DB lock影响链路。5分钟去重。
+
+### Refactor
+- **mark_rollback_pending批量化**：取消逐snapshot的cancel_for_snapshot+cancel_digest_for_snapshot循环调用，改为单条SQL IN批量UPDATE，将3×N次独立execute()压缩为3次。
+
+### Internal
+- **_write_lock重入安全**：_write_lock已为RLock，代码确认可安全重入。
+
 ## v1.7 (2026-05-25)
 
 ### Bug Fixes

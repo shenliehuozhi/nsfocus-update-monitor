@@ -1,7 +1,12 @@
 """System routes: log viewer, log level control, manual collection trigger."""
+
 from src.core.logger import get_log_dir
 import glob
+import json
 import os
+import sqlite3
+import threading
+from datetime import datetime
 from flask import Blueprint, request, jsonify, g
 
 from src.web.auth import require_auth
@@ -1191,3 +1196,149 @@ def _fmt_size(size: int) -> str:
 def _fmt_time(ts: float) -> str:
     from datetime import datetime
     return datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+
+
+# ── Log Scan Alert Ingestion (DB-independent, for log_scanner) ─────────────────
+
+# In-memory ring buffer: remember last-N alerts so we don't spam duplicates
+# Key: (log_file, keyword, error_type) → last_seen timestamp
+_log_alert_dedup: dict[tuple, float] = {}
+_dedup_lock = threading.Lock()
+_DEDUP_TTL = 300  # 5 minutes — don't re-alert for same error within 5 min
+
+
+@bp.route('/events/ingest', methods=['POST'])
+def ingest_log_alert():
+    """HTTP callback for log_scanner to report critical errors.
+    
+    This endpoint is intentionally DB-independent — it reads channel config
+    directly from the channel DB file (bypassing the main app's DB connection
+    pool) so it works even when the main DB is locked.
+
+    Request body:
+      {
+        "log_file": "app.log",
+        "error_type": "DB错误",
+        "keyword": "database is lock",
+        "context": "...",
+        "line_number": 1234
+      }
+
+    Response: 200 OK or 202 Accepted (even if notification fails, log is noted)
+    """
+    try:
+        body = request.get_json(force=True)
+    except Exception:
+        return jsonify({'code': 1, 'message': 'invalid JSON'}), 400
+
+    log_file = body.get('log_file', '')
+    error_type = body.get('error_type', '')
+    keyword = body.get('keyword', '')
+    context = body.get('context', '')
+    line_number = body.get('line_number')
+
+    # Deduplicate: don't re-alert for same (file+type+keyword) within 5 min
+    key = (log_file, error_type, keyword)
+    now = datetime.utcnow().timestamp()
+    with _dedup_lock:
+        last_seen = _log_alert_dedup.get(key, 0)
+        if now - last_seen < _DEDUP_TTL:
+            return jsonify({'code': 0, 'message': 'deduped', 'skipped': True}), 200
+        _log_alert_dedup[key] = now
+
+    cst_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    message_text = '\n'.join([
+        "【日志异常检测】",
+        f"扫描时间：{cst_now}",
+        f"异常类型：{error_type}",
+        f"关键词：{keyword}",
+        f"日志文件：{log_file}",
+        "",
+        "上下文：",
+        context[:500] if context else '—',
+    ])
+
+    # ── Direct channel lookup without going through main DB execute() ──
+    # Read channel config directly from DB file (avoids connection pool lock)
+    channel = _load_notify_channel_direct()
+    if not channel:
+        return jsonify({'code': 2, 'message': 'no channel configured'}), 200
+
+    webhook_url = channel.get('config', {}).get('webhook_url', '')
+    if not webhook_url:
+        return jsonify({'code': 3, 'message': 'no webhook URL'}), 200
+
+    # ── Try to also record to system_event_log ──
+    # (best-effort, won't block the notification if DB is locked)
+    _write_event_log_safely(log_file, error_type, keyword, context, line_number)
+
+    # ── Send notification ──
+    try:
+        import requests as _requests
+        payload = {'msgtype': 'markdown', 'markdown': {'content': message_text}}
+        resp = _requests.post(webhook_url, json=payload, timeout=10)
+        result = resp.json()
+        if result.get('errcode') == 0:
+            return jsonify({'code': 0, 'message': 'notified'}), 200
+        else:
+            return jsonify({'code': 4, 'message': f"wechat error: {result.get('errmsg')}", 'skipped': False}), 200
+    except Exception as e:
+        return jsonify({'code': 5, 'message': f'notification failed: {e}', 'skipped': False}), 200
+
+
+def _load_notify_channel_direct() -> dict | None:
+    """Load the configured notify channel by reading the DB file directly.
+    
+    This bypasses the app's main DB connection to avoid lock contention
+    when the main DB is in a bad state.
+    """
+    from src.models.database import DB_PATH
+    
+    try:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=5.0)
+        conn.row_factory = sqlite3.Row
+        # Get channel_id from system_event_config
+        cfg_row = conn.execute(
+            "SELECT channel_id FROM system_event_config LIMIT 1"
+        ).fetchone()
+        if not cfg_row or not cfg_row['channel_id']:
+            conn.close()
+            return None
+        channel_id = cfg_row['channel_id']
+        # Get channel config
+        chan_row = conn.execute(
+            "SELECT * FROM notification_channels WHERE id = ?", (channel_id,)
+        ).fetchone()
+        conn.close()
+        if not chan_row:
+            return None
+        return dict(chan_row)
+    except Exception:
+        return None
+
+
+def _write_event_log_safely(log_file, error_type, keyword, context, line_number):
+    """Best-effort write to system_event_log. Failures are silently ignored."""
+    from src.models.database import DB_PATH
+    import json as _json
+
+    try:
+        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=5.0)
+        msg = _json.dumps({
+            'log_file': log_file,
+            'error_type': error_type,
+            'keyword': keyword,
+            'context': context,
+            'line_number': line_number,
+        }, ensure_ascii=False)
+        conn.execute(
+            """INSERT INTO system_event_log
+               (event_type, severity, message)
+               VALUES ('log_error', 'CRITICAL', ?)""",
+            (msg,)
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass  # Best-effort only
