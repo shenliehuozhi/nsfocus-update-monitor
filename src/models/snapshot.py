@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS content_sources (
     created_by INTEGER REFERENCES users(id),
     last_collected_at TEXT,
     health_status TEXT DEFAULT 'unknown',
+    entry_url TEXT DEFAULT '',
     created_at TEXT DEFAULT (datetime('now'))
 )
 """
