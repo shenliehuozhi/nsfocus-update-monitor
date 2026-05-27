@@ -690,19 +690,17 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
 
 
 def is_full_scan_due() -> bool:
-    """Check if full scan is due based on FULL_SCAN_INTERVAL.
-    
-    Persists last full scan time to DB so it survives restarts.
+    """Return True if full scan is due (not called for > full_scan_interval hours).
+
+    Temporarily disabled: full scan always returns False via system setting.
+    Re-enable by setting system_settings.full_scan_enabled = '1'.
     """
-    global _last_full_run
-    if _last_full_run is None:
-        # Restore from DB on startup
-        _last_full_run = _load_last_full_scan()
-    if _last_full_run is None:
-        return True
-    elapsed = (datetime.utcnow() - _last_full_run).total_seconds() / 3600
-    interval = int(_get_setting('full_scan_interval', '24'))
-    return elapsed >= interval
+    # Check master kill-switch
+    from src.models.database import query
+    rows = query("SELECT value FROM system_settings WHERE key = 'full_scan_enabled'")
+    if rows and rows[0]['value'] == '0':
+        return False
+    return False  # full scan disabled pending re-evaluation
 
 
 def _load_last_full_scan() -> Optional[datetime]:
