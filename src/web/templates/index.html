@@ -402,7 +402,7 @@ async function dashboard(range){
           <div style="display:flex;flex-direction:column;gap:3px">
             ${h.product_health.slice(0,4).map(p=>{
               const statusColor={'正常':'#16a34a','异常':'#dc2626','未知':'#6b7280'}[p.health_status||'未知']||'#6b7280';
-              const statusIcon=p.health_status==='正常'?'💚':p.health_status==='异常'?'❌':'⚪';
+              const statusIcon=(p.health_status==='ok'||p.health_status==='正常')?'💚':p.health_status&&p.health_status!=='未知'&&p.health_status!=='ok'?'❌':'⚪';
               const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
               return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151">
                 <span style="flex-shrink:0">${statusIcon}</span>

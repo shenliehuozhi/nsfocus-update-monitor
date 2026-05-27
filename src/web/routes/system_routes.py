@@ -379,18 +379,18 @@ def health_check():
     email_rates = [{'key': r['key'], 'count': r['count']} for r in email_counts]
 
     # ── 5. 采集健康状态（各产品最近采集情况）──────────────
-    # 查各产品最后一次采集时间和健康状态
+    # 查 content_sources 表获取各产品采集状态，join snapshots 计数
     product_health = query("""
-        SELECT s.name, s.id,
-               s.last_collected_at,
-               s.health_status,
-               s.is_active,
-               COUNT(snap.id) as snap_count
-        FROM snapshots s
-        LEFT JOIN snapshots snap ON snap.source_id = s.id AND snap.status = 'active'
-        WHERE s.source_type = 'nsfocus'
-        GROUP BY s.id
-        ORDER BY s.last_collected_at DESC NULLS LAST
+        SELECT c.name, c.id,
+               c.last_collected_at,
+               c.health_status,
+               c.is_active,
+               COUNT(s.id) as snap_count
+        FROM content_sources c
+        LEFT JOIN snapshots s ON s.source_id = c.id AND s.status = 'active'
+        WHERE c.source_type = 'nsfocus'
+        GROUP BY c.id
+        ORDER BY c.last_collected_at DESC
         LIMIT 20
     """)
     product_health_list = [dict(row) for row in product_health] if product_health else []
