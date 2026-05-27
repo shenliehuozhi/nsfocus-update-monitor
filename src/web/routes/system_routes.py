@@ -378,6 +378,28 @@ def health_check():
     )
     email_rates = [{'key': r['key'], 'count': r['count']} for r in email_counts]
 
+    # ── 5. 采集健康状态（各产品最近采集情况）──────────────
+    # 查各产品最后一次采集时间和健康状态
+    product_health = query("""
+        SELECT s.name, s.id,
+               s.last_collected_at,
+               s.health_status,
+               s.is_active,
+               COUNT(snap.id) as snap_count
+        FROM snapshots s
+        LEFT JOIN snapshots snap ON snap.source_id = s.id AND snap.status = 'active'
+        WHERE s.source_type = 'nsfocus'
+        GROUP BY s.id
+        ORDER BY s.last_collected_at DESC NULLS LAST
+        LIMIT 20
+    """)
+    product_health_list = [dict(row) for row in product_health] if product_health else []
+
+    # 计算成功率
+    push_success_rate = 0
+    if push_today['total'] > 0:
+        push_success_rate = round(push_today['success'] / push_today['total'] * 100)
+
     # ── 5. 采集异常摘要（从 app.log 聚合最近2小时的 WARNING/ERROR）────────
     异常日志 = []
     try:
@@ -450,7 +472,9 @@ def health_check():
             'email_rates': email_rates,           # 今日邮件计数
         },
         'push_today': push_today,
+        'push_success_rate': push_success_rate,
         'active_snapshots': active_snapshots,
+        'product_health': product_health_list,
         '异常日志': 异常日志[-20:],              # 最近2小时内最多20条
     }}
 

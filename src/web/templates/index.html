@@ -393,36 +393,50 @@ async function dashboard(range){
     ${sch.is_running?`<div class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe">🔄 采集中 (${mode_label[sch.current_mode]||sch.current_mode})...</div>`:''}
 
     <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
-    ${h.session||h.queue||h.rate_limits?
+    ${h.product_health||h.push_today?
     `<div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
       <div class="card-hd" style="color:var(--primary)">🩺 运维健康</div>
       <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
-        ${h.session?`<div style="min-width:180px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Session</div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="badge ${h.session.active>0?'badge-ok':'badge-err'}">💚${h.session.active}活跃</span>
-            ${h.session.expired_active>0?'<span class="badge badge-err">❤️‍🔥'+h.session.expired_active+'已过期</span>':''}
-            ${h.queue&&h.queue.overdue>0?'<span class="badge badge-warn">⏰'+h.queue.overdue+'条延迟</span>':''}
+        ${h.product_health&&h.product_health.length>0?`<div style="min-width:200px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">采集</div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            ${h.product_health.slice(0,4).map(p=>{
+              const statusColor={'正常':'#16a34a','异常':'#dc2626','未知':'#6b7280'}[p.health_status||'未知']||'#6b7280';
+              const statusIcon=p.health_status==='正常'?'💚':p.health_status==='异常'?'❌':'⚪';
+              const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
+              return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#374151">
+                <span style="flex-shrink:0">${statusIcon}</span>
+                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name||'未知'}</span>
+                <span style="color:#9ca3af;font-size:11px;flex-shrink:0">${last}</span>
+              </div>`}).join('')}
           </div>
-          ${(h.session.detail||[]).slice(0,3).map(s=>`<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${s.heartbeat_status==='正常'?'💚':s.heartbeat_status==='污染'?'🟠':'❤️‍🔥'} #${s.id} ${s.last_heartbeat_at||''}</div>`).join('')}
         </div>`:''}
-        ${h.queue?`<div style="min-width:140px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">队列</div>
+        ${h.push_today?`<div style="min-width:140px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">推送</div>
           <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <span class="badge ${h.queue.pending>0?'badge-blue':'badge-grey'}">待发 ${h.queue.pending}</span>
-            ${h.queue.overdue>0?'<span class="badge badge-warn">超时 '+h.queue.overdue+'</span>':''}
+            <span class="badge ${h.push_success_rate>=80?'badge-ok':h.push_success_rate>=50?'badge-warn':'badge-err'}">${h.push_success_rate||0}%</span>
+            <span class="badge badge-grey">${h.push_today.total||0}条</span>
           </div>
+          <div style="font-size:11px;color:#9ca3af;margin-top:4px">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
+        </div>`:''}
+        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div style="min-width:100px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">快照</div>
+          <span class="badge badge-blue">${h.active_snapshots} 个</span>
+        </div>`:''}
+        ${h.异常日志&&h.异常日志.length>0?`<div style="min-width:180px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">异常 (2h内)</div>
+          <div style="display:flex;flex-direction:column;gap:3px;max-height:80px;overflow-y:auto">
+            ${h.异常日志.slice(0,4).map(l=>`<div style="font-size:11px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-80)}</div>`).join('')}
+          </div>
+        </div>`:''}
+        ${h.queue?.overdue>0?`<div style="min-width:120px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">队列</div>
+          <span class="badge badge-warn">⏰ 超时 ${h.queue.overdue} 条</span>
         </div>`:''}
         ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div style="min-width:160px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">限流</div>
           <div style="display:flex;flex-direction:column;gap:3px">
             ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
-          </div>
-        </div>`:''}
-        ${h.异常日志&&h.异常日志.length>0?`<div style="min-width:200px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">异常 (2h内)</div>
-          <div style="display:flex;flex-direction:column;gap:3px;max-height:80px;overflow-y:auto">
-            ${h.异常日志.slice(0,5).map(l=>`<div style="font-size:11px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-100)}</div>`).join('')}
           </div>
         </div>`:''}
       </div>
