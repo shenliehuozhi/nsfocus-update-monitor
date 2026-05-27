@@ -196,6 +196,7 @@ _last_run: Optional[datetime] = None
 _last_full_run: Optional[datetime] = None
 _last_mode: str = ''  # 'quick' or 'full'
 _is_running = False
+_collect_at_initialized = False  # lazy-load from DB on first get_status() call
 
 # ── Progress state (for async collection) ────────────────────────
 
@@ -248,6 +249,20 @@ def get_progress() -> dict:
 
 
 def get_status() -> dict:
+    global _collect_at_initialized
+    # Lazy-load last_collect_at from DB on first call (survives process restarts)
+    if not _collect_at_initialized:
+        saved = _get_setting('last_collect_at', '')
+        if saved:
+            try:
+                _last_run = datetime.fromisoformat(saved)
+            except Exception:
+                pass
+        saved_mode = _get_setting('last_collect_mode', '')
+        if saved_mode:
+            _last_mode = saved_mode
+        _collect_at_initialized = True
+
     # Read intervals dynamically from DB (user may have changed via settings page)
     interval_hours = int(_get_setting('collect_interval', '4'))
     full_interval_hours = int(_get_setting('full_scan_interval', '24'))
@@ -504,6 +519,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
         summary['duration_s'] = int(time.time() - start)
         _last_run = datetime.utcnow()
+        _save_last_collect_at()
         if mode == 'full':
             _last_full_run = datetime.utcnow()
             _save_last_full_scan()
@@ -540,6 +556,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         summary['duration_s'] = int(time.time() - start)
         summary['finished_at'] = datetime.utcnow().isoformat()
         _last_run = datetime.utcnow()  # Prevent dashboard showing — forever
+        _save_last_collect_at()
         with _progress_lock:
             _progress['active'] = False
             _progress['phase'] = 'done'
@@ -713,6 +730,24 @@ def _load_last_full_scan() -> Optional[datetime]:
     except Exception:
         pass
     return None
+
+
+def _save_last_collect_at():
+    """Persist last collection timestamp and mode to DB."""
+    try:
+        from src.models.database import execute
+        ts = _last_run.isoformat() if _last_run else ''
+        execute(
+            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_collect_at', ?, datetime('now'))",
+            (ts,)
+        )
+        mode_val = _last_mode or ''
+        execute(
+            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_collect_mode', ?, datetime('now'))",
+            (mode_val,)
+        )
+    except Exception:
+        pass
 
 
 def _save_last_full_scan():
