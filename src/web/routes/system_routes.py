@@ -395,11 +395,6 @@ def health_check():
     """)
     product_health_list = [dict(row) for row in product_health] if product_health else []
 
-    # 计算成功率
-    push_success_rate = 0
-    if push_today['total'] > 0:
-        push_success_rate = round(push_today['success'] / push_today['total'] * 100)
-
     # ── 5. 采集异常摘要（从 app.log 聚合最近2小时的 WARNING/ERROR）────────
     异常日志 = []
     try:
@@ -472,7 +467,7 @@ def health_check():
             'email_rates': email_rates,           # 今日邮件计数
         },
         'push_today': push_today,
-        'push_success_rate': push_success_rate,
+        'push_success_rate': round(push_today['success'] / push_today['total'] * 100) if push_today['total'] > 0 else 0,
         'active_snapshots': active_snapshots,
         'product_health': product_health_list,
         '异常日志': 异常日志[-20:],              # 最近2小时内最多20条
