@@ -390,6 +390,7 @@ async function dashboard(range){
       </div>
     </div>
     ${sch.is_running?`<div class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe">🔄 采集中 (${mode_label[sch.current_mode]||sch.current_mode})...</div>`:''}
+    <div id="dashRunningBar" class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe;display:none">🔄 采集中...</div>
 
     <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
     <div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
@@ -4644,13 +4645,21 @@ async function triggerCollect(){
   confirmAct('确认立即触发一次增量采集？', startCollect, '🔄', '确认采集', false);
 }
 async function startCollect(){
-  const body=document.getElementById('collectModalBody')||document.getElementById('app');
-  body.innerHTML=`<div style="text-align:center;padding:40px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">正在启动增量采集...</p></div>`;
+  // Immediately show "launching" state on dashboard — user confirmed, request is going out
+  const dashTop = document.querySelector('.info-bar');
+  if(dashTop) {
+    dashTop.style.cssText='background:#f0f4ff;border-color:#b8d4fe;font-size:13px';
+    dashTop.innerHTML='<span>🔄 正在启动增量采集...</span>';
+  }
   const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
-  if(r.code===409){body.innerHTML=`<p style="color:var(--danger);text-align:center">采集正在进行中</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>`;return;}
-  if(r.code!==0){toast(r.message,'error');closeCollectModal();return;}
+  if(r.code===409){
+    toast('采集正在进行中','warn');location.reload();return;
+  }
+  if(r.code!==0){toast(r.message,'error');location.reload();return;}
   _collectRunning=true;
-  showCollectProgress();
+  // Show collecting indicator in the running bar slot
+  const runBar=document.getElementById('dashRunningBar');
+  if(runBar){runBar.style.display='';runBar.innerHTML='<span>🔄 采集中...</span>';}
   if(_collectPollTimer)clearInterval(_collectPollTimer);
   _collectPollTimer=setInterval(pollProgress,2000);
 }
