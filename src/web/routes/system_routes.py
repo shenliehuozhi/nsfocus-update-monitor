@@ -321,6 +321,140 @@ def reset_rate_limit():
         return {'code': 0, 'message': f'已重置全部频率限制 ({affected} 条)'}
 
 
+@bp.route('/health', methods=['GET'])
+@require_auth
+def health_check():
+    """一站式运维健康视图：Session状态 / 采集结果 / 队列积压 / 限流 / 异常摘要"""
+    from src.models.user_session import count_by_status, get_expired_active_count
+    from src.models.database import query
+    from src.core.scheduler import get_status as sched_status
+    from src.core.rate_limiter import get_all_bans
+    import logging, re
+    from datetime import datetime, timedelta
+
+    # ── 1. Session 状态 ─────────────────────────────────────
+    active = count_by_status('active')
+    total_sessions = active + count_by_status('expired') + count_by_status('unknown')
+    expired_active = get_expired_active_count()
+
+    session_detail = query(
+        "SELECT id, status, heartbeat_status, last_heartbeat_at, heartbeat_count "
+        "FROM user_sessions ORDER BY last_heartbeat_at DESC LIMIT 5"
+    )
+
+    # ── 2. 调度器状态 ───────────────────────────────────────
+    sch = sched_status()
+    scheduler = {
+        'enabled': sch.get('enabled', False),
+        'is_running': sch.get('is_running', False),
+        'current_mode': sch.get('current_mode', ''),
+        'last_run': sch.get('last_run'),
+        'last_full_run': sch.get('last_full_run'),
+        'next_run': sch.get('next_run'),
+        'interval_hours': sch.get('interval_hours', 4),
+    }
+
+    # ── 3. 推送队列积压（delayed_queue pending 数量）────────
+    queue_rows = query(
+        "SELECT COUNT(*) as cnt FROM delayed_queue WHERE status = 'pending'"
+    )
+    queue_pending = queue_rows[0]['cnt'] if queue_rows else 0
+
+    queue_overdue = query(
+        "SELECT COUNT(*) as cnt FROM delayed_queue "
+        "WHERE status = 'pending' AND push_after < datetime('now')"
+    )
+    queue_overdue_count = queue_overdue[0]['cnt'] if queue_overdue else 0
+
+    # ── 4. 限流状态 ──────────────────────────────────────────
+    bans = get_all_bans()
+
+    # email_rate_counters 当前使用量（今日桶）
+    from datetime import datetime as dt
+    today_bucket = dt.utcnow().strftime('%Y-%m-%d')
+    email_counts = query(
+        "SELECT key, count FROM email_rate_counters WHERE bucket = ?",
+        (today_bucket,)
+    )
+    email_rates = [{'key': r['key'], 'count': r['count']} for r in email_counts]
+
+    # ── 5. 采集异常摘要（从 app.log 聚合最近2小时的 WARNING/ERROR）────────
+    异常日志 = []
+    try:
+        log_dir = get_log_dir()
+        log_file = os.path.join(log_dir, 'app.log')
+        if os.path.exists(log_file):
+            cutoff = datetime.utcnow() - timedelta(hours=2)
+            # 读最后 500 行做采样，避免全文件扫描
+            with open(log_file, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+            recent = lines[-500:] if len(lines) > 500 else lines
+            for line in recent:
+                m = re.match(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^ ]*) (ERROR|WARNING)', line)
+                if not m:
+                    continue
+                try:
+                    t = datetime.fromisoformat(m.group(1))
+                    if t < cutoff:
+                        continue
+                except Exception:
+                    pass
+                level = m.group(2)
+                # 提取关键异常信息
+                msg = line.strip()
+                if '关键字段' in msg or '字段缺失' in msg or 'empty' in msg.lower() or 'null' in msg.lower():
+                    kind = 'field_missing'
+                elif '采集失败' in msg or 'Collection failed' in msg:
+                    kind = 'collection_failed'
+                elif 'Session' in msg and ('expired' in msg or 'exhausted' in msg):
+                    kind = 'session_error'
+                elif '解析' in msg or 'parse' in msg.lower():
+                    kind = 'parse_error'
+                else:
+                    kind = 'other'
+                异常日志.append({'level': level, 'kind': kind, 'msg': msg[-200:]})
+    except Exception:
+        pass
+
+    # 今日推送统计
+    today_push = query(
+        "SELECT COUNT(*) as total, "
+        "SUM(CASE WHEN delivery_status='sent' THEN 1 ELSE 0 END) as success, "
+        "SUM(CASE WHEN delivery_status='failed' THEN 1 ELSE 0 END) as failed "
+        "FROM delivery_log WHERE date(sent_at) = date('now')"
+    )
+    push_today = {
+        'total': today_push[0]['total'] or 0,
+        'success': today_push[0]['success'] or 0,
+        'failed': today_push[0]['failed'] or 0,
+    } if today_push else {'total': 0, 'success': 0, 'failed': 0}
+
+    # 活跃快照数
+    snap_count = query("SELECT COUNT(*) as cnt FROM snapshots WHERE status='active'")
+    active_snapshots = snap_count[0]['cnt'] if snap_count else 0
+
+    return {'code': 0, 'data': {
+        'session': {
+            'active': active,
+            'total': total_sessions,
+            'expired_active': expired_active,   # 活跃但已过期（保活失败）
+            'detail': [dict(s) for s in session_detail],
+        },
+        'scheduler': scheduler,
+        'queue': {
+            'pending': queue_pending,
+            'overdue': queue_overdue_count,      # 应发未发（超过 push_after 时间）
+        },
+        'rate_limits': {
+            'bans': bans,                         # 当前被封禁的 key
+            'email_rates': email_rates,           # 今日邮件计数
+        },
+        'push_today': push_today,
+        'active_snapshots': active_snapshots,
+        '异常日志': 异常日志[-20:],              # 最近2小时内最多20条
+    }}
+
+
 # ── Product Management ────────────────────────────────────────
 
 VALID_STRATEGIES = ('standard', 'recursive')

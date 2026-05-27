@@ -330,12 +330,13 @@ let _dashRange='7';
 async function dashboard(range){
   if(range)_dashRange=range;
   const rng=_dashRange||'7';
-  const[dR,sR]=await Promise.all([
+  const[dR,sR,hR]=await Promise.all([
     api('/dashboard?range='+rng),
-    fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}))
+    fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
+    fetch(API+'/system/health',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}}))
   ]);
   dR._range=rng;
-  const d=dR.data||{},sch=sR.data||{};
+  const d=dR.data||{},sch=sR.data||{},h=hR.data||{};
 
   // Session status line
   let sesLine='';
@@ -392,6 +393,41 @@ async function dashboard(range){
       <span>📊 本周推送: ${d.push_week?.total||0}次 (${d.push_week?.success||0}✅/${d.push_week?.failed||0}❌)</span>
     </div>
     ${sch.is_running?`<div class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe">🔄 采集中 (${mode_label[sch.current_mode]||sch.current_mode})...</div>`:''}
+
+    ${h.session||h.queue||h.rate_limits?
+    `<div class="card" style="margin-top:12px">
+      <div class="card-hd" style="color:var(--primary)">🩺 运维健康</div>
+      <div class="card-bd" style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
+        ${h.session?`<div style="min-width:180px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Session</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <span class="badge ${h.session.active>0?'badge-ok':'badge-err'}">💚${h.session.active}活跃</span>
+            ${h.session.expired_active>0?'<span class="badge badge-err">❤️‍🔥'+h.session.expired_active+'已过期</span>':''}
+            ${h.queue&&h.queue.overdue>0?'<span class="badge badge-warn">⏰'+h.queue.overdue+'条延迟</span>':''}
+          </div>
+          ${(h.session.detail||[]).slice(0,3).map(s=>`<div style="font-size:11.5px;color:var(--muted);margin-top:2px">${s.heartbeat_status==='正常'?'💚':s.heartbeat_status==='污染'?'🟠':'❤️‍🔥'} #${s.id} ${s.last_heartbeat_at||''}</div>`).join('')}
+        </div>`:''}
+        ${h.queue?`<div style="min-width:140px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">队列</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <span class="badge ${h.queue.pending>0?'badge-blue':'badge-grey'}">待发 ${h.queue.pending}</span>
+            ${h.queue.overdue>0?'<span class="badge badge-warn">超时 '+h.queue.overdue+'</span>':''}
+          </div>
+        </div>`:''}
+        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div style="min-width:160px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">限流</div>
+          <div style="display:flex;flex-direction:column;gap:3px">
+            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
+          </div>
+        </div>`:''}
+        ${h.异常日志&&h.异常日志.length>0?`<div style="min-width:200px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">异常 (2h内)</div>
+          <div style="display:flex;flex-direction:column;gap:3px;max-height:80px;overflow-y:auto">
+            ${h.异常日志.slice(0,5).map(l=>`<div style="font-size:11px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:260px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-100)}</div>`).join('')}
+          </div>
+        </div>`:''}
+      </div>
+    </div>`:''}
     <div style="margin-top:12px;display:flex;gap:8px"><button class="btn btn-sm btn-primary" onclick="triggerCollect()">🔄 手动采集</button><span style="font-size:12px;color:var(--muted);align-self:center">${sch.is_running?'<a href="#" onclick="triggerCollect()" style="color:var(--primary)">查看进度</a>':'立即触发采集'}</span></div>`;
   // Start/stop progress poll (must be in JS, not innerHTML script tag)
   if(sch.is_running){
