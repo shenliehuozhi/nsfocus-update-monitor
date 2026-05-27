@@ -387,8 +387,6 @@ async function dashboard(range){
       <div class="info-bar" style="flex:1;min-width:0">
         <span>⏱️ 上次采集: <span id="lastColText">${lastCol}</span>${sch.last_mode?' ['+mode_label[sch.last_mode]+']':''}<span id="dashProgress" style="display:none;margin-left:8px;cursor:pointer;font-size:12px" onclick="triggerCollect()"></span></span>
         <span>⏭️ 下次采集: ${nextCol}</span>
-        <span>🔍 上次全量: ${sch.last_full_run?fmtTZ(sch.last_full_run,true):'—'}</span>
-        <span>🔍 下次全量: ${sch.next_full_scan?fmtTZ(sch.next_full_scan,true):'—'}</span>
         <span>📊 本周: ${d.push_week?.total||0}次 <span style="color:var(--success)">${d.push_week?.success||0}✓</span> ${d.push_week?.failed>0?'<span style="color:var(--danger)">'+d.push_week.failed+'✗</span>':('<span style="color:var(--muted)">0✗</span>')}</span>
       </div>
     </div>
@@ -2958,7 +2956,6 @@ async function settings(){
         <div class="form-group"><label>速率上限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机上限，建议不超过5秒</p></div>
       </div>
       <div class="cfg-row">
-        <div class="form-group"><label>全量扫描间隔 <span class="cfg-unit">(小时)</span></label><input id="cfg-full-scan" type="number" value="${cfg.full_scan_interval||168}" min="24" max="720"><p class="cfg-hint">强制重新解析产品列表页，建议168(7天)；期间用PageHash增量检查</p></div>
         <div class="form-group"><label>每类型包数量</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p class="cfg-hint">采集数据页每(版本+包类型)显示的历史包数量，默认3</p></div>
       </div>
     </div>
@@ -4578,7 +4575,7 @@ async function handleSchedulerToggle(cb){
 
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
@@ -4598,7 +4595,7 @@ async function forceStopAndSave(){
 }
 
 async function saveSettings(){
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,full_scan_interval:document.getElementById('cfg-full-scan').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
