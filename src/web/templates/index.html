@@ -384,7 +384,7 @@ async function dashboard(range){
     </div>
     <div style="display:flex;align-items:flex-start;gap:12px;margin-top:12px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="triggerCollect()" style="flex-shrink:0">⏎ 手动采集</button>
-      <button class="btn" onclick="confirmAct('确定要重启服务吗？', async()=>{let r=await api('/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启')" style="flex-shrink:0;background:#fef3c7;border:1px solid #f59e0b;color:#92400e">🔄 重启服务</button>
+      <button class="btn" onclick="confirmAct('确定要重启服务吗？', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启')" style="flex-shrink:0;background:#fef3c7;border:1px solid #f59e0b;color:#92400e">🔄 重启服务</button>
       <div class="info-bar" style="flex:1;min-width:0">
         <span>⏱️ 上次采集: <span id="lastColText">${lastCol}</span>${sch.last_mode?' ['+mode_label[sch.last_mode]+']':''}<span id="dashProgress" style="display:none;margin-left:8px;cursor:pointer;font-size:12px" onclick="triggerCollect()"></span></span>
         <span>⏭️ 下次采集: ${nextCol}</span>

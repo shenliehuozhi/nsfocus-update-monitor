@@ -231,6 +231,27 @@ import threading
 _collect_thread = None
 
 
+@bp.route('/restart', methods=['POST'])
+@require_auth
+def restart_service():
+    """Restart the monitor service. Uses SIGTERM for clean shutdown (no DB lock).
+    
+    Locked DB risk: previously used SIGKILL (-9) which left WAL in inconsistent state.
+    SIGTERM lets Flask shutdown gracefully: close DB connections, release locks.
+    systemd service already configured with Restart=on-failure — will restart automatically.
+    """
+    import os, signal, time as _time, logging
+    pid = os.getpid()
+    logging.getLogger('system_routes').info(f'Restart requested, sending SIGTERM to {pid}')
+    def _delayed_exit():
+        _time.sleep(0.5)
+        os.kill(pid, signal.SIGTERM)
+    import threading
+    t = threading.Thread(target=_delayed_exit, daemon=True)
+    t.start()
+    return {'code': 0, 'message': '服务正在重启…'}
+
+
 @bp.route('/collect', methods=['POST'])
 @require_auth
 def trigger_collect():

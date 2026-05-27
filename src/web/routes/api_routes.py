@@ -780,28 +780,6 @@ def get_snapshot_detail(snapshot_id: int):
 
 bp_settings = Blueprint('settings', __name__, url_prefix='/api/settings')
 
-@bp.route('/restart', methods=['POST'])
-@require_auth
-def restart_service():
-    """Restart the monitor service. Uses SIGTERM for clean shutdown (no DB lock).
-    
-    Locked DB risk: previously used SIGKILL (-9) which left WAL in inconsistent state.
-    SIGTERM lets Flask shutdown gracefully: close DB connections, release locks.
-    A systemd timer or cron job should restart the process automatically.
-    """
-    import os, signal, time as _time, logging
-    pid = os.getpid()
-    logging.getLogger('api').info(f'Restart requested via API, sending SIGTERM to {pid}')
-    # Give the response time to reach the caller before we exit
-    def _delayed_exit():
-        _time.sleep(0.5)
-        os.kill(pid, signal.SIGTERM)
-    import threading
-    t = threading.Thread(target=_delayed_exit, daemon=True)
-    t.start()
-    return {'code': 0, 'message': '服务正在重启…'}
-
-
 @bp_settings.route('/scheduler', methods=['GET'])
 @require_auth
 def get_scheduler():
