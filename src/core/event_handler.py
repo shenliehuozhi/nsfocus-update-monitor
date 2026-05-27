@@ -198,17 +198,7 @@ def emit_push_summary(summaries: list):
     success_all = sum(s['success'] for s in summaries)
     failed_all = sum(s['failed'] for s in summaries)
 
-    # Log to DB
-    log_event(
-        event_type=event_type,
-        severity='WARNING' if failed_all > 0 else 'INFO',
-        message={
-            'total': total_all, 'success': success_all, 'failed': failed_all,
-            'summaries': summaries,
-        }
-    )
-
-    # Send to notification channel
+    # Send to notification channel（不依赖 DB 写入）
     channel = get_notify_channel()
     if not channel:
         return
@@ -222,7 +212,10 @@ def emit_push_summary(summaries: list):
         )
         try:
             result = notifier.send(msg, channel.get('config', {}))
-            logger.info(f'Push summary sent: total={total_all}, success={success_all}, failed={failed_all}')
+            if result.success:
+                logger.info(f'Push summary sent: total={total_all}, success={success_all}, failed={failed_all}')
+            else:
+                logger.error(f'Push summary failed: {result.error_message}')
         except Exception as e:
             logger.error(f'Failed to send push summary: {e}')
 
@@ -305,6 +298,7 @@ def emit_collection_summary(summary: dict, mode: str):
         return
 
     # 防重：最近 5 分钟内已有相同 event_type 的记录则跳过
+    # 注意：不再写 DB，只依赖通知渠道的去重能力
     try:
         from src.models.database import query
         rows = query(
@@ -317,10 +311,6 @@ def emit_collection_summary(summary: dict, mode: str):
     except Exception:
         pass
 
-    channel = get_notify_channel()
-    if not channel:
-        return
-
     total_new = summary.get('total_new', 0)
     total_rollback = summary.get('total_rollback', 0)
     errors = summary.get('errors', [])
@@ -330,21 +320,11 @@ def emit_collection_summary(summary: dict, mode: str):
     # 构建消息
     message_text = _build_summary_message(summary, mode)
 
-    # 记录到日志表
-    log_event(
-        event_type=event_type,
-        severity='WARNING' if errors else 'INFO',
-        message={
-            'mode': mode,
-            'total_new': total_new,
-            'total_rollback': total_rollback,
-            'duration_s': duration,
-            'errors_count': len(errors),
-            'products': products,
-        }
-    )
+    channel = get_notify_channel()
+    if not channel:
+        return
 
-    # 发送通知
+    # 发送通知（不依赖 DB 写入）
     notifier = _get_notifier(channel)
     if notifier:
         from src.notifiers.base import NotificationMessage
@@ -361,11 +341,11 @@ def emit_collection_summary(summary: dict, mode: str):
         try:
             result = notifier.send(msg, channel.get('config', {}))
             if result.success:
-                logger.info(f'Event notification sent: {event_type}, result=success')
+                logger.info(f'Collection summary notification sent: {mode}, new={total_new}')
             else:
-                logger.error(f'Event notification failed: {event_type}, error={result.error_message}')
+                logger.error(f'Collection summary notification failed: {result.error_message}')
         except Exception as e:
-            logger.error(f'Failed to send event notification: {e}')
+            logger.error(f'Failed to send collection summary: {e}')
 
 
 def _write_push_summary_from_delivery_log(finished_at: str = ''):

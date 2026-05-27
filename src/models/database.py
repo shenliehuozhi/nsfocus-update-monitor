@@ -75,12 +75,13 @@ def execute(sql: str, params: tuple = ()) -> int | None:
     are serialized.  Combined with WAL mode, this eliminates concurrent
     write lock contention entirely.
 
-    Retries on "database is locked" (up to 3 attempts) to handle rare cases
-    where the WAL write lock is held by an ongoing checkpoint/commit.
+    Retries on "database is locked" (up to 30 attempts, up to 60s total) to handle
+    WAL write lock contention. Matches PRAGMA busy_timeout=60000 so we wait as long
+    as SQLite itself is willing to wait before giving up.
     """
     import time as _time
 
-    for attempt in range(3):
+    for attempt in range(30):
         with _write_lock:
             try:
                 db = get_db()
@@ -88,8 +89,8 @@ def execute(sql: str, params: tuple = ()) -> int | None:
                 db.commit()
                 return cur.lastrowid
             except sqlite3.OperationalError as e:
-                if attempt < 2 and 'database is locked' in str(e):
-                    _time.sleep(0.1 * (attempt + 1))  # 100ms, 200ms
+                if attempt < 29 and 'database is locked' in str(e):
+                    _time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s ... up to 60s total
                     continue
                 raise
     return None  # unreachable, satisfies static analyzer

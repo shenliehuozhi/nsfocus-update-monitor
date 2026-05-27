@@ -295,21 +295,10 @@ def _send_alert_via_http(finding: dict):
 
 
 def _scan_loop():
-    """Main scan loop"""
+    """Main scan loop — runs independently of collection state."""
     logger.info(f'Log scanner started, interval={SCAN_INTERVAL}s')
 
     while not _stop_event.wait(SCAN_INTERVAL):
-        # Wait for collection to finish if running
-        if _is_collection_running():
-            logger.info('Collection running, waiting for it to finish...')
-            waited = 0
-            while _is_collection_running() and not _stop_event.is_set():
-                time.sleep(10)
-                waited += 10
-            if _stop_event.is_set():
-                break
-            logger.info(f'Collection finished after {waited}s wait, resuming scan')
-
         try:
             _do_scan()
         except Exception as e:
