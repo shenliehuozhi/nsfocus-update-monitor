@@ -382,13 +382,15 @@ async function dashboard(range){
       <div class="stat green"><div class="num">${d.push_today?.success||0}</div><div class="label">成功</div></div>
       <div class="stat"><div class="num" style="color:${d.push_today?.failed>0?'var(--danger)':(d.push_today?.failed===0?'var(--muted)':'var(--success)')}">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
     </div>
-    <div style="display:flex;align-items:flex-start;gap:12px;margin-top:12px;flex-wrap:wrap">
-      <button class="btn btn-primary" onclick="triggerCollect()" style="flex-shrink:0">⏎ 手动采集</button>
-      <button class="btn" onclick="confirmAct('确定要重启服务吗？', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启')" style="flex-shrink:0;background:#fef3c7;border:1px solid #f59e0b;color:#92400e">🔄 重启服务</button>
-      <div class="info-bar" style="flex:1;min-width:0">
+    <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+      <div class="info-bar">
         <span>⏱️ 上次采集: <span id="lastColText">${lastCol}</span>${sch.last_mode?' ['+mode_label[sch.last_mode]+']':''}<span id="dashProgress" style="display:none;margin-left:8px;cursor:pointer;font-size:12px" onclick="triggerCollect()"></span></span>
         <span>⏭️ 下次采集: ${nextCol}</span>
         <span>📊 本周: ${d.push_week?.total||0}次 <span style="color:var(--success)">${d.push_week?.success||0}✓</span> ${d.push_week?.failed>0?'<span style="color:var(--danger)">'+d.push_week.failed+'✗</span>':('<span style="color:var(--muted)">0✗</span>')}</span>
+      </div>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" onclick="triggerCollect()" style="flex-shrink:0">⏎ 手动采集</button>
+        <button class="btn" onclick="confirmAct('确定要重启服务吗？', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启')" style="flex-shrink:0;background:#fef3c7;border:1px solid #f59e0b;color:#92400e">🔄 重启服务</button>
       </div>
     </div>
     ${sch.is_running?`<div class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe">🔄 采集中 (${mode_label[sch.current_mode]||sch.current_mode})...</div>`:''}
