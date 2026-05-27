@@ -428,7 +428,7 @@ async function dashboard(range){
       </div>
     </div>`:''}
     ${h.session?.detail?.length>0||d.recent_deliveries?.length>0?`<div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
-      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近推送 <span style="font-weight:400">${d.recent_deliveries?.length||0}条</span></div>
+      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近更新 <span style="font-weight:400">${d.recent_deliveries?.length||0}条</span></div>
       <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
         ${(h.session?.detail||[]).slice(0,2).length>0?`<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">💓 心跳: ${h.session.detail.slice(0,2).map(s=>`<span style="margin-right:8px">${s.heartbeat_status==='正常'?'💚':s.heartbeat_status==='污染'?'🟠':'❤️‍🔥'}#${s.id} ${s.last_heartbeat_at?.slice(11,16)||''}</span>`).join('')}</div>`:''}
         ${(d.recent_deliveries||[]).slice(0,8).map(r=>`
