@@ -4628,7 +4628,7 @@ async function triggerCollect(){
     const sR=await api('/settings/scheduler');
     if(sR.data?.is_running){_collectRunning=true;showCollectProgress();return;}
   }catch(e){}
-  startCollect();
+  confirmAct('确认立即触发一次增量采集？', startCollect, '🔄', '确认采集', false);
 }
 async function startCollect(){
   const body=document.getElementById('collectModalBody')||document.getElementById('app');
