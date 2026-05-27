@@ -149,6 +149,10 @@ def _check_concurrent_stale() -> bool:
     except Exception:
         return False
 
+    # data must be a dict with 'status' field; int/str/None is invalid
+    if not isinstance(data, dict):
+        return False
+
     if data.get('status') == '0':
         return False  # Idle, safe to start
 
