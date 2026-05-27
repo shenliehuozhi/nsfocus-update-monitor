@@ -344,11 +344,16 @@ def health_check():
 
     # ── 2. 调度器状态 ───────────────────────────────────────
     sch = sched_status()
+
+    # last_collection_at 从 content_sources 表读取（不依赖内存，重启后仍准确）
+    last_row = query("SELECT MAX(last_collected_at) as m FROM content_sources WHERE last_collected_at IS NOT NULL")
+    last_collection_at = last_row[0]['m'] if last_row and last_row[0]['m'] else None
+
     scheduler = {
         'enabled': sch.get('enabled', False),
         'is_running': sch.get('is_running', False),
         'current_mode': sch.get('current_mode', ''),
-        'last_run': sch.get('last_run'),
+        'last_run': last_collection_at,
         'last_full_run': sch.get('last_full_run'),
         'next_run': sch.get('next_run'),
         'interval_hours': sch.get('interval_hours', 4),
@@ -378,8 +383,7 @@ def health_check():
     )
     email_rates = [{'key': r['key'], 'count': r['count']} for r in email_counts]
 
-    # ── 5. 采集健康状态（各产品最近采集情况）──────────────
-    # 查 content_sources 表获取各产品采集状态，join snapshots 计数
+    # last_collect_at 从 content_sources 表读取（最准确，不依赖内存）
     product_health = query("""
         SELECT c.name, c.id,
                c.last_collected_at,

@@ -192,11 +192,8 @@ FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '24'))  # hours, def
 HEALTH_URL = _get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys')
 
 _collector = NsfocusCollector()
-_last_run: Optional[datetime] = None
 _last_full_run: Optional[datetime] = None
-_last_mode: str = ''  # 'quick' or 'full'
 _is_running = False
-_collect_at_initialized = False  # lazy-load from DB on first get_status() call
 
 # ── Progress state (for async collection) ────────────────────────
 
@@ -249,35 +246,19 @@ def get_progress() -> dict:
 
 
 def get_status() -> dict:
-    global _collect_at_initialized
-    # Lazy-load last_collect_at from DB on first call (survives process restarts)
-    if not _collect_at_initialized:
-        saved = _get_setting('last_collect_at', '')
-        if saved:
-            try:
-                _last_run = datetime.fromisoformat(saved)
-            except Exception:
-                pass
-        saved_mode = _get_setting('last_collect_mode', '')
-        if saved_mode:
-            _last_mode = saved_mode
-        _collect_at_initialized = True
-
     # Read intervals dynamically from DB (user may have changed via settings page)
     interval_hours = int(_get_setting('collect_interval', '4'))
     full_interval_hours = int(_get_setting('full_scan_interval', '24'))
-    
+
     # Compute next mode
     next_mode = 'full' if is_full_scan_due() else 'quick'
     # Compute next full scan time
     next_full = None
     if _last_full_run:
         next_full = (_last_full_run + timedelta(hours=full_interval_hours)).isoformat()
-    
+
     return {
-        'last_run': _last_run.isoformat() if _last_run else None,
         'last_full_run': _last_full_run.isoformat() if _last_full_run else None,
-        'last_mode': _last_mode,
         'is_running': _is_running,
         'current_mode': _progress.get('mode', ''),
         'interval_hours': interval_hours,
@@ -295,7 +276,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         mode: 'delta' (fast, list pages only) or 'full' (deep traversal)
         progress_callback: optional callable(phase, detail) for progress updates
     """
-    global _last_run, _last_full_run, _is_running, _progress, _last_mode
+    global _last_full_run, _is_running, _progress
 
     # Prevent concurrent collection across process restarts
     if mode in ('quick', 'delta', 'full'):
@@ -307,7 +288,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
     _is_running = True
     _set_collection_running(mode)
-    _last_mode = mode
     logger.info(f'Collection starting: mode={mode}')
     start = time.time()
 
@@ -355,7 +335,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if not sessions:
             summary['status'] = 'error'
             summary['errors'].append('No active sessions')
-            _last_run = datetime.utcnow()
             logger.warning('Collection aborted: no active sessions')
             with _progress_lock:
                 _progress['active'] = False
@@ -379,13 +358,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                     update_status(sessions[1]['id'], 'expired')
                     summary['status'] = 'error'
                     summary['errors'].append('All sessions expired — collection aborted')
-                    _last_run = datetime.utcnow()
                     return summary
                 logger.info('Switched to backup session')
             else:
                 summary['status'] = 'error'
                 summary['errors'].append('Session expired — collection aborted')
-                _last_run = datetime.utcnow()
                 return summary
 
         # 2. Ensure content sources exist in DB (bootstrap from PRODUCTS for backward compat)
@@ -415,7 +392,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if not all_items:
             summary['status'] = 'warning' if summary['errors'] else 'ok'
             summary['duration_s'] = int(time.time() - start)
-            _last_run = datetime.utcnow()
             if mode == 'full':
                 _last_full_run = datetime.utcnow()
                 _save_last_full_scan()
@@ -518,8 +494,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         process_delayed_queue()
 
         summary['duration_s'] = int(time.time() - start)
-        _last_run = datetime.utcnow()
-        _save_last_collect_at()
         if mode == 'full':
             _last_full_run = datetime.utcnow()
             _save_last_full_scan()
@@ -555,8 +529,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         summary['errors'].append(str(e)[:200])
         summary['duration_s'] = int(time.time() - start)
         summary['finished_at'] = datetime.utcnow().isoformat()
-        _last_run = datetime.utcnow()  # Prevent dashboard showing — forever
-        _save_last_collect_at()
         with _progress_lock:
             _progress['active'] = False
             _progress['phase'] = 'done'
@@ -733,21 +705,8 @@ def _load_last_full_scan() -> Optional[datetime]:
 
 
 def _save_last_collect_at():
-    """Persist last collection timestamp and mode to DB."""
-    try:
-        from src.models.database import execute
-        ts = _last_run.isoformat() if _last_run else ''
-        execute(
-            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_collect_at', ?, datetime('now'))",
-            (ts,)
-        )
-        mode_val = _last_mode or ''
-        execute(
-            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_collect_mode', ?, datetime('now'))",
-            (mode_val,)
-        )
-    except Exception:
-        pass
+    """No-op — last_collect_at is now read from MAX(last_collected_at) in content_sources."""
+    pass
 
 
 def _save_last_full_scan():
