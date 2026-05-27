@@ -4726,19 +4726,6 @@ function pollProgress(){
     if(html)body.innerHTML=html;
   }).catch(()=>{});
 }
-async function startCollect(mode){
-  // mode 参数已废弃，始终为增量采集
-  const body=document.getElementById('collectModalBody');
-  body.innerHTML=`<div style="text-align:center;padding:40px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">正在启动增量采集...</p></div>`;
-  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
-  if(r.code===409){body.innerHTML=`<p style="color:var(--danger);text-align:center">采集正在进行中</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>`;return;}
-  if(r.code!==0){toast(r.message,'error');closeCollectModal();return;}
-  _collectRunning=true;
-  showCollectProgress();
-  if(_collectPollTimer)clearInterval(_collectPollTimer);
-  _collectPollTimer=setInterval(pollProgress,2000);
-}
-
 // ── Dashboard Progress Poll ──
 async function pollDashProgress(){
   try{
