@@ -4623,40 +4623,23 @@ async function saveSettings(){
 let _collectPollTimer=null;
 let _collectRunning=false;
 async function triggerCollect(){
-  // If already running, show progress directly
-  if(_collectRunning){
-    showCollectProgress();
-    return;
-  }
-  // Double-check with API
+  if(_collectRunning){showCollectProgress();return;}
   try{
     const sR=await api('/settings/scheduler');
     if(sR.data?.is_running){_collectRunning=true;showCollectProgress();return;}
   }catch(e){}
-  showCollectModeSelector();
+  startCollect();
 }
-function showCollectModeSelector(){
-  document.getElementById('app').insertAdjacentHTML('beforeend',`
-    <div id="collectModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeCollectModal()">
-      <div class="card" style="width:420px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
-        <div class="card-hd">🔄 手动采集</div>
-        <div class="card-bd" id="collectModalBody">
-          <p style="font-size:13px;margin-bottom:12px">选择采集模式：</p>
-          <div style="display:flex;gap:8px;margin-bottom:16px">
-            <button class="btn btn-sm btn-outline" style="flex:1" onclick="startCollect('quick')">
-              <div style="font-weight:600">⚡ 快速采集</div>
-              <div style="font-size:10px;color:var(--muted);margin-top:2px">只检查已知页面 ~30秒</div>
-            </button>
-            <button class="btn btn-sm btn-primary" style="flex:1" onclick="startCollect('full')">
-              <div style="font-weight:600">🔍 全量采集</div>
-              <div style="font-size:10px;color:rgba(255,255,255,.7);margin-top:2px">遍历所有详情页 ~20分钟</div>
-            </button>
-          </div>
-          <button class="btn btn-sm btn-outline" style="width:100%;justify-content:center" onclick="closeCollectModal()">取消</button>
-        </div>
-      </div>
-    </div>
-  `);
+async function startCollect(){
+  const body=document.getElementById('collectModalBody')||document.getElementById('app');
+  body.innerHTML=`<div style="text-align:center;padding:40px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">正在启动增量采集...</p></div>`;
+  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
+  if(r.code===409){body.innerHTML=`<p style="color:var(--danger);text-align:center">采集正在进行中</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>`;return;}
+  if(r.code!==0){toast(r.message,'error');closeCollectModal();return;}
+  _collectRunning=true;
+  showCollectProgress();
+  if(_collectPollTimer)clearInterval(_collectPollTimer);
+  _collectPollTimer=setInterval(pollProgress,2000);
 }
 function showCollectProgress(){
   // Remove existing modal if any
@@ -4722,13 +4705,14 @@ function pollProgress(){
   }).catch(()=>{});
 }
 async function startCollect(mode){
+  // mode 参数已废弃，始终为增量采集
   const body=document.getElementById('collectModalBody');
-  body.innerHTML=`<div style="text-align:center;padding:12px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">正在启动${mode==='full'?'全量':'增量'}采集...</p></div>`;
-  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode})});
+  body.innerHTML=`<div style="text-align:center;padding:40px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">正在启动增量采集...</p></div>`;
+  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
   if(r.code===409){body.innerHTML=`<p style="color:var(--danger);text-align:center">采集正在进行中</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>`;return;}
   if(r.code!==0){toast(r.message,'error');closeCollectModal();return;}
   _collectRunning=true;
-  pollProgress();
+  showCollectProgress();
   if(_collectPollTimer)clearInterval(_collectPollTimer);
   _collectPollTimer=setInterval(pollProgress,2000);
 }
