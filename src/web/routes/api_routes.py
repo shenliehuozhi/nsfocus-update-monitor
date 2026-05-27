@@ -784,7 +784,12 @@ bp_settings = Blueprint('settings', __name__, url_prefix='/api/settings')
 @require_auth
 def get_scheduler():
     from src.core.scheduler import get_status
-    return jsonify({'code': 0, 'data': get_status()})
+    from src.models.database import query
+    status = get_status()
+    # last_run = MAX(last_collected_at) from content_sources（不依赖内存，重启后仍准确）
+    last_row = query("SELECT MAX(last_collected_at) as m FROM content_sources WHERE last_collected_at IS NOT NULL")
+    status['last_run'] = last_row[0]['m'] if last_row and last_row[0]['m'] else None
+    return jsonify({'code': 0, 'data': status})
 
 
 @bp_settings.route('/scheduler/trigger', methods=['POST'])
