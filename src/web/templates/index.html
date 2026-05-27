@@ -380,7 +380,7 @@ async function dashboard(range){
     <div class="grid3" style="margin-top:12px">
       <div class="stat"><div class="num" style="color:var(--primary)">${d.push_today?.total||0}</div><div class="label">今日推送</div></div>
       <div class="stat green"><div class="num">${d.push_today?.success||0}</div><div class="label">成功</div></div>
-      <div class="stat"><div class="num" style="color:${d.push_today?.failed>0?'var(--danger)':'var(--success)'}">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
+      <div class="stat"><div class="num" style="color:${d.push_today?.failed>0?'var(--danger)':(d.push_today?.failed===0?'var(--muted)':'var(--success)')}">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
     </div>
     <div style="display:flex;align-items:flex-start;gap:12px;margin-top:12px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="triggerCollect()" style="flex-shrink:0">⏎ 手动采集</button>
@@ -394,10 +394,11 @@ async function dashboard(range){
     </div>
     ${sch.is_running?`<div class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe">🔄 采集中 (${mode_label[sch.current_mode]||sch.current_mode})...</div>`:''}
 
+    <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
     ${h.session||h.queue||h.rate_limits?
-    `<div class="card" style="margin-top:12px">
+    `<div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
       <div class="card-hd" style="color:var(--primary)">🩺 运维健康</div>
-      <div class="card-bd" style="padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
+      <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
         ${h.session?`<div style="min-width:180px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">Session</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -428,15 +429,14 @@ async function dashboard(range){
         </div>`:''}
       </div>
     </div>`:''}
-    <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start">
-    ${h.session?.detail?.length>0?`<div style="font-size:11.5px;color:var(--muted);align-self:center;margin-right:4px">💓 心跳: ${h.session.detail.slice(0,2).map(s=>`<span style="margin-right:6px">${s.heartbeat_status==='正常'?'💚':s.heartbeat_status==='污染'?'🟠':'❤️‍🔥'}#${s.id}</span>`).join('')}</div>`:''}
-    ${d.recent_deliveries&&d.recent_deliveries.length>0?`<div class="card" style="flex:1;min-width:280px;margin-top:0">
-      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近推送 <span style="font-weight:400">${d.recent_deliveries.length}条</span></div>
-      <div class="card-bd" style="padding:8px 12px;max-height:120px;overflow-y:auto">
-        ${d.recent_deliveries.slice(0,8).map(r=>`
+    ${h.session?.detail?.length>0||d.recent_deliveries?.length>0?`<div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
+      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近推送 <span style="font-weight:400">${d.recent_deliveries?.length||0}条</span></div>
+      <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
+        ${(h.session?.detail||[]).slice(0,2).length>0?`<div style="font-size:11.5px;color:var(--muted);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)">💓 心跳: ${h.session.detail.slice(0,2).map(s=>`<span style="margin-right:8px">${s.heartbeat_status==='正常'?'💚':s.heartbeat_status==='污染'?'🟠':'❤️‍🔥'}#${s.id} ${s.last_heartbeat_at?.slice(11,16)||''}</span>`).join('')}</div>`:''}
+        ${(d.recent_deliveries||[]).slice(0,8).map(r=>`
           <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid #f1f3f5;white-space:nowrap">
-            <span style="color:${r.delivery_status==='sent'?'var(--success)':r.delivery_status==='failed'?'var(--danger)':'var(--muted)'};flex-shrink:0">${r.delivery_status==='sent'?'✓':r.delivery_status==='failed'?'✗':'·'}</span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${r.product_name||'—'} ${r.package_version||''} ${r.file_name?'('+r.file_name.slice(0,20)+')':''}</span>
+            <span style="color:${r.delivery_status==='sent'?'var(--success)':r.delivery_status==='failed'?'var(--danger)':'var(--muted)'};flex-shrink:0;font-size:13px">${r.delivery_status==='sent'?'✓':r.delivery_status==='failed'?'✗':'·'}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${r.product_name||'—'} ${r.package_version||''} ${r.file_name?'('+r.file_name.slice(0,22)+')':''}</span>
             <span style="color:var(--muted);font-size:11px;flex-shrink:0">${fmtTZ(r.sent_at,true)}</span>
           </div>`).join('')}
       </div>
