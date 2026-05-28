@@ -394,11 +394,11 @@ async function dashboard(range){
 
     <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
     <div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="color:var(--primary)">🩺 运维健康</span>
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0">
+        <span style="color:var(--primary);font-size:13px">🩺 运维健康</span>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
-          <button class="btn btn-primary" onclick="triggerCollect()" style="height:32px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
-          <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:32px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
+          <button class="btn btn-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
+          <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
       </div>
       <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
