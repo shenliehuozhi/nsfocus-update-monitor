@@ -6,214 +6,35 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 
-# ── Keyword highlight rules for upgrade package descriptions ──────────────────
-# Priority: P0 > P1 > P2
-# Styles:   'bold' (markdown) or 'html' (email with color)
-#
-# For markdown (WeCom/DingTalk/Feishu):   **text**
-# For HTML  (email):                      <strong style="color:...">text</strong>
-#
-# Color map:
-#   P0 (version constraint failure = cannot upgrade):  red  #d0021b
-#   P1 (restart/business interruption risk):            orange #f5a623
-#   P1 (no restart needed — positive info):            green  #4a90d9
-#   P2 (auxiliary info):                                 gray   #999999
+# ── Attention line highlight ─────────────────────────────────────────────────
+# Description lines containing "注意" are highlighted in orange.
+# Used for both markdown (WeCom/DingTalk/Feishu) and HTML (email).
 
-_HL_P0_RULES = [
-    re.compile(r'【前置版本】[^\n]*'),
-    re.compile(r'请在[^\n，。！？；]+及以上版本进行升级'),
-    re.compile(r'请在[^\n，。！？；]+版本以上进行升级'),
-    re.compile(r'需在[^\n，。！？；]+引擎版本上升级使用'),
-    re.compile(r'确认当前系统版本[^\n，。！？；]+及以上'),
-    re.compile(r'升级前请确保[^\n，。！？；]+版本'),
-    re.compile(r'不支持(?:海光|HD|NX|X86|ARM|飞腾|鲲鹏)[^\n，。；]{0,20}型号[^\n，。；]{0,20}'),
-    re.compile(r'仅支持(?:NX|HD)[^\n，。；]{0,30}及以上版本'),
-    re.compile(r'需配合(?:[^\n，。；]+?补丁包|[^\n，。；]+?)使用'),
-    re.compile(r'重启设备'),
-    re.compile(r'重启引擎'),
-    re.compile(r'引擎(?:自动)?重启'),
-    re.compile(r'引擎重启'),
-]
-
-_HL_P1_BOLD_RULES = [
-    re.compile(r'无需重启设备和引擎'),
-    re.compile(r'请不要强制硬重启设备'),
-    re.compile(r'升级完成后，重启设备'),
-    re.compile(r'升级后需重启设备[^\n。]+'),
-    re.compile(r'本升级包[^\n]+?重启[^\n。]+'),
-    re.compile(r'请在业务空闲时升级'),
-    re.compile(r'WEB短时无法访问[^\n]*'),
-    re.compile(r'网络中断'),
-    re.compile(r'会话中断'),
-    re.compile(r'流量中断'),
-    re.compile(r'检查[^\n，。；]{0,30}'),
-]
-
-_HL_P2_RULES = [
-    re.compile(r'耗时约[^\n，。；]+'),
-    re.compile(r'正在初始化[^\n]*'),
-]
-
-# Negation patterns: (negation_prefix, max_chars_before, keyword) —
-# keyword is skipped only when the prefix (e.g. "不会造成") immediately precedes it.
-_NEGATION_RULES = [
-    (r'不会造成', 20, '会话中断'),
-    (r'不会导致', 20, '会话中断'),
-    (r'不会引起', 20, '会话中断'),
-    (r'不会发生', 20, '会话中断'),
-    (r'不会产生', 20, '会话中断'),
-    (r'无需',     0, '重启设备和引擎'),
-]
-
-
-def _negation_spans(text: str) -> list[tuple[int, int]]:
-    """Return list of (start, end) spans that should NOT be highlighted.
-
-    - Negation prefixes like '不会造成'/'不会导致' → extend 20 chars forward.
-    - '无需' → extends to end of current sentence (negates everything after it).
-    """
-    spans = []
-    for neg_prefix, max_before, kw in _NEGATION_RULES:
-        for m in re.finditer(re.escape(neg_prefix), text):
-            if kw == '重启设备和引擎':
-                # '无需' negates everything after it within the sentence
-                # Find sentence end
-                suffix = text[m.end():]
-                sent_end_match = re.search(r'[。！？；]', suffix)
-                end = m.end() + (sent_end_match.start() + 1 if sent_end_match else len(suffix))
-            else:
-                end = m.end() + max_before
-            spans.append((m.start(), min(end, len(text))))
-    return spans
-
-
-def _is_in_negation(text: str, start: int, end: int) -> bool:
-    """Return True if [start, end) overlaps any negation context span."""
-    neg_spans = _negation_spans(text)
-    return any(neg_s < end and neg_e > start for neg_s, neg_e in neg_spans)
-
-
-def _expand_to_sentence(text: str, start: int, end: int) -> tuple[int, int, str]:
-    """Expand a keyword range to full sentence boundaries.
-
-    Returns (sentence_start, sentence_end, sentence_text).
-    Sentence ends at 。！？； or \\n, starts at previous boundary or text start.
-    """
-    # Find sentence end
-    sentence_ends = [m.start() for m in re.finditer(r'[。！？；]', text)]
-    # Find sentence start
-    sentence_starts = [m.end() for m in re.finditer(r'[。！？；]', text)]
-
-    # Find the sentence containing [start, end)
-    sent_start = 0
-    for se in sorted(sentence_starts, reverse=True):
-        if se <= start:
-            sent_start = se
-            break
-
-    sent_end = len(text)
-    for se in sorted(sentence_ends):
-        if se >= end:
-            sent_end = se + 1  # include the punctuation
-            break
-
-    return sent_start, sent_end, text[sent_start:sent_end]
-
-
-def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
-    """Highlight key phrases in upgrade package description text.
+def _highlight_attention_lines(text: str, fmt: str = 'markdown') -> str:
+    """Highlight any line containing '注意' with orange bold.
 
     Args:
-        text: Raw description text.
+        text: Raw description text (may contain multiple lines).
         fmt:  'markdown' → **bold** text (WeCom/DingTalk/Feishu)
               'html'     → <strong style="color:...">text</strong> (email)
 
     Returns:
-        Text with highlighted keyword spans. Original text is unchanged
-        when no keywords are found.
-
-    Highlight categories:
-        P0 (🔴 red):  Version constraints — if not satisfied, upgrade will fail
-        P1 (🟠 orange): Restart / business interruption warnings
-        P1 (🟢 green): "无需重启设备和引擎" (positive, no action needed)
-        P2 (⏱ gray):   Auxiliary info (duration, initialization status)
+        Text with highlighted lines unchanged when no '注意' is found.
     """
-    if not text:
+    if not text or '注意' not in text:
         return text
 
-    # Collect sentence-level highlights with priority
-    sentence_markers = []   # list of (sent_start, sent_end, priority)
-
-    for pattern in _HL_P0_RULES:
-        for m in pattern.finditer(text):
-            if _is_in_negation(text, m.start(), m.end()):
-                continue
-            ss, se, st = _expand_to_sentence(text, m.start(), m.end())
-            sentence_markers.append((ss, se, 0))
-
-    for pattern in _HL_P1_BOLD_RULES:
-        for m in pattern.finditer(text):
-            # P1 keyword "无需重启设备和引擎" is a positive signal → skip negation check, keep it
-            if m.group() == '无需重启设备和引擎':
-                ss, se, st = _expand_to_sentence(text, m.start(), m.end())
-                sentence_markers.append((ss, se, 1))
-                continue
-            if _is_in_negation(text, m.start(), m.end()):
-                continue
-            ss, se, st = _expand_to_sentence(text, m.start(), m.end())
-            sentence_markers.append((ss, se, 1))
-
-    for pattern in _HL_P2_RULES:
-        for m in pattern.finditer(text):
-            ss, se, st = _expand_to_sentence(text, m.start(), m.end())
-            sentence_markers.append((ss, se, 2))
-
-    # Sort: longer sentence first so semantic unit wins over sub-match,
-    # then by priority (higher number = lower severity = preferred for overlaps)
-    sentence_markers.sort(key=lambda x: (-(x[1] - x[0]), -x[2]))
-
-    # Deduplicate: when sentences overlap, keep the one with higher priority number (lower severity)
-    final_markers = []
-    for start, end, priority in sentence_markers:
-        # Find overlapping marker in final_markers
-        overlapped_idx = None
-        for i, (s, e, p) in enumerate(final_markers):
-            if start < e and end > s:  # overlap detected
-                overlapped_idx = i
-                break
-        if overlapped_idx is not None:
-            # If new marker has higher priority number (lower severity), replace the existing one
-            if priority > final_markers[overlapped_idx][2]:
-                final_markers[overlapped_idx] = (start, end, priority)
-            # else: keep existing (higher severity) marker, discard new lower-severity one
-        else:
-            final_markers.append((start, end, priority))
-
-    if not final_markers:
-        return text
-
-    # Build replacement per format
-    def _fmt(sentence: str, priority: int) -> str:
-        if priority == 0:
-            color = '#d0021b'
-        elif sentence == '无需重启设备和引擎' or sentence.endswith('无需重启设备和引擎。') or sentence == '无需重启设备和引擎。':
-            color = '#4a90d9'  # positive signal: no restart needed
-        elif priority == 1:
-            color = '#f5a623'
-        else:
-            color = '#999999'
-        if fmt == 'html':
-            return f'<strong style="color:{color}">{sentence}</strong>'
-        return f'**{sentence}**'
-
-    # Apply from last to first to preserve positions
-    result = text
-    for start, end, priority in sorted(final_markers, key=lambda x: -x[0]):
-        segment = result[start:end]
-        if not segment.startswith(('<strong', '**')):
-            result = result[:start] + _fmt(segment, priority) + result[end:]
-
-    return result
+    ORANGE = '#f5a623'
+    lines = text.split('\n')
+    result_lines = []
+    for line in lines:
+        if '注意' in line:
+            if fmt == 'html':
+                line = f'<strong style="color:{ORANGE}">{line}</strong>'
+            else:
+                line = f'**{line}**'
+        result_lines.append(line)
+    return '\n'.join(result_lines)
 
 
 # Package type Chinese name mapping
@@ -461,7 +282,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         lines.append('')
         lines.append('---')
         lines.append('')
-        lines.append(_highlight_upgrade_keywords(msg.description_full, 'markdown'))
+        lines.append(_highlight_attention_lines(msg.description_full, 'markdown'))
 
     return '\n'.join(lines)
 
@@ -524,7 +345,10 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if msg.restart_required:
         extra_items.append('🔄 升级后需重启')
     if msg.description_full:
-        extra_items.extend(['', '---', '', _highlight_upgrade_keywords(msg.description_full, 'markdown')])
+        extra_items.append('')
+        extra_items.append('---')
+        extra_items.append('')
+        extra_items.append(_highlight_attention_lines(msg.description_full, 'markdown'))
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
 
@@ -576,7 +400,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     # Description: summary text first, then parsed rule details
     desc_html = ''
     if msg.description_full:
-        desc_text = _highlight_upgrade_keywords(msg.description_full, 'html').replace('\n', '<br>')
+        desc_text = _highlight_attention_lines(msg.description_full, 'html').replace('\n', '<br>')
         desc_html += f'''
         <tr><td colspan="2" style="padding:8px 0;border-top:1px solid #e0e0e0;word-break:break-word">
             <strong>📋 更新说明</strong>
