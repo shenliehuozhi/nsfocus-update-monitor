@@ -76,28 +76,32 @@ class EmailNotifier(BaseNotifier):
 
         html_body = _format_html_body(message, message.is_rollback)
 
+        # Determine if attachment can be included
+        attachment_downloaded = (
+            message.file_size > 0
+            and message.file_size <= max_attach
+            and message.download_url
+        )
+
+        # Note about large files — embed directly in HTML body
+        if not attachment_downloaded and not message.is_rollback:
+            note_html = (
+                f'<p style="color:#d0021b;font-size:14px;margin:16px 0 8px 0;padding:10px;background:#fff3cd;border-radius:4px;border-left:4px solid #d0021b">'
+                f'⚠️ 文件大小({message.size_display})超过附件上限，请<a href="{message.download_url}" style="color:#d0021b;font-weight:bold">点击此处下载</a>获取升级包。</p>'
+            )
+            # Insert note before </table> that closes the metadata table
+            html_body = html_body.replace(
+                '</table>\n</td></tr>',
+                f'</table>\n{note_html}\n</td></tr>',
+                1
+            )
+
         # Build email
         msg = MIMEMultipart('mixed')
         msg['Subject'] = subject
         msg['From'] = formataddr((from_name, smtp_user))
         msg['To'] = ', '.join(to_list)
         msg.attach(MIMEText(html_body, 'html', 'utf-8'))
-
-        # Download and attach file if applicable
-        attachment_downloaded = False
-        if (not message.is_rollback
-                and message.file_size > 0
-                and message.file_size <= max_attach
-                and message.download_url):
-            attachment_downloaded = self._attach_file(msg, message, max_attach)
-
-        # Note about large files
-        if not attachment_downloaded and not message.is_rollback:
-            note = MIMEText(
-                f'\n\n提示: 文件大小({message.size_display})超过附件上限，请点击下载链接获取。',
-                'plain', 'utf-8'
-            )
-            msg.attach(note)
 
         try:
             if smtp_port == 465:
