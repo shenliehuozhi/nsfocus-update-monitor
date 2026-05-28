@@ -2842,7 +2842,7 @@ async function history(){
   let batches={};
   list.forEach(h=>{
     let dels=h.deliveries||[];
-    let batchKey=(h.pushed_at||h.first_seen_at||'').substring(0,16); // YYYY-MM-DD HH:MM
+    let batchKey=fmtTZ(h.pushed_at||h.first_seen_at||'',true);
     if(!batches[batchKey])batches[batchKey]={time:batchKey,packages:[],customers:new Set(),channels:new Set(),totalOk:0,totalFail:0};
     let b=batches[batchKey];
     b.packages.push(h);
