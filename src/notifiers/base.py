@@ -68,19 +68,56 @@ _NEGATION_RULES = [
 
 def _negation_spans(text: str) -> list[tuple[int, int]]:
     """Return list of (start, end) spans that should NOT be highlighted.
-    Only matches where the negation prefix directly precedes the keyword count."""
+
+    - Negation prefixes like '不会造成'/'不会导致' → extend 20 chars forward.
+    - '无需' → extends to end of current sentence (negates everything after it).
+    """
     spans = []
     for neg_prefix, max_before, kw in _NEGATION_RULES:
-        for m in re.finditer(neg_prefix + (r'[^\n，。；]{0,' + str(max_before) + r'}' if max_before > 0 else r''), text):
-            end = m.end()
-            spans.append((m.start(), end))
+        for m in re.finditer(re.escape(neg_prefix), text):
+            if kw == '重启设备和引擎':
+                # '无需' negates everything after it within the sentence
+                # Find sentence end
+                suffix = text[m.end():]
+                sent_end_match = re.search(r'[。！？；]', suffix)
+                end = m.end() + (sent_end_match.start() + 1 if sent_end_match else len(suffix))
+            else:
+                end = m.end() + max_before
+            spans.append((m.start(), min(end, len(text))))
     return spans
 
 
 def _is_in_negation(text: str, start: int, end: int) -> bool:
-    """Return True if the range [start, end) is inside or overlaps a negation context."""
+    """Return True if [start, end) overlaps any negation context span."""
     neg_spans = _negation_spans(text)
-    return any(s <= start and end <= e for s, e in neg_spans)
+    return any(neg_s < end and neg_e > start for neg_s, neg_e in neg_spans)
+
+
+def _expand_to_sentence(text: str, start: int, end: int) -> tuple[int, int, str]:
+    """Expand a keyword range to full sentence boundaries.
+
+    Returns (sentence_start, sentence_end, sentence_text).
+    Sentence ends at 。！？； or \\n, starts at previous boundary or text start.
+    """
+    # Find sentence end
+    sentence_ends = [m.start() for m in re.finditer(r'[。！？；]', text)]
+    # Find sentence start
+    sentence_starts = [m.end() for m in re.finditer(r'[。！？；]', text)]
+
+    # Find the sentence containing [start, end)
+    sent_start = 0
+    for se in sorted(sentence_starts, reverse=True):
+        if se <= start:
+            sent_start = se
+            break
+
+    sent_end = len(text)
+    for se in sorted(sentence_ends):
+        if se >= end:
+            sent_end = se + 1  # include the punctuation
+            break
+
+    return sent_start, sent_end, text[sent_start:sent_end]
 
 
 def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
@@ -104,67 +141,77 @@ def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
     if not text:
         return text
 
-    # Collect all matches with priority
-    markers = []
+    # Collect sentence-level highlights with priority
+    sentence_markers = []   # list of (sent_start, sent_end, priority)
 
     for pattern in _HL_P0_RULES:
         for m in pattern.finditer(text):
-            markers.append((m.start(), m.end(), m.group(), 0))
+            if _is_in_negation(text, m.start(), m.end()):
+                continue
+            ss, se, st = _expand_to_sentence(text, m.start(), m.end())
+            sentence_markers.append((ss, se, 0))
 
     for pattern in _HL_P1_BOLD_RULES:
         for m in pattern.finditer(text):
-            # Skip keywords that are inside a negation context (e.g. "不会造成会话中断")
+            # P1 keyword "无需重启设备和引擎" is a positive signal → skip negation check, keep it
+            if m.group() == '无需重启设备和引擎':
+                ss, se, st = _expand_to_sentence(text, m.start(), m.end())
+                sentence_markers.append((ss, se, 1))
+                continue
             if _is_in_negation(text, m.start(), m.end()):
                 continue
-            markers.append((m.start(), m.end(), m.group(), 1))
+            ss, se, st = _expand_to_sentence(text, m.start(), m.end())
+            sentence_markers.append((ss, se, 1))
 
     for pattern in _HL_P2_RULES:
         for m in pattern.finditer(text):
-            markers.append((m.start(), m.end(), m.group(), 2))
+            ss, se, st = _expand_to_sentence(text, m.start(), m.end())
+            sentence_markers.append((ss, se, 2))
 
-    # Sort: length descending (longer semantic unit first), then priority ascending.
-    # Iterate: if current marker is strictly contained within an existing
-    #          final marker, skip (longer semantic unit wins).
-    #          Otherwise if it overlaps any existing marker, skip the new one.
-    # This ensures longer semantic units supersede their contained fragments.
-    sorted_markers = sorted(markers, key=lambda x: (-(x[1] - x[0]), x[3]))
-    final = []
-    for start, end, matched_text, priority in sorted_markers:
-        # Strict containment check: if fully inside an existing range, skip
-        strictly_contained = any(s <= start and end <= e and (s < start or end < e)
-                                 for s, e, _, _ in final)
-        if strictly_contained:
-            continue
-        # General overlap: skip the new one
-        if any(start < e and end > s for s, e, _, _ in final):
-            continue
-        final.append((start, end, matched_text, priority))
+    # Sort: longer sentence first so semantic unit wins over sub-match,
+    # then by priority (higher number = lower severity = preferred for overlaps)
+    sentence_markers.sort(key=lambda x: (-(x[1] - x[0]), -x[2]))
 
-    if not final:
+    # Deduplicate: when sentences overlap, keep the one with higher priority number (lower severity)
+    final_markers = []
+    for start, end, priority in sentence_markers:
+        # Find overlapping marker in final_markers
+        overlapped_idx = None
+        for i, (s, e, p) in enumerate(final_markers):
+            if start < e and end > s:  # overlap detected
+                overlapped_idx = i
+                break
+        if overlapped_idx is not None:
+            # If new marker has higher priority number (lower severity), replace the existing one
+            if priority > final_markers[overlapped_idx][2]:
+                final_markers[overlapped_idx] = (start, end, priority)
+            # else: keep existing (higher severity) marker, discard new lower-severity one
+        else:
+            final_markers.append((start, end, priority))
+
+    if not final_markers:
         return text
 
-    # Build replacement string per format
-    def _replacement(matched_text: str, priority: int) -> str:
-        if matched_text == '无需重启设备和引擎':
-            color = '#4a90d9'   # green — positive info
-        elif priority == 0:
-            color = '#d0021b'   # red — version constraint
+    # Build replacement per format
+    def _fmt(sentence: str, priority: int) -> str:
+        if priority == 0:
+            color = '#d0021b'
+        elif sentence == '无需重启设备和引擎' or sentence.endswith('无需重启设备和引擎。') or sentence == '无需重启设备和引擎。':
+            color = '#4a90d9'  # positive signal: no restart needed
         elif priority == 1:
-            color = '#f5a623'   # orange — restart / business risk
+            color = '#f5a623'
         else:
-            color = '#999999'   # gray — auxiliary
-
+            color = '#999999'
         if fmt == 'html':
-            return f'<strong style="color:{color}">{matched_text}</strong>'
-        else:
-            return f'**{matched_text}**'
+            return f'<strong style="color:{color}">{sentence}</strong>'
+        return f'**{sentence}**'
 
-    # Apply from last to first to preserve position offsets
+    # Apply from last to first to preserve positions
     result = text
-    for start, end, matched_text, priority in sorted(final, key=lambda x: -x[0]):
+    for start, end, priority in sorted(final_markers, key=lambda x: -x[0]):
         segment = result[start:end]
         if not segment.startswith(('<strong', '**')):
-            result = result[:start] + _replacement(matched_text, priority) + result[end:]
+            result = result[:start] + _fmt(segment, priority) + result[end:]
 
     return result
 

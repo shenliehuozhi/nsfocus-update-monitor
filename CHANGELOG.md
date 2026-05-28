@@ -2,7 +2,13 @@
 
 ## [Unreleased]
 
+### 修复
+- 升级包关键词高亮：重叠时以程度低的颜色为准（P1绿覆盖P0红）；P0关键词在否定语境内（"无需重启设备和引擎"）时跳过；正向信号"无需重启设备和引擎"使用绿色
+
 ### 新增
+- 升级包描述关键词高亮函数 `_highlight_upgrade_keywords(text, fmt)`，支持 markdown 和 html 两种格式
+- 否定语境识别：跳过"不会造成会话中断"等否定表达
+- 整句高亮方案：关键词扩展到整句边界
 - `_highlight_upgrade_keywords(text, fmt)` 升级包描述关键词高亮函数
   - markdown 格式：`**keyword**`（企业微信/钉钉/飞书机器人）
   - html 格式：`<strong style="color:...">keyword</strong>`（邮件）
