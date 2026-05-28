@@ -387,16 +387,21 @@ def resend_targeted(sid: int):
 
     result = notifier.send(message, channel['config'])
 
-    from src.models.subscription import log_delivery
-    log_delivery(
-        snapshot_id=sid,
-        channel_id=channel_id,
-        channel_type=channel['type'],
-        channel_name=channel.get('name', channel['type']),
-        customer_id=customer_id,
-        status='sent' if result.success else 'failed',
-        error=result.error_message,
-    )
+    # 写入投递日志，FK 失败（如 customer_id 不存在）不影响返回成功
+    try:
+        from src.models.subscription import log_delivery
+        log_delivery(
+            snapshot_id=sid,
+            channel_id=channel_id,
+            channel_type=channel['type'],
+            channel_name=channel.get('name', channel['type']),
+            customer_id=customer_id,
+            status='sent' if result.success else 'failed',
+            error=result.error_message,
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger('monitor.subscription').warning(f'log_delivery failed (不影响推送): {e}')
 
     return jsonify({
         'code': 0 if result.success else 50001,
