@@ -29,6 +29,9 @@ _HL_P0_RULES = [
     re.compile(r'不支持(?:海光|HD|NX|X86|ARM|飞腾|鲲鹏)[^\n，。；]{0,20}型号[^\n，。；]{0,20}'),
     re.compile(r'仅支持(?:NX|HD)[^\n，。；]{0,30}及以上版本'),
     re.compile(r'需配合(?:[^\n，。；]+?补丁包|[^\n，。；]+?)使用'),
+    re.compile(r'重启设备'),
+    re.compile(r'重启引擎'),
+    re.compile(r'引擎重启'),
 ]
 
 _HL_P1_BOLD_RULES = [
@@ -42,9 +45,7 @@ _HL_P1_BOLD_RULES = [
     re.compile(r'网络中断'),
     re.compile(r'会话中断'),
     re.compile(r'流量中断'),
-    re.compile(r'重启设备'),
-    re.compile(r'重启引擎'),
-    re.compile(r'引擎重启'),
+    re.compile(r'检查[^\n，。；]{0,30}'),
 ]
 
 _HL_P2_RULES = [
@@ -89,12 +90,23 @@ def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
         for m in pattern.finditer(text):
             markers.append((m.start(), m.end(), m.group(), 2))
 
-    # Deduplicate overlapping ranges — keep the highest priority one
+    # Sort: length descending (longer semantic unit first), then priority ascending.
+    # Iterate: if current marker is strictly contained within an existing
+    #          final marker, skip (longer semantic unit wins).
+    #          Otherwise if it overlaps any existing marker, skip the new one.
+    # This ensures longer semantic units supersede their contained fragments.
+    sorted_markers = sorted(markers, key=lambda x: (-(x[1] - x[0]), x[3]))
     final = []
-    for start, end, matched_text, priority in markers:
-        overlapped = any(s < end and e > start for s, e, _, _ in final)
-        if not overlapped:
-            final.append((start, end, matched_text, priority))
+    for start, end, matched_text, priority in sorted_markers:
+        # Strict containment check: if fully inside an existing range, skip
+        strictly_contained = any(s <= start and end <= e and (s < start or end < e)
+                                 for s, e, _, _ in final)
+        if strictly_contained:
+            continue
+        # General overlap: skip the new one
+        if any(start < e and end > s for s, e, _, _ in final):
+            continue
+        final.append((start, end, matched_text, priority))
 
     if not final:
         return text
