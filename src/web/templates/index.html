@@ -52,6 +52,13 @@ td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 .cfg-flag{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:8px}
 .cfg-toggle{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;white-space:nowrap}
 .cfg-toggle input{width:15px;height:15px;cursor:pointer}
+/* Toggle Switch */
+.toggle-switch{position:relative;display:inline-block;width:42px;height:22px;flex-shrink:0}
+.toggle-switch input{opacity:0;width:0;height:0}
+.toggle-slider{position:absolute;cursor:pointer;inset:0;border-radius:22px;background:#d1d5db;transition:.3s}
+.toggle-slider::before{position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;border-radius:50%;background:#fff;transition:.3s;box-shadow:0 1px 3px rgba(0,0,0,.2)}
+.toggle-switch input:checked+.toggle-slider{background:var(--primary)}
+.toggle-switch input:checked+.toggle-slider::before{transform:translateX(20px)}
 .cfg-flag-desc{font-size:11px;color:var(--muted);flex:1}
 .cfg-hint{font-size:10.5px;color:var(--muted);margin:3px 0 0 0;line-height:1.4}
 .cfg-unit{font-weight:400;color:var(--muted);font-size:11px}
@@ -3008,8 +3015,7 @@ async function settings(){
       <div class="cfg-section-hd">⏰ 高级选项</div>
       <div class="cfg-row">
         <div class="form-group"><label>主动心跳</label>
-          <input type="checkbox" id="cfg-heartbeat-enabled" ${cfg.heartbeat_enabled==='1'?'checked':''}
-           onchange="document.getElementById('heartbeat-interval-row').style.display=this.checked?'':'none'">
+          <label class="toggle-switch"><input type="checkbox" id="cfg-heartbeat-enabled" ${cfg.heartbeat_enabled==='1'?'checked':''} onchange="document.getElementById('heartbeat-interval-row').style.display=this.checked?'':'none'"><span class="toggle-slider"></span></label>
           <p class="cfg-hint">开启后定时发送心跳请求维持Session活跃</p>
         </div>
       </div>
