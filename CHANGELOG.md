@@ -2,80 +2,73 @@
 
 ## [Unreleased]
 
-### 修复
-- fix(email): 超限提示增加MD5校验建议 + 元数据字体统一
-
-### 特性
-- 升级包关键词高亮：重叠时以程度低的颜色为准（P1绿覆盖P0红）；P0关键词在否定语境内（"无需重启设备和引擎"）时跳过；正向信号"无需重启设备和引擎"使用绿色
+## [0.1.0] - 2026-05-29
 
 ### 新增
-- 升级包描述关键词高亮函数 `_highlight_upgrade_keywords(text, fmt)`，支持 markdown 和 html 两种格式
-- 否定语境识别：跳过"不会造成会话中断"等否定表达
-- 整句高亮方案：关键词扩展到整句边界
-- `_highlight_upgrade_keywords(text, fmt)` 升级包描述关键词高亮函数
-  - markdown 格式：`**keyword**`（企业微信/钉钉/飞书机器人）
-  - html 格式：`<strong style="color:...">keyword</strong>`（邮件）
-  - 🔴 P0红：版本约束关键词（前置版本/需配合补丁包/型号不支持等）
-  - 🟠 P1橙：重启/业务中断风险关键词（重启设备/会话中断/请在业务空闲时升级等）
-  - 🟢 P1绿：「无需重启设备和引擎」正面提示
-  - ⏱ P2灰：辅助信息（耗时约X~Y分钟/正在初始化）
-- 描述高亮应用于所有推送渠道（机器人 markdown / 邮件 html）
-- 关键词分析报告 `references/upgrade-package-keyword-analysis.md`
-
-### 优化
-- P0 修复：失败数为0时显示绿色（不再误报红色）
-- P1 新增：Dashboard底部「📋 最近推送」Feed（最近8条，填补下方空白）
-- P2 优化：三行采集状态条合并为一行 + 手动采集按钮提升至KPI区域右侧
-- 移除手动全量采集按钮：始终为增量采集，全量采集由自动调度负责（撤回检测依赖自动全量）
-
----
-
-## [v2.2] - 2026-05-27
-
-### 优化
-- 采集阶段耗时透明化（phase耗时百分比）
-
----
-
-## [v2.1] - 2026-05-20
+- **升级包描述关键词高亮**：支持 markdown 和 html 两种格式
+  - 🔴 P0红：版本前置约束（"仅支持V5.6R11F08及以上"、"依赖插件包"等）
+  - 🟠 P1橙：重启设备/引擎、影响功能（「重启引擎生效」、「会话中断」等）
+  - 🟢 P2绿：正面安全信号（「不影响当前配置」、「不会造成会话中断」等）
+  - 否定语境跳过（「不会造成会话中断」等否定表达不触发P0红）
+  - 长语义单元优先匹配（避免子串碎片高亮）
+- **邮件超限附件提示**：超过10MB的附件增加MD5校验建议区块，含 Linux/macOS 和 Windows 双平台命令
+- **邮件下载地址按钮**：HTML邮件正文底部增加蓝色下载按钮
+- **运维健康视图**：`/api/system/health` 展示服务健康状态、最后采集时间、推送今日统计
+- **手动采集二次确认**：手动采集前增加确认弹窗
+- **CHANGELOG 文档**：新增采集异常诊断三步法与快速恢复指南
+- **部署运维文档**：补充采集异常应急处置 SOP
 
 ### 修复
-- DB写锁竞争优化
+- fix(email): SMTP发送改为后台线程执行，避免连接阻塞导致API超时
+- fix(email): 超限提示嵌入HTML正文，避免QQ邮箱无法显示附件说明
+- fix(email): 超限提示MD5校验区块底色改为黄色与上方警告一致
+- fix(email): MD5校验建议改为红色强调 + 增加Windows certutil命令
+- fix(api): `resend-targeted` 重推接口FK约束失败时捕获异常，不阻断推送成功返回
+- fix(frontend): 推送历史时间使用 `fmtTZ()` 转换为 CST 时区
+- fix(frontend): 推送弹窗手动邮箱模式输入框加 padding/圆角/聚焦高亮
+- fix(highlight): 升级包高亮重叠时低程度颜色优先；P0关键词在否定语境内跳过
+- fix(highlight): 升级包高亮重叠去重：长语义单元优先于子串碎片
+- fix(notifiers): 展开详情收起后再展开字段变-的问题
+- fix(collect): 手动采集中途重按提示「正在采集中请等待」而非无响应
+- fix(dashboard): 失败数0显示灰色 + 运维健康/最近推送双栏等高对齐
+- fix(dashboard): P0修复失败数红色误报 + P1最近推送Feed + P2状态条合并
+- fix(dashboard): '最近推送' → '最近更新' 名称修正
+- fix(dashboard): 删除最近更新卡片中的心跳信息
+- fix(health): 修复 push_today 在 push_success_rate 前引用导致 500 错误
+- fix(运维健康): 修复健康状态图标判断逻辑
+- fix(db): 消除采集过程中 database is locked 错误（WAL + busy_timeout）
+- fix(log_scanner): DB-independent alert delivery via HTTP callback
+- fix(collector): strip leading '>' from section title
+- fix(system_routes): discard discover result 清除内存状态
+- fix(syntax): remove stray backtick before div.card
+- fix(scheduler): Flask threaded=True 解决请求超时 + scheduler._check_concurrent_stale 非dict类型守卫
+- fix(scheduler): 回退 last_run/last_mode 内存写入逻辑（现从DB读取 MAX(last_collected_at)）
+- fix(health): 采集间隔/心跳间隔可配置化
+
+### 改进
+- ui: remove duplicate static collection status bar at dashboard top
+- ui: 运维健康标题区加浅蓝底色+底边分隔线，增强标题与内容区块感
+- ui: 手动采集/重启按钮移至运维健康卡片标题行右侧
+- ui: 统一运维健康按钮尺寸 + 重启服务改为红色danger按钮
+- ui: move action buttons into 运维健康 card, remove duplicate row above
+- ui: dashboard button layout - info-bar above buttons, two-row stack
+- ui: move /restart endpoint to system_routes（was in api_routes where bp not defined）
+- enhance(scheduler): 采集完成后持久化 last_run/mode 到 DB
+- enhance(health): 采集和推送为核心的信息展示
+- api: `/settings/scheduler` 返回 last_run（MAX last_collected_at from content_sources）
+- dashboard: add 重启服务 button with SIGTERM graceful shutdown
+- refactor: 移除手动全量采集，始终为增量采集（Quick扫描）
+
+### 重构
+- refactor(collect): 移除手动全量采集，始终为增量采集
+- refactor(dashboard): P0修复失败数红色误报 + P1最近推送Feed + P2状态条合并
+
+### 废弃
+- disable(full_scan): 暂时禁用全量扫描自动触发
+- remove(full_scan): 删除全量扫描相关的所有UI和配置项
 
 ---
 
-## [v2.0] - 2026-05-15
+## [0.0.x] - 2026-05-10 ~ 2026-05-25
 
-### 性能
-- 采集性能优化：1606 req/轮降至合理水平
-
----
-
-## [v1.7] - 2026-05
-
-### 稳定性
-- database locked 问题修复
-- 系统事件通知
-
----
-
-## [v1.6] - 2026-05
-
-### 代码质量
-- 裸except修复
-- 订阅条件扁平化
-
----
-
-## [v1.5] - 2026-05
-
-### 安全
-- 登录限流
-- CORS配置
-- 密钥管理
-
----
-
-## [v1.0] - 初期
-
-- 最小可用系统上线
+Initial development phase. See git log for details.
