@@ -1,8 +1,128 @@
 """Base notifier + notification message format."""
 
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Optional
+
+
+# ── Keyword highlight rules for upgrade package descriptions ──────────────────
+# Priority: P0 > P1 > P2
+# Styles:   'bold' (markdown) or 'html' (email with color)
+#
+# For markdown (WeCom/DingTalk/Feishu):   **text**
+# For HTML  (email):                      <strong style="color:...">text</strong>
+#
+# Color map:
+#   P0 (version constraint failure = cannot upgrade):  red  #d0021b
+#   P1 (restart/business interruption risk):            orange #f5a623
+#   P1 (no restart needed — positive info):            green  #4a90d9
+#   P2 (auxiliary info):                                 gray   #999999
+
+_HL_P0_RULES = [
+    re.compile(r'【前置版本】[^\n]*'),
+    re.compile(r'请在[^\n，。！？；]+及以上版本进行升级'),
+    re.compile(r'请在[^\n，。！？；]+版本以上进行升级'),
+    re.compile(r'需在[^\n，。！？；]+引擎版本上升级使用'),
+    re.compile(r'确认当前系统版本[^\n，。！？；]+及以上'),
+    re.compile(r'升级前请确保[^\n，。！？；]+版本'),
+    re.compile(r'不支持(?:海光|HD|NX|X86|ARM|飞腾|鲲鹏)[^\n，。；]{0,20}型号[^\n，。；]{0,20}'),
+    re.compile(r'仅支持(?:NX|HD)[^\n，。；]{0,30}及以上版本'),
+    re.compile(r'需配合[^\n]+补丁包使用'),
+]
+
+_HL_P1_BOLD_RULES = [
+    re.compile(r'无需重启设备和引擎'),
+    re.compile(r'请不要强制硬重启设备'),
+    re.compile(r'升级完成后，重启设备'),
+    re.compile(r'升级后需重启设备[^\n。]+'),
+    re.compile(r'本升级包[^\n]+?重启[^\n。]+'),
+    re.compile(r'请在业务空闲时升级'),
+    re.compile(r'WEB短时无法访问[^\n]*'),
+    re.compile(r'网络中断'),
+    re.compile(r'会话中断'),
+    re.compile(r'流量中断'),
+    re.compile(r'重启设备'),
+    re.compile(r'重启引擎'),
+    re.compile(r'引擎重启'),
+]
+
+_HL_P2_RULES = [
+    re.compile(r'耗时约[^\n，。；]+'),
+    re.compile(r'正在初始化[^\n]*'),
+]
+
+
+def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
+    """Highlight key phrases in upgrade package description text.
+
+    Args:
+        text: Raw description text.
+        fmt:  'markdown' → **bold** text (WeCom/DingTalk/Feishu)
+              'html'     → <strong style="color:...">text</strong> (email)
+
+    Returns:
+        Text with highlighted keyword spans. Original text is unchanged
+        when no keywords are found.
+
+    Highlight categories:
+        P0 (🔴 red):  Version constraints — if not satisfied, upgrade will fail
+        P1 (🟠 orange): Restart / business interruption warnings
+        P1 (🟢 green): "无需重启设备和引擎" (positive, no action needed)
+        P2 (⏱ gray):   Auxiliary info (duration, initialization status)
+    """
+    if not text:
+        return text
+
+    # Collect all matches with priority
+    markers = []
+
+    for pattern in _HL_P0_RULES:
+        for m in pattern.finditer(text):
+            markers.append((m.start(), m.end(), m.group(), 0))
+
+    for pattern in _HL_P1_BOLD_RULES:
+        for m in pattern.finditer(text):
+            markers.append((m.start(), m.end(), m.group(), 1))
+
+    for pattern in _HL_P2_RULES:
+        for m in pattern.finditer(text):
+            markers.append((m.start(), m.end(), m.group(), 2))
+
+    # Deduplicate overlapping ranges — keep the highest priority one
+    final = []
+    for start, end, matched_text, priority in markers:
+        overlapped = any(s < end and e > start for s, e, _, _ in final)
+        if not overlapped:
+            final.append((start, end, matched_text, priority))
+
+    if not final:
+        return text
+
+    # Build replacement string per format
+    def _replacement(matched_text: str, priority: int) -> str:
+        if matched_text == '无需重启设备和引擎':
+            color = '#4a90d9'   # green — positive info
+        elif priority == 0:
+            color = '#d0021b'   # red — version constraint
+        elif priority == 1:
+            color = '#f5a623'   # orange — restart / business risk
+        else:
+            color = '#999999'   # gray — auxiliary
+
+        if fmt == 'html':
+            return f'<strong style="color:{color}">{matched_text}</strong>'
+        else:
+            return f'**{matched_text}**'
+
+    # Apply from last to first to preserve position offsets
+    result = text
+    for start, end, matched_text, priority in sorted(final, key=lambda x: -x[0]):
+        segment = result[start:end]
+        if not segment.startswith(('<strong', '**')):
+            result = result[:start] + _replacement(matched_text, priority) + result[end:]
+
+    return result
 
 
 # Package type Chinese name mapping
@@ -250,7 +370,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         lines.append('')
         lines.append('---')
         lines.append('')
-        lines.append(msg.description_full)
+        lines.append(_highlight_upgrade_keywords(msg.description_full, 'markdown'))
 
     return '\n'.join(lines)
 
@@ -313,10 +433,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if msg.restart_required:
         extra_items.append('🔄 升级后需重启')
     if msg.description_full:
-        extra_items.append('')
-        extra_items.append('---')
-        extra_items.append('')
-        extra_items.append(msg.description_full)
+        extra_items.extend(['', '---', '', _highlight_upgrade_keywords(msg.description_full, 'markdown')])
     part1 = '\n'.join(header_lines + extra_items)
     parts.append(part1)
 
@@ -368,7 +485,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     # Description: summary text first, then parsed rule details
     desc_html = ''
     if msg.description_full:
-        desc_text = msg.description_full.replace('\n', '<br>')
+        desc_text = _highlight_upgrade_keywords(msg.description_full, 'html').replace('\n', '<br>')
         desc_html += f'''
         <tr><td colspan="2" style="padding:8px 0;border-top:1px solid #e0e0e0;word-break:break-word">
             <strong>📋 更新说明</strong>

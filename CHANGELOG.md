@@ -3,8 +3,15 @@
 ## [Unreleased]
 
 ### 新增
-- `GET /api/system/health` 一站式运维健康接口：Session状态 / 采集状态 / 推送队列积压 / 三层限流计数 / 最近2小时异常日志
-- Dashboard 仪表盘新增「🩺 运维健康」卡片，聚合上述信息一目了然
+- `_highlight_upgrade_keywords(text, fmt)` 升级包描述关键词高亮函数
+  - markdown 格式：`**keyword**`（企业微信/钉钉/飞书机器人）
+  - html 格式：`<strong style="color:...">keyword</strong>`（邮件）
+  - 🔴 P0红：版本约束关键词（前置版本/需配合补丁包/型号不支持等）
+  - 🟠 P1橙：重启/业务中断风险关键词（重启设备/会话中断/请在业务空闲时升级等）
+  - 🟢 P1绿：「无需重启设备和引擎」正面提示
+  - ⏱ P2灰：辅助信息（耗时约X~Y分钟/正在初始化）
+- 描述高亮应用于所有推送渠道（机器人 markdown / 邮件 html）
+- 关键词分析报告 `references/upgrade-package-keyword-analysis.md`
 
 ### 优化
 - P0 修复：失败数为0时显示绿色（不再误报红色）
