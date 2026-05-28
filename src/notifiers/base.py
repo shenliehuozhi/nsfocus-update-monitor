@@ -464,10 +464,10 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     {rollback_banner}
     <table style="width:100%;font-size:14px;color:#333">
         <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace">{msg.file_name or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件</td><td>{msg.file_name or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace">{msg.md5_hash or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5</td><td>{msg.md5_hash or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
