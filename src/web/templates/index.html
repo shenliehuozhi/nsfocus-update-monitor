@@ -439,9 +439,9 @@ async function dashboard(range){
           </div>
         </div>`:''}
       </div>
-      <div style="padding:10px 16px 12px;display:flex;gap:8px;border-top:1px solid #f1f3f5;margin-top:auto">
-        <button class="btn btn-primary" onclick="triggerCollect()" style="flex:1;font-size:12px">⏎ 手动采集</button>
-        <button class="btn" onclick="confirmAct('确定要重启服务吗？', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启')" style="flex:1;font-size:12px;background:#fef3c7;border:1px solid #f59e0b;color:#92400e">🔄 重启服务</button>
+      <div style="padding:10px 16px 12px;display:flex;gap:8px;border-top:1px solid #f1f3f5;margin-top:auto;align-items:center">
+        <button class="btn btn-primary" onclick="triggerCollect()" style="height:36px;border-radius:6px;padding:0 16px;font-size:12px">⏎ 手动采集</button>
+        <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:36px;border-radius:6px;padding:0 16px;font-size:12px">🔄 重启服务</button>
       </div>
     </div>
     <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
