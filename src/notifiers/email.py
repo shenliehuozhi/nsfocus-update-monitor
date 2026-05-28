@@ -88,9 +88,10 @@ class EmailNotifier(BaseNotifier):
             note_html = (
                 f'<p style="color:#d0021b;font-size:14px;margin:16px 0 8px 0;padding:10px;background:#fff3cd;border-radius:4px;border-left:4px solid #d0021b">'
                 f'⚠️ 文件大小({message.size_display})超过附件上限，请<a href="{message.download_url}" style="color:#d0021b;font-weight:bold">点击此处下载</a>获取升级包。</p>'
-                f'<div style="margin-top:12px;padding:12px;background:#f0f7ff;border-radius:4px;border-left:4px solid #4a90d9;font-size:13px;color:#333">'
-                f'<strong>💡 MD5 校验建议</strong><br/>'
-                f'下载完成后请校验 MD5：<code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">md5sum {message.file_name}</code><br/>'
+                f'<div style="margin-top:12px;padding:12px;background:#fff5f5;border-radius:4px;border-left:4px solid #d0021b;font-size:13px;color:#333">'
+                f'<strong style="color:#d0021b">强烈建议下载完成后校验MD5是否一致</strong><br/><br/>'
+                f'<strong>Linux/macOS：</strong><code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">md5sum {message.file_name}</code><br/><br/>'
+                f'<strong>Windows：</strong><code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">certutil -hashfile {message.file_name} MD5</code><br/><br/>'
                 f'预期值：<code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">{message.md5_hash}</code>'
                 f'</div>'
             )
