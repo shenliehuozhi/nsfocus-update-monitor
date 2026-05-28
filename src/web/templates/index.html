@@ -3058,12 +3058,12 @@ async function settings(){
         </div>
         <div class="cfg-row">
           <div class="form-group"><label>事件类型</label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
-              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_success" ${(cfg.event_types||[]).includes('push_success')?'checked':''}> 推送成功</label>
-              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_failed" ${(cfg.event_types||[]).includes('push_failed')?'checked':''}> 推送失败</label>
-              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
-              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
-              <label style="display:flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
+            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;white-space:nowrap">
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_success" ${(cfg.event_types||[]).includes('push_success')?'checked':''}> 推送成功</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_failed" ${(cfg.event_types||[]).includes('push_failed')?'checked':''}> 推送失败</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
             </div>
             <p class="cfg-hint">空=全部启用</p>
           </div>
