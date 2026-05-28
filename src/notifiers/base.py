@@ -31,6 +31,7 @@ _HL_P0_RULES = [
     re.compile(r'需配合(?:[^\n，。；]+?补丁包|[^\n，。；]+?)使用'),
     re.compile(r'重启设备'),
     re.compile(r'重启引擎'),
+    re.compile(r'引擎(?:自动)?重启'),
     re.compile(r'引擎重启'),
 ]
 
@@ -52,6 +53,34 @@ _HL_P2_RULES = [
     re.compile(r'耗时约[^\n，。；]+'),
     re.compile(r'正在初始化[^\n]*'),
 ]
+
+# Negation patterns: (negation_prefix, max_chars_before, keyword) —
+# keyword is skipped only when the prefix (e.g. "不会造成") immediately precedes it.
+_NEGATION_RULES = [
+    (r'不会造成', 20, '会话中断'),
+    (r'不会导致', 20, '会话中断'),
+    (r'不会引起', 20, '会话中断'),
+    (r'不会发生', 20, '会话中断'),
+    (r'不会产生', 20, '会话中断'),
+    (r'无需',     0, '重启设备和引擎'),
+]
+
+
+def _negation_spans(text: str) -> list[tuple[int, int]]:
+    """Return list of (start, end) spans that should NOT be highlighted.
+    Only matches where the negation prefix directly precedes the keyword count."""
+    spans = []
+    for neg_prefix, max_before, kw in _NEGATION_RULES:
+        for m in re.finditer(neg_prefix + (r'[^\n，。；]{0,' + str(max_before) + r'}' if max_before > 0 else r''), text):
+            end = m.end()
+            spans.append((m.start(), end))
+    return spans
+
+
+def _is_in_negation(text: str, start: int, end: int) -> bool:
+    """Return True if the range [start, end) is inside or overlaps a negation context."""
+    neg_spans = _negation_spans(text)
+    return any(s <= start and end <= e for s, e in neg_spans)
 
 
 def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
@@ -84,6 +113,9 @@ def _highlight_upgrade_keywords(text: str, fmt: str = 'markdown') -> str:
 
     for pattern in _HL_P1_BOLD_RULES:
         for m in pattern.finditer(text):
+            # Skip keywords that are inside a negation context (e.g. "不会造成会话中断")
+            if _is_in_negation(text, m.start(), m.end()):
+                continue
             markers.append((m.start(), m.end(), m.group(), 1))
 
     for pattern in _HL_P2_RULES:
