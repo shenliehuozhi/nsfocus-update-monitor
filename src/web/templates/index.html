@@ -2965,12 +2965,15 @@ async function settings(){
 
     <div class="cfg-section">
       <div class="cfg-section-hd">📡 采集设置</div>
-      <div class="cfg-row">
-        <div class="cfg-toggle">
-          <input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''} onchange="handleSchedulerToggle(this)">
-          <span>启用调度器</span>
+      <div class="cfg-row" style="grid-template-columns:1fr 1fr">
+        <div class="cfg-flag" style="background:#e8f5e9;border:1px solid #81c784">
+          <label class="cfg-toggle"><input type="checkbox" id="cfg-scheduler-enabled" ${cfg.scheduler_enabled!=='0'?'checked':''} onchange="handleSchedulerToggle(this)"><span>📡 启用调度器</span></label>
+          <span class="cfg-flag-desc">关闭后采集和心跳任务暂停，可用于维护调试</span>
         </div>
-        <p class="cfg-hint">关闭后采集和心跳任务暂停，可用于维护调试</p>
+        <div class="cfg-flag" style="background:#e3f2fd;border:1px solid #64b5f6">
+          <label class="cfg-toggle"><input type="checkbox" id="cfg-event-enabled" ${cfg.event_enabled?'checked':''} onchange="document.getElementById('event-config-area').style.display=this.checked?'block':'none'"><span>🔔 启用系统事件通知</span></label>
+          <span class="cfg-flag-desc">系统异常时发送告警通知，与订阅规则推送独立</span>
+        </div>
       </div>
       <div class="cfg-row">
         <div class="form-group"><label>采集间隔 <span class="cfg-unit">(小时)</span></label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"><p class="cfg-hint">快速采集周期，建议1-4小时；过短易被封IP</p></div>
@@ -3037,16 +3040,7 @@ async function settings(){
       </div>
     </div>
 
-    <div class="cfg-section">
-      <div class="cfg-section-hd">🔔 系统事件通知</div>
-      <p class="cfg-section-sub">系统异常时发送告警通知，与订阅规则推送独立</p>
-      <div class="cfg-row">
-        <div class="cfg-toggle">
-          <input id="cfg-event-enabled" type="checkbox" ${cfg.event_enabled?'checked':''} onchange="document.getElementById('event-config-area').style.display=this.checked?'block':'none'">
-          <span>启用系统事件通知</span>
-        </div>
-      </div>
-      <div id="event-config-area" style="display:${cfg.event_enabled?'block':'none'}">
+    <div id="event-config-area" style="display:${cfg.event_enabled?'block':'none'}">
         <div class="cfg-row">
           <div class="form-group"><label>通知渠道</label>
             <select id="cfg-event-channel">
