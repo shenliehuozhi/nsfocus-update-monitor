@@ -404,7 +404,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         desc_html += f'''
         <tr><td colspan="2" style="padding:8px 0;border-top:1px solid #e0e0e0;word-break:break-word">
             <strong>📋 更新说明</strong>
-            <div style="color:#555;margin-top:4px;line-height:1.7">{desc_text}</div>
+            <div style="color:#555;margin-top:4px;line-height:1.8;font-size:15px">{desc_text}</div>
         </td></tr>'''
 
     # Parsed rule details (added/modified/deleted)
@@ -436,13 +436,12 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     if msg.restart_required:
         dep_html += '<tr><td style="padding:4px 0"><strong>🔄 升级后需重启</strong></td></tr>'
 
-    # Download button (matching markdown's download link)
+    # Download button
     dl_btn = ''
-    if msg.download_url:
-        dl_btn = f'''
-        <tr><td style="padding:16px 0 0 0">
-</td></tr>
-        '''
+    if msg.download_url and msg.file_name:
+        dl_btn = f'''<tr><td colspan="2" style="padding:16px 0 0 0;text-align:center">
+            <a href="{msg.download_url}" style="display:inline-block;background:{color};color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold">下载升级包</a>
+        </td></tr>'''
 
     # 类型 row — chain link or fallback (same logic as markdown)
     if msg.chain:
@@ -463,12 +462,12 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
 </td></tr>
 <tr><td style="padding:16px;border:1px solid #e0e0e0">
     {rollback_banner}
-    <table style="width:100%">
+    <table style="width:100%;font-size:14px;color:#333">
         <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace;font-size:12px">{msg.file_name}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件</td><td style="font-family:monospace">{msg.file_name or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace;font-size:12px">{msg.md5_hash}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5</td><td style="font-family:monospace">{msg.md5_hash or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
