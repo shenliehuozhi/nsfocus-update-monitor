@@ -103,46 +103,42 @@ class EmailNotifier(BaseNotifier):
             )
 
         # Build email
-        msg = MIMEMultipart('mixed')
-        msg['Subject'] = subject
-        msg['From'] = formataddr((from_name, smtp_user))
-        msg['To'] = ', '.join(to_list)
-        msg.attach(MIMEText(html_body, 'html', 'utf-8'))
+        email_msg = MIMEMultipart('mixed')
+        email_msg['Subject'] = subject
+        email_msg['From'] = formataddr((from_name, smtp_user))
+        email_msg['To'] = ', '.join(to_list)
+        email_msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
-        try:
-            if smtp_port == 465:
-                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
-            else:
-                server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
-                server.starttls()
+        # Run SMTP send in background thread to avoid blocking the request
+        import threading
+        result_container = {}
 
-            server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_user, to_list, msg.as_string())
-            server.quit()
+        def _send():
+            try:
+                if smtp_port == 465:
+                    server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+                else:
+                    server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+                    server.starttls()
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_user, to_list, email_msg.as_string())
+                server.quit()
+                result_container['success'] = True
+                logger.info(f'Email sent to {len(to_list)} recipients via {smtp_host}:{smtp_port}')
+                if ch_id or cust_id:
+                    limiter_record(ch_id, cust_id)
+            except Exception as e:
+                result_container['success'] = False
+                result_container['error'] = str(e)
+                logger.error(f'Email send failed: {e}')
 
-            logger.info(f'Email sent to {len(to_list)} recipients via {smtp_host}:{smtp_port}')
-            if ch_id or cust_id:
-                limiter_record(ch_id, cust_id)
-            return DeliveryResult(True, 'email', config.get('name', ''))
-        except smtplib.SMTPAuthenticationError as e:
-            err = f'SMTP认证失败，请检查邮箱地址和授权密码（非登录密码）'
-            logger.error(f'{err}: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), err)
-        except smtplib.SMTPConnectError as e:
-            err = f'无法连接 {smtp_host}:{smtp_port}，请检查SMTP服务器地址和端口'
-            logger.error(f'{err}: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), err)
-        except smtplib.SMTPServerDisconnected as e:
-            err = f'SMTP服务器断开连接，非SSL端口(非465)需服务器支持STARTTLS'
-            logger.error(f'{err}: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), err)
-        except smtplib.SMTPException as e:
-            err = f'SMTP错误: {e}'
-            logger.error(f'{err}')
-            return DeliveryResult(False, 'email', config.get('name', ''), str(e))
-        except Exception as e:
-            logger.error(f'Email send failed: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), str(e))
+        t = threading.Thread(target=_send, daemon=True)
+        t.start()
+        # Record rate limit in main thread (before async send)
+        if ch_id or cust_id:
+            limiter_record(ch_id, cust_id)
+        # Return immediately — actual result is logged, delivery_log captures the call
+        return DeliveryResult(True, 'email', config.get('name', ''))
 
     def _attach_file(self, msg: MIMEMultipart, message: NotificationMessage, max_size: int) -> bool:
         """Download the package file and attach to email. Returns True on success."""
