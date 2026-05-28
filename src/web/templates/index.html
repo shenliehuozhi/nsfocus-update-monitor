@@ -389,7 +389,6 @@ async function dashboard(range){
         <span>📊 本周: ${d.push_week?.total||0}次 <span style="color:var(--success)">${d.push_week?.success||0}✓</span> ${d.push_week?.failed>0?'<span style="color:var(--danger)">'+d.push_week.failed+'✗</span>':('<span style="color:var(--muted)">0✗</span>')}</span>
       </div>
     </div>
-    ${sch.is_running?`<div class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe">🔄 采集中 (${mode_label[sch.current_mode]||sch.current_mode})...</div>`:''}
     <div id="dashRunningBar" class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe;display:none">🔄 采集中...</div>
 
     <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
