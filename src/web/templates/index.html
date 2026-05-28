@@ -1795,8 +1795,8 @@ async function showPushModal(sid,product,version,pkgType){
             <label><input type="radio" name="pm" value="manual_email" onchange="switchPushMode('manual_email')"><span>✉️ 手动填写邮箱</span></label>
           </div>
           <div id="pushTargets" class="push-target"><div class="empty">加载中...</div></div>
-          <div id="pushEmailInput" class="hidden" style="margin-top:8px">
-            <input id="pushEmail" type="text" placeholder="输入邮箱，多个用逗号分隔&#10;例如: a@163.com,b@qq.com" style="width:100%;box-sizing:border-box" oninput="onPushEmailChange()">
+          <div id="pushEmailInput" class="hidden">
+            <input id="pushEmail" type="text" placeholder="输入邮箱，多个用逗号分隔" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:13px;outline:none" oninput="onPushEmailChange()" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'">
             <div id="pushEmailHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
           </div>
           <div class="flex gap8 mt12"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" onclick="confirmPush()" disabled>确认推送</button><button class="btn btn-sm btn-outline" onclick="closePushModal()">取消</button></div>
@@ -1809,7 +1809,7 @@ function closePushModal(){let m=document.getElementById('pushModal');if(m){if(_b
 async function switchPushMode(mode){_pushMode=mode;_pushTarget=0;_pushEmail='';document.getElementById('pushConfirmBtn').disabled=true;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));let ei=document.getElementById('pushEmailInput');if(ei)ei.classList.toggle('hidden',mode!=='manual_email');if(mode==='manual_email'){loadPushTargets();}else{loadPushTargets();}}
 function onPushEmailChange(){let v=document.getElementById('pushEmail').value.trim();_pushEmail=v;let hint=document.getElementById('pushEmailHint');let btn=document.getElementById('pushConfirmBtn');if(!v){hint.textContent='';btn.disabled=true;return;}let emails=v.split(',').map(e=>e.trim()).filter(e=>e);let re=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;let bad=emails.filter(e=>!re.test(e));if(bad.length){hint.textContent='⚠️ 格式无效: '+bad.join(', ');hint.style.color='var(--danger)';btn.disabled=true;}else{hint.textContent='✅ '+emails.length+' 个邮箱';hint.style.color='var(--success)';btn.disabled=false;}}
 async function loadPushTargets(){
-  let el=document.getElementById('pushTargets');if(_pushMode==='manual_email'){el.innerHTML='<div class="empty" style="color:var(--muted)">请在下方输入邮箱地址</div>';return;}
+  let el=document.getElementById('pushTargets');if(_pushMode==='manual_email'){el.innerHTML='<div style="padding:8px;color:var(--muted);font-size:12px;text-align:center">直接在上方输入框填写邮箱</div>';return;}
   el.innerHTML='<div class="empty">加载中...</div>';
   try{
     let list=[];
