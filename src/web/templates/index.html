@@ -394,7 +394,13 @@ async function dashboard(range){
 
     <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
     <div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
-      <div class="card-hd" style="color:var(--primary)">🩺 运维健康</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="color:var(--primary)">🩺 运维健康</span>
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <button class="btn btn-primary" onclick="triggerCollect()" style="height:32px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
+          <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:32px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
+        </span>
+      </div>
       <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
         ${h.product_health&&h.product_health.length>0?`<div style="min-width:200px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">采集</div>
@@ -438,10 +444,6 @@ async function dashboard(range){
             ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
-      </div>
-      <div style="padding:10px 16px 12px;display:flex;gap:8px;border-top:1px solid #f1f3f5;margin-top:auto;align-items:center">
-        <button class="btn btn-primary" onclick="triggerCollect()" style="height:36px;border-radius:6px;padding:0 16px;font-size:12px">⏎ 手动采集</button>
-        <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:36px;border-radius:6px;padding:0 16px;font-size:12px">🔄 重启服务</button>
       </div>
     </div>
     <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
