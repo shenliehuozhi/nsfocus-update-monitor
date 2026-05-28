@@ -854,7 +854,7 @@ def force_stop_and_save():
     if data.get('collect_interval'):
         from src.core.scheduler import reschedule_collect
         reschedule_collect()
-    if data.get('heartbeat_interval'):
+    if data.get('heartbeat_enabled') == '1' and data.get('heartbeat_interval'):
         from src.core.scheduler import reschedule_heartbeat
         reschedule_heartbeat()
 
@@ -875,9 +875,13 @@ def update_config():
     if 'collect_interval' in data:
         from src.core.scheduler import reschedule_collect
         reschedule_collect()
-    if 'heartbeat_interval' in data:
-        from src.core.scheduler import reschedule_heartbeat
-        reschedule_heartbeat()
+    if 'heartbeat_enabled' in data and 'heartbeat_interval' in data:
+        if data.get('heartbeat_enabled') == '1':
+            from src.core.scheduler import reschedule_heartbeat
+            reschedule_heartbeat()
+        else:
+            from src.core.scheduler import refresh_scheduler_jobs
+            refresh_scheduler_jobs()
     if 'scheduler_enabled' in data:
         from src.core.scheduler import refresh_scheduler_jobs
         refresh_scheduler_jobs()

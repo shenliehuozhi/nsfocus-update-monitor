@@ -968,14 +968,22 @@ def refresh_scheduler_jobs():
             logger.info(f'Collection job added: every {interval_hours}h')
         else:
             _scheduler.reschedule_job('nsfocus_collect', trigger='interval', hours=interval_hours)
-        if not _scheduler.get_job('nsfocus_heartbeat'):
-            _scheduler.add_job(_session_heartbeat, 'interval', minutes=hb_interval,
-                                id='nsfocus_heartbeat', name='Session Heartbeat',
-                                next_run_time=datetime.utcnow())
-            logger.info('[HEARTBEAT] nsfocus_heartbeat job ADDED, interval=%d min', hb_interval)
+        # 心跳任务：仅在 heartbeat_enabled='1' 时启用
+        heartbeat_enabled = _get_setting('heartbeat_enabled', '0') == '1'
+        if heartbeat_enabled:
+            hb_interval = int(_get_setting('heartbeat_interval', '30'))
+            if not _scheduler.get_job('nsfocus_heartbeat'):
+                _scheduler.add_job(_session_heartbeat, 'interval', minutes=hb_interval,
+                                  id='nsfocus_heartbeat', name='Session Heartbeat',
+                                  next_run_time=datetime.utcnow())
+                logger.info('[HEARTBEAT] nsfocus_heartbeat job ADDED, interval=%d min', hb_interval)
+            else:
+                _scheduler.reschedule_job('nsfocus_heartbeat', trigger='interval', minutes=hb_interval)
+                logger.info('[HEARTBEAT] nsfocus_heartbeat job RESCHEDULED, interval=%d min', hb_interval)
         else:
-            _scheduler.reschedule_job('nsfocus_heartbeat', trigger='interval', minutes=hb_interval)
-            logger.info('[HEARTBEAT] nsfocus_heartbeat job RESCHEDULED, interval=%d min', hb_interval)
+            if _scheduler.get_job('nsfocus_heartbeat'):
+                _scheduler.remove_job('nsfocus_heartbeat')
+                logger.info('[HEARTBEAT] nsfocus_heartbeat job REMOVED (heartbeat_enabled=0)')
         if not _scheduler.get_job('nsfocus_digest'):
             _scheduler.add_job(_digest_check, 'interval', hours=6,
                                 id='nsfocus_digest', name='Digest Summary Check',
@@ -1049,14 +1057,8 @@ def reschedule_collect():
 
 
 def reschedule_heartbeat():
-    """Reschedule the session heartbeat job with current interval from DB."""
-    global _scheduler
-    if _scheduler:
-        hb_interval = int(_get_setting('heartbeat_interval', '30'))
-        job = _scheduler.get_job('nsfocus_heartbeat')
-        if job:
-            _scheduler.reschedule_job('nsfocus_heartbeat', trigger='interval', minutes=hb_interval)
-            logger.info(f'Heartbeat rescheduled: every {hb_interval}min')
+    """Reschedule the session heartbeat job. Delegates to refresh_scheduler_jobs for full logic."""
+    refresh_scheduler_jobs()
 
 
 def _smart_collect():

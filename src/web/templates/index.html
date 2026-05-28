@@ -3007,6 +3007,13 @@ async function settings(){
     <div class="cfg-section">
       <div class="cfg-section-hd">⏰ 高级选项</div>
       <div class="cfg-row">
+        <div class="form-group"><label>主动心跳</label>
+          <input type="checkbox" id="cfg-heartbeat-enabled" ${cfg.heartbeat_enabled==='1'?'checked':''}
+           onchange="document.getElementById('heartbeat-interval-row').style.display=this.checked?'':'none'">
+          <p class="cfg-hint">开启后定时发送心跳请求维持Session活跃</p>
+        </div>
+      </div>
+      <div class="cfg-row" id="heartbeat-interval-row" style="display:${cfg.heartbeat_enabled==='1'?'':'none'}">
         <div class="form-group"><label>心跳间隔 <span class="cfg-unit">(分钟)</span></label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p class="cfg-hint">Session 保活间隔，默认30分钟</p></div>
       </div>
     </div>
@@ -4593,7 +4600,7 @@ async function handleSchedulerToggle(cb){
 
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
@@ -4613,7 +4620,7 @@ async function forceStopAndSave(){
 }
 
 async function saveSettings(){
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,snapshot_retention_days:document.getElementById('cfg-retention').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
