@@ -4639,10 +4639,10 @@ async function saveSettings(){
 let _collectPollTimer=null;
 let _collectRunning=false;
 async function triggerCollect(){
-  if(_collectRunning){showCollectProgress();return;}
+  if(_collectRunning){toast('⚠️ 采集正在进行中，请等待完成后再操作','warn');return;}
   try{
     const sR=await api('/settings/scheduler');
-    if(sR.data?.is_running){_collectRunning=true;showCollectProgress();return;}
+    if(sR.data?.is_running){_collectRunning=true;toast('⚠️ 采集正在进行中，请等待完成后再操作','warn');return;}
   }catch(e){}
   confirmAct('确认立即触发一次增量采集？', startCollect, '🔄', '确认采集', false);
 }
