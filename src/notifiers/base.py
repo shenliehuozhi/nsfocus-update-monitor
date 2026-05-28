@@ -28,7 +28,7 @@ _HL_P0_RULES = [
     re.compile(r'升级前请确保[^\n，。！？；]+版本'),
     re.compile(r'不支持(?:海光|HD|NX|X86|ARM|飞腾|鲲鹏)[^\n，。；]{0,20}型号[^\n，。；]{0,20}'),
     re.compile(r'仅支持(?:NX|HD)[^\n，。；]{0,30}及以上版本'),
-    re.compile(r'需配合[^\n]+补丁包使用'),
+    re.compile(r'需配合(?:[^\n，。；]+?补丁包|[^\n，。；]+?)使用'),
 ]
 
 _HL_P1_BOLD_RULES = [
