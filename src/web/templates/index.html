@@ -4441,9 +4441,47 @@ async function confirmDiscoverResult(){
         }
       }catch(e){}
     }
-    pollConfirm();
-    pollTimer=setInterval(pollConfirm,2000);
+    pollConfirm();  // first poll immediately
+    pollTimer=setInterval(pollConfirm, 2000);
     setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);toast('应用超时，请重试','error');if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}}},300000);
+
+    // ── SSE stream reader via fetch + ReadableStream ──
+    // Parses SSE "data: {...}" lines and drives renderConfirmProgress.
+    // Runs in parallel with pollTimer HTTP fallback; both set the same `done`
+    // flag so they cooperate safely.
+    async function pollSSE(){
+      if(done) return;
+      try{
+        const h={'Authorization':'Bearer '+T,'Accept':'text/event-stream'};
+        const r=await fetch(API+'/system/products/discover/confirm/status',{headers:h,cache:'no-store'});
+        if(!r.ok) return;  // fallback to pollTimer continues
+        const reader=r.body.getReader();
+        const dec=new TextDecoder();
+        let buf='';
+        while(true){
+          const {value, done: eos}=await reader.read();
+          if(eos) break;
+          buf+=dec.decode(value,{stream:true});
+          const lines=buf.split('\n');
+          buf=lines.pop()||'';
+          for(const line of lines){
+            const raw=line.match(/^data: (.+/);
+            if(raw){
+              try{
+                const s=JSON.parse(raw[1]);
+                done=renderConfirmProgress(s);
+                if(done){
+                  clearInterval(pollTimer);
+                  clearInterval(pollTimer2);
+                  return;
+                }
+              }catch(e){}
+            }
+          }
+        }
+      }catch(e){}
+    }
+    const pollTimer2=setTimeout(pollSSE, 500);
   }else{
     toast('启动失败: '+r.message,'error');
     if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
