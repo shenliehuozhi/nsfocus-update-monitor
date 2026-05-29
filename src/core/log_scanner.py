@@ -48,6 +48,10 @@ ERROR_PATTERNS = {
         re.compile(r'登录失败', re.IGNORECASE),
         re.compile(r'authentication failed', re.IGNORECASE),
     ],
+    '登录失败': [
+        # audit_log: login_failed entries written by auth routes
+        re.compile(r'login_failed', re.IGNORECASE),
+    ],
     '采集错误': [
         re.compile(r'collection failed', re.IGNORECASE),
         re.compile(r'fetch error', re.IGNORECASE),
@@ -70,12 +74,23 @@ ACCESS_LOG_PATTERN = re.compile(
     r'^(?P<time>\S+ \S+ \d+ \d+:\d+:\d+ \d+)\s+127\.0\.0\.1.*(?P<status>[4-5]\d{2})'
 )
 
+# Audit log pattern: login_failed audit entries
+# Format in audit.log: "2026-05-29T11:07:43 - [LOGIN] failed user_not_found ip=127.0.0.1"
+AUDIT_LOGIN_FAILED_PATTERN = re.compile(
+    r'\[LOGIN\]\s+((?:bcrypt\s+)?failed)\s+ip=(\S+)'
+)
+
 
 # ── Scanner State ─────────────────────────────────────────
 
 _scanner_thread: Optional[Thread] = None
 _stop_event = Event()
 _last_scan_file_positions: dict = {}  # {filepath: last_read_position}
+
+# ── Login failure tracking (brute-force detection) ──────────────
+# Counts login_failed audit events since last successful login.
+# After 3 failures, emits a login_bruteforce system event.
+_LOGIN_FAIL_COUNT: dict[str, list] = {}   # ip → failure list
 
 
 # ── Core Logic ────────────────────────────────────────────
@@ -166,6 +181,68 @@ def _scan_file(filepath: str) -> list:
     return findings
 
 
+def _scan_audit_log() -> list:
+    """Scan audit.log for login failure patterns.
+    Tracks per-IP failure counts in memory and emits a bruteforce alert after 3 failures.
+    """
+    global _LOGIN_FAIL_COUNT
+
+    findings = []
+    filepath = os.path.join(LOG_DIR, 'audit.log')
+    last_pos = _last_scan_file_positions.get(filepath, 0)
+
+    try:
+        if not os.path.isfile(filepath):
+            return findings
+
+        file_size = os.path.getsize(filepath)
+        if file_size < last_pos:
+            last_pos = 0
+
+        with open(filepath, 'r', errors='replace') as f:
+            f.seek(last_pos)
+            new_content = f.read()
+            new_pos = f.tell()
+            _last_scan_file_positions[filepath] = new_pos
+
+            if not new_content.strip():
+                return findings
+
+            lines = new_content.strip().split('\n')
+            # Scan for login failures
+            for line in lines:
+                failed_match = AUDIT_LOGIN_FAILED_PATTERN.search(line)
+
+                if failed_match:
+                    # reason: 'failed' or 'bcrypt failed'
+                    reason = failed_match.group(1)
+                    ip = failed_match.group(2)
+
+                    # Increment failure count for this IP
+                    if ip not in _LOGIN_FAIL_COUNT:
+                        _LOGIN_FAIL_COUNT[ip] = []
+                    _LOGIN_FAIL_COUNT[ip].append({'reason': reason, 'ts': line[:19]})
+
+                    count = len(_LOGIN_FAIL_COUNT[ip])
+                    if count >= 3:
+                        # Emit bruteforce alert
+                        try:
+                            from src.core.event_handler import emit_login_bruteforce
+                            recent = [(e['ts'], {'reason': e['reason'], 'username': ''})
+                                      for e in _LOGIN_FAIL_COUNT[ip][-5:]]
+                            emit_login_bruteforce(ip, count, recent)
+                            # Reset to avoid repeated alerts until more failures
+                            _LOGIN_FAIL_COUNT[ip] = _LOGIN_FAIL_COUNT[ip][-2:]
+                            logger.warning(f'Login bruteforce detected: ip={ip} count={count}')
+                        except Exception as e:
+                            logger.error(f'Failed to emit login_bruteforce: {e}')
+
+    except Exception as e:
+        logger.warning(f'Error scanning audit.log: {e}')
+
+    return findings
+
+
 def _scan_access_log() -> list:
     """Scan access.log for non-200 requests from 127.0.0.1"""
     findings = []
@@ -246,7 +323,18 @@ def _do_scan() -> int:
             'log_file': 'access.log',
             **finding,
         })
-    
+
+    # Scan audit log for login failures
+    try:
+        audit_findings = _scan_audit_log()
+        for finding in audit_findings:
+            all_findings.append({
+                'log_file': 'audit.log',
+                **finding,
+            })
+    except Exception as e:
+        logger.warning(f'audit log scan failed: {e}')
+
     # Send each finding via DB-independent HTTP callback
     for finding in all_findings:
         _send_alert_via_http(finding)
@@ -265,7 +353,7 @@ def _send_alert_via_http(finding: dict):
 
     try:
         resp = _requests.post(
-            'http://127.0.0.1:9999/api/events/ingest',
+            'http://127.0.0.1:9999/api/system/events/ingest',
             json={
                 'log_file': finding.get('log_file', ''),
                 'error_type': finding.get('error_type', ''),

@@ -25,41 +25,69 @@ def _audit(user_id, action: str, details: dict = None):
 
 
 import logging
-_logger = logging.getLogger('monitor.auth')
+import os
+from logging.handlers import RotatingFileHandler
+
+_audit_logger = None
+
+
+def _get_audit_logger():
+    """Dedicated logger for security audit events (login attempts, etc).
+    Writes to logs/audit.log, separate from app.log, to avoid DB lock issues."""
+    global _audit_logger
+    if _audit_logger is not None:
+        return _audit_logger
+
+    LOG_DIR = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
+    audit_log_path = os.path.join(LOG_DIR, 'audit.log')
+
+    _audit_logger = logging.getLogger('audit')
+    _audit_logger.setLevel(logging.INFO)
+    _audit_logger.propagate = False
+
+    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+    handler.setFormatter(logging.Formatter(
+        '%(asctime)s - %(message)s',
+        datefmt='%Y-%m-%dT%H:%M:%S'
+    ))
+    _audit_logger.addHandler(handler)
+    return _audit_logger
 
 @bp.route('/login', methods=['POST'])
 def login():
-    import time as _t; _t0 = _t.time(); _logger.info(f'[LOGIN] start')
+    import time as _t; _t0 = _t.time()
+    audit = _get_audit_logger()
     client_ip = _get_client_ip()
-    _logger.info(f'[LOGIN] ip={client_ip}')
+    audit.info(f'[LOGIN] start ip={client_ip}')
 
     data = request.get_json() or {}
     username = data.get('username', '')
     password = data.get('password', '')
-    _logger.info(f'[LOGIN] username={username}')
+    audit.info(f'[LOGIN] username={username}')
 
     if not username or not password:
         return jsonify({'code': 40001, 'message': '请输入用户名和密码'}), 400
 
-    _logger.info(f'[LOGIN] calling get_by_username')
+    audit.info(f'[LOGIN] calling get_by_username')
     user = get_by_username(username)
-    _logger.info(f'[LOGIN] get_by_username done, user={"found" if user else "not found"}')
+    audit.info(f'[LOGIN] get_by_username done, user={"found" if user else "not found"}')
 
     if not user:
         _audit(0, 'login_failed', {'username': username, 'reason': 'user_not_found'})
+        audit.info(f'[LOGIN] failed user_not_found ip={client_ip}')
         return jsonify({'code': 40100, 'message': '用户名或密码错误'}), 401
 
-    _logger.info(f'[LOGIN] calling bcrypt.checkpw')
+    audit.info(f'[LOGIN] calling bcrypt.checkpw')
     if not bcrypt.checkpw(password.encode(), user['password_hash'].encode()):
-        _logger.info(f'[LOGIN] bcrypt failed')
+        audit.info(f'[LOGIN] bcrypt failed ip={client_ip} username={username}')
         _audit(user['id'], 'login_failed', {'reason': 'wrong_password'})
         return jsonify({'code': 40100, 'message': '用户名或密码错误'}), 401
-    _logger.info(f'[LOGIN] bcrypt passed, took {_t.time()-_t0:.3f}s')
+    audit.info(f'[LOGIN] bcrypt passed')
 
-    _logger.info(f'[LOGIN] creating token')
-    token = create_token(user['id'], user['username'])
-    _logger.info(f'[LOGIN] token created, total time {_t.time()-_t0:.3f}s')
+    audit.info(f'[LOGIN] success username={username} ip={client_ip}')
     _audit(user['id'], 'login', {'username': user['username']})
+    token = create_token(user['id'], user['username'])
+    audit.info(f'[LOGIN] token created, total time {_t.time()-_t0:.3f}s')
     return jsonify({
         'code': 0,
         'data': {

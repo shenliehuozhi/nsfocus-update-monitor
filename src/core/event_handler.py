@@ -556,3 +556,73 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
             logger.info(f'Event notification sent: {event_type}')
         except Exception as e:
             logger.error(f'Failed to send log error notification: {e}')
+
+
+def emit_login_bruteforce(ip: str, count: int, recent_failures: list):
+    """检测到同一 IP 连续登录失败 ≥3 次时调用（由 log_scanner 触发）"""
+    event_type = 'login_bruteforce'
+
+    if not is_event_enabled(event_type):
+        return
+
+    channel = get_notify_channel()
+    if not channel:
+        return
+
+    from src.notifiers.base import _utc_to_cst_display
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
+    failure_details = '\n'.join([
+        f"- {ts} | {details.get('reason', 'unknown')}" + (f" | 用户: {details.get('username', '')}" if details.get('username') else '')
+        for ts, details in recent_failures
+    ]) or '无详细记录'
+
+    message_text = '\n'.join([
+        "【登录暴力破解告警】",
+        f"攻击 IP：{ip}",
+        f"失败次数：{count} 次",
+        f"检测时间：{cst_now}",
+        "",
+        "最近失败记录：",
+        failure_details,
+        "",
+        "建议：请检查是否有人在尝试暴力破解该账户",
+    ])
+
+    # 记录到日志表
+    log_event(
+        event_type=event_type,
+        severity='CRITICAL',
+        message={
+            'ip': ip,
+            'count': count,
+            'recent_failures': recent_failures,
+        }
+    )
+
+    # 发送通知
+    notifier = _get_notifier(channel)
+    if notifier:
+        from src.notifiers.base import NotificationMessage, _format_markdown_bodies
+        msg = NotificationMessage(
+            title='绿盟监控 - 登录暴力破解告警',
+            product_name='',
+            version_branch='',
+            package_type='',
+            file_name='',
+            package_version='',
+            md5_hash='',
+            description_full=message_text,
+        )
+        try:
+            bodies = _format_markdown_bodies(msg, skip_empty_meta=True)
+            for i, body in enumerate(bodies):
+                payload = {'msgtype': 'markdown', 'markdown': {'content': body}}
+                resp = requests.post(channel.get('config', {}).get('webhook_url'), json=payload, timeout=10)
+                result = resp.json()
+                if result.get('errcode') != 0:
+                    logger.error(f'Failed to send login_bruteforce notification: {result.get("errmsg", "unknown")}')
+                    return
+            logger.info(f'Event notification sent: {event_type}')
+        except Exception as e:
+            logger.error(f'Failed to send login_bruteforce notification: {e}')
