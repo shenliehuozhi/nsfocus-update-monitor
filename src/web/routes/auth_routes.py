@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, g
 import bcrypt
 
 from src.web.auth import create_token, require_auth
-from src.models.user import get_by_username, create_user as create_user_db, is_ip_banned, record_login_failure, clear_login_failure
+from src.models.user import get_by_username, create_user as create_user_db
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 
@@ -33,12 +33,6 @@ def login():
     client_ip = _get_client_ip()
     _logger.info(f'[LOGIN] ip={client_ip}')
 
-    # Check if IP is banned (brute-force protection)
-    _logger.info(f'[LOGIN] checking is_ip_banned')
-    if is_ip_banned(client_ip):
-        return jsonify({'code': 42900, 'message': '登录尝试次数过多，请15分钟后再试'}), 429
-    _logger.info(f'[LOGIN] is_ip_banned passed, took {_t.time()-_t0:.3f}s')
-
     data = request.get_json() or {}
     username = data.get('username', '')
     password = data.get('password', '')
@@ -53,22 +47,15 @@ def login():
 
     if not user:
         _audit(0, 'login_failed', {'username': username, 'reason': 'user_not_found'})
-        record_login_failure(client_ip)
         return jsonify({'code': 40100, 'message': '用户名或密码错误'}), 401
 
     _logger.info(f'[LOGIN] calling bcrypt.checkpw')
     if not bcrypt.checkpw(password.encode(), user['password_hash'].encode()):
         _logger.info(f'[LOGIN] bcrypt failed')
         _audit(user['id'], 'login_failed', {'reason': 'wrong_password'})
-        record_login_failure(client_ip)
         return jsonify({'code': 40100, 'message': '用户名或密码错误'}), 401
     _logger.info(f'[LOGIN] bcrypt passed, took {_t.time()-_t0:.3f}s')
 
-    # Login successful — clear failure record (best-effort, non-blocking)
-    try:
-        clear_login_failure(client_ip)
-    except Exception as e:
-        _logger.warning(f'[LOGIN] clear_login_failure failed: {e}')
     _logger.info(f'[LOGIN] creating token')
     token = create_token(user['id'], user['username'])
     _logger.info(f'[LOGIN] token created, total time {_t.time()-_t0:.3f}s')
