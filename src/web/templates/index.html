@@ -4465,10 +4465,10 @@ async function confirmDiscoverResult(){
           const lines=buf.split('\n');
           buf=lines.pop()||'';
           for(const line of lines){
-            const raw=line.match(/^data: (.+)/);
-            if(raw){
+            const colonIdx=line.indexOf(':');
+            if(colonIdx>=0){
               try{
-                const s=JSON.parse(raw[1]);
+                const s=JSON.parse(line.slice(colonIdx+1));
                 done=renderConfirmProgress(s);
                 if(done){
                   clearInterval(pollTimer);
