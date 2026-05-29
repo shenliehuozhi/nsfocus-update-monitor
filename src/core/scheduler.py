@@ -118,13 +118,22 @@ def _set_collection_running(mode: str):
 
 
 def _clear_collection_running():
-    """Clear collection running state from DB."""
-    import json
+    """Clear collection running state from DB. Retries on lock contention."""
+    import json, time
     from src.models.database import execute
-    execute(
-        "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
-        (json.dumps({"status": "0", "started_at": "", "mode": ""}),)
-    )
+    for attempt in range(30):  # 30 attempts × 1s = 30s max wait
+        try:
+            execute(
+                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
+                (json.dumps({"status": "0", "started_at": "", "mode": ""}),)
+            )
+            return
+        except Exception as e:
+            if 'locked' in str(e) or 'timeout' in str(e).lower():
+                time.sleep(1)
+                continue
+            raise
+    logger.warning(f'_clear_collection_running: failed after 30 retries')
 
 
 # Record process start time for stale detection
@@ -263,7 +272,7 @@ def get_status() -> dict:
 
     return {
         'last_full_run': _last_full_run.isoformat() if _last_full_run else None,
-        'is_running': _is_running,
+        'is_running': _is_running and _progress.get('active', False),  # True only when collection is actually in progress
         'current_mode': _progress.get('mode', ''),
         'interval_hours': interval_hours,
         'full_scan_interval_hours': full_interval_hours,

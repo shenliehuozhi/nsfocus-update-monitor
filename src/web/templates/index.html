@@ -18,7 +18,7 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',san
 .user button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
 .user button:hover{background:rgba(255,255,255,.18)}
 .main{max-width:100%;margin:0;padding:20px 24px}
-.card{background:var(--card);border-radius:10px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.card{background:var(--card);border-radius:10px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);position:relative}
 .card-hd{padding:12px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;color:var(--text)}
 .card-bd{padding:16px 18px}.card-bd.pt0{padding-top:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
@@ -402,7 +402,7 @@ async function dashboard(range){
     <div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0">
         <span style="color:var(--primary);font-size:13px">🩺 运维健康</span>
-        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
           <button class="btn btn-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
           <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
