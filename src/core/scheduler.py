@@ -16,7 +16,7 @@ from src.core.logger import get_logger
 from src.collectors.nsfocus import NsfocusCollector, SessionExpiredError, _get_products as _collector_products
 from src.detector.change import run_detection, get_new_for_subscription
 from src.notifiers.router import route_notifications, process_delayed_queue
-from src.models.user_session import get_active_sessions, update_status
+from src.models.user_session import get_active_sessions, update_status, update_heartbeat, log_heartbeat
 from src.models.snapshot import (
     get_source_by_name, update_source_health,
     list_sources as list_content_sources,
@@ -363,20 +363,33 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if not _collector.verify_session(HEALTH_URL):
             logger.warning('Pre-flight session check failed, trying backup...')
             update_status(sessions[0]['id'], 'expired')
+            update_heartbeat(sessions[0]['id'], '过期')
+            log_heartbeat(sessions[0]['id'], '过期', error_msg='pre-flight failed')
             if len(sessions) > 1:
                 cookie = sessions[1]['cookie_value']
                 _collector._set_cookie(cookie)
                 if not _collector.verify_session(HEALTH_URL):
                     logger.warning('Backup session also invalid')
                     update_status(sessions[1]['id'], 'expired')
+                    update_heartbeat(sessions[1]['id'], '过期')
+                    log_heartbeat(sessions[1]['id'], '过期', error_msg='pre-flight backup failed')
                     summary['status'] = 'error'
                     summary['errors'].append('All sessions expired — collection aborted')
                     return summary
-                logger.info('Switched to backup session')
+                logger.info('Switched to backup session, recording heartbeat...')
+                update_status(sessions[1]['id'], 'active')
+                update_heartbeat(sessions[1]['id'], '正常')
+                log_heartbeat(sessions[1]['id'], '正常', error_msg='pre-flight backup OK')
             else:
                 summary['status'] = 'error'
                 summary['errors'].append('Session expired — collection aborted')
                 return summary
+
+        # Pre-flight passed — record success
+        update_status(sessions[0]['id'], 'active')
+        update_heartbeat(sessions[0]['id'], '正常')
+        log_heartbeat(sessions[0]['id'], '正常', error_msg='pre-flight OK')
+        logger.info('Pre-flight session check passed')
 
         # 2. Ensure content sources exist in DB (bootstrap from PRODUCTS for backward compat)
         existing_sources = {s['name']: s for s in list_content_sources('nsfocus')}
