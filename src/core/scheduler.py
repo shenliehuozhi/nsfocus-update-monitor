@@ -9,6 +9,7 @@ import os
 import random
 import time
 import threading
+import atexit
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -1054,6 +1055,26 @@ def start_scheduler(app=None):
 
         _clear_stale_collection_running(force=True)
         refresh_scheduler_jobs()
+
+        # ── Clean shutdown: clear collection_running on SIGTERM/exit ──
+        # APScheduler itself does shutdown() on atexit, we just clear the flag.
+        def _shutdown_cleanup():
+            global _scheduler
+            try:
+                if _scheduler and _scheduler.running:
+                    _scheduler.shutdown(wait=False)
+            except Exception:
+                pass
+            try:
+                from src.models.database import get_db
+                get_db().execute(
+                    "DELETE FROM system_settings WHERE key = 'collection_running'"
+                )
+                logger.info('[shutdown] collection_running cleared via atexit')
+            except Exception:
+                pass
+
+        atexit.register(_shutdown_cleanup)
 
         # First-run check: if no snapshots have source_url populated, trigger immediate full scan
         _check_first_run()
