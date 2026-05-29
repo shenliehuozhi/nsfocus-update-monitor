@@ -23,7 +23,7 @@ DB_PATH: str = ''
 # preventing deadlocks when collector code paths call each other.
 # Combined with WAL mode, this eliminates "database is locked" errors.
 _write_lock = threading.RLock()
-_WRITE_LOCK_TIMEOUT = 10  # seconds — fail fast if lock can't be acquired
+_WRITE_LOCK_TIMEOUT = 30  # seconds — allow longer for bulk inserts and network-dependent ops
 
 
 def _monitor_lock():
@@ -38,7 +38,7 @@ def _monitor_lock():
             _write_lock.release()
             _logger.warning('[LOCK DIAG] _write_lock is FREE (as expected)')
         else:
-            # Lock is held — dump stacks of all threads
+            # Lock is held — dump stacks of all threads once, then try to re-acquire
             import sys as _sys, threading as _threading
             _logger.error('[LOCK DIAG] _write_lock is HELD by another thread! Stacks:')
             for t in _threading.enumerate():
