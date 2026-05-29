@@ -4465,7 +4465,7 @@ async function confirmDiscoverResult(){
           const lines=buf.split('\n');
           buf=lines.pop()||'';
           for(const line of lines){
-            const raw=line.match(/^data: (.+/);
+            const raw=line.match(/^data: (.+)/);
             if(raw){
               try{
                 const s=JSON.parse(raw[1]);
