@@ -15,11 +15,11 @@ def _get_client_ip() -> str:
 
 
 def _audit(user_id, action: str, details: dict = None):
-    """Log audit entry. Ignores errors (best-effort)."""
+    """Log audit entry to file. Ignores errors (best-effort)."""
     try:
-        from src.models.audit import log
+        audit = _get_audit_logger()
         ip = _get_client_ip()
-        log(user_id, action, details or {}, ip)
+        audit.info(f'[{action}] user_id={user_id} ip={ip} details={details or {}}')
     except Exception:
         pass
 

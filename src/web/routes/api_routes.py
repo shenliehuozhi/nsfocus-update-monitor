@@ -7,11 +7,21 @@ BASE_URL = 'https://update.nsfocus.com'
 
 
 def _audit(action: str, details: dict = None):
-    """Log audit entry (best-effort)."""
+    """Log audit entry to file (best-effort)."""
     try:
-        from src.models.audit import log
+        import logging, os
+        from logging.handlers import RotatingFileHandler
+        log_path = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
+        audit_log_path = os.path.join(log_path, 'audit.log')
+        audit_logger = logging.getLogger('audit.file')
+        if not audit_logger.handlers:
+            audit_logger.setLevel(logging.INFO)
+            audit_logger.propagate = False
+            handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'))
+            audit_logger.addHandler(handler)
         ip = request.headers.get('X-Forwarded-For', request.remote_addr) or ''
-        log(g.user_id, action, details or {}, ip)
+        audit_logger.info(f'[{action}] user_id={getattr(g, "user_id", "?")} ip={ip} details={details or {}}')
     except Exception:
         pass
 

@@ -103,11 +103,21 @@ def _get_refresh_pool():
 
 
 def _audit(action: str, details: dict = None):
-    """Log audit entry (best-effort)."""
+    """Log audit entry to file (best-effort)."""
     try:
-        from src.models.audit import log
+        import logging, os
+        from logging.handlers import RotatingFileHandler
+        log_path = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
+        audit_log_path = os.path.join(log_path, 'audit.log')
+        audit_logger = logging.getLogger('audit.file')
+        if not audit_logger.handlers:
+            audit_logger.setLevel(logging.INFO)
+            audit_logger.propagate = False
+            handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+            handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'))
+            audit_logger.addHandler(handler)
         ip = request.headers.get('X-Forwarded-For', request.remote_addr) or ''
-        log(g.user_id, action, details or {}, ip)
+        audit_logger.info(f'[{action}] user_id={getattr(g, "user_id", "?")} ip={ip} details={details or {}}')
     except Exception:
         pass
 
@@ -926,10 +936,20 @@ def discover_products_confirm():
         _disc_log(f'thread started: user_id={user_id}, prod_added={len(prod_added)}, prod_removed={len(prod_removed)}, pkg_changes={len(pkg_changes) if pkg_changes else "None"}', '[confirm]')
 
         def _audit_in_thread(action: str, details: dict = None):
-            """Thread-safe audit (no g/request access)."""
+            """Thread-safe audit to file (no g/request access)."""
             try:
-                from src.models.audit import log
-                log(user_id, action, details or {}, '')
+                import logging, os
+                from logging.handlers import RotatingFileHandler
+                log_path = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
+                audit_log_path = os.path.join(log_path, 'audit.log')
+                audit_logger = logging.getLogger('audit.file')
+                if not audit_logger.handlers:
+                    audit_logger.setLevel(logging.INFO)
+                    audit_logger.propagate = False
+                    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+                    handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'))
+                    audit_logger.addHandler(handler)
+                audit_logger.info(f'[{action}] user_id={user_id} details={details or {}}')
             except Exception:
                 pass
 
