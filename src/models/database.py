@@ -83,7 +83,7 @@ def get_db() -> sqlite3.Connection:
         _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
         _local.conn.row_factory = sqlite3.Row
         _local.conn.execute("PRAGMA journal_mode=DELETE")  # WAL causes write-lock contention; DELETE mode is safe for single-writer
-        _local.conn.execute("PRAGMA busy_timeout=60000")  # 60s, avoid "database is locked"
+        _local.conn.execute("PRAGMA busy_timeout=10000")  # 10s, sufficient "database is locked"
         _local.conn.execute("PRAGMA foreign_keys=ON")
     return _local.conn
 
@@ -102,9 +102,9 @@ def execute(sql: str, params: tuple = ()) -> int | None:
     are serialized.  Combined with WAL mode, this eliminates concurrent
     write lock contention entirely.
 
-    Retries on "database is locked" (up to 30 attempts, up to 60s total) to handle
-    WAL write lock contention. Matches PRAGMA busy_timeout=60000 so we wait as long
-    as SQLite itself is willing to wait before giving up.
+    Retries on "database is locked" (up to 30 attempts, 2s/4s/6s... sleep between).
+    10s busy_timeout gives SQLite time to acquire the lock without hogging resources.
+    Combined with isolation_level=None, lock contention is extremely rare.
     """
     import time as _time
     import logging as _log
@@ -117,7 +117,7 @@ def execute(sql: str, params: tuple = ()) -> int | None:
                 # Use a fresh connection instead of get_db() to avoid thread-local issues
                 import sqlite3 as _sqlite3
                 db = _sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db', timeout=60, isolation_level=None)
-                db.execute('PRAGMA busy_timeout=60000')
+                db.execute('PRAGMA busy_timeout=10000')
                 db.row_factory = _sqlite3.Row
                 _t0 = _time.time()
                 cur = db.execute(sql, params)
