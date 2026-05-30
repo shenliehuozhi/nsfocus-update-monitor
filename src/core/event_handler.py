@@ -491,6 +491,63 @@ def emit_session_error(username: str, product_name: str, reason: str, source: st
             logger.error(f'Failed to send session error notification: {e}')
 
 
+def emit_session_expired(session_id: int, purpose: str, collect_mode: str, reason: str, source: str = 'pre-flight'):
+    """Session预检发现失效时直接发送通知（不写DB）。
+
+    source: 'pre-flight' - 采集前预检发现的失效
+            'heartbeat'  - 周期心跳发现的失效
+    """
+    event_type = 'session_expired'
+    if not is_event_enabled(event_type):
+        return
+
+    channel = get_notify_channel()
+    if not channel:
+        return
+
+    from src.notifiers.base import _utc_to_cst_display
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
+    purpose_cn = '采集' if purpose == 'collect' else '探测'
+    collect_tag = f'/[{collect_mode}]' if purpose == 'collect' and collect_mode else ''
+
+    message_text = '\n'.join([
+        '【Session 失效】',
+        f"Session ID：{session_id}",
+        f"用途：{purpose_cn}{collect_tag}",
+        f"失效原因：{reason}",
+        f"检测时间：{cst_now}",
+        "",
+        "建议：请重新登录获取新的 Session cookie 并更新",
+    ])
+
+    notifier = _get_notifier(channel)
+    if notifier:
+        from src.notifiers.base import NotificationMessage, _format_markdown_bodies
+        msg = NotificationMessage(
+            title='绿盟监控 - Session 失效',
+            product_name='',
+            version_branch='',
+            package_type='',
+            file_name='',
+            package_version='',
+            md5_hash='',
+            description_full=message_text,
+        )
+        try:
+            bodies = _format_markdown_bodies(msg, skip_empty_meta=True)
+            for i, body in enumerate(bodies):
+                payload = {'msgtype': 'markdown', 'markdown': {'content': body}}
+                resp = requests.post(channel.get('config', {}).get('webhook_url'), json=payload, timeout=10)
+                result = resp.json()
+                if result.get('errcode') != 0:
+                    logger.error(f'Failed to send session_expired notification: {result.get("errmsg", "unknown")}')
+                    return
+            logger.info(f'Session expired notification sent: sid={session_id} ({purpose}{collect_tag})')
+        except Exception as e:
+            logger.error(f'Failed to send session_expired notification: {e}')
+
+
 def emit_log_error(log_file: str, error_type: str, keyword: str,
                    context: str, line_number: int = None):
     """日志扫描发现异常时调用"""

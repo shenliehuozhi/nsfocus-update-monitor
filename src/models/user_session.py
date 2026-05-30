@@ -168,11 +168,13 @@ def _hb_log_path():
     return _HB_LOG_PATH
 
 
-def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_msg: str = ''):
+def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_msg: str = '', purpose: str = '', collect_mode: str = ''):
     """Record a heartbeat event to a rolling log file (max 10 lines).
 
     Does NOT write to DB — caller (scheduler pre-flight or _session_heartbeat)
     is responsible for updating user_sessions heartbeat fields separately.
+
+    Format: ts | sid=N | purpose | collect_mode | status | latency_ms | msg
     """
     with _hb_lock:
         p = _hb_log_path()
@@ -180,7 +182,7 @@ def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_ms
         if p.exists():
             lines = p.read_text(encoding='utf-8').splitlines()
         ts = _dt.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-        new_line = f'{ts} | sid={session_id} | {hb_status} | {latency_ms}ms | {error_msg}'
+        new_line = f'{ts} | sid={session_id} | {purpose} | {collect_mode} | {hb_status} | {latency_ms}ms | {error_msg}'
         lines.append(new_line)
         lines = lines[-10:]
         p.write_text('\n'.join(lines) + '\n', encoding='utf-8')

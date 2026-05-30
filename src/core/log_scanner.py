@@ -92,6 +92,22 @@ _last_scan_file_positions: dict = {}  # {filepath: last_read_position}
 # After 3 failures, emits a login_bruteforce system event.
 _LOGIN_FAIL_COUNT: dict[str, list] = {}   # ip → failure list
 
+# ── Heartbeat log dedup state ─────────────────────────────────────
+# Dedup: avoid repeated notifications for the same sid+status
+# key = f"sid={sid}|status={status}", value = last_ts
+_HB_NOTIFY_KEY: dict = {}
+
+# Heartbeat log line format: ts | sid=N | purpose | collect_mode | status | latency_ms | msg
+_HB_LINE_RE = re.compile(
+    r'(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC)'
+    r' \| sid=(\d+)'
+    r' \| (\w+)'
+    r' \| (\w*)'
+    r' \| (\w+)'
+    r' \| (\d+)ms'
+    r' \| (.+)'
+)
+
 
 # ── Core Logic ────────────────────────────────────────────
 
@@ -243,6 +259,107 @@ def _scan_audit_log() -> list:
     return findings
 
 
+def _scan_heartbeat_log() -> list:
+    """Scan heartbeat.log for session status changes and emit notifications.
+
+    Reads the rolling heartbeat log file. For each line, checks:
+    - If status='正常' and heartbeat_log_notify_on_success='1': send notification
+    - If status in ('过期','污染','错误') and heartbeat_log_notify_on_failure='1': send notification
+
+    Deduplication: only notifies on first occurrence of each sid+status combination
+    since the log file is already rolling (max 10 lines, rewrites same sid entries).
+    """
+    global _HB_NOTIFY_KEY
+
+    findings = []
+    hb_log_path = os.path.join(LOG_DIR, 'heartbeat.log')
+    last_pos = _last_scan_file_positions.get(hb_log_path, 0)
+
+    try:
+        if not os.path.isfile(hb_log_path):
+            return findings
+
+        file_size = os.path.getsize(hb_log_path)
+        if file_size < last_pos:
+            last_pos = 0
+
+        with open(hb_log_path, 'r', errors='replace') as f:
+            f.seek(last_pos)
+            new_content = f.read()
+            new_pos = f.tell()
+            _last_scan_file_positions[hb_log_path] = new_pos
+
+            if not new_content.strip():
+                return findings
+
+            lines = new_content.strip().split('\n')
+
+            # Read system settings for notification toggles
+            notify_on_success = _get_setting('heartbeat_log_notify_on_success', '0') == '1'
+            notify_on_failure = _get_setting('heartbeat_log_notify_on_failure', '1') == '1'
+
+            for line in lines:
+                m = _HB_LINE_RE.match(line.strip())
+                if not m:
+                    continue
+
+                ts, sid, purpose, collect_mode, status, latency_ms, msg = m.groups()
+                dedup_key = f'sid={sid}|status={status}'
+
+                # Deduplication: skip if already notified for this combination at same or later ts
+                if dedup_key in _HB_NOTIFY_KEY and _HB_NOTIFY_KEY[dedup_key] >= ts:
+                    continue
+
+                should_notify = (
+                    (status == '正常' and notify_on_success) or
+                    (status in ('过期', '污染', '错误') and notify_on_failure)
+                )
+
+                if not should_notify:
+                    continue
+
+                _HB_NOTIFY_KEY[dedup_key] = ts
+
+                purpose_cn = '采集' if purpose == 'collect' else '探测'
+                collect_tag = f'/[{collect_mode}]' if collect_mode else ''
+
+                if status == '正常':
+                    title = '【Session 心跳成功】'
+                    suggest = f'Session {sid} ({purpose_cn}{collect_tag}) 连接正常，延迟 {latency_ms}ms'
+                elif status == '过期':
+                    title = '【Session 失效】'
+                    suggest = f'Session {sid} ({purpose_cn}{collect_tag}) 已过期，请重新登录更新 cookie'
+                elif status == '污染':
+                    title = '【Session 污染】'
+                    suggest = f'Session {sid} ({purpose_cn}{collect_tag}) 上下文被污染，请重新登录'
+                else:
+                    title = f'【Session 心跳失败】'
+                    suggest = f'Session {sid} ({purpose_cn}{collect_tag}) 心跳错误：{msg}'
+
+                findings.append({
+                    'error_type': f'hb_{status}',
+                    'keyword': f'sid={sid} {status}',
+                    'context': f'{ts} {title}\n{suggest}',
+                    'line_number': 0,
+                    'timestamp': ts,
+                })
+
+    except Exception as e:
+        logger.warning(f'Error scanning heartbeat.log: {e}')
+
+    return findings
+
+
+def _get_setting(key: str, default: str = '') -> str:
+    """Read a system_settings value."""
+    try:
+        from src.models.database import query
+        rows = query("SELECT value FROM system_settings WHERE key = ?", (key,))
+        return rows[0]['value'] if rows else default
+    except Exception:
+        return default
+
+
 def _scan_access_log() -> list:
     """Scan access.log for non-200 requests from 127.0.0.1"""
     findings = []
@@ -334,6 +451,17 @@ def _do_scan() -> int:
             })
     except Exception as e:
         logger.warning(f'audit log scan failed: {e}')
+
+    # Scan heartbeat.log for session status notifications
+    try:
+        hb_findings = _scan_heartbeat_log()
+        for finding in hb_findings:
+            all_findings.append({
+                'log_file': 'heartbeat.log',
+                **finding,
+            })
+    except Exception as e:
+        logger.warning(f'heartbeat log scan failed: {e}')
 
     # Send each finding via DB-independent HTTP callback
     for finding in all_findings:

@@ -359,12 +359,12 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         valid_session = None
         for sess in all_sessions:
             _collector._set_cookie(sess['cookie_value'])
-            is_collect = sess['id'] in collect_sessions
+            is_collect = sess['purpose'] == 'collect'
             purpose_tag = 'collect' if is_collect else 'discover'
             if _collector.verify_session(HEALTH_URL):
                 update_status(sess['id'], 'active')
                 update_heartbeat(sess['id'], '正常')
-                log_heartbeat(sess['id'], '正常', error_msg=f'pre-flight OK ({purpose_tag})')
+                log_heartbeat(sess['id'], '正常', error_msg=f'pre-flight OK ({purpose_tag})', purpose=sess['purpose'], collect_mode=sess.get('collect_mode', ''))
                 if is_collect and valid_session is None:
                     valid_session = sess
                     logger.info(f'Pre-flight passed: session {sess["id"]} (collect/{sess.get("collect_mode","standard")})')
@@ -372,7 +372,15 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 logger.warning(f'Session {sess["id"]} ({purpose_tag}) pre-flight failed — marking expired')
                 update_status(sess['id'], 'expired')
                 update_heartbeat(sess['id'], '过期')
-                log_heartbeat(sess['id'], '过期', error_msg=f'pre-flight failed ({purpose_tag})')
+                log_heartbeat(sess['id'], '过期', error_msg=f'pre-flight failed ({purpose_tag})', purpose=sess['purpose'], collect_mode=sess.get('collect_mode', ''))
+                from src.core.event_handler import emit_session_expired
+                emit_session_expired(
+                    session_id=sess['id'],
+                    purpose=sess['purpose'],
+                    collect_mode=sess.get('collect_mode', ''),
+                    reason='预检失败（verify_session 返回 false，cookie 可能已失效）',
+                    source='pre-flight'
+                )
 
         if valid_session is None:
             summary['status'] = 'error'
@@ -1172,7 +1180,7 @@ def _session_heartbeat():
                     try:
                         update_status(session_id, 'expired')
                         update_heartbeat(session_id, '污染')
-                        log_heartbeat(session_id, '污染', error_msg='collect session 返回 downloadsVm/id，说明上下文被 upLic/Vm 格式污染')
+                        log_heartbeat(session_id, '污染', error_msg='collect session 返回 downloadsVm/id，说明上下文被 upLic/Vm 格式污染', purpose=purpose, collect_mode=sess.get('collect_mode', ''))
                     except Exception as ex:
                         logger.warning(f'Session {session_id} DB 更新失败（污染检测）: {ex}')
                     logger.warning(f'Session {session_id} 污染 (downloadsVm/id detected)')
@@ -1191,7 +1199,7 @@ def _session_heartbeat():
                     try:
                         update_status(session_id, 'expired')
                         update_heartbeat(session_id, '过期')
-                        log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效')
+                        log_heartbeat(session_id, '过期', error_msg=f'302 跳转 {loc}，session 已失效', purpose=purpose, collect_mode=sess.get('collect_mode', ''))
                     except Exception as ex:
                         logger.warning(f'Session {session_id} DB 更新失败（过期检测）: {ex}')
                     logger.warning(f'Session {session_id} 过期 (redirect to {loc})')
@@ -1206,7 +1214,7 @@ def _session_heartbeat():
             # 200 OK + no pollution + no portal redirect → session alive
             try:
                 update_heartbeat(session_id, '正常')
-                log_heartbeat(session_id, '正常', latency_ms=latency, error_msg='200 OK，session 存活')
+                log_heartbeat(session_id, '正常', latency_ms=latency, error_msg='200 OK，session 存活', purpose=purpose, collect_mode=sess.get('collect_mode', ''))
             except Exception as ex:
                 logger.warning(f'Session {session_id} DB 更新失败（正常心跳）: {ex}')
             logger.debug(f'Heartbeat OK session={session_id} purpose={purpose} ({latency}ms)')
@@ -1229,7 +1237,7 @@ def _session_heartbeat():
                 detail = err_str[:200]
             try:
                 update_heartbeat(session_id, '错误')
-                log_heartbeat(session_id, '错误', error_msg=f'网络错误: {detail}')
+                log_heartbeat(session_id, '错误', error_msg=f'网络错误: {detail}', purpose=purpose, collect_mode=sess.get('collect_mode', ''))
             except Exception as ex:
                 logger.warning(f'Session {session_id} DB 更新失败（网络错误）: {ex}')
             logger.warning(f'Heartbeat failed session={session_id}: {detail}')
