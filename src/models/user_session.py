@@ -1,5 +1,10 @@
 """User Session model — stores encrypted NSFOCUS PHPSESSID + heartbeat tracking."""
 
+import datetime
+import os
+import pathlib
+import threading
+
 SCHEMA_USER_SESSION = """
 CREATE TABLE IF NOT EXISTS user_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -152,13 +157,33 @@ def update_heartbeat(session_id: int, hb_status: str):
     )
 
 
+# Rolling log for heartbeat events (max 10 lines, no DB writes)
+_hb_lock = threading.RLock()
+_HB_LOG_PATH = None
+
+def _hb_log_path():
+    global _HB_LOG_PATH
+    if _HB_LOG_PATH is None:
+        _HB_LOG_PATH = pathlib.Path(os.getenv('MONITOR_LOG_DIR', '/tmp')) / 'heartbeat.log'
+    return _HB_LOG_PATH
+
+
 def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_msg: str = ''):
-    """Record a heartbeat event in the log."""
-    from src.models.database import execute
-    execute(
-        "INSERT INTO heartbeat_log (session_id, status, latency_ms, error_message) VALUES (?, ?, ?, ?)",
-        (session_id, hb_status, latency_ms, error_msg)
-    )
+    """Record a heartbeat event to a rolling log file (max 10 lines).
+
+    Does NOT write to DB — caller (scheduler pre-flight or _session_heartbeat)
+    is responsible for updating user_sessions heartbeat fields separately.
+    """
+    with _hb_lock:
+        p = _hb_log_path()
+        lines = []
+        if p.exists():
+            lines = p.read_text(encoding='utf-8').splitlines()
+        ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        new_line = f'{ts} | sid={session_id} | {hb_status} | {latency_ms}ms | {error_msg}'
+        lines.append(new_line)
+        lines = lines[-10:]
+        p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
 
 
 def get_heartbeat_history(session_id: int, limit: int = 20) -> list:

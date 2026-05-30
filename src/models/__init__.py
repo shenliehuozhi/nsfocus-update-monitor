@@ -1,6 +1,6 @@
 """Models package — schema initialization."""
 
-from src.models.database import get_db, transaction
+from src.models.database import get_db, execute
 
 
 def init_all_tables():
