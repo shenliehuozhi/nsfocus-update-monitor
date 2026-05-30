@@ -164,7 +164,7 @@ _HB_LOG_PATH = None
 def _hb_log_path():
     global _HB_LOG_PATH
     if _HB_LOG_PATH is None:
-        _HB_LOG_PATH = pathlib.Path(os.getenv('MONITOR_LOG_DIR', '/tmp')) / 'heartbeat.log'
+        _HB_LOG_PATH = pathlib.Path(os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')) / 'heartbeat.log'
     return _HB_LOG_PATH
 
 
@@ -189,12 +189,45 @@ def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_ms
 
 
 def get_heartbeat_history(session_id: int, limit: int = 20) -> list:
-    """Get recent heartbeat history for a session."""
-    from src.models.database import query
-    return query(
-        "SELECT * FROM heartbeat_log WHERE session_id = ? ORDER BY created_at DESC LIMIT ?",
-        (session_id, limit)
-    )
+    """Get recent heartbeat history for a session from heartbeat.log file."""
+    p = _hb_log_path()
+    if not p.exists():
+        return []
+    all_lines = p.read_text(encoding='utf-8').splitlines()
+    # Filter to this session, reverse chronological ( newest last )
+    matching = [ln for ln in all_lines if f'sid={session_id}|' in ln or f'sid={session_id} |' in ln]
+    matching = matching[-limit:]
+    # Parse each line back into a dict mimicking the old DB row shape
+    import re
+    from datetime import datetime
+    rows = []
+    for line in reversed(matching):
+        m = re.match(r'([\d\-: ]+ UTC)\s+\| sid=(\d+)\s+\| (\w*)\s+\| (\w*)\s+\| (\w+)\s+\| (\d+ms)\s+\| (.*)', line)
+        if m:
+            ts_str, sid, purpose, collect_mode, status, latency, msg = m.groups()
+            rows.append({
+                'created_at': ts_str,
+                'session_id': int(sid),
+                'status': status,
+                'latency_ms': int(latency.rstrip('ms')),
+                'error_msg': msg,
+                'purpose': purpose,
+                'collect_mode': collect_mode,
+            })
+        else:
+            # Fallback for old 5-field format
+            parts = line.split('|')
+            if len(parts) >= 5:
+                rows.append({
+                    'created_at': parts[0].strip(),
+                    'session_id': session_id,
+                    'status': parts[3].strip() if len(parts) > 3 else '',
+                    'latency_ms': 0,
+                    'error_msg': parts[4].strip() if len(parts) > 4 else '',
+                    'purpose': '',
+                    'collect_mode': '',
+                })
+    return rows
 
 
 def delete(session_id: int) -> None:
