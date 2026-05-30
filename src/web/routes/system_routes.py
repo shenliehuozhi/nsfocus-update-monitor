@@ -1467,10 +1467,6 @@ def ingest_log_alert():
     if not webhook_url:
         return jsonify({'code': 3, 'message': 'no webhook URL'}), 200
 
-    # ── Try to also record to system_event_log ──
-    # (best-effort, won't block the notification if DB is locked)
-    _write_event_log_safely(log_file, error_type, keyword, context, line_number)
-
     # ── Send notification ──
     try:
         import requests as _requests
@@ -1516,27 +1512,4 @@ def _load_notify_channel_direct() -> dict | None:
         return None
 
 
-def _write_event_log_safely(log_file, error_type, keyword, context, line_number):
-    """Best-effort write to system_event_log. Failures are silently ignored."""
-    from src.models.database import DB_PATH
-    import json as _json
 
-    try:
-        conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=5.0)
-        msg = _json.dumps({
-            'log_file': log_file,
-            'error_type': error_type,
-            'keyword': keyword,
-            'context': context,
-            'line_number': line_number,
-        }, ensure_ascii=False)
-        conn.execute(
-            """INSERT INTO system_event_log
-               (event_type, severity, message)
-               VALUES ('log_error', 'CRITICAL', ?)""",
-            (msg,)
-        )
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass  # Best-effort only

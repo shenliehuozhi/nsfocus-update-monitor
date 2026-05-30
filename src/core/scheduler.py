@@ -1043,14 +1043,6 @@ def start_scheduler(app=None):
                     _scheduler.shutdown(wait=False)
             except Exception:
                 pass
-            try:
-                from src.models.database import get_db
-                get_db().execute(
-                    "DELETE FROM system_settings WHERE key = 'collection_running'"
-                )
-                logger.info('[shutdown] collection_running cleared via atexit')
-            except Exception:
-                pass
 
         atexit.register(_shutdown_cleanup)
 

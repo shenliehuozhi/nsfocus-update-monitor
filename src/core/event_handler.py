@@ -517,19 +517,6 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
         context[:500] if context else '—',
     ])
 
-    # 记录到日志表
-    log_event(
-        event_type=event_type,
-        severity='CRITICAL',
-        message={
-            'log_file': log_file,
-            'error_type': error_type,
-            'keyword': keyword,
-            'context': context,
-            'line_number': line_number,
-        }
-    )
-
     # 发送通知
     notifier = _get_notifier(channel)
     if notifier:

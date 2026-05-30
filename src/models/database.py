@@ -88,18 +88,6 @@ def get_db() -> sqlite3.Connection:
     return _local.conn
 
 
-@contextmanager
-def transaction():
-    """Context manager for database transactions."""
-    db = get_db()
-    try:
-        yield db
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-
-
 def query(sql: str, params: tuple = ()) -> list:
     """Execute a SELECT query, return list of dicts."""
     db = get_db()
@@ -146,8 +134,7 @@ def execute(sql: str, params: tuple = ()) -> int | None:
 
 
 def executemany(sql: str, params_list: list) -> None:
-    """Execute multiple INSERT statements."""
+    """Execute multiple INSERT statements. Uses autocommit mode (isolation_level=None)."""
     with _write_lock:
         db = get_db()
         db.executemany(sql, params_list)
-        db.commit()
