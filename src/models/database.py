@@ -80,9 +80,9 @@ def get_db() -> sqlite3.Connection:
     if not hasattr(_local, 'conn') or _local.conn is None:
         if not DB_PATH:
             init_db()
-        _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+        _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
         _local.conn.row_factory = sqlite3.Row
-        _local.conn.execute("PRAGMA journal_mode=WAL")
+        _local.conn.execute("PRAGMA journal_mode=DELETE")  # WAL causes write-lock contention; DELETE mode is safe for single-writer
         _local.conn.execute("PRAGMA busy_timeout=60000")  # 60s, avoid "database is locked"
         _local.conn.execute("PRAGMA foreign_keys=ON")
     return _local.conn
@@ -126,12 +126,15 @@ def execute(sql: str, params: tuple = ()) -> int | None:
     for attempt in range(30):
         try:
             with _write_lock:
-                _lock_acquired_at = _time.time()
-                db = get_db()
+                # Use a fresh connection instead of get_db() to avoid thread-local issues
+                import sqlite3 as _sqlite3
+                db = _sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db', timeout=60, isolation_level=None)
+                db.execute('PRAGMA busy_timeout=60000')
+                db.row_factory = _sqlite3.Row
                 _t0 = _time.time()
                 cur = db.execute(sql, params)
-                db.commit()
                 dur = _time.time() - _t0
+                # No explicit commit() needed with isolation_level=None (autocommit mode)
                 if dur > 1.0:
                     _dbg.warning(f'execute slow ({dur:.3f}s attempt {attempt+1}): {sql[:80]}')
                 return cur.lastrowid

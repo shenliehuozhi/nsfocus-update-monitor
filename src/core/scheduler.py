@@ -100,41 +100,35 @@ def _get_setting(key: str, default: str) -> str:
 
 
 def _set_collection_running(mode: str):
-    """Persist collection running state to DB. Retries on lock contention."""
-    import json, time
+    """Persist collection running state to DB. Non-blocking: gives up immediately on lock contention so the collector thread is never blocked."""
+    import json
     from src.models.database import execute
-    for attempt in range(30):  # 30 attempts × 1s = 30s max wait
-        try:
-            execute(
-                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
-                (json.dumps({"status": "1", "started_at": datetime.utcnow().isoformat(), "mode": mode}),)
-            )
-            return
-        except Exception as e:
-            if 'locked' in str(e):
-                time.sleep(1)
-                continue
-            raise
-    logger.warning(f'_set_collection_running: failed after 30 retries, continuing anyway')
+    try:
+        execute(
+            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
+            (json.dumps({"status": "1", "started_at": datetime.utcnow().isoformat(), "mode": mode}),)
+        )
+    except Exception as e:
+        if 'locked' in str(e):
+            logger.debug(f'_set_collection_running: skipped (DB locked), collection will proceed without DB flag')
+        else:
+            logger.warning(f'_set_collection_running: {e}')
 
 
 def _clear_collection_running():
-    """Clear collection running state from DB. Retries on lock contention."""
-    import json, time
+    """Clear collection running state from DB. Non-blocking: gives up immediately on lock contention."""
+    import json
     from src.models.database import execute
-    for attempt in range(30):  # 30 attempts × 1s = 30s max wait
-        try:
-            execute(
-                "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
-                (json.dumps({"status": "0", "started_at": "", "mode": ""}),)
-            )
-            return
-        except Exception as e:
-            if 'locked' in str(e) or 'timeout' in str(e).lower():
-                time.sleep(1)
-                continue
-            raise
-    logger.warning(f'_clear_collection_running: failed after 30 retries')
+    try:
+        execute(
+            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('collection_running', ?, datetime('now'))",
+            (json.dumps({"status": "0", "started_at": "", "mode": ""}),)
+        )
+    except Exception as e:
+        if 'locked' in str(e):
+            logger.debug(f'_clear_collection_running: skipped (DB locked)')
+        else:
+            logger.warning(f'_clear_collection_running: {e}')
 
 
 # Record process start time for stale detection
@@ -208,6 +202,7 @@ HEALTH_URL = _get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys')
 _collector = NsfocusCollector()
 _last_full_run: Optional[datetime] = None
 _is_running = False
+_startup_complete = False  # Set True after startup finishes to prevent premature job execution
 
 # ── Progress state (for async collection) ────────────────────────
 
@@ -301,7 +296,6 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         return {'status': 'skipped', 'reason': 'Already running (memory)'}
 
     _is_running = True
-    _set_collection_running(mode)
     logger.info(f'Collection starting: mode={mode}')
     start = time.time()
 
@@ -986,8 +980,8 @@ def refresh_scheduler_jobs():
         hb_interval = int(_get_setting('heartbeat_interval', '30'))
         if not _scheduler.get_job('nsfocus_collect'):
             _scheduler.add_job(_smart_collect, 'interval', hours=interval_hours,
-                                id='nsfocus_collect', name='NSFOCUS Smart Collection',
-                                next_run_time=datetime.utcnow())
+                               id='nsfocus_collect', name='NSFOCUS Smart Collection',
+                               next_run_time=datetime.utcnow() + timedelta(seconds=10))
             logger.info(f'Collection job added: every {interval_hours}h')
         else:
             _scheduler.reschedule_job('nsfocus_collect', trigger='interval', hours=interval_hours)
@@ -1011,14 +1005,9 @@ def refresh_scheduler_jobs():
             _scheduler.add_job(_digest_check, 'interval', hours=6,
                                 id='nsfocus_digest', name='Digest Summary Check',
                                 next_run_time=datetime.utcnow())
-        if not _scheduler.get_job('nsfocus_health'):
-            _scheduler.add_job(_health_check, 'interval', minutes=hb_interval * 2,
-                                id='nsfocus_health', name='Scheduler Health Check',
-                                next_run_time=datetime.utcnow())
-        else:
-            _scheduler.reschedule_job('nsfocus_health', trigger='interval', minutes=hb_interval * 2)
+        # nsfocus_health removed: _health_check is disabled
     else:
-        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest', 'nsfocus_health']:
+        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest']:
             job = _scheduler.get_job(job_id)
             if job:
                 _scheduler.remove_job(job_id)
@@ -1037,23 +1026,12 @@ def start_scheduler(app=None):
         sched.start()
         _scheduler = sched
 
-        # Daemon thread: PASSIVE WAL checkpoint every 5 minutes (no exclusive lock needed).
-        # This replaces the TRUNCATE checkpoint that was silently failing in the collection
-        # finally block (TRUNCATE requires exclusive lock which is held by the collector).
-        import threading, time as _time
-        def _wal_checkpoint_loop():
-            from src.models.database import get_db
-            while True:
-                _time.sleep(300)  # 5 minutes
-                try:
-                    get_db().execute('PRAGMA wal_checkpoint(PASSIVE)')
-                    logger.debug('PASSIVE WAL checkpoint OK')
-                except Exception as e:
-                    logger.warning(f'PASSIVE WAL checkpoint failed: {e}')
-        _cp_thread = threading.Thread(target=_wal_checkpoint_loop, daemon=True)
-        _cp_thread.start()
+        # WAL checkpoint removed (journal_mode=DELETE, no WAL file)
 
         _clear_stale_collection_running(force=True)
+        # 强制复位 _is_running，避免上一个 crash 的进程遗留此标志
+        global _is_running
+        _is_running = False
         refresh_scheduler_jobs()
 
         # ── Clean shutdown: clear collection_running on SIGTERM/exit ──
@@ -1076,11 +1054,19 @@ def start_scheduler(app=None):
 
         atexit.register(_shutdown_cleanup)
 
-        # First-run check: if no snapshots have source_url populated, trigger immediate full scan
-        _check_first_run()
+        # 延迟5秒后执行首次运行检查（在主线程同步执行，避免与 health check 竞争 _is_running）
+        import time as _time
+        def _delayed_first_run():
+            _time.sleep(5)
+            _check_first_run()
+        threading.Thread(target=_delayed_first_run, daemon=True).start()
 
         # Build URL→Chain cache for subscription chain matching
         _build_url_chain_cache()
+
+        # Mark startup complete — now _smart_collect job is allowed to run
+        global _startup_complete
+        _startup_complete = True
 
         return sched
     except ImportError:
@@ -1106,6 +1092,8 @@ def reschedule_heartbeat():
 
 def _smart_collect():
     """Smart collection: full scan if due, quick otherwise. Eliminates race condition."""
+    if not _startup_complete:
+        return
     if is_full_scan_due():
         logger.info('Full scan interval reached, running full collection')
         run_now(mode='full')
@@ -1273,7 +1261,10 @@ def _digest_check():
 def _health_check():
     """Monitor scheduler health: heartbeat invocation and collection status.
 
-    Alerts if:
+    DISABLED: previously triggering concurrent run_now() calls that blocked collections.
+    """
+    return
+    """Alerts if:
     - Heartbeat job hasn't run in > 2x interval (missing scheduler execution)
     - Collection hasn't succeeded in > 2x collection interval (stuck collection)
     - Both send via emit_session_error so the system_event notification handles delivery
