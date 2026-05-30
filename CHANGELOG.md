@@ -2,6 +2,21 @@
 
 ## [Unreleased]
 
+### 新增
+- **API 文档**：更新路由路径（`/api/settings/scheduler/*`），删除不存在的端面
+
+### 修复
+- **代码质量**：清理死代码和过时注释（database.py WAL 注释、subscription.py 死代码、router.py 重复声明、system_routes.py 重复 import）
+- **调度器**：`_shutdown_cleanup` 退出时清理 `collection_running` 标志，避免重启后误判
+- **日志**：`log_scanner` 异常处理增加 `exc_info=True` 输出完整 traceback
+- **采集器**：`NsfocusCollector.collect()` 改为 passive（return [] + DeprecationWarning），避免误触崩溃
+
+### 改进
+- **文档**：API 接口文档、用户手册、部署运维、系统架构全面校准（产品名称、采集模式、订阅字段、路径引用）
+- **文档**：删除重复的「采集异常诊断三步法」章节
+
+---
+
 ## [0.1.0] - 2026-05-29
 
 ### 新增
