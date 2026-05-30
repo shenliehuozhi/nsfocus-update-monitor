@@ -391,7 +391,7 @@ async function dashboard(range){
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
       <div class="info-bar">
-        <span>⏱️ 上次采集: <span id="lastColText">${lastCol}</span>${sch.last_mode?' ['+mode_label[sch.last_mode]+']':''}<span id="dashProgress" style="display:none;margin-left:8px;cursor:pointer;font-size:12px" onclick="triggerCollect()"></span></span>
+        <span>⏱️ 上次采集: <span id="lastColText">${lastCol}</span>${sch.last_mode?' ['+mode_label[sch.last_mode]+']':''}<span id="dashProgress" style="display:none;margin-left:8px;font-size:12px;color:var(--primary);font-weight:600"></span></span>
         <span>⏭️ 下次采集: ${nextCol}</span>
         <span>📊 本周: ${d.push_week?.total||0}次 <span style="color:var(--success)">${d.push_week?.success||0}✓</span> ${d.push_week?.failed>0?'<span style="color:var(--danger)">'+d.push_week.failed+'✗</span>':('<span style="color:var(--muted)">0✗</span>')}</span>
       </div>
