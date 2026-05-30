@@ -342,35 +342,37 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
     }
 
     try:
-        # 1. Get active collect sessions and pre-flight-validate each one.
-        # All active sessions get their heartbeat updated (even if unused this run).
+        # 1. Pre-flight-validate ALL active sessions (both discover and collect).
+        # All sessions get their heartbeat updated regardless of purpose.
         # Collection MUST use a collect-purpose session.
+        all_sessions = get_active_sessions()
         collect_sessions = get_active_collect_sessions()
-        if not collect_sessions:
+        if not all_sessions:
             summary['status'] = 'error'
-            summary['errors'].append('No active collect sessions')
-            logger.warning('Collection aborted: no active collect sessions')
+            summary['errors'].append('No active sessions')
+            logger.warning('Collection aborted: no active sessions')
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
             return summary
 
-        # Pre-flight-validate every collect session and record results
         valid_session = None
-        for collect_mode, sess in collect_sessions.items():
+        for sess in all_sessions:
             _collector._set_cookie(sess['cookie_value'])
+            is_collect = sess['id'] in collect_sessions
+            purpose_tag = 'collect' if is_collect else 'discover'
             if _collector.verify_session(HEALTH_URL):
                 update_status(sess['id'], 'active')
                 update_heartbeat(sess['id'], '正常')
-                log_heartbeat(sess['id'], '正常', error_msg='pre-flight OK')
-                if valid_session is None:
+                log_heartbeat(sess['id'], '正常', error_msg=f'pre-flight OK ({purpose_tag})')
+                if is_collect and valid_session is None:
                     valid_session = sess
-                    logger.info(f'Pre-flight passed: session {sess["id"]} ({sess["purpose"]}/{collect_mode})')
+                    logger.info(f'Pre-flight passed: session {sess["id"]} (collect/{sess.get("collect_mode","standard")})')
             else:
-                logger.warning(f'Session {sess["id"]} ({sess["purpose"]}/{collect_mode}) pre-flight failed — marking expired')
+                logger.warning(f'Session {sess["id"]} ({purpose_tag}) pre-flight failed — marking expired')
                 update_status(sess['id'], 'expired')
                 update_heartbeat(sess['id'], '过期')
-                log_heartbeat(sess['id'], '过期', error_msg='pre-flight failed')
+                log_heartbeat(sess['id'], '过期', error_msg=f'pre-flight failed ({purpose_tag})')
 
         if valid_session is None:
             summary['status'] = 'error'
