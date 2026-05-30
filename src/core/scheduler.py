@@ -17,7 +17,11 @@ from src.core.logger import get_logger
 from src.collectors.nsfocus import NsfocusCollector, SessionExpiredError, _get_products as _collector_products
 from src.detector.change import run_detection, get_new_for_subscription
 from src.notifiers.router import route_notifications, process_delayed_queue
-from src.models.user_session import get_active_sessions, update_status, update_heartbeat, log_heartbeat
+from src.models.user_session import (
+    get_active_sessions,
+    get_active_collect_sessions,
+    update_status, update_heartbeat, log_heartbeat,
+)
 from src.models.snapshot import (
     get_source_by_name, update_source_health,
     list_sources as list_content_sources,
@@ -338,53 +342,47 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
     }
 
     try:
-        # 1. Get active session
-        sessions = get_active_sessions()
-        if not sessions:
+        # 1. Get active collect sessions and pre-flight-validate each one.
+        # All active sessions get their heartbeat updated (even if unused this run).
+        # Collection MUST use a collect-purpose session.
+        collect_sessions = get_active_collect_sessions()
+        if not collect_sessions:
             summary['status'] = 'error'
-            summary['errors'].append('No active sessions')
-            logger.warning('Collection aborted: no active sessions')
+            summary['errors'].append('No active collect sessions')
+            logger.warning('Collection aborted: no active collect sessions')
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
             return summary
 
-        cookie = sessions[0]['cookie_value']
-        _collector._set_cookie(cookie)
-
-        # Pre-validate session before starting collection.
-        # Avoids the scenario where an expired session causes a product
-        # to collect 0 items → all its snapshots marked rollback.
-        if not _collector.verify_session(HEALTH_URL):
-            logger.warning('Pre-flight session check failed, trying backup...')
-            update_status(sessions[0]['id'], 'expired')
-            update_heartbeat(sessions[0]['id'], '过期')
-            log_heartbeat(sessions[0]['id'], '过期', error_msg='pre-flight failed')
-            if len(sessions) > 1:
-                cookie = sessions[1]['cookie_value']
-                _collector._set_cookie(cookie)
-                if not _collector.verify_session(HEALTH_URL):
-                    logger.warning('Backup session also invalid')
-                    update_status(sessions[1]['id'], 'expired')
-                    update_heartbeat(sessions[1]['id'], '过期')
-                    log_heartbeat(sessions[1]['id'], '过期', error_msg='pre-flight backup failed')
-                    summary['status'] = 'error'
-                    summary['errors'].append('All sessions expired — collection aborted')
-                    return summary
-                logger.info('Switched to backup session, recording heartbeat...')
-                update_status(sessions[1]['id'], 'active')
-                update_heartbeat(sessions[1]['id'], '正常')
-                log_heartbeat(sessions[1]['id'], '正常', error_msg='pre-flight backup OK')
+        # Pre-flight-validate every collect session and record results
+        valid_session = None
+        for collect_mode, sess in collect_sessions.items():
+            _collector._set_cookie(sess['cookie_value'])
+            if _collector.verify_session(HEALTH_URL):
+                update_status(sess['id'], 'active')
+                update_heartbeat(sess['id'], '正常')
+                log_heartbeat(sess['id'], '正常', error_msg='pre-flight OK')
+                if valid_session is None:
+                    valid_session = sess
+                    logger.info(f'Pre-flight passed: session {sess["id"]} ({sess["purpose"]}/{collect_mode})')
             else:
-                summary['status'] = 'error'
-                summary['errors'].append('Session expired — collection aborted')
-                return summary
+                logger.warning(f'Session {sess["id"]} ({sess["purpose"]}/{collect_mode}) pre-flight failed — marking expired')
+                update_status(sess['id'], 'expired')
+                update_heartbeat(sess['id'], '过期')
+                log_heartbeat(sess['id'], '过期', error_msg='pre-flight failed')
 
-        # Pre-flight passed — record success
-        update_status(sessions[0]['id'], 'active')
-        update_heartbeat(sessions[0]['id'], '正常')
-        log_heartbeat(sessions[0]['id'], '正常', error_msg='pre-flight OK')
-        logger.info('Pre-flight session check passed')
+        if valid_session is None:
+            summary['status'] = 'error'
+            summary['errors'].append('All collect sessions expired — collection aborted')
+            with _progress_lock:
+                _progress['active'] = False
+                _progress['phase'] = 'done'
+            return summary
+
+        # Use the first valid collect session
+        cookie = valid_session['cookie_value']
+        _collector._set_cookie(cookie)
 
         # 2. Ensure content sources exist in DB (bootstrap from PRODUCTS for backward compat)
         existing_sources = {s['name']: s for s in list_content_sources('nsfocus')}
@@ -405,7 +403,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             skip_hash = _get_setting('skip_page_hash_check', '0') == '1'
             all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
         else:
-            all_items = _collect_full(existing_sources, sessions, cookie, _emit)
+            all_items = _collect_full(existing_sources, list(collect_sessions.values()), cookie, _emit)
 
         with _progress_lock:
             _progress['products_done'] = len(existing_sources)
