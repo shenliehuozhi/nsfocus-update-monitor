@@ -1,6 +1,6 @@
 """User Session model — stores encrypted NSFOCUS PHPSESSID + heartbeat tracking."""
 
-import datetime
+from datetime import datetime as _dt
 import os
 import pathlib
 import threading
@@ -179,7 +179,7 @@ def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_ms
         lines = []
         if p.exists():
             lines = p.read_text(encoding='utf-8').splitlines()
-        ts = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+        ts = _dt.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
         new_line = f'{ts} | sid={session_id} | {hb_status} | {latency_ms}ms | {error_msg}'
         lines.append(new_line)
         lines = lines[-10:]
