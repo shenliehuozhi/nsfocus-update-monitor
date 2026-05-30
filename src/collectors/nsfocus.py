@@ -128,7 +128,9 @@ class NsfocusCollector(BaseCollector):
     # ROLLBACK MARKER — strategy field cleanup
     def collect(self, source_id: int, session_cookie: str):
         """DEPRECATED: not used by any active collection path. Use scheduler delta/full modes."""
-        raise NotImplementedError('use scheduler delta/full modes instead')
+        import warnings
+        warnings.warn('NsfocusCollector.collect() is deprecated; use scheduler delta/full modes', DeprecationWarning, stacklevel=2)
+        return []
 
     def discover_package_types(self, source_id: int, session_cookie: str, log_fn=None, progress_fn=None) -> dict:
         """Fully recursive directory-tree traversal for package type discovery.

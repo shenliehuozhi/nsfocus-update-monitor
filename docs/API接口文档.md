@@ -2,7 +2,7 @@
 
 ## 约定
 
-- 基础路径: `http://119.23.152.22:9999/api`
+- 基础路径: `http://<HOST>:9999/api`
 - 认证: `Authorization: Bearer <JWT>`
 - Content-Type: `application/json`
 - 响应格式: `{"code": 0, "data": {...}}` 或 `{"code": 40001, "message": "..."}`
@@ -349,37 +349,6 @@ data: {"processed": 3, "errors": 0}
 }
 ```
 
-### POST /api/sources/:id/preview
-手动触发一次抓取预览，返回本次采集到的数据（不写入数据库）。
-
-```json
-{
-  "code": 0,
-  "data": {
-    "collected_at": "2026-05-10T18:00:00",
-    "duration_ms": 8200,
-    "items": [
-      {
-        "product_name": "WAF",
-        "version_branch": "V6.0.9",
-        "package_type": "rule",
-        "file_name": "update_rule.V6.0R09F00.29622898.wcl",
-        "package_version": "V6.0R09F00.29622898",
-        "md5_hash": "7138a6f8c4c4347811b51dbd739bfcbe",
-        "file_size": 2456625,
-        "download_id": 187442,
-        "urgency": "normal",
-        "is_new": true
-      }
-    ],
-    "stats": {"total": 3, "new": 1, "existing": 2, "rollback": 0}
-  }
-}
-```
-
-### POST /api/sources/collect
-手动触发全量采集（写入数据库，正常走检测和通知流程）。
-
 ### GET /api/sources/:id/versions
 获取该产品的版本列表（实时从绿盟站点拉取）。
 
@@ -621,17 +590,17 @@ data: {"processed": 3, "errors": 0}
 
 ## 10. 定时任务控制
 
-### GET /api/scheduler
+### GET /api/settings/scheduler
 ```json
 {"code": 0, "data": {"next_run": "2026-05-10T13:00:00", "interval": "4h", "jobs": [...]}}
 ```
 
-### POST /api/scheduler/trigger
-手动触发定时采集任务（同 `/api/sources/collect`）。
+### POST /api/settings/scheduler/trigger
+手动触发一次采集任务（Quick 扫描）。返回 409 表示采集进行中。
 
-### PUT /api/scheduler
+### PUT /api/settings/scheduler
 ```json
-{"interval": "6h"}
+{"interval": "6h", "enabled": "1"}
 ```
 
 ---
