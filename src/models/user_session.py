@@ -202,11 +202,13 @@ def get_heartbeat_history(session_id: int, limit: int = 20) -> list:
     from datetime import datetime
     rows = []
     for line in reversed(matching):
-        m = re.match(r'([\d\-: ]+ UTC)\s+\| sid=(\d+)\s+\| (\w*)\s+\| (\w*)\s+\| (\w+)\s+\| (\d+ms)\s+\| (.*)', line)
+        m = re.match(r'([\d\-: ]+) UTC\s+\| sid=(\d+)\s+\| (\w*)\s+\| (\w*)\s+\| (\w+)\s+\| (\d+ms)\s+\| (.*)', line)
         if m:
             ts_str, sid, purpose, collect_mode, status, latency, msg = m.groups()
+            # Convert "2026-05-30 17:33:37 UTC" -> "2026-05-30T17:33:37Z" for JS fmtTZ
+            iso_ts = ts_str.strip().replace(' UTC', '') + 'Z'
             rows.append({
-                'created_at': ts_str,
+                'created_at': iso_ts,
                 'session_id': int(sid),
                 'status': status,
                 'latency_ms': int(latency.rstrip('ms')),
@@ -218,8 +220,9 @@ def get_heartbeat_history(session_id: int, limit: int = 20) -> list:
             # Fallback for old 5-field format
             parts = line.split('|')
             if len(parts) >= 5:
+                ts_str = parts[0].strip().replace(' UTC', '') + 'Z'
                 rows.append({
-                    'created_at': parts[0].strip(),
+                    'created_at': ts_str,
                     'session_id': session_id,
                     'status': parts[3].strip() if len(parts) > 3 else '',
                     'latency_ms': 0,

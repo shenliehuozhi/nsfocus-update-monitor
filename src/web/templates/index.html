@@ -2035,13 +2035,13 @@ async function showHbHistory(sid){
     const labelMap={'正常':'正常','过期':'过期','污染':'污染','错误':'错误','ok':'正常','expired':'过期'};
     const stColor=stMap[h.status]||'warn';
     const label=labelMap[h.status]||h.status||'未知';
-    return `<tr><td><span class="badge badge-${stColor}">${label}</span></td><td>${h.latency_ms||0}ms</td><td style="font-size:11px">${h.error_msg||h.error_message||'—'}</td><td>${fmtTZ(h.created_at,true)||h.created_at||''}</td></tr>`;
+    return `<tr><td style="font-size:11px">${fmtTZ(h.created_at,true)||h.created_at||''}</td><td><span class="badge badge-${stColor}">${label}</span></td><td>${h.latency_ms||0}ms</td><td style="font-size:11px">${h.error_msg||h.error_message||'—'}</td></tr>`;
   }).join('');
   document.getElementById('hbModal').innerHTML=`
     <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)document.getElementById('hbModal').innerHTML=''">
       <div class="card" style="width:600px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
         <div class="card-hd">💓 心跳历史 — Session #${sid} <button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="document.getElementById('hbModal').innerHTML=''">关闭</button></div>
-        <div class="card-bd pt0"><table><tr><th>状态</th><th>延迟</th><th>错误</th><th>时间</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无心跳记录</td></tr>'}</table></div>
+        <div class="card-bd pt0"><table><tr><th>时间</th><th>状态</th><th>延迟</th><th>说明</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无心跳记录</td></tr>'}</table></div>
       </div>
     </div>`;
 }
