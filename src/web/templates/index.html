@@ -553,7 +553,7 @@ async function dataPage() {
   // Progress % for display
   const pct = (p.products_total && p.products_total > 0) ? Math.round(p.products_done / p.products_total * 100) : 0;
   const progressHtml = isRunning
-    ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0}) <a href="#" onclick="showCollectProgress();return false" style="color:var(--primary);text-decoration:underline;margin-left:4px">查看</a></span>`
+    ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0})</span>`
     : '';
 
   const totalActive = Object.values(_dataAll).filter(s => s.is_active).length;
@@ -630,7 +630,7 @@ async function dataPage() {
             d.setUTCHours(d.getUTCHours() + (s2.interval_hours || 24));
             nextText2 = fmtTZ(d.toISOString().substring(0, 19), true);
           }
-          const ph2 = isR2 ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct2}% ${p2.current_product || ''} (${p2.products_done||0}/${p2.products_total||0}) <a href="#" onclick="showCollectProgress();return false" style="color:var(--primary);text-decoration:underline;margin-left:4px">查看</a></span>` : '';
+          const ph2 = isR2 ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct2}% ${p2.current_product || ''} (${p2.products_done||0}/${p2.products_total||0})</span>` : '';
           const hdrRight = `<div class="hdr-right" style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
   <span style="color:var(--muted)">上次</span><span>${lastText2}${lastMode2 ? ' [' + lastMode2 + ']' : ''}</span>
   <span style="color:var(--border)">|</span>
