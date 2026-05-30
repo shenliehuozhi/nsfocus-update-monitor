@@ -20,7 +20,6 @@ _confirm_state = None  # {active, phase, log_lines, result, error}
 _confirm_lock = None
 
 # ── Temp file for discover result persistence ─────────────────────────
-import threading
 # Compute project root from this module's location (src/web/routes/)
 # Need 3 levels up to reach project root from src/web/routes/
 _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))

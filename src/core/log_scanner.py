@@ -251,10 +251,10 @@ def _scan_audit_log() -> list:
                             _LOGIN_FAIL_COUNT[ip] = _LOGIN_FAIL_COUNT[ip][-2:]
                             logger.warning(f'Login bruteforce detected: ip={ip} count={count}')
                         except Exception as e:
-                            logger.error(f'Failed to emit login_bruteforce: {e}')
+                            logger.error(f'Failed to emit login_bruteforce: {e}', exc_info=True)
 
     except Exception as e:
-        logger.warning(f'Error scanning audit.log: {e}')
+        logger.warning(f'Error scanning audit.log', exc_info=True)
 
     return findings
 
@@ -345,7 +345,7 @@ def _scan_heartbeat_log() -> list:
                 })
 
     except Exception as e:
-        logger.warning(f'Error scanning heartbeat.log: {e}')
+        logger.warning(f'Error scanning heartbeat.log', exc_info=True)
 
     return findings
 

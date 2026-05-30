@@ -1051,6 +1051,8 @@ def start_scheduler(app=None):
                     _scheduler.shutdown(wait=False)
             except Exception:
                 pass
+            # 清理 collection_running 标记，避免重启后误判
+            _clear_collection_running()
 
         atexit.register(_shutdown_cleanup)
 

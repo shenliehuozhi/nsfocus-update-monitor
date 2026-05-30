@@ -21,7 +21,8 @@ DB_PATH: str = ''
 # Global write lock — serializes all DB writes across all threads.
 # Uses RLock (re-entrant) so the same thread can re-acquire it safely,
 # preventing deadlocks when collector code paths call each other.
-# Combined with WAL mode, this eliminates "database is locked" errors.
+# With DELETE mode + isolation_level=None, write contention is minimal;
+# the lock provides an additional safety margin for multi-threaded access.
 _write_lock = threading.RLock()
 _WRITE_LOCK_TIMEOUT = 30  # seconds — allow longer for bulk inserts and network-dependent ops
 
@@ -99,8 +100,9 @@ def execute(sql: str, params: tuple = ()) -> int | None:
     """Execute an INSERT/UPDATE/DELETE, return lastrowid.
 
     Thread-safe: acquires _write_lock so all writes across all threads
-    are serialized.  Combined with WAL mode, this eliminates concurrent
-    write lock contention entirely.
+    are serialized.  With DELETE mode + isolation_level=None, lock
+    contention is minimal; the lock provides safety margin for
+    multi-threaded access.
 
     Retries on "database is locked" (up to 30 attempts, 2s/4s/6s... sleep between).
     10s busy_timeout gives SQLite time to acquire the lock without hogging resources.

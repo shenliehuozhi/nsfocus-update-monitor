@@ -294,10 +294,8 @@ CREATE TABLE IF NOT EXISTS delayed_queue (
 
 
 def enqueue(snapshot_id: int, rule_id: int, push_after: str) -> int:
-    from src.models.database import execute
+    from src.models.database import execute, query
     # Dedup: same snapshot + rule shouldn't be enqueued twice
-    existing = execute.__self__ if hasattr(execute, '__self__') else None
-    from src.models.database import query
     dup = query(
         "SELECT id FROM delayed_queue WHERE snapshot_id = ? AND rule_id = ? AND status = 'pending'",
         (snapshot_id, rule_id)

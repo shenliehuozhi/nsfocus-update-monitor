@@ -33,9 +33,6 @@ NOTIFIERS = {
 _RATE_LIMIT_INTERVAL = float(os.getenv('MONITOR_RATE_LIMIT_SEC', '3'))
 _last_send: dict[str, float] = {}
 
-# Push summary accumulator: key = cycle_marker, val = {total, success, failed, items: [], rule_info: {}, channel_info: {}}
-_push_summary_accumulator: dict = {}
-
 
 def _emit_push_summary():
     """Emit a single push_summary system event for all accumulated push results.
