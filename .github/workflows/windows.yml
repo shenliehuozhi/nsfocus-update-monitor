@@ -36,7 +36,7 @@ jobs:
 
       - name: Compress with UPX
         run: |
-          upx --best --lzma dist\nsfocus-monitor.exe
+          upx --best --lzma --force dist\nsfocus-monitor.exe
 
       - name: Build portable zip
         run: |
