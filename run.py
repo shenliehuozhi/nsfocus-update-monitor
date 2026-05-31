@@ -62,7 +62,9 @@ app = create_app()
 def _first_run_setup():
     try:
         init_db()
-    except Exception:
+    except Exception as e:
+        import sys as _sys
+        _sys.stderr.write(f'[ERROR] init_db failed: {e}\n')
         return
     if list_users():
         return  # already initialized

@@ -35,8 +35,25 @@ def create_app(config_path=None):
     # Config
     app.config['SECRET_KEY'] = os.getenv('MONITOR_SECRET_KEY', 'dev-secret-change-me')
     app.config['JWT_SECRET'] = os.getenv('MONITOR_JWT_SECRET', 'dev-jwt-secret-change-me')
-    app.config['DATA_DIR'] = os.getenv('MONITOR_DATA_DIR',
-                                       os.path.join(os.path.dirname(__file__), '..', 'data'))
+    # Config — use env if set, otherwise probe for writable location
+    def _data_dir():
+        import sys as _sys
+        if getattr(_sys, 'frozen', False):
+            _exe_dir = os.path.dirname(_sys.executable)
+            _probe = os.path.join(_exe_dir, 'data')
+            try:
+                os.makedirs(_probe, exist_ok=True)
+                with open(os.path.join(_probe, '.probe'), 'w') as _f:
+                    _f.write('')
+                os.remove(os.path.join(_probe, '.probe'))
+                return _probe
+            except Exception:
+                if _sys.platform == 'win32':
+                    return os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local')) + '\\nsfocus-monitor-data'
+                return os.path.join(os.path.expanduser('~/.local'), 'share', 'nsfocus-monitor-data')
+        return os.getenv('MONITOR_DATA_DIR', os.path.join(os.path.dirname(__file__), '..', 'data'))
+
+    app.config['DATA_DIR'] = _data_dir()
     app.config['LOG_DIR'] = os.getenv('MONITOR_LOG_DIR',
                                       os.path.join(os.path.dirname(__file__), '..', 'logs'))
     app.config['COLLECT_INTERVAL'] = int(os.getenv('MONITOR_COLLECT_INTERVAL', '4'))

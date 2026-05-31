@@ -69,7 +69,18 @@ def init_db(data_dir: str = None) -> str:
     """Initialize database path. Call once at startup."""
     global DB_PATH
     if data_dir is None:
-        data_dir = os.getenv('MONITOR_DATA_DIR', os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
+        import sys as _sys
+        if getattr(_sys, 'frozen', False):
+            # onefile exe: use same fallback probe as run.py
+            # (run.py already set MONITOR_DATA_DIR; respect it)
+            import os as _os
+            data_dir = _os.environ.get(
+                'MONITOR_DATA_DIR',
+                _os.path.dirname(_sys.executable)
+            )
+        else:
+            data_dir = os.getenv('MONITOR_DATA_DIR',
+                                 os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
     os.makedirs(data_dir, exist_ok=True)
     DB_PATH = os.path.join(data_dir, 'nsfocus_monitor.db')
     logger.info(f'Database path: {DB_PATH}')
