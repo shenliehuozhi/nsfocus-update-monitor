@@ -262,7 +262,7 @@ class NsfocusCollector(BaseCollector):
             return {'types': [], 'paths': [], 'modes': {}}
 
     @staticmethod
-    def diff_package_types(current: dict, discovered: dict) -> dict:
+    def diff_package_types(current: dict, discovered: dict, _debug: bool = False) -> dict:
         """
         Compare current stored package_type JSON with newly discovered result.
 
@@ -279,8 +279,10 @@ class NsfocusCollector(BaseCollector):
 
         # Use chain+types as identity key — 'url' is just the page URL where it was
         # discovered and may differ between old/new data for the same actual path.
+        # chain elements are stripped to handle whitespace inconsistencies between
+        # runs (e.g. section titles extracted with or without leading space).
         def path_key(p):
-            return '|'.join(p.get('chain', []) + p.get('types', []))
+            return '|'.join([s.strip() for s in p.get('chain', [])] + p.get('types', []))
 
         cur_map = {path_key(p): p for p in current_paths}
         disc_map = {path_key(p): p for p in discovered_paths}
@@ -305,6 +307,11 @@ class NsfocusCollector(BaseCollector):
                         'old_types': sorted(old_types),
                         'new_types': sorted(new_types),
                     })
+
+        if _debug and (added or deleted):
+            logger.warning(f'[diff_package_types] DEBUG: current keys ({len(cur_map)}): {sorted(cur_map.keys())}')
+            logger.warning(f'[diff_package_types] DEBUG: discovered keys ({len(disc_map)}): {sorted(disc_map.keys())}')
+            logger.warning(f'[diff_package_types] DEBUG: diff added={len(added)} deleted={len(added)}')
 
         return {
             'added_paths': added,
