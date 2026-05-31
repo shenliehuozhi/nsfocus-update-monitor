@@ -611,12 +611,12 @@ class NsfocusCollector(BaseCollector):
             from src.models.database import execute as snap_exec
             for (sid, pname, ver, pkg, phash, furl) in pending_pagehash_inserts:
                 snap_exec(
-                    """INSERT INTO snapshots
-                       (source_id, product_name, version_branch, package_type,
-                        file_name, md5_hash, page_hash, source_url, status)
-                       VALUES (?, ?, ?, ?, '', ?, ?, ?, 'active')""",
-                    (sid, pname, ver, pkg, phash, furl)
-                )
+                        """INSERT INTO snapshots
+                           (source_id, product_name, version_branch, package_type,
+                            file_name, md5_hash, page_hash, source_url, status)
+                           VALUES (?, ?, ?, ?, '', '', ?, ?, 'active')""",
+                        (sid, pname, ver, pkg, phash, furl)
+                    )
         if pending_pagehash_updates:
             from src.models.database import execute as snap_exec
             for op in pending_pagehash_updates:

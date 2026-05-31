@@ -1485,8 +1485,22 @@ def _load_notify_channel_direct() -> dict | None:
     
     This bypasses the app's main DB connection to avoid lock contention
     when the main DB is in a bad state.
+    
+    NOTE: config is stored encrypted, so we need to decrypt it here
+    just like get_by_id() does via _decrypt_config().
     """
+    import os as _os
     from src.models.database import DB_PATH
+    
+    # Ensure DB_PATH is initialized (init_db() may not have been called
+    # in this context, leaving DB_PATH='' and get_db() auto-inits it)
+    if not DB_PATH:
+        data_dir = _os.getenv('MONITOR_DATA_DIR', _os.path.join(_os.path.dirname(__file__), '..', '..', '..', 'data'))
+        data_dir = _os.path.abspath(data_dir)
+        _os.makedirs(data_dir, exist_ok=True)
+        from src.models import database as _db
+        _db.DB_PATH = _os.path.join(data_dir, 'nsfocus_monitor.db')
+        DB_PATH = _db.DB_PATH
     
     try:
         conn = sqlite3.connect(DB_PATH, check_same_thread=False, timeout=5.0)
@@ -1501,12 +1515,21 @@ def _load_notify_channel_direct() -> dict | None:
         channel_id = cfg_row['channel_id']
         # Get channel config
         chan_row = conn.execute(
-            "SELECT * FROM notification_channels WHERE id = ?", (channel_id,)
+            "SELECT * FROM channels WHERE id = ?", (channel_id,)
         ).fetchone()
         conn.close()
         if not chan_row:
             return None
-        return dict(chan_row)
+        # Decrypt config (same as _decrypt_config in channel.py)
+        from src.core.crypto import decrypt
+        import json as _json
+        row = dict(chan_row)
+        if row.get('config'):
+            try:
+                row['config'] = _json.loads(decrypt(row['config']))
+            except Exception:
+                row['config'] = {}
+        return row
     except Exception:
         return None
 

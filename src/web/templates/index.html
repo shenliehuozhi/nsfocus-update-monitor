@@ -103,6 +103,9 @@ body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-cont
 .mono{font-family:'SF Mono','Fira Code',monospace}
 .desc-box{background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto;font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-all;color:#555}
 .info-bar{background:#eef4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#3a5080}
+.collecting-warning{display:none;position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:0;font-size:13px;font-weight:600;height:36px;line-height:36px;text-align:center;z-index:200}
+body.warning-open .header{top:36px}
+.collecting-warning .warn-inner{white-space:nowrap;display:inline-block;padding:0 20px}
 .warning-banner{background:#fff3cd;border:1px solid #ffeeba;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#856404}
 .push-modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center}
 .push-modal .card{width:480px;max-height:75vh;overflow-y:auto}
@@ -235,6 +238,7 @@ tr[data-sid]{cursor:pointer}
   <div class="user"><span id="uname"></span><button onclick="showPwdModal()">改密</button><button onclick="logout()">退出</button></div>
 </header>
 <div class="main" id="app"></div>
+<div id="dashRunningBar" class="collecting-warning" style="display:none"><span class="warn-inner">⚠️ 采集中，请勿增删改配置，待完成后再操作 ⚠️</span></div>
 
 <script>
 const API='/api';
@@ -361,6 +365,18 @@ async function dashboard(range){
   if(!d.session_status?.active){
     sesWarn=`<div class="info-bar" style="background:#fef2f2;border-color:#fecaca;color:#991b1b;margin-bottom:14px"><strong>⚠️ 无活跃 Session</strong> — 请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 添加 PHPSESSID</div>`;
   }
+  // Show collecting bar if scheduler is running at page load, otherwise hide it
+  const b=document.getElementById('dashRunningBar');
+  if(b){
+    if(sch.is_running){
+      b.style.display='block';b.className='collecting-warning';
+      b.innerHTML='<span class="warn-inner">⚠️ 采集中，请勿增删改配置，待完成后再操作 ⚠️</span>';
+      document.body.classList.add('warning-open');
+    }else{
+      b.style.display='none';
+      document.body.classList.remove('warning-open');
+    }
+  }
 
   const mode_label={'quick':'⚡Quick','full':'🔍Full','':''};
   // Collect status
@@ -396,7 +412,6 @@ async function dashboard(range){
         <span>📊 本周: ${d.push_week?.total||0}次 <span style="color:var(--success)">${d.push_week?.success||0}✓</span> ${d.push_week?.failed>0?'<span style="color:var(--danger)">'+d.push_week.failed+'✗</span>':('<span style="color:var(--muted)">0✗</span>')}</span>
       </div>
     </div>
-    <div id="dashRunningBar" class="info-bar" style="background:#f0f4ff;border-color:#b8d4fe;display:none">🔄 采集中...</div>
 
     <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
     <div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
@@ -4695,20 +4710,14 @@ async function triggerCollect(){
 }
 async function startCollect(){
   // Immediately show "launching" state on dashboard — user confirmed, request is going out
-  const dashTop = document.querySelector('.info-bar');
-  if(dashTop) {
-    dashTop.style.cssText='background:#f0f4ff;border-color:#b8d4fe;font-size:13px';
-    dashTop.innerHTML='<span>🔄 正在启动增量采集...</span>';
-  }
+  const dashTop = document.getElementById('dashRunningBar');
+  if(dashTop){dashTop.style.display='block';dashTop.className='collecting-warning';dashTop.innerHTML='<span class="warn-inner">🔄 正在启动增量采集，请稍候...</span>';document.body.classList.add('warning-open');}
   const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
-  if(r.code===409){
-    toast('采集正在进行中','warn');location.reload();return;
-  }
+  if(r.code===409){toast('采集正在进行中','warn');location.reload();return;}
   if(r.code!==0){toast(r.message,'error');location.reload();return;}
   _collectRunning=true;
-  // Show collecting indicator in the running bar slot
   const runBar=document.getElementById('dashRunningBar');
-  if(runBar){runBar.style.display='';runBar.innerHTML='<span>🔄 采集中...</span>';}
+  if(runBar){runBar.style.display='block';runBar.className='collecting-warning';runBar.innerHTML='<span class="warn-inner">⚠️ 采集中，请勿增删改配置，待完成后再操作 ⚠️</span>';document.body.classList.add('warning-open');}
   if(_collectPollTimer)clearInterval(_collectPollTimer);
   _collectPollTimer=setInterval(pollProgress,2000);
 }
@@ -4732,7 +4741,8 @@ function showCollectProgress(){
 }
 function closeCollectModal(){
   const m=document.getElementById('collectModal');if(m)m.remove();
-  // Stop the progress poll timer — collection continues in backend
+  const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
+  document.body.classList.remove('warning-open');
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
 }
 function pollProgress(){
@@ -4746,6 +4756,7 @@ function pollProgress(){
     if(!p.active&&!p.phase){
       body.innerHTML='<p style="text-align:center;color:var(--muted)">当前无采集任务</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>';
       _collectRunning=false;
+      const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
       return;
     }
@@ -4762,6 +4773,7 @@ function pollProgress(){
     }else if(p.phase==='notifying'){
       html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">📨</div><p style="text-align:center;font-size:13px">正在推送通知...</p>`;
     }else if(p.phase==='done'){
+      const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
       const ok=p.errors&&p.errors.length>0?'warn':'ok';
       html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">${ok==='ok'?'✅':'⚠️'}</div>`;
       html+=`<p style="text-align:center;font-size:14px;font-weight:600">采集完成</p>`;
@@ -4786,7 +4798,12 @@ async function pollDashProgress(){
     if(!el)return;
     if(!p.active||p.phase==='done'){
       el.style.display='none';
-      if(p.phase==='done'){if(lc)lc.textContent='已完成';if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}}
+      if(p.phase==='done'){
+        if(lc)lc.textContent='已完成';
+        const runBar=document.getElementById('dashRunningBar');
+        if(runBar){runBar.style.display='none';document.body.classList.remove('warning-open');}
+        if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
+      }
       return;
     }
     el.style.display='inline';
@@ -4921,7 +4938,7 @@ function toggleSection(key){
   icon.textContent=open?'▸':'▾';
 }
 
-async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要禁用该产品？':'确认要启用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'#16a34a':'#dc2626';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;const btns=row.querySelectorAll('[data-action]');btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'禁用':'启用');}
+async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'#16a34a':'#dc2626';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;const btns=row.querySelectorAll('[data-action]');btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
 _initDiscObserver();
 </script>
 </body>
