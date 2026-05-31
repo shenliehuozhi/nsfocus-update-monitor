@@ -16,29 +16,33 @@ from datetime import datetime
 from threading import Thread, Event
 from typing import Optional
 
+# LOG_DIR must be resolved before any logging.FileHandler is created
+LOG_DIR = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
+
 from src.core.logger import get_logger
 from src.models.event_log import is_event_enabled, get_config
 from src.core.event_handler import emit_log_error
 
 logger = get_logger('log_scanner')
 
-# Override: write log_scanner logs to its own file (avoid polluting app.log)
-import logging
-_scanner_handler = logging.FileHandler(
+# Scanner writes to its own file (avoids feedback loop: scanner's own
+# "Log alert sent" lines must not be picked up in the next scan cycle)
+import logging as _scanner_logging
+_scanner_handler = _scanner_logging.handlers.RotatingFileHandler(
     os.path.join(LOG_DIR, 'log_scanner.log'),
     maxBytes=10 * 1024 * 1024,
     backupCount=5,
     encoding='utf-8'
 )
-_scanner_handler.setLevel(logging.DEBUG)
-_scanner_handler.setFormatter(logging.Formatter(
+_scanner_handler.setLevel(_scanner_logging.DEBUG)
+_scanner_handler.setFormatter(_scanner_logging.Formatter(
     '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 ))
-_scanner_log = logging.getLogger('monitor.log_scanner')
+_scanner_log = _scanner_logging.getLogger('monitor.log_scanner')
 _scanner_log.addHandler(_scanner_handler)
-_scanner_log.setLevel(logging.DEBUG)
-_scanner_log.propagate = False  # Don't also write to parent (app.log)
+_scanner_log.setLevel(_scanner_logging.DEBUG)
+_scanner_log.propagate = False  # Do NOT propagate to parent (monitor) logger
 
 # ── Config ───────────────────────────────────────────────
 
@@ -162,9 +166,9 @@ def _get_log_files() -> list:
     """
     files = []
     
-    # app.log and rotated backups
+    # app.log and rotated backups (scanner's own log is handled separately above)
     for name in os.listdir(LOG_DIR):
-        if name.startswith('app.log'):
+        if name.startswith('app.log') and name != 'log_scanner.log':
             filepath = os.path.join(LOG_DIR, name)
             if os.path.isfile(filepath):
                 files.append(filepath)
