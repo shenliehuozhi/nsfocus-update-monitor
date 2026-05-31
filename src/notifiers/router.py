@@ -490,8 +490,9 @@ def _split_text(text: str, max_bytes: int) -> list[str]:
                     try:
                         parts.append(chunk.decode('utf-8'))
                     except UnicodeDecodeError:
-                        parts.append(encoded[offset:offset + max_bytes - 3].decode('utf-8', errors='ignore'))
-                    offset += max_bytes - 3
+                        # Back up to last clean character boundary
+                        parts.append(chunk.decode('utf-8', errors='ignore'))
+                    offset += max_bytes
                 current = ''
             else:
                 current = line
