@@ -71,13 +71,28 @@ def init_db(data_dir: str = None) -> str:
     if data_dir is None:
         import sys as _sys
         if getattr(_sys, 'frozen', False):
-            # onefile exe: use same fallback probe as run.py
-            # (run.py already set MONITOR_DATA_DIR; respect it)
             import os as _os
-            data_dir = _os.environ.get(
-                'MONITOR_DATA_DIR',
-                _os.path.dirname(_sys.executable)
-            )
+            # Match app.py _data_dir() logic exactly:
+            # 1. Respect MONITOR_DATA_DIR if set
+            # 2. Probe exe directory for writability
+            # 3. Fallback to LOCALAPPDATA (Windows) or ~/.local (Linux)
+            env_dir = _os.environ.get('MONITOR_DATA_DIR')
+            if env_dir:
+                data_dir = env_dir
+            else:
+                _exe_dir = _os.path.dirname(_sys.executable)
+                _probe = _os.path.join(_exe_dir, 'data')
+                try:
+                    _os.makedirs(_probe, exist_ok=True)
+                    with open(_os.path.join(_probe, '.probe'), 'w') as _f:
+                        _f.write('')
+                    _os.remove(_os.path.join(_probe, '.probe'))
+                    data_dir = _probe
+                except Exception:
+                    if _sys.platform == 'win32':
+                        data_dir = _os.environ.get('LOCALAPPDATA', _os.path.expanduser('~/AppData/Local')) + '\\nsfocus-monitor-data'
+                    else:
+                        data_dir = _os.path.join(_os.path.expanduser('~/.local'), 'share', 'nsfocus-monitor-data')
         else:
             data_dir = os.getenv('MONITOR_DATA_DIR',
                                  os.path.join(os.path.dirname(__file__), '..', '..', 'data'))
