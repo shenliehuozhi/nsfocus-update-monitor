@@ -85,7 +85,9 @@ def _init_content_sources(db):
         if src['name'] in existing:
             continue
         pt = src.get('package_type') or {}
+        ptd = src.get('package_type_discovered')
         pkg_json = json.dumps(pt) if pt.get('paths') else None
+        ptd_json = json.dumps(ptd) if ptd else None
         upsert_source(
             name=src['name'],
             source_type='nsfocus',
@@ -96,4 +98,5 @@ def _init_content_sources(db):
             is_active=src.get('is_active', 1),
             is_manual=src.get('is_manual', 0),
             package_type=pkg_json,
+            package_type_discovered=ptd_json,
         )

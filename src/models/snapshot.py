@@ -136,21 +136,28 @@ def upsert_source(name: str, source_type: str, entry_url: str, strategy: str,
                   created_by: int = None, category: str = 'security',
                   display_name: str = None, is_active: bool = True,
                   is_manual: bool = False, package_type: str = None,
-                  force_type: str = None) -> int:
+                  force_type: str = None, package_type_discovered: str = None) -> int:
     """Insert or update a content source by name. Returns source id."""
     from src.models.database import execute, query
     existing = query("SELECT id FROM content_sources WHERE name = ?", (name,))
     if existing:
         source_id = existing[0]['id']
-        execute(
-            "UPDATE content_sources SET entry_url=?, strategy=?, source_type=?, category=?, display_name=?, is_active=?, is_manual=?, package_type=?, force_type=? WHERE id=?",
-            (entry_url, strategy, source_type, category, display_name, int(is_active), int(is_manual), package_type, force_type, source_id)
-        )
+        fields = ['entry_url=?', 'strategy=?', 'source_type=?', 'category=?',
+                  'display_name=?', 'is_active=?', 'is_manual=?',
+                  'package_type=?', 'force_type=?']
+        vals = [entry_url, strategy, source_type, category, display_name,
+                int(is_active), int(is_manual), package_type, force_type]
+        if package_type_discovered is not None:
+            fields.append('package_type_discovered=?')
+            vals.append(package_type_discovered)
+        vals.append(source_id)
+        execute(f"UPDATE content_sources SET {', '.join(fields)} WHERE id=?", tuple(vals))
         return source_id
     return execute(
-        "INSERT INTO content_sources (name, source_type, entry_url, strategy, category, created_by, display_name, is_active, is_manual, package_type, force_type) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (name, source_type, entry_url, strategy, category, created_by, display_name, int(is_active), int(is_manual), package_type, force_type)
+        "INSERT INTO content_sources (name, source_type, entry_url, strategy, category, created_by, display_name, is_active, is_manual, package_type, force_type, package_type_discovered) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (name, source_type, entry_url, strategy, category, created_by, display_name,
+         int(is_active), int(is_manual), package_type, force_type, package_type_discovered)
     )
 
 
