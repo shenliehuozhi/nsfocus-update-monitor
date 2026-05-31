@@ -5,9 +5,38 @@ import sys
 # ── Determine base directory (supports both script and PyInstaller onefile bundle) ──
 if getattr(sys, 'frozen', False):
     # Running as PyInstaller onefile exe: sys._MEIPASS is the temp extraction dir
-    BASE_DIR = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    _MEIPASS = getattr(sys, '_MEIPASS', os.path.dirname(sys.executable))
+    BASE_DIR = os.path.dirname(sys.executable)
+
+    # _MEIPASS temp dir is often read-only on Windows (SmartScreen, antivirus, etc.)
+    # Probe: if BASE_DIR/data is not writable, fall back to per-user app data dir
+    _probe_dir = os.path.join(BASE_DIR, 'data')
+    try:
+        os.makedirs(_probe_dir, exist_ok=True)
+        with open(os.path.join(_probe_dir, '.probe'), 'w') as f:
+            f.write('')
+        os.remove(os.path.join(_probe_dir, '.probe'))
+        DATA_DIR = _probe_dir
+    except Exception:
+        # Fall back to ~/AppData/Local/nsfocus-monitor-data (Windows) or ~/.local (Linux/macOS)
+        if sys.platform == 'win32':
+            DATA_DIR = os.path.join(os.environ.get('LOCALAPPDATA', os.path.expanduser('~/AppData/Local')), 'nsfocus-monitor-data')
+        else:
+            DATA_DIR = os.path.join(os.path.expanduser('~/.local'), 'share', 'nsfocus-monitor-data')
+        os.makedirs(DATA_DIR, exist_ok=True)
 else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    DATA_DIR = os.path.join(BASE_DIR, 'data')
+
+LOG_DIR = os.path.join(BASE_DIR, 'logs')
+
+# Ensure directories exist
+os.makedirs(DATA_DIR, exist_ok=True)
+os.makedirs(LOG_DIR, exist_ok=True)
+
+# Set env BEFORE importing app — app.py reads MONITOR_DATA_DIR at module level
+os.environ['MONITOR_DATA_DIR'] = DATA_DIR
+os.environ['MONITOR_LOG_DIR'] = LOG_DIR
 
 # Ensure project root is on path
 sys.path.insert(0, BASE_DIR)
@@ -21,16 +50,6 @@ if os.path.exists(_env_path):
             if line and not line.startswith('#') and '=' in line:
                 key, _, val = line.partition('=')
                 os.environ.setdefault(key.strip(), val.strip())
-
-# ── Ensure data/logs directories exist next to the exe (or script dir) ──
-DATA_DIR = os.path.join(BASE_DIR, 'data')
-LOG_DIR  = os.path.join(BASE_DIR, 'logs')
-os.makedirs(DATA_DIR, exist_ok=True)
-os.makedirs(LOG_DIR,  exist_ok=True)
-
-# Persist via env so models/database.py picks them up
-os.environ.setdefault('MONITOR_DATA_DIR', DATA_DIR)
-os.environ.setdefault('MONITOR_LOG_DIR',  LOG_DIR)
 
 from src.app import create_app
 

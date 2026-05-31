@@ -118,7 +118,7 @@ def execute(sql: str, params: tuple = ()) -> int | None:
             with _write_lock:
                 # Use a fresh connection instead of get_db() to avoid thread-local issues
                 import sqlite3 as _sqlite3
-                db = _sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db', timeout=60, isolation_level=None)
+                db = _sqlite3.connect(DB_PATH, timeout=60, isolation_level=None)
                 db.execute('PRAGMA busy_timeout=10000')
                 db.row_factory = _sqlite3.Row
                 _t0 = _time.time()
