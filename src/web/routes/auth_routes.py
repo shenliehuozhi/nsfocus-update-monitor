@@ -115,13 +115,24 @@ def register():
 
     create_user('admin', password_hash, is_admin=True)
 
+    # Also save to DATA_DIR/initial_password.txt so user can retrieve it from the file
+    import os as _os
+    _data_dir = os.environ.get('MONITOR_DATA_DIR', '') or _os.path.expanduser('~/.nsfocus-monitor-data')
+    _password_file = _os.path.join(_data_dir, 'initial_password.txt')
+    if not _os.path.exists(_password_file):
+        try:
+            with open(_password_file, 'w') as _f:
+                _f.write(raw_password)
+        except Exception:
+            pass  # non-critical
+
     _audit(1, 'register', {'username': 'admin', 'mode': 'first_time_setup'})
     return jsonify({
         'code': 0,
         'data': {
             'username': 'admin',
             'password': raw_password,   # only returned here — user must save it
-            'message': '初始管理员已创建，密码仅此一次显示，请妥善保存'
+            'message': '初始管理员已创建，密码仅此一次显示，请妥善保存。密码已写入数据目录 initial_password.txt 文件。'
         }
     })
 
