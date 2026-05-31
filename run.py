@@ -52,8 +52,41 @@ if os.path.exists(_env_path):
                 os.environ.setdefault(key.strip(), val.strip())
 
 from src.app import create_app
+from src.models.database import init_db
+from src.models.user import list_users, create_user
+import secrets, bcrypt
 
 app = create_app()
+
+# ── First-run setup: create admin if no users exist ─────────────────────────
+def _first_run_setup():
+    try:
+        init_db()
+    except Exception:
+        return
+    if list_users():
+        return  # already initialized
+    raw_password = secrets.token_urlsafe(12)
+    password_hash = bcrypt.hashpw(raw_password.encode(), bcrypt.gensalt()).decode()
+    create_user('admin', password_hash, is_admin=True)
+    # Write to file
+    pwd_file = os.path.join(DATA_DIR, 'initial_password.txt')
+    try:
+        with open(pwd_file, 'w') as f:
+            f.write(raw_password)
+    except Exception:
+        pass
+    # Print to stderr so it shows in console / exe popup window
+    sys.stderr.write(f'\n{"="*60}\n')
+    sys.stderr.write(f'  绿盟升级监控 — 初始化完成\n')
+    sys.stderr.write(f'{"="*60}\n')
+    sys.stderr.write(f'  用户名: admin\n')
+    sys.stderr.write(f'  初始密码: {raw_password}\n')
+    sys.stderr.write(f'  密码文件: {pwd_file}\n')
+    sys.stderr.write(f'{"="*60}\n\n')
+    sys.stderr.flush()
+
+_first_run_setup()
 
 if __name__ == '__main__':
     port  = int(os.getenv('MONITOR_PORT',  '9999'))
