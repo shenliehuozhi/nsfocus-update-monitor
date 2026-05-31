@@ -29,7 +29,7 @@ jobs:
 
       - name: Build with PyInstaller
         run: |
-          python -m PyInstaller --onefile --name nsfocus-monitor --distpath dist --add-data "src/web/templates;src/web/templates" --add-data "src/web/static;src/web/static" --hidden-import flask --hidden-import flask_cors --hidden-import apscheduler --hidden-import bs4 --hidden-import cryptography --hidden-import jwt --hidden-import bcrypt --collect-all jinja2 --collect-all markupsafe --clean run.py
+          python -m PyInstaller --onefile --name nsfocus-monitor --distpath dist --add-data "src/web/templates;src/web/templates" --add-data "src/web/static;src/web/static" --add-data "data/initial_sources.json;data" --hidden-import flask --hidden-import flask_cors --hidden-import apscheduler --hidden-import bs4 --hidden-import cryptography --hidden-import jwt --hidden-import bcrypt --collect-all jinja2 --collect-all markupsafe --clean run.py
 
       - name: Install UPX
         run: choco install upx -y
