@@ -11,6 +11,7 @@ Runs every 30 minutes, skips if collection is running.
 import os
 import re
 import time
+import json
 from datetime import datetime
 from threading import Thread, Event
 from typing import Optional
@@ -26,6 +27,7 @@ logger = get_logger('log_scanner')
 LOG_DIR = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
 SCAN_INTERVAL = 30 * 60  # 30 minutes
 TRACEBACK_LINES = 5  # lines to capture after Exception keyword
+SCAN_POS_FILE = os.path.join(LOG_DIR, '.log_scanner_positions.json')
 
 # Keyword patterns grouped by error type
 ERROR_PATTERNS = {
@@ -85,7 +87,25 @@ AUDIT_LOGIN_FAILED_PATTERN = re.compile(
 
 _scanner_thread: Optional[Thread] = None
 _stop_event = Event()
-_last_scan_file_positions: dict = {}  # {filepath: last_read_position}
+_positions: dict = {}  # in-memory cache of persisted positions
+
+def _load_positions() -> dict:
+    """Load last scan positions from persistent file."""
+    try:
+        if os.path.isfile(SCAN_POS_FILE):
+            with open(SCAN_POS_FILE, 'r') as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+def _save_positions(positions: dict):
+    """Save scan positions to persistent file."""
+    try:
+        with open(SCAN_POS_FILE, 'w') as f:
+            json.dump(positions, f)
+    except Exception as e:
+        logger.warning(f'Failed to save scan positions: {e}')
 
 # ── Login failure tracking (brute-force detection) ──────────────
 # Counts login_failed audit events since last successful login.
@@ -140,7 +160,7 @@ def _get_log_files() -> list:
 def _scan_file(filepath: str) -> list:
     """Scan a single file for error patterns. Returns list of (error_type, keyword, context, line_no)"""
     findings = []
-    last_pos = _last_scan_file_positions.get(filepath, 0)
+    last_pos = _positions.get(filepath, 0)
     
     try:
         file_size = os.path.getsize(filepath)
@@ -157,7 +177,7 @@ def _scan_file(filepath: str) -> list:
             
             # Update position for next scan
             new_pos = f.tell()
-            _last_scan_file_positions[filepath] = new_pos
+            _positions[filepath] = new_pos
             
             if not new_content.strip():
                 return findings
@@ -189,7 +209,7 @@ def _scan_file(filepath: str) -> list:
                             break  # Don't match same line multiple times for same error type
         
         # Update position
-        _last_scan_file_positions[filepath] = new_pos
+        _positions[filepath] = new_pos
         
     except Exception as e:
         logger.warning(f'Error scanning {filepath}: {e}')
@@ -205,7 +225,7 @@ def _scan_audit_log() -> list:
 
     findings = []
     filepath = os.path.join(LOG_DIR, 'audit.log')
-    last_pos = _last_scan_file_positions.get(filepath, 0)
+    last_pos = _positions.get(filepath, 0)
 
     try:
         if not os.path.isfile(filepath):
@@ -219,7 +239,7 @@ def _scan_audit_log() -> list:
             f.seek(last_pos)
             new_content = f.read()
             new_pos = f.tell()
-            _last_scan_file_positions[filepath] = new_pos
+            _positions[filepath] = new_pos
 
             if not new_content.strip():
                 return findings
@@ -273,7 +293,7 @@ def _scan_heartbeat_log() -> list:
 
     findings = []
     hb_log_path = os.path.join(LOG_DIR, 'heartbeat.log')
-    last_pos = _last_scan_file_positions.get(hb_log_path, 0)
+    last_pos = _positions.get(hb_log_path, 0)
 
     try:
         if not os.path.isfile(hb_log_path):
@@ -287,7 +307,7 @@ def _scan_heartbeat_log() -> list:
             f.seek(last_pos)
             new_content = f.read()
             new_pos = f.tell()
-            _last_scan_file_positions[hb_log_path] = new_pos
+            _positions[hb_log_path] = new_pos
 
             if not new_content.strip():
                 return findings
@@ -364,7 +384,7 @@ def _scan_access_log() -> list:
     """Scan access.log for non-200 requests from 127.0.0.1"""
     findings = []
     filepath = os.path.join(LOG_DIR, 'access.log')
-    last_pos = _last_scan_file_positions.get(filepath, 0)
+    last_pos = _positions.get(filepath, 0)
     
     try:
         if not os.path.isfile(filepath):
@@ -378,7 +398,7 @@ def _scan_access_log() -> list:
             f.seek(last_pos)
             new_content = f.read()
             new_pos = f.tell()
-            _last_scan_file_positions[filepath] = new_pos
+            _positions[filepath] = new_pos
             
             if not new_content.strip():
                 return findings
@@ -399,7 +419,7 @@ def _scan_access_log() -> list:
                         'timestamp': match.group('time')[:19] if match.group('time') else '',
                     })
         
-        _last_scan_file_positions[filepath] = new_pos
+        _positions[filepath] = new_pos
         
     except Exception as e:
         logger.warning(f'Error scanning access.log: {e}')
@@ -469,6 +489,7 @@ def _do_scan() -> int:
         total_errors += 1
     
     logger.info(f'Log scan complete: {total_errors} errors found')
+    _save_positions(_positions)
     return total_errors
 
 
@@ -525,13 +546,14 @@ def _scan_loop():
 
 def start():
     """Start the log scanner in a background thread"""
-    global _scanner_thread, _stop_event
+    global _scanner_thread, _stop_event, _positions
     
     if _scanner_thread and _scanner_thread.is_alive():
         logger.warning('Log scanner already running')
         return
     
     _stop_event.clear()
+    _positions = _load_positions()
     _scanner_thread = Thread(target=_scan_loop, daemon=True, name='log_scanner')
     _scanner_thread.start()
     logger.info('Log scanner thread started')
