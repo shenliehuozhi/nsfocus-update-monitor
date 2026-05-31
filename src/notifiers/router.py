@@ -358,6 +358,7 @@ def process_digests():
             f'**周期**: {period_display}',
             f'''**产品**: {', '.join(product_names)}''',
             f'**本期新增**: {len(snaps)} 个升级包',
+            f'💡 请查看每个升级包的详情/升级描述，了解具体变更内容',
             '',
         ]
 
@@ -392,7 +393,8 @@ def process_digests():
                     lines.append(f'   MD5: `{md5}`')
                 src_url = s.get('source_url', '')
                 if src_url:
-                    lines.append(f'   [查看详情/升级描述]({src_url})')
+                    lines.append(f'   详情: {src_url}')
+                    lines.append(f'   [详情]({src_url})')
                 lines.append('')
 
         # Send via rule's channels with auto-split for long messages
