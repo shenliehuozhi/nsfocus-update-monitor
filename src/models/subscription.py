@@ -448,10 +448,10 @@ def get_digest_snapshots(rule_id: int = None, period_key: str = None) -> list:
         f"""SELECT dq.*, s.product_name, s.version_branch, s.package_type,
                    s.file_name, s.package_version, s.md5_hash, s.file_size,
                    s.description_raw, s.urgency, s.download_id, s.published_at,
-                   s.min_sys_version, s.status AS snapshot_status
+                   s.min_sys_version, s.source_url, s.status AS snapshot_status
             FROM digest_queue dq JOIN snapshots s ON dq.snapshot_id = s.id
             WHERE {where}
-            ORDER BY s.product_name, s.published_at""",
+            ORDER BY s.source_url, s.published_at""",
         tuple(params))
 
 

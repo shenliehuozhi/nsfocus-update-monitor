@@ -361,15 +361,19 @@ def process_digests():
             '',
         ]
 
-        # Group by product
+        # Group by source_url (each source_url = one distinct upgrade flow)
         from collections import defaultdict
         grouped = defaultdict(list)
         for s in snaps:
-            grouped[s.get('product_name', '') or '其他'].append(s)
+            key = s.get('source_url') or '其他'
+            grouped[key].append(s)
 
         idx = 0
-        for prod, items in grouped.items():
-            lines.append(f'### {prod}')
+        for source_key, items in grouped.items():
+            # Human label: last segment of URL path (e.g. 'rule' from .../v/rule)
+            source_label = source_key.split('/')[-1] if source_key.startswith('http') else source_key
+
+            lines.append(f'### {source_label}')
             for s in items:
                 idx += 1
                 urgency_icon = {'critical': '🔴', 'high': '⚠️', 'normal': 'ℹ️'}.get(s.get('urgency', ''), '')
