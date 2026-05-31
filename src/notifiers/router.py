@@ -380,12 +380,19 @@ def process_digests():
                 type_label = s.get('package_type', '')
                 is_full = _is_full_package(s)
                 full_tag = ' [全量]' if is_full else ''
-                lines.append(f'{idx}. {urgency_icon} **{type_label}**{full_tag} — {s.get("file_name", "")}')
-                if s.get('package_version'):
-                    lines.append(f'   版本: {s.get("package_version")}')
-                if s.get('description_raw'):
-                    desc = (s.get('description_raw') or '')[:120]
-                    lines.append(f'   {desc}')
+                lines.append(f'{idx}. {urgency_icon} **{type_label}**{full_tag}')
+                fname = s.get('file_name') or '（无文件名）'
+                lines.append(f'   文件名: {fname}')
+                dl_id = s.get('download_id')
+                if dl_id:
+                    dl_url = f'https://update.nsfocus.com/update/downloads/id/{dl_id}'
+                    lines.append(f'   下载: [{fname}]({dl_url})')
+                md5 = s.get('md5_hash')
+                if md5:
+                    lines.append(f'   MD5: `{md5}`')
+                src_url = s.get('source_url', '')
+                if src_url:
+                    lines.append(f'   详情: {src_url}')
                 lines.append('')
 
         # Send via rule's channels with auto-split for long messages
