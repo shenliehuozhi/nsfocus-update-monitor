@@ -22,6 +22,24 @@ from src.core.event_handler import emit_log_error
 
 logger = get_logger('log_scanner')
 
+# Override: write log_scanner logs to its own file (avoid polluting app.log)
+import logging
+_scanner_handler = logging.FileHandler(
+    os.path.join(LOG_DIR, 'log_scanner.log'),
+    maxBytes=10 * 1024 * 1024,
+    backupCount=5,
+    encoding='utf-8'
+)
+_scanner_handler.setLevel(logging.DEBUG)
+_scanner_handler.setFormatter(logging.Formatter(
+    '%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+))
+_scanner_log = logging.getLogger('monitor.log_scanner')
+_scanner_log.addHandler(_scanner_handler)
+_scanner_log.setLevel(logging.DEBUG)
+_scanner_log.propagate = False  # Don't also write to parent (app.log)
+
 # ── Config ───────────────────────────────────────────────
 
 LOG_DIR = os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')
@@ -105,7 +123,7 @@ def _save_positions(positions: dict):
         with open(SCAN_POS_FILE, 'w') as f:
             json.dump(positions, f)
     except Exception as e:
-        logger.warning(f'Failed to save scan positions: {e}')
+        _scanner_log.warning(f'Failed to save scan positions: {e}')
 
 # ── Login failure tracking (brute-force detection) ──────────────
 # Counts login_failed audit events since last successful login.
@@ -139,7 +157,9 @@ def _is_collection_running() -> bool:
 
 
 def _get_log_files() -> list:
-    """Get all log files to scan (app.log and rotated backups, service_error.log)"""
+    """Get all log files to scan (app.log and rotated backups, service_error.log).
+    Excludes log_scanner's own log file and the positions JSON to avoid feedback loops.
+    """
     files = []
     
     # app.log and rotated backups
@@ -212,7 +232,7 @@ def _scan_file(filepath: str) -> list:
         _positions[filepath] = new_pos
         
     except Exception as e:
-        logger.warning(f'Error scanning {filepath}: {e}')
+        _scanner_log.warning(f'Error scanning {filepath}: {e}')
     
     return findings
 
@@ -269,12 +289,12 @@ def _scan_audit_log() -> list:
                             emit_login_bruteforce(ip, count, recent)
                             # Reset to avoid repeated alerts until more failures
                             _LOGIN_FAIL_COUNT[ip] = _LOGIN_FAIL_COUNT[ip][-2:]
-                            logger.warning(f'Login bruteforce detected: ip={ip} count={count}')
+                            _scanner_log.warning(f'Login bruteforce detected: ip={ip} count={count}')
                         except Exception as e:
-                            logger.error(f'Failed to emit login_bruteforce: {e}', exc_info=True)
+                            _scanner_log.error(f'Failed to emit login_bruteforce: {e}', exc_info=True)
 
     except Exception as e:
-        logger.warning(f'Error scanning audit.log', exc_info=True)
+        _scanner_log.warning(f'Error scanning audit.log', exc_info=True)
 
     return findings
 
@@ -365,7 +385,7 @@ def _scan_heartbeat_log() -> list:
                 })
 
     except Exception as e:
-        logger.warning(f'Error scanning heartbeat.log', exc_info=True)
+        _scanner_log.warning(f'Error scanning heartbeat.log', exc_info=True)
 
     return findings
 
@@ -422,7 +442,7 @@ def _scan_access_log() -> list:
         _positions[filepath] = new_pos
         
     except Exception as e:
-        logger.warning(f'Error scanning access.log: {e}')
+        _scanner_log.warning(f'Error scanning access.log: {e}')
     
     return findings
 
@@ -437,7 +457,7 @@ def _do_scan() -> int:
     if not is_event_enabled('log_error'):
         return 0
     
-    logger.info('Starting log scan...')
+    _scanner_log.info('Starting log scan...')
     total_errors = 0
     
     # Collect all findings first
@@ -470,7 +490,7 @@ def _do_scan() -> int:
                 **finding,
             })
     except Exception as e:
-        logger.warning(f'audit log scan failed: {e}')
+        _scanner_log.warning(f'audit log scan failed: {e}')
 
     # Scan heartbeat.log for session status notifications
     try:
@@ -481,14 +501,14 @@ def _do_scan() -> int:
                 **finding,
             })
     except Exception as e:
-        logger.warning(f'heartbeat log scan failed: {e}')
+        _scanner_log.warning(f'heartbeat log scan failed: {e}')
 
     # Send each finding via DB-independent HTTP callback
     for finding in all_findings:
         _send_alert_via_http(finding)
         total_errors += 1
     
-    logger.info(f'Log scan complete: {total_errors} errors found')
+    _scanner_log.info(f'Log scan complete: {total_errors} errors found')
     _save_positions(_positions)
     return total_errors
 
@@ -515,11 +535,11 @@ def _send_alert_via_http(finding: dict):
         if resp.status_code == 200:
             data = resp.json()
             if data.get('skipped'):
-                logger.debug(f"Log alert deduped: {finding.get('keyword')}")
+                _scanner_log.debug(f"Log alert deduped: {finding.get('keyword')}")
             else:
-                logger.info(f"Log alert sent: [{finding.get('error_type')}] {finding.get('keyword')}")
+                _scanner_log.info(f"Log alert sent: [{finding.get('error_type')}] {finding.get('keyword')}")
         else:
-            logger.warning(f"Log alert HTTP {resp.status_code}: {resp.text[:100]}")
+            _scanner_log.warning(f"Log alert HTTP {resp.status_code}: {resp.text[:100]}")
     except Exception:
         # Fallback to DB path if HTTP endpoint unavailable
         emit_log_error(
@@ -533,13 +553,13 @@ def _send_alert_via_http(finding: dict):
 
 def _scan_loop():
     """Main scan loop — runs independently of collection state."""
-    logger.info(f'Log scanner started, interval={SCAN_INTERVAL}s')
+    _scanner_log.info(f'Log scanner started, interval={SCAN_INTERVAL}s')
 
     while not _stop_event.wait(SCAN_INTERVAL):
         try:
             _do_scan()
         except Exception as e:
-            logger.error(f'Error in scan loop: {e}')
+            _scanner_log.error(f'Error in scan loop: {e}')
 
 
 # ── Public API ────────────────────────────────────────────
@@ -549,14 +569,14 @@ def start():
     global _scanner_thread, _stop_event, _positions
     
     if _scanner_thread and _scanner_thread.is_alive():
-        logger.warning('Log scanner already running')
+        _scanner_log.warning('Log scanner already running')
         return
     
     _stop_event.clear()
     _positions = _load_positions()
     _scanner_thread = Thread(target=_scan_loop, daemon=True, name='log_scanner')
     _scanner_thread.start()
-    logger.info('Log scanner thread started')
+    _scanner_log.info('Log scanner thread started')
 
 
 def stop():
@@ -566,7 +586,7 @@ def stop():
     _stop_event.set()
     if _scanner_thread:
         _scanner_thread.join(timeout=5)
-    logger.info('Log scanner stopped')
+    _scanner_log.info('Log scanner stopped')
 
 
 def run_once() -> int:
