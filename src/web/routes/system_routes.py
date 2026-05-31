@@ -1495,7 +1495,25 @@ def _load_notify_channel_direct() -> dict | None:
     # Ensure DB_PATH is initialized (init_db() may not have been called
     # in this context, leaving DB_PATH='' and get_db() auto-inits it)
     if not DB_PATH:
-        data_dir = _os.getenv('MONITOR_DATA_DIR', _os.path.join(_os.path.dirname(__file__), '..', '..', '..', 'data'))
+        import sys as _sys
+        if getattr(_sys, 'frozen', False):
+            _env = _os.environ.get('MONITOR_DATA_DIR')
+            if _env:
+                data_dir = _env
+            else:
+                _exe_dir = _os.path.dirname(_sys.executable)
+                _probe = _os.path.join(_exe_dir, 'data')
+                try:
+                    _os.makedirs(_probe, exist_ok=True)
+                    with open(_os.path.join(_probe, '.probe'), 'w') as _f:
+                        _f.write('')
+                    _os.remove(_os.path.join(_probe, '.probe'))
+                    data_dir = _probe
+                except Exception:
+                    data_dir = (_os.environ.get('LOCALAPPDATA', _os.path.expanduser('~/AppData/Local')) + '\\nsfocus-monitor-data' if _sys.platform == 'win32'
+                               else _os.path.join(_os.path.expanduser('~/.local'), 'share', 'nsfocus-monitor-data'))
+        else:
+            data_dir = _os.getenv('MONITOR_DATA_DIR', _os.path.join(_os.path.dirname(__file__), '..', '..', '..', 'data'))
         data_dir = _os.path.abspath(data_dir)
         _os.makedirs(data_dir, exist_ok=True)
         from src.models import database as _db

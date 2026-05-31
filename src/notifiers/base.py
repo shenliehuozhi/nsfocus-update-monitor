@@ -75,12 +75,15 @@ def _utc_to_cst_display(utc_str: str) -> str:
         return utc_str
 
 
-def _build_chain(msg: 'NotificationMessage', db_path: str = '/root/nsfocus-monitor/data/nsfocus_monitor.db') -> tuple[list[str], str]:
+def _build_chain(msg: 'NotificationMessage', db_path: str | None = None) -> tuple[list[str], str]:
     """Look up the chain for a notification message by matching source_url → relative path → paths chain.
 
     Returns (chain_list, full_detail_url). chain_list is empty if not found.
     """
     import hashlib, json
+    if db_path is None:
+        from src.models.database import DB_PATH
+        db_path = DB_PATH
     if not msg.source_url:
         return [], ''
 

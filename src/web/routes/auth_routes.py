@@ -117,7 +117,7 @@ def register():
 
     # Also save to DATA_DIR/initial_password.txt so user can retrieve it from the file
     import os as _os
-    _data_dir = os.environ.get('MONITOR_DATA_DIR', '') or _os.path.expanduser('~/.nsfocus-monitor-data')
+    _data_dir = os.environ.get('MONITOR_DATA_DIR', '') or _os.path.expanduser('~/.local/share/nsfocus-monitor-data')
     _password_file = _os.path.join(_data_dir, 'initial_password.txt')
     if not _os.path.exists(_password_file):
         try:
