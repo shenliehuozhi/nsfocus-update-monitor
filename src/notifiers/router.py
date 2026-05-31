@@ -392,7 +392,7 @@ def process_digests():
                     lines.append(f'   MD5: `{md5}`')
                 src_url = s.get('source_url', '')
                 if src_url:
-                    lines.append(f'   详情: {src_url}')
+                    lines.append(f'   [查看详情/升级描述]({src_url})')
                 lines.append('')
 
         # Send via rule's channels with auto-split for long messages
