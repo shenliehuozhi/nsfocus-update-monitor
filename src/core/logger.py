@@ -44,13 +44,20 @@ def get_logger(name: str = 'monitor') -> logging.Logger:
     _file_handler = logging.handlers.RotatingFileHandler(
         os.path.join(_log_dir, 'app.log'),
         maxBytes=10 * 1024 * 1024,
-        backupCount=10
+        backupCount=10,
+        encoding='utf-8'
     )
     _file_handler.setLevel(default_level)
     _file_handler.setFormatter(fmt)
 
-    # Console handler
+    # Console handler — force UTF-8 on Windows (default GBK can't encode Unicode symbols like ►)
     _console_handler = logging.StreamHandler()
+    try:
+        import sys as _sys
+        if _sys.platform == 'win32':
+            _console_handler.stream.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
     _console_handler.setLevel(logging.INFO)
     _console_handler.setFormatter(fmt)
 

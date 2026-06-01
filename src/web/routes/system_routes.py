@@ -112,7 +112,7 @@ def _audit(action: str, details: dict = None):
         if not audit_logger.handlers:
             audit_logger.setLevel(logging.INFO)
             audit_logger.propagate = False
-            handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+            handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5, encoding='utf-8')
             handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'))
             audit_logger.addHandler(handler)
         ip = request.headers.get('X-Forwarded-For', request.remote_addr) or ''
@@ -945,7 +945,7 @@ def discover_products_confirm():
                 if not audit_logger.handlers:
                     audit_logger.setLevel(logging.INFO)
                     audit_logger.propagate = False
-                    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+                    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5, encoding='utf-8')
                     handler.setFormatter(logging.Formatter('%(asctime)s - %(message)s', datefmt='%Y-%m-%dT%H:%M:%S'))
                     audit_logger.addHandler(handler)
                 audit_logger.info(f'[{action}] user_id={user_id} details={details or {}}')

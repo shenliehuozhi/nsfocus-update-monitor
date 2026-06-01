@@ -45,7 +45,7 @@ def _get_audit_logger():
     _audit_logger.setLevel(logging.INFO)
     _audit_logger.propagate = False
 
-    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5)
+    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5, encoding='utf-8')
     handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(message)s',
         datefmt='%Y-%m-%dT%H:%M:%S'
