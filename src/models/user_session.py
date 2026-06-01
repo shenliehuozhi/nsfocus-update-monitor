@@ -164,7 +164,7 @@ _HB_LOG_PATH = None
 def _hb_log_path():
     global _HB_LOG_PATH
     if _HB_LOG_PATH is None:
-        _HB_LOG_PATH = pathlib.Path(os.getenv('MONITOR_LOG_DIR', '/root/nsfocus-monitor/logs')) / 'heartbeat.log'
+        _HB_LOG_PATH = pathlib.Path(os.getenv('MONITOR_LOG_DIR', os.path.join(os.path.expanduser('~/.local/share/nsfocus-monitor-data'), 'logs'))) / 'heartbeat.log'
     return _HB_LOG_PATH
 
 
