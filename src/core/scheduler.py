@@ -80,8 +80,11 @@ def _get_chain(source_id: int, source_url: str) -> list:
     if not _chain_cache_loaded:
         _build_url_chain_cache()
     url_map = _url_chain_cache.get(source_id, {})
-    norm = '/' + (source_url or '').lstrip('/').rstrip('/')
-    return url_map.get(norm, [])
+    # 剥离 domain 前缀，把 'https://update.nsfocus.com/update/...' 转为 '/update/...'
+    import re as _re
+    m = _re.match(r'^https?://[^/]+(.*)', source_url or '')
+    rel_path = '/' + m.group(1).lstrip('/').rstrip('/') if m else ('/' + source_url.lstrip('/').rstrip('/') if source_url else '/')
+    return url_map.get(rel_path, [])
 
 
 def invalidate_chain_cache():
