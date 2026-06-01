@@ -300,6 +300,16 @@ def create_tables(db):
     for idx in SNAPSHOT_INDEXES:
         db.execute(idx)
 
+    # Migration: add prev_page_hash column if missing (added in later schema versions)
+    _add_column_if_missing(db, 'snapshots', 'prev_page_hash', 'TEXT DEFAULT ''')
+
+
+def _add_column_if_missing(db, table: str, column: str, definition: str):
+    """Add a column only if it doesn't already exist (-safe for existing DBs)."""
+    existing = [r[1] for r in db.execute(f"PRAGMA table_info({table})")]
+    if column not in existing:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
 
 def save_snapshot(snap: dict) -> int:
     """Insert or update a snapshot. Match on unique key. Returns snapshot id."""
