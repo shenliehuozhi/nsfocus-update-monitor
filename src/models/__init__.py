@@ -46,7 +46,12 @@ def init_all_tables():
 
     from src.core.email_rate_limiter import create_tables as create_email_rate_table
     # Migration: drop old single-key schema and recreate with composite PK
-    db.execute("DROP TABLE IF EXISTS email_rate_counters")
+    # NOTE: only run once — check if old schema exists before dropping
+    try:
+        db.execute("SELECT email FROM email_rate_counters LIMIT 1")
+        db.execute("DROP TABLE IF EXISTS email_rate_counters")
+    except Exception:
+        pass
     create_email_rate_table(db)
 
     # Initialize schema version

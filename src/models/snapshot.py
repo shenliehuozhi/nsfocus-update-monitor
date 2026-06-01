@@ -280,7 +280,10 @@ CREATE TABLE IF NOT EXISTS snapshots (
     status TEXT DEFAULT 'active' CHECK(status IN ('active', 'rollback_pending', 'rollback')),
     rollback_confirmed_at TEXT,
     page_hash TEXT DEFAULT '',
-    source_url TEXT DEFAULT ''
+    prev_page_hash TEXT DEFAULT '',
+    source_url TEXT DEFAULT '',
+    path_id TEXT DEFAULT '',
+    rollback_cycles INTEGER DEFAULT 0
 )
 """
 
@@ -302,6 +305,8 @@ def create_tables(db):
 
     # Migration: add prev_page_hash column if missing (added in later schema versions)
     _add_column_if_missing(db, 'snapshots', 'prev_page_hash', 'TEXT DEFAULT ''')
+    _add_column_if_missing(db, 'snapshots', 'path_id', 'TEXT DEFAULT ''')
+    _add_column_if_missing(db, 'snapshots', 'rollback_cycles', 'INTEGER DEFAULT 0')
 
 
 def _add_column_if_missing(db, table: str, column: str, definition: str):

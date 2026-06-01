@@ -20,6 +20,11 @@ CREATE TABLE IF NOT EXISTS subscription_rules (
     quiet_start TEXT DEFAULT '',
     quiet_end TEXT DEFAULT '',
     notify_rollback INTEGER DEFAULT 1,
+    customer_id INTEGER REFERENCES customers(id),
+    valid_until TEXT DEFAULT '',
+    customer_emails TEXT DEFAULT '',
+    attachment_max_mb INTEGER DEFAULT 0,
+    window_config TEXT DEFAULT '{}',
     created_at TEXT DEFAULT (datetime('now'))
 )
 """
@@ -400,6 +405,22 @@ def create_tables(db):
         pass
     try:
         db.execute("UPDATE subscription_rules SET delay_days = CAST(delay_hours AS INTEGER) / 24 WHERE delay_days = 0 AND delay_hours > 0")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE subscription_rules ADD COLUMN customer_id INTEGER REFERENCES customers(id)")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE subscription_rules ADD COLUMN valid_until TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE subscription_rules ADD COLUMN customer_emails TEXT DEFAULT ''")
+    except Exception:
+        pass
+    try:
+        db.execute("ALTER TABLE subscription_rules ADD COLUMN attachment_max_mb INTEGER DEFAULT 0")
     except Exception:
         pass
 
