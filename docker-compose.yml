@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  app:
+    image: ghcr.io/shenliehuozhi/nsfocus-update-monitor:latest
+    container_name: byakugan-monitor
+    restart: unless-stopped
+    ports:
+      - "${MONITOR_PORT:-9999}:9999"
+    environment:
+      MONITOR_JWT_SECRET: ${MONITOR_JWT_SECRET}
+      MONITOR_SECRET_KEY: ${MONITOR_SECRET_KEY}
+      MONITOR_LOG_LEVEL: ${MONITOR_LOG_LEVEL:-INFO}
+      TZ: Asia/Shanghai
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9999/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s

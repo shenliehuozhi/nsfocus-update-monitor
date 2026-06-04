@@ -28,4 +28,7 @@ RUN mkdir -p data logs && \
 
 EXPOSE ${MONITOR_PORT}
 
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:${MONITOR_PORT}/api/health || exit 1
+
 CMD ["python3", "-B", "run.py"]
