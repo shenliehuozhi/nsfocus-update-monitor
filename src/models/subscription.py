@@ -272,14 +272,16 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
 
 def clear_history(older_than_days: int = None) -> int:
     """Delete delivery_log entries. If older_than_days is set, only delete older entries."""
-    from src.models.database import execute
+    from src.models.database import get_db
+    db = get_db()
     if older_than_days:
-        return execute(
+        db.execute(
             "DELETE FROM delivery_log WHERE sent_at < datetime('now', ?) OR sent_at IS NULL",
             (f'-{older_than_days} days',)
         )
     else:
-        return execute("DELETE FROM delivery_log")
+        db.execute("DELETE FROM delivery_log")
+    return db.total_changes
 
 
 # ── Delayed Queue ────────────────────────────────────────────
