@@ -71,6 +71,74 @@ def _build_url_chain_cache():
     logger.debug(f'URL→Chain cache built: {len(_url_chain_cache)} sources')
 
 
+def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
+    """扫描 app.log 中指定时间窗口内的网络错误，返回错误列表（不写数据库）。
+
+    匹配关键词：ConnectTimeoutError / ConnectError / ConnectionError /
+    NewConnectionError / Max retries exceeded / DNS / Network is unreachable
+    """
+    import re
+
+    try:
+        from src.core.logger import get_log_dir
+        log_path = os.path.join(get_log_dir(), 'app.log')
+        if not os.path.exists(log_path):
+            return []
+    except Exception:
+        log_path = '/tmp/app.log'
+        if not os.path.exists(log_path):
+            return []
+
+    # 解析时间窗口
+    try:
+        start_dt = datetime.fromisoformat(started_at)
+        end_dt = datetime.fromisoformat(finished_at)
+    except Exception:
+        return []
+
+    errors = []
+    # 网络错误关键词模式（从 nsfocus.py 的检测逻辑保持一致）
+    NET_ERROR_PATTERNS = (
+        'ConnectTimeoutError', 'ConnectError', 'ConnectionError',
+        'NewConnectionError', 'Max retries exceeded',
+        'Connection to', 'timed out', 'DNS', 'Network is unreachable',
+    )
+
+    # 日志格式：2026-06-12 14:30:00 [INFO] scheduler: Quick WAF: /update/xxx ...
+    TS_FMT = '%Y-%m-%d %H:%M:%S'
+    log_ts_re = re.compile(r'^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})')
+
+    try:
+        with open(log_path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                m = log_ts_re.match(line)
+                if m:
+                    try:
+                        line_dt = datetime.strptime(m.group(1), TS_FMT)
+                    except ValueError:
+                        continue
+                    if not (start_dt <= line_dt <= end_dt):
+                        continue
+
+                # 时间窗口内，检测网络错误关键词
+                if any(pat in line for pat in NET_ERROR_PATTERNS):
+                    # 提取产品名和URL（格式：Quick {product}: {url}: {error}）
+                    # 示例：Quick WAF: /update/wafIndex: HTTPSConnectionPool...
+                    parts = line.split(':', 3)
+                    product = parts[1].strip() if len(parts) > 1 else 'unknown'
+                    url = parts[2].strip() if len(parts) > 2 else ''
+                    err_msg = parts[3].strip() if len(parts) > 3 else line.strip()
+                    errors.append({
+                        'product_name': product,
+                        'url': url,
+                        'error_msg': err_msg[:150],
+                    })
+    except Exception as e:
+        logger.debug(f'_scan_network_errors_from_log: {e}')
+
+    return errors
+
+
 def _get_chain(source_id: int, source_url: str) -> list:
     """从缓存反查 snapshot 的完整 chain 路径。
 
@@ -434,6 +502,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 _progress['finished_at'] = datetime.utcnow().isoformat()
             # 发送采集完成通知（即使无新包）
             summary['finished_at'] = datetime.utcnow().isoformat()
+            # 扫描 app.log 中的网络错误，汇总通知
+            net_errors = _scan_network_errors_from_log(summary['started_at'], summary['finished_at'])
+            if net_errors:
+                from src.core.event_handler import emit_network_error
+                emit_network_error(net_errors)
             from src.core.event_handler import emit_collection_summary
             emit_collection_summary(summary, mode)
             return summary
@@ -549,7 +622,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['total_rollback'] = summary['total_rollback']
 
         # Emit collection summary event
-        from src.core.event_handler import emit_collection_summary
+        from src.core.event_handler import emit_collection_summary, emit_network_error
+        net_errors = _scan_network_errors_from_log(summary['started_at'], summary['finished_at'])
+        if net_errors:
+            emit_network_error(net_errors)
         emit_collection_summary(summary, mode)
 
         return summary
@@ -568,7 +644,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['duration_s'] = summary['duration_s']
             _progress['finished_at'] = datetime.utcnow().isoformat()
         # 发送采集失败通知
-        from src.core.event_handler import emit_collection_summary
+        from src.core.event_handler import emit_collection_summary, emit_network_error
+        net_errors = _scan_network_errors_from_log(summary['started_at'], summary['finished_at'])
+        if net_errors:
+            emit_network_error(net_errors)
         emit_collection_summary(summary, mode)
         return summary
 

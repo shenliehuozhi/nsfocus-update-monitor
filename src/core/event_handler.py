@@ -5,6 +5,7 @@ Called by:
 - scheduler.py: emit_collection_summary() on collection complete
 - scheduler.py: emit_session_error() on session heartbeat failure
 - log_scanner.py: emit_log_error() on log anomaly
+- collectors/nsfocus.py: emit_network_error() on network error
 """
 
 import json
@@ -600,6 +601,66 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
             logger.info(f'Event notification sent: {event_type}')
         except Exception as e:
             logger.error(f'Failed to send log error notification: {e}')
+
+
+def emit_network_error(errors: list, source: str = 'collector'):
+    """采集过程遇到网络错误时汇总通知（不写数据库）。
+
+    errors: list of dict, each with keys: product_name, url, error_msg
+    source: 'collector' - nsfocus.py 单个URL采集失败
+            'scheduler'   - scheduler.py 整产品采集异常
+    """
+    if not errors:
+        return
+
+    event_type = 'log_error'
+
+    if not is_event_enabled(event_type):
+        return
+
+    channel = get_notify_channel()
+    if not channel:
+        return
+
+    from src.notifiers.base import _utc_to_cst_display
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+
+    lines = ["【采集网络错误】", f"检测时间：{cst_now}", ""]
+    for i, e in enumerate(errors[:10], 1):
+        lines.append(f"{i}. 产品：{e['product_name']}")
+        lines.append(f"   URL：{e['url']}")
+        lines.append(f"   错误：{e['error_msg'][:100]}")
+    if len(errors) > 10:
+        lines.append(f"... 还有 {len(errors) - 10} 条错误")
+
+    lines.extend(["", "建议：请检查网络连通性或调整 collect_timeout 配置"])
+
+    # 发送通知（不写 DB）
+    notifier = _get_notifier(channel)
+    if notifier:
+        from src.notifiers.base import NotificationMessage, _format_markdown_bodies
+        msg = NotificationMessage(
+            title='绿盟监控 - 采集网络错误',
+            product_name='',
+            version_branch='',
+            package_type='',
+            file_name='',
+            package_version='',
+            md5_hash='',
+            description_full='\n'.join(lines),
+        )
+        try:
+            bodies = _format_markdown_bodies(msg, skip_empty_meta=True)
+            for i, body in enumerate(bodies):
+                payload = {'msgtype': 'markdown', 'markdown': {'content': body}}
+                resp = requests.post(channel.get('config', {}).get('webhook_url'), json=payload, timeout=10)
+                result = resp.json()
+                if result.get('errcode') != 0:
+                    logger.error(f'Failed to send network error notification: {result.get("errmsg", "unknown")}')
+                    return
+            logger.info(f'Event notification sent: {event_type}, count={len(errors)}')
+        except Exception as e:
+            logger.error(f'Failed to send network error notification: {e}')
 
 
 def emit_login_bruteforce(ip: str, count: int, recent_failures: list):

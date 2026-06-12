@@ -75,7 +75,7 @@ def _cst_to_utc(raw_time: str) -> str:
 
 REQUEST_DELAY_MIN = _get_delay('collect_delay_min', 0.3)
 REQUEST_DELAY_MAX = _get_delay('collect_delay_max', 0.5)
-TIMEOUT = int(_get_delay('collect_timeout', 30))
+TIMEOUT = int(_get_delay('collect_timeout', 5))
 MAX_RETRIES = 2
 
 PRODUCTS = {
