@@ -2136,7 +2136,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "网络入侵检测系统(IDS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 1,
     "package_type": {
       "types": [
@@ -5632,7 +5632,7 @@
     "strategy": "recursive",
     "category": "security",
     "display_name": "业务安全防护系统(BMG)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -5709,7 +5709,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "电子文档安全管理系统(CDG)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -5786,7 +5786,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "日志数据安全性分析系统(BSA)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -6287,7 +6287,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟授权管理系统(ESP-L)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -6364,7 +6364,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "数据脱敏系统(DMS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -6545,7 +6545,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "数据安全工具箱(DSIT)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -6596,7 +6596,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "数据保险箱(DSDB)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -6781,7 +6781,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "文件安全分发与访问控制系统(DSES)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -6918,7 +6918,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "应急工具箱(ERT)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -7195,7 +7195,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟企业安全平台(NESP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -7272,7 +7272,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "智能安全监管平台(ISOP-RA)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -7435,7 +7435,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟智能安全运营平台(ISOP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -7696,7 +7696,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟智能安全运营平台(ISOP-H)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -8065,7 +8065,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "一体化终端安全管理系统(UES)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -8222,7 +8222,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "防御突破模拟与评估系统(BAS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -8299,7 +8299,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟网络空间安全仿真平台(CSSP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -8458,7 +8458,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工业防火墙(ISG)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9115,7 +9115,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟安全管理平台(ESP-H)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9462,7 +9462,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "云安全集中管理系统(NCSS-I)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9541,7 +9541,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟云原生容器安全检测平台(CNSP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9670,7 +9670,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟综合安全系统(NISS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9749,7 +9749,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全态势感知平台(TSA)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9800,7 +9800,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "威胁分析与溯源系统(TAT)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -9851,7 +9851,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "威胁分析系统(TAC)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -10076,7 +10076,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "内容安全管理系统(SCM)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -10153,7 +10153,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全审计系统(SAS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -10516,7 +10516,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "敏感数据发现与风险评估系统(IDR)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -10645,7 +10645,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全审计系统-日志审计(SASL)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -10696,7 +10696,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工控安全审计系统(SAS-ICS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -11245,7 +11245,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工控入侵检测系统(IDS-ICS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -11498,7 +11498,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "运维安全管理系统堡垒机系列(OSMS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -12383,7 +12383,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "WEB应用防护系统主机版(HWAF)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -12460,7 +12460,7 @@
     "strategy": "recursive",
     "category": "security",
     "display_name": "魔力防火墙(NF-SSE)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -12825,7 +12825,7 @@
     "strategy": "recursive",
     "category": "security",
     "display_name": "VPN综合安全网关(VPN)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -13334,7 +13334,7 @@
     "strategy": "recursive",
     "category": "security",
     "display_name": "SD-WAN防火墙(NF-WAN)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -13411,7 +13411,7 @@
     "strategy": "recursive",
     "category": "security",
     "display_name": "下一代防火墙(NF-B/NF-D)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -14478,7 +14478,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟AI安全一体机(AI-UTM)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -14755,7 +14755,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全网关(SG)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -15196,7 +15196,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "数据安全网关(DSG)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -15273,7 +15273,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟威胁和漏洞管理平台(TVM)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -15558,7 +15558,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工控漏洞扫描系统(ICSSCAN)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -15687,7 +15687,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工业网络安全合规评估工具(ISCAT)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16152,7 +16152,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全配置核查系统(BVS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16315,7 +16315,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "网站安全监测系统(WSMS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16444,7 +16444,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "WEB应用漏洞扫描系统(WVSS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16637,7 +16637,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "APIf风险评估系统(API-SCAN)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16830,7 +16830,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "ROS系统",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16881,7 +16881,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "云安全集中管理系统(CSS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -16932,7 +16932,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "统一身份认证平台(UIP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -17009,7 +17009,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全认证网关(SAG)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -17346,7 +17346,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "抗拒绝服务系统(ADS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -17725,7 +17725,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟流量清洗业务运营系统(ADBOS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -17776,7 +17776,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "抗拒绝服务系统管理中心(ADSM)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -17987,7 +17987,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "网络流量分析系统(NTA)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -18480,7 +18480,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "网络流量分析系统(MF)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -18557,7 +18557,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "企业安全中心(ESPC/ESP-C)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -18872,7 +18872,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "云安全中心(ESPCM)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -18919,7 +18919,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "内网安全管理系统(EPS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -18966,7 +18966,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "终端管理系统(EPS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -19043,7 +19043,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工程工具集",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -19094,7 +19094,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟上网行为管理(SASW)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -19729,7 +19729,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "物联网分析平台(IoT-AP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -19780,7 +19780,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "公共互联网安全（TDC）",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20135,7 +20135,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟工业网络安全监测预警平台(INSP)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20186,7 +20186,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟代码安全审计系统(SDA)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20267,7 +20267,7 @@
     "strategy": "recursive",
     "category": "security",
     "display_name": "绿盟日志审计系统(LAS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20489,7 +20489,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "恶意代码检测方案(MDPS)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20722,7 +20722,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "绿盟远程安全评估管理系统(RSASM)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20799,7 +20799,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "边缘计算智能网关(SGEC)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -20876,7 +20876,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "安全隔离与信息交换系统(SIES)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -21063,7 +21063,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "工业安全隔离装置(ISID)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
@@ -21250,7 +21250,7 @@
     "strategy": "standard",
     "category": "security",
     "display_name": "自动化渗透测试平台(NAPT)",
-    "is_active": 1,
+    "is_active": 0,
     "is_manual": 0,
     "package_type": {
       "types": [
