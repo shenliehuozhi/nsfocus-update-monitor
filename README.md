@@ -10,13 +10,37 @@ cd nsfocus-monitor
 bash start.sh
 ```
 
-首次部署自动完成：环境检测、依赖安装、随机密钥生成、78个产品导入、管理员账户创建。访问 `http://IP:9999` 即可。
+首次部署自动完成：环境检测、依赖安装、随机密钥生成、5个产品导入、管理员账户创建。访问 `http://IP:9999` 即可。
+
+## 版本更新
+
+### Linux/Docker
+```bash
+cd nsfocus-monitor
+git pull
+# 如果用的是 Docker
+docker-compose pull && docker-compose up -d
+# 如果用的是 systemd
+systemctl restart nsfocus-monitor
+```
+
+数据文件在 `data/` 目录，不随代码更新，所有历史数据（产品配置、Session、推送记录）不受影响。
+
+### Windows
+> ⚠️ Windows 版为绿色便携版，**数据存储在独立目录**，替换 exe 不会丢失数据。
+
+1. 关掉运行中的 `nsfocus-monitor.exe`
+2. 删除旧版 exe
+3. 从 [Releases](https://github.com/shenliehuozhi/nsfocus-update-monitor/releases) 下载最新版覆盖
+4. 重新运行
+
+数据位置：`%LOCALAPPDATA%\nsfocus-monitor-data\`（默认 `C:\Users\用户名\AppData\Local\nsfocus-monitor-data\`），exe 所在目录只放程序本身。
 
 详细操作见 [用户手册](docs/用户手册.md)。
 
 ## 核心能力
 
-- **78 产品监控**: 覆盖 WAF / IPS / IDS / RSAS / UTS / 绿盟全产品线
+- **5 产品监控**: 覆盖 WAF / IPS / NF / RSAS / UTS（其他产品可按需启用）
 - **4 渠道通知**: 企业微信 / 钉钉 / 飞书 / 邮件（支持附件）
 - **双模采集**: Quick 扫描（每小时~30s）+ Full 扫描（每24h~25min）
 - **撤回检测**: 全模式支持，最少2次确认，间隔24h
