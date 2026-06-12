@@ -54,6 +54,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           tag="v$(date +%Y%m%d)-$(echo ${{ github.sha }} | cut -c1-7)"
           if gh release view "$tag" &>/dev/null; then
