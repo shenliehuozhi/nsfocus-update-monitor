@@ -3255,7 +3255,7 @@ async function products(){
       </div>
     </div>
     <div class="card-bd">
-      <div style="display:flex;gap:16px;margin-bottom:12px;font-size:13px;align-items:center">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
         <span>共 <strong>${total}</strong> 个</span>
         <span style="color:#16a34a">● 启用 <strong>${enabled}</strong></span>
         <span style="color:#9ca3af">○ 禁用 <strong>${disabled}</strong></span>
@@ -3270,10 +3270,18 @@ async function products(){
           </select>
         </div>
       </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;padding:6px 10px;background:#f9fafb;border-radius:8px">
+        <span id="prod-sel-count" style="font-size:12px;color:#9ca3af;margin-left:4px"></span>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-sm" id="btn-batch-enable" onclick="batchEnable()" disabled style="background:#16a34a;color:#fff;border:none;cursor:pointer;opacity:0.4">批量启用</button>
+          <button class="btn btn-sm" id="btn-batch-disable" onclick="batchDisable()" disabled style="background:#dc2626;color:#fff;border:none;cursor:pointer;opacity:0.4">批量禁用</button>
+        </div>
+      </div>
       <div style="overflow-x:auto">
       <table class="table" style="table-layout:auto;width:100%">
         <thead><tr>
           <th style="width:36px">#</th>
+          <th style="width:40px"><input type="checkbox" id="prod-sel-all" onchange="toggleAllProds(this.checked)" style="cursor:pointer"></th>
           <th style="width:64px">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
@@ -4117,6 +4125,7 @@ function _renderProductRows(prods){
     const rowClass=p.is_active?'':'opacity:0.6';
     h+=`<tr id="pr-${p.id}" style="${rowClass}">
       <td>${p.id}</td>
+      <td><input type="checkbox" class="prod-cb" value="${p.id}" style="cursor:pointer"></td>
       <td>
         <span class="active-badge" style="font-size:11px;color:${p.is_active?'#16a34a':'#dc2626'};cursor:pointer" onclick="confirmToggleActive(${p.id},${!p.is_active},'pr-${p.id}')">${p.is_active?'● 启用':'● 禁用'}</span>
       </td>
@@ -4939,6 +4948,39 @@ function toggleSection(key){
 }
 
 async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'#16a34a':'#dc2626';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;const btns=row.querySelectorAll('[data-action]');btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
+function _updateBatchUI(){
+  const cbs=document.querySelectorAll('.prod-cb');
+  const checked=document.querySelectorAll('.prod-cb:checked');
+  const n=checked.length;
+  const cnt=document.getElementById('prod-sel-count');
+  if(cnt)cnt.textContent=n>0?`已选 ${n} 个`:'';
+  const be=document.getElementById('btn-batch-enable');
+  const bd=document.getElementById('btn-batch-disable');
+  if(be){be.disabled=n===0;be.style.opacity=n===0?'0.4':'1';}
+  if(bd){bd.disabled=n===0;bd.style.opacity=n===0?'0.4':'1';}
+  // sync header checkbox
+  const allCb=document.getElementById('prod-sel-all');
+  if(allCb&&cbs.length>0)allCb.checked=n===cbs.length&&n>0;
+}
+function toggleAllProds(checked){
+  document.querySelectorAll('.prod-cb').forEach(cb=>cb.checked=checked);
+  _updateBatchUI();
+}
+async function batchEnable(){await batchAction('enable');}
+async function batchDisable(){await batchAction('disable');}
+async function batchAction(action){
+  const checked=document.querySelectorAll('.prod-cb:checked');
+  if(!checked.length){toast('请先选择产品','error');return;}
+  const ids=[...checked].map(cb=>parseInt(cb.value));
+  const label=action==='enable'?'启用':'禁用';
+  await confirmAct(`确认要${label}选中的 ${ids.length} 个产品？`, async ()=>{
+    const r=await api('/options/products/batch',{method:'POST',body:JSON.stringify({ids,action})});
+    if(r.code===0){toast(`已${label} ${ids.length} 个产品`);await products();}
+    else toast(r.message||'操作失败','error');
+  }, action==='enable'?'▶️':'⏸️', label);
+}
+// hook checkbox change to update UI
+document.addEventListener('change',e=>{if(e.target.classList.contains('prod-cb'))_updateBatchUI();});
 _initDiscObserver();
 </script>
 </body>

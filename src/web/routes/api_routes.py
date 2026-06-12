@@ -638,6 +638,52 @@ def get_products():
     return jsonify({'code': 0, 'data': products})
 
 
+@bp_options.route('/products/all', methods=['GET'])
+@require_auth
+def get_all_products():
+    """Get all products with is_active status for management page."""
+    from src.models.database import query
+    rows = query("""
+        SELECT id, name, display_name, source_type, category,
+               is_active, health_status, last_collected_at, created_at
+        FROM content_sources
+        ORDER BY is_active DESC, name ASC
+    """)
+    return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
+
+
+@bp_options.route('/products/<int:product_id>', methods=['PATCH'])
+@require_auth
+def update_product(product_id):
+    """Update a single product (enable/disable)."""
+    from src.models.database import query, execute
+    product = query("SELECT id FROM content_sources WHERE id=?", (product_id,))
+    if not product:
+        return jsonify({'code': 40400, 'message': '产品不存在'}), 404
+    body = request.get_json() or {}
+    if 'is_active' in body:
+        execute("UPDATE content_sources SET is_active=? WHERE id=?", (int(bool(body['is_active'])), product_id))
+    return jsonify({'code': 0, 'message': '更新成功'})
+
+
+@bp_options.route('/products/batch', methods=['POST'])
+@require_auth
+def batch_update_products():
+    """Batch enable/disable products. Body: {ids: [1,2,3], action: 'enable'|'disable'}"""
+    from src.models.database import query, execute
+    body = request.get_json() or {}
+    ids = body.get('ids', [])
+    action = body.get('action', '')
+    if not ids:
+        return jsonify({'code': 40000, 'message': '未指定产品'}), 400
+    if action not in ('enable', 'disable'):
+        return jsonify({'code': 40000, 'message': 'action 必须是 enable 或 disable'}), 400
+    is_active = 1 if action == 'enable' else 0
+    placeholders = ','.join('?' * len(ids))
+    execute(f"UPDATE content_sources SET is_active={is_active} WHERE id IN ({placeholders})", tuple(ids))
+    return jsonify({'code': 0, 'message': f'已{action} {len(ids)} 个产品'})
+
+
 @bp_options.route('/versions', methods=['GET'])
 @require_auth
 def get_versions():
