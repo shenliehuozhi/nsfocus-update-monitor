@@ -410,8 +410,13 @@ class NsfocusCollector(BaseCollector):
 
         for url, ver, pkg in urls:
             checked += 1
-            # Prepend BASE_URL if url is a relative path (from paths.url)
-            full_url = f'{BASE_URL}{url}' if url.startswith('/') else url
+            # Prepend BASE_URL if url is a relative path; if url already has scheme (// or http://) use as-is
+            if url.startswith('//') or url.startswith('http://') or url.startswith('https://'):
+                full_url = url
+            elif url.startswith('/'):
+                full_url = f'{BASE_URL}{url}'
+            else:
+                full_url = f'{BASE_URL}/{url}'
             try:
                 # Try HEAD with If-Modified-Since
                 self._delay()
@@ -603,7 +608,7 @@ class NsfocusCollector(BaseCollector):
             except SessionExpiredError:
                 raise
             except Exception as e:
-                logger.warning(f'Quick {product_name}: {full_url[-60:]}: {e}')
+                logger.warning(f'Quick {product_name}: {full_url}: {e}')
 
         # ── Flush all queued page_hash writes in a single batch ──
         # This is the core DB lock fix: moves writes out of the HTTP request loop.

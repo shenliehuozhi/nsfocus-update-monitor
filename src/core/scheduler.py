@@ -122,12 +122,27 @@ def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
 
                 # 时间窗口内，检测网络错误关键词
                 if any(pat in line for pat in NET_ERROR_PATTERNS):
-                    # 提取产品名和URL（格式：Quick {product}: {url}: {error}）
-                    # 示例：Quick WAF: /update/wafIndex: HTTPSConnectionPool...
-                    parts = line.split(':', 3)
-                    product = parts[1].strip() if len(parts) > 1 else 'unknown'
-                    url = parts[2].strip() if len(parts) > 2 else ''
-                    err_msg = parts[3].strip() if len(parts) > 3 else line.strip()
+                    # 日志格式：... Quick{product}:{url}: HTTPSConnectionPool...
+                    # 产品名可能紧跟Quick无空格（如中文名），URL可能为 //host/path 或 /update/...
+                    # 找 HTTPSConnectionPool 作为错误起始，解析其前后的 product 和 url
+                    err_start = line.find('HTTPSConnectionPool')
+                    err_msg = line[err_start:err_start+150] if err_start != -1 else line.strip()[-100:]
+
+                    q = line.find('Quick')  # 无空格，因为中文产品名紧跟Quick
+                    if q != -1:
+                        after_quick = line[q+5:]  # 跳过 'Quick'
+                        err_marker = re.search(r':\s*HTTPSConnectionPool', after_quick)
+                        before_err = after_quick[:err_marker.start()] if err_marker else after_quick
+                        url_m = re.search(r'(//[^\s]+|/\S*)', before_err)
+                        url = url_m.group(1) if url_m else ''
+                        if url_m:
+                            product = before_err[:url_m.start()].strip().rstrip(':')
+                        else:
+                            product = before_err.strip()
+                    else:
+                        product = 'unknown'
+                        url = ''
+
                     errors.append({
                         'product_name': product,
                         'url': url,
