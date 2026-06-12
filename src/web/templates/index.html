@@ -3255,12 +3255,15 @@ async function products(){
       </div>
     </div>
     <div class="card-bd">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px">
         <span>共 <strong>${total}</strong> 个</span>
         <span style="color:#16a34a">● 启用 <strong>${enabled}</strong></span>
         <span style="color:#9ca3af">○ 禁用 <strong>${disabled}</strong></span>
         ${errors>0?'<span style="color:#dc2626">● 异常 <strong>'+errors+'</strong></span>':''}
         <span class="tp" data-tip="采集状态反映上次刷新包类型的结果：正常=成功，异常=失败，未知=从未刷新过">ⓘ 采集状态</span>
+        <span id="prod-sel-count" style="font-size:12px;color:#9ca3af;margin-left:8px"></span>
+        <button class="btn btn-sm" id="btn-batch-enable" onclick="batchEnable()" disabled style="background:#16a34a;color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量启用</button>
+        <button class="btn btn-sm" id="btn-batch-disable" onclick="batchDisable()" disabled style="background:#dc2626;color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量禁用</button>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
           <input id="prod-search" placeholder="搜索产品…" oninput="filterProducts()" style="padding:4px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px;width:140px">
           <select id="prod-filter" onchange="filterProducts()" style="padding:4px 8px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
@@ -3270,18 +3273,11 @@ async function products(){
           </select>
         </div>
       </div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;padding:6px 10px;background:#f9fafb;border-radius:8px">
-        <span id="prod-sel-count" style="font-size:12px;color:#9ca3af;margin-left:4px"></span>
-        <div style="margin-left:auto;display:flex;gap:6px">
-          <button class="btn btn-sm" id="btn-batch-enable" onclick="batchEnable()" disabled style="background:#16a34a;color:#fff;border:none;cursor:pointer;opacity:0.4">批量启用</button>
-          <button class="btn btn-sm" id="btn-batch-disable" onclick="batchDisable()" disabled style="background:#dc2626;color:#fff;border:none;cursor:pointer;opacity:0.4">批量禁用</button>
-        </div>
-      </div>
       <div style="overflow-x:auto">
       <table class="table" style="table-layout:auto;width:100%">
         <thead><tr>
           <th style="width:36px">#</th>
-          <th style="width:40px"><input type="checkbox" id="prod-sel-all" onchange="toggleAllProds(this.checked)" style="cursor:pointer"></th>
+          <th style="width:40px"></th>
           <th style="width:64px">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
@@ -4958,13 +4954,6 @@ function _updateBatchUI(){
   const bd=document.getElementById('btn-batch-disable');
   if(be){be.disabled=n===0;be.style.opacity=n===0?'0.4':'1';}
   if(bd){bd.disabled=n===0;bd.style.opacity=n===0?'0.4':'1';}
-  // sync header checkbox
-  const allCb=document.getElementById('prod-sel-all');
-  if(allCb&&cbs.length>0)allCb.checked=n===cbs.length&&n>0;
-}
-function toggleAllProds(checked){
-  document.querySelectorAll('.prod-cb').forEach(cb=>cb.checked=checked);
-  _updateBatchUI();
 }
 async function batchEnable(){await batchAction('enable');}
 async function batchDisable(){await batchAction('disable');}
