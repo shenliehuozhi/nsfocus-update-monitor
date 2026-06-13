@@ -763,9 +763,6 @@ def get_latest_snapshots():
         else:
             pt = None
         final_pt = pt or {'types': [], 'paths': [], 'modes': {}}
-        import sys
-        if s['id'] == 6:
-            print(f'[DEBUG get_latest_snapshots] UTS pt type={type(pt).__name__} paths={len(final_pt.get("paths", []))}', file=sys.stderr)
         source_map[s['id']] = {
             'id': s['id'],
             'name': s['name'],

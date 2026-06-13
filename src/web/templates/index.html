@@ -968,26 +968,15 @@ function dataRenderLeft() {
 
 // ── Tree toggle (inline onclick) ──
 function treeToggleById(childrenId, arrowEl) {
-  if (!childrenId) { console.log('[treeToggleById] childrenId is null!'); return; }
-  console.log('[treeToggleById] IN childrenId =', childrenId);
-  // arrowEl passed directly from onclick, or fall back to querySelector
+  if (!childrenId) return;
   var arrow = arrowEl || document.querySelector('[data-target="' + CSS.escape(childrenId) + '"]');
-  console.log('[treeToggleById] arrow el:', arrow ? 'found, tag=' + arrow.tagName : 'NULL');
-  if (!arrow) {
-    console.log('[treeToggleById] arrow not found for', childrenId);
-    return;
-  }
+  if (!arrow) return;
   var treeNode = arrow.closest('.tree-node');
-  console.log('[treeToggleById] treeNode:', treeNode ? 'found, class=' + treeNode.className : 'NULL');
   if (!treeNode) return;
   var children = treeNode.nextElementSibling;
-  console.log('[treeToggleById] children div:', children ? 'found, class=' + children.className + ', display=' + children.style.display : 'NULL or not tree-children');
   if (!children || !children.classList.contains('tree-children')) return;
   var isHidden = children.style.display === 'none' || children.style.display === '';
-  console.log('[treeToggleById] BEFORE: display=', children.style.display, 'isHidden=', isHidden);
-  var newDisplay = isHidden ? 'block' : 'none';
-  children.style.display = newDisplay;
-  console.log('[treeToggleById] AFTER: display=', children.style.display, 'newDisplay=', newDisplay, 'computedVisibility=', getComputedStyle(children).visibility, 'computedDisplay=', getComputedStyle(children).display);
+  children.style.display = isHidden ? 'block' : 'none';
   arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
 }
 
@@ -3601,7 +3590,6 @@ function buildTreeHtml(pt, MAP) {
 // sid: source id for click delegation
 function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
   const paths = pt.paths || [];
-  console.log('[buildDataTreeHtml] pt.paths count =', paths.length, '| source id =', sid);
   if (paths.length === 0) return '<span style="color:#9ca3af">无路径数据</span>';
 
   // Build tree structure from paths
@@ -3747,9 +3735,6 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
     // Arrow: toggle children visibility via data-action="treeToggle" (handled by event delegation)
     // Uses a generated children ID stored in data-target on the arrow
     const childDivId = hasChildren ? ('tcd_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
-  if (name === 'V2.0R00F06') {
-    console.log('[renderNode] V2.0R00F06:', {hasChildren, childDivId, isPkg, depth, childrenLen: children.length, nodeKeys: Object.keys(node)});
-  }
     const arrow = hasChildren || isPkg
       ? `<span onclick="treeToggleById('${childDivId}', this); event.stopPropagation();" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
       : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
