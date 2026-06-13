@@ -924,10 +924,15 @@ function dataRenderLeft() {
     // Build snapshots_map (URL -> snapshot[]) for buildDataTreeHtml
     if (!src.snapshots_map) {
       src.snapshots_map = {};
+      const BASE_URL = 'https://update.nsfocus.com';
       (src.snapshots || []).forEach(s => {
         if (s.source_url) {
-          if (!src.snapshots_map[s.source_url]) src.snapshots_map[s.source_url] = [];
-          src.snapshots_map[s.source_url].push(s);
+          // Strip BASE_URL origin so key matches tree node __pathId (relative path)
+          const urlKey = s.source_url.startsWith(BASE_URL)
+            ? s.source_url.slice(BASE_URL.length)
+            : s.source_url;
+          if (!src.snapshots_map[urlKey]) src.snapshots_map[urlKey] = [];
+          src.snapshots_map[urlKey].push(s);
         }
       });
     }
@@ -961,15 +966,29 @@ function dataRenderLeft() {
   document.getElementById('dataLeft').innerHTML = html;
 }
 
-// ── Tree toggle via data-target (no inline onclick) ──
-function treeToggleById(childrenId) {
-  if (!childrenId) return;
-  var children = document.getElementById(childrenId);
-  if (!children) return;
+// ── Tree toggle (inline onclick) ──
+function treeToggleById(childrenId, arrowEl) {
+  if (!childrenId) { console.log('[treeToggleById] childrenId is null!'); return; }
+  console.log('[treeToggleById] IN childrenId =', childrenId);
+  // arrowEl passed directly from onclick, or fall back to querySelector
+  var arrow = arrowEl || document.querySelector('[data-target="' + CSS.escape(childrenId) + '"]');
+  console.log('[treeToggleById] arrow el:', arrow ? 'found, tag=' + arrow.tagName : 'NULL');
+  if (!arrow) {
+    console.log('[treeToggleById] arrow not found for', childrenId);
+    return;
+  }
+  var treeNode = arrow.closest('.tree-node');
+  console.log('[treeToggleById] treeNode:', treeNode ? 'found, class=' + treeNode.className : 'NULL');
+  if (!treeNode) return;
+  var children = treeNode.nextElementSibling;
+  console.log('[treeToggleById] children div:', children ? 'found, class=' + children.className + ', display=' + children.style.display : 'NULL or not tree-children');
+  if (!children || !children.classList.contains('tree-children')) return;
   var isHidden = children.style.display === 'none' || children.style.display === '';
-  children.style.display = isHidden ? 'block' : 'none';
-  var arrow = document.querySelector('[data-target="' + childrenId + '"]');
-  if (arrow) arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
+  console.log('[treeToggleById] BEFORE: display=', children.style.display, 'isHidden=', isHidden);
+  var newDisplay = isHidden ? 'block' : 'none';
+  children.style.display = newDisplay;
+  console.log('[treeToggleById] AFTER: display=', children.style.display, 'newDisplay=', newDisplay, 'computedVisibility=', getComputedStyle(children).visibility, 'computedDisplay=', getComputedStyle(children).display);
+  arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
 }
 
 // Card product toggle (body id string, not element reference)
@@ -1109,7 +1128,13 @@ function dataBuildFeed() {
       // Filter by has_rb: skip active ones when "含撤回" is active
       if (_dataFilters.has_rb && s.status !== 'rollback') return;
       // Filter by exact URL when a leaf node is selected
-      if (_dataSelectedUrl && s.source_url !== _dataSelectedUrl) return;
+      // Normalize both the same way before comparing
+      if (_dataSelectedUrl) {
+        const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
+        const normSnap = '/' + stripSlashes(s.source_url || '');
+        const normSelected = '/' + stripSlashes(_dataSelectedUrl);
+        if (normSnap !== normSelected) return;
+      }
       // Filter by hints when an intermediate node is selected
       if (isHintClick) {
         if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
@@ -2995,15 +3020,16 @@ async function settings(){
         <div class="form-group"><label>速率下限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机下限，建议0.3-1秒</p></div>
         <div class="form-group"><label>速率上限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机上限，建议不超过5秒</p></div>
       </div>
-      <div class="cfg-row">
-        <div class="form-group"><label>每类型包数量</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p class="cfg-hint">采集数据页每(版本+包类型)显示的历史包数量，默认3</p></div>
-      </div>
     </div>
 
     <div class="cfg-section">
       <div class="cfg-section-hd">💾 存储与保留</div>
       <div class="cfg-row">
         <div class="form-group"><label>附件上限 <span class="cfg-unit">(MB)</span></label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p class="cfg-hint">邮件附件最大体积；超过则在正文显示下载地址</p></div>
+      </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>快照保留条数</label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||10}" min="1" max="500"><p class="cfg-hint">后端磁盘存储上限：每个(版本+包类型)组合最多存几条历史快照，超出则删旧</p></div>
+        <div class="form-group"><label>每类型包显示数</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p class="cfg-hint">界面显示上限：采集数据页每(版本+包类型)组合在右侧详情显示几条；与「快照保留条数」配合，前者控制界面，后者控制磁盘</p></div>
       </div>
     </div>
 
@@ -3575,6 +3601,7 @@ function buildTreeHtml(pt, MAP) {
 // sid: source id for click delegation
 function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
   const paths = pt.paths || [];
+  console.log('[buildDataTreeHtml] pt.paths count =', paths.length, '| source id =', sid);
   if (paths.length === 0) return '<span style="color:#9ca3af">无路径数据</span>';
 
   // Build tree structure from paths
@@ -3609,9 +3636,12 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
   Object.entries(snapshotsMap || {}).forEach(([urlKey, snaps]) => {
     function attach(node) {
       if (node.__isPkg && node.__pathId) {
-        // Normalize both URLs: strip trailing slash, ensure leading /
-        const normNode = ('/' + node.__pathId).replace(/\/+$/, '');
-        const normKey = ('/' + urlKey).replace(/\/+$/, '');
+        // Normalize both URLs: strip protocol/host, ensure single leading /
+        // node.__pathId may or may not have leading /, urlKey may or may not
+        // Normalize to: no leading /, no trailing /
+        const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
+        const normNode = '/' + stripSlashes(node.__pathId);
+        const normKey  = '/' + stripSlashes(urlKey);
         if (normNode === normKey) {
           node.__snapshots = snaps;
           return true;
@@ -3717,8 +3747,11 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
     // Arrow: toggle children visibility via data-action="treeToggle" (handled by event delegation)
     // Uses a generated children ID stored in data-target on the arrow
     const childDivId = hasChildren ? ('tcd_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
+  if (name === 'V2.0R00F06') {
+    console.log('[renderNode] V2.0R00F06:', {hasChildren, childDivId, isPkg, depth, childrenLen: children.length, nodeKeys: Object.keys(node)});
+  }
     const arrow = hasChildren || isPkg
-      ? `<span class="tree-arrow" data-action="treeToggle" data-target="${childDivId}" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
+      ? `<span onclick="treeToggleById('${childDivId}', this); event.stopPropagation();" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
       : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
     let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
     html += arrow;
@@ -3736,17 +3769,15 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
     // Empty leaves still show the placeholder div so tree height is consistent.
     if (isPkg) {
       if (snaps.length === 0) {
-        // Keep a hidden placeholder div for consistent tree height
-        const divId = targetId;
-        html += `<div id="${divId}" class="tree-children" data-target="${divId}" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px">
+        // Snapshot content is rendered into the right panel on click, not into the tree.
+        // Keep a minimal placeholder so tree height is stable — uses a fixed non-conflicting id.
+        html += `<div class="tree-children" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px">
           <div style="color:var(--muted);font-size:12px;padding:8px 12px;background:#fafafa;border-radius:4px">
             暂无采集数据<div style="font-size:11px;margin-top:2px">页面可能返回登录页或无数据包</div>
           </div></div>`;
-      } else {
-        // Has data: render a placeholder div (hidden) for tree height consistency only
-        const divId = targetId;
-        html += `<div id="${divId}" class="tree-children" data-target="${divId}" style="display:none;padding-left:${indent + 16}px;margin-bottom:8px"></div>`;
       }
+      // When snaps.length > 0: no placeholder div needed — clicking the leaf node
+      // directly populates the right panel via dataBuildFeed().
     }
 
     return html;
@@ -4663,6 +4694,7 @@ async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
+    snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
@@ -4683,6 +4715,7 @@ async function forceStopAndSave(){
 async function saveSettings(){
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
     feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
+    snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,

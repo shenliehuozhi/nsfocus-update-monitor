@@ -157,40 +157,48 @@ def update_heartbeat(session_id: int, hb_status: str):
     )
 
 
-# Rolling log for heartbeat events (max 10 lines, no DB writes)
+# Rolling log for heartbeat events (RotatingFileHandler, no DB writes)
 _hb_lock = threading.RLock()
-_HB_LOG_PATH = None
+_hb_logger = None
 
-def _hb_log_path():
-    global _HB_LOG_PATH
-    if _HB_LOG_PATH is None:
-        _HB_LOG_PATH = pathlib.Path(os.getenv('MONITOR_LOG_DIR', os.path.join(os.path.expanduser('~/.local/share/nsfocus-monitor-data'), 'logs'))) / 'heartbeat.log'
-    return _HB_LOG_PATH
+
+def _get_hb_logger():
+    """Get or create the heartbeat logger with RotatingFileHandler."""
+    global _hb_logger
+    if _hb_logger is not None:
+        return _hb_logger
+
+    from src.core.logger import new_rotating_file_handler
+    import logging
+
+    _hb_logger = logging.getLogger('heartbeat')
+    _hb_logger.setLevel(logging.INFO)
+    _hb_logger.propagate = False
+    _hb_logger.addHandler(new_rotating_file_handler('heartbeat.log'))
+    return _hb_logger
 
 
 def log_heartbeat(session_id: int, hb_status: str, latency_ms: int = 0, error_msg: str = '', purpose: str = '', collect_mode: str = ''):
-    """Record a heartbeat event to a rolling log file (max 10 lines).
+    """Record a heartbeat event to a rotating log file.
 
     Does NOT write to DB — caller (scheduler pre-flight or _session_heartbeat)
     is responsible for updating user_sessions heartbeat fields separately.
 
     Format: ts | sid=N | purpose | collect_mode | status | latency_ms | msg
     """
-    with _hb_lock:
-        p = _hb_log_path()
-        lines = []
-        if p.exists():
-            lines = p.read_text(encoding='utf-8').splitlines()
-        ts = _dt.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
-        new_line = f'{ts} | sid={session_id} | {purpose} | {collect_mode} | {hb_status} | {latency_ms}ms | {error_msg}'
-        lines.append(new_line)
-        lines = lines[-10:]
-        p.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    ts = _dt.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
+    line = f'{ts} | sid={session_id} | {purpose} | {collect_mode} | {hb_status} | {latency_ms}ms | {error_msg}'
+    _get_hb_logger().info(line)
 
 
 def get_heartbeat_history(session_id: int, limit: int = 20) -> list:
     """Get recent heartbeat history for a session from heartbeat.log file."""
-    p = _hb_log_path()
+    from src.core.logger import get_log_dir
+    import os
+    p = pathlib.Path(get_log_dir()) / 'heartbeat.log'
+    if not p.exists():
+        # Fallback to old path (Windows data dir)
+        p = pathlib.Path(os.getenv('MONITOR_LOG_DIR', os.path.join(os.path.expanduser('~/.local/share/nsfocus-monitor-data'), 'logs'))) / 'heartbeat.log'
     if not p.exists():
         return []
     all_lines = p.read_text(encoding='utf-8').splitlines()

@@ -27,6 +27,7 @@ def _audit(user_id, action: str, details: dict = None):
 import logging
 import os
 from logging.handlers import RotatingFileHandler
+from src.core.logger import _ROTATE_MAX_BYTES, _ROTATE_BACKUP_COUNT
 
 _audit_logger = None
 
@@ -45,7 +46,12 @@ def _get_audit_logger():
     _audit_logger.setLevel(logging.INFO)
     _audit_logger.propagate = False
 
-    handler = RotatingFileHandler(audit_log_path, maxBytes=10_000_000, backupCount=5, encoding='utf-8')
+    handler = RotatingFileHandler(
+        audit_log_path,
+        maxBytes=_ROTATE_MAX_BYTES,
+        backupCount=_ROTATE_BACKUP_COUNT,
+        encoding='utf-8'
+    )
     handler.setFormatter(logging.Formatter(
         '%(asctime)s - %(message)s',
         datefmt='%Y-%m-%dT%H:%M:%S'

@@ -1110,9 +1110,17 @@ def refresh_scheduler_jobs():
             _scheduler.add_job(_digest_check, 'interval', hours=6,
                                 id='nsfocus_digest', name='Digest Summary Check',
                                 next_run_time=datetime.utcnow())
+        # 数据库清理：每天凌晨 3 点执行
+        if not _scheduler.get_job('nsfocus_db_cleanup'):
+            _scheduler.add_job(_run_db_cleanup, 'cron', hour=3, minute=0,
+                               id='nsfocus_db_cleanup', name='DB Cleanup',
+                               next_run_time=_next_cleanup_run())
+        else:
+            _scheduler.reschedule_job('nsfocus_db_cleanup', trigger='cron',
+                                      hour=3, minute=0)
         # nsfocus_health removed: _health_check is disabled
     else:
-        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest']:
+        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest', 'nsfocus_db_cleanup']:
             job = _scheduler.get_job(job_id)
             if job:
                 _scheduler.remove_job(job_id)
@@ -1137,6 +1145,8 @@ def start_scheduler(app=None):
         # 强制复位 _is_running，避免上一个 crash 的进程遗留此标志
         global _is_running
         _is_running = False
+        # 启动时执行一次数据库清理
+        _run_db_cleanup()
         refresh_scheduler_jobs()
 
         # ── Clean shutdown: clear collection_running on SIGTERM/exit ──
@@ -1437,3 +1447,109 @@ def _health_check():
             logger.info('[HEALTH] Health alert sent: %s', reason)
         except Exception as e:
             logger.error('[HEALTH] Failed to send health alert: %s', e)
+
+
+# ── Database cleanup ──────────────────────────────────────────────────────────
+
+def _next_cleanup_run():
+    """返回明天凌晨 3:00 UTC 的 datetime，用于 cron trigger 的 next_run_time。"""
+    tomorrow = datetime.utcnow().replace(hour=3, minute=0, second=0, microsecond=0)
+    if tomorrow <= datetime.utcnow():
+        tomorrow += timedelta(days=1)
+    return tomorrow
+
+
+def _run_db_cleanup():
+    """清理过期数据：
+      - heartbeat_log: 已废弃，全量清空
+      - audit_log: 保留 30 天
+      - delivery_log: 保留 90 天
+    仅清理，不抛异常，由 scheduler 启动和定时任务调用。"""
+    from src.models.database import execute, query, get_db
+    from src.models.audit import cleanup_old
+    from src.models.subscription import clear_history
+    logger = get_logger('cleanup')
+
+    try:
+        # 1. heartbeat_log 已废弃，直接清空
+        count = execute("DELETE FROM heartbeat_log") or 0
+        if count > 0:
+            logger.info('heartbeat_log 清空: %d 条', count)
+        else:
+            logger.debug('heartbeat_log 无数据')
+    except Exception as e:
+        logger.warning('heartbeat_log 清空失败: %s', e)
+
+    try:
+        # 2. audit_log 保留 30 天
+        before = query("SELECT COUNT(*) as c FROM audit_log")[0]['c']
+        cleanup_old(days=30)
+        after = query("SELECT COUNT(*) as c FROM audit_log")[0]['c']
+        logger.info('audit_log 清理完成: 清理前 %d 条，保留 %d 条（30天）', before, after)
+    except Exception as e:
+        logger.warning('audit_log 清理失败: %s', e)
+
+    try:
+        # 3. delivery_log 保留 90 天
+        before = query("SELECT COUNT(*) as c FROM delivery_log")[0]['c']
+        cleared = clear_history(older_than_days=90)
+        after = query("SELECT COUNT(*) as c FROM delivery_log")[0]['c']
+        logger.info('delivery_log 清理完成: 清理前 %d 条，删除 %d 条，保留 %d 条（90天）',
+                     before, cleared, after)
+    except Exception as e:
+        logger.warning('delivery_log 清理失败: %s', e)
+
+    try:
+        # 4. snapshots: 按 (version_branch, package_type) 分组，每组保留 N 条最新快照
+        from src.models.database import query as db_query
+        limit_cfg = db_query("SELECT value FROM system_settings WHERE key = 'snapshots_per_group'")
+        per_group = int(limit_cfg[0]['value']) if limit_cfg else 10
+
+        # 统计清理前
+        before = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
+        before_rb = db_query("SELECT COUNT(*) as c FROM snapshots WHERE status = 'rollback'")[0]['c']
+
+        deleted = 0
+        # 对每个 source 分别处理（跨 source 的同组合并不合并）
+        db = get_db()
+        cur = db.cursor()
+        # 找出所有需要清理的组（组内记录数 > per_group 且有非 rollback 记录）
+        cur.execute("""
+            SELECT source_id, product_name, version_branch, package_type, COUNT(*) as cnt
+            FROM snapshots
+            WHERE status != 'rollback'
+            GROUP BY source_id, product_name, version_branch, package_type
+            HAVING COUNT(*) > ?
+        """, (per_group,))
+        groups = cur.fetchall()
+
+        for g in groups:
+            src_id, prod, ver, pkgtype, cnt = g['source_id'], g['product_name'], g['version_branch'], g['package_type'], g['cnt']
+            # 保留该组最新 per_group 条，其余删除
+            cur.execute("""
+                DELETE FROM snapshots
+                WHERE source_id = ?
+                  AND product_name = ?
+                  AND version_branch = ?
+                  AND package_type = ?
+                  AND status != 'rollback'
+                  AND id NOT IN (
+                      SELECT id FROM snapshots
+                      WHERE source_id = ?
+                        AND product_name = ?
+                        AND version_branch = ?
+                        AND package_type = ?
+                        AND status != 'rollback'
+                      ORDER BY published_at DESC
+                      LIMIT ?
+                  )
+            """, (src_id, prod, ver, pkgtype, src_id, prod, ver, pkgtype, per_group))
+            deleted += cur.rowcount
+
+        after = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
+        after_rb = db_query("SELECT COUNT(*) as c FROM snapshots WHERE status = 'rollback'")[0]['c']
+        logger.info('snapshots 清理完成: 清理前 %d 条（含rollback %d），删除 %d 条，保留 %d 条（rollback %d），每组上限 %d',
+                    before, before_rb, deleted, after, after_rb, per_group)
+    except Exception as e:
+        logger.warning('snapshots 清理失败: %s', e)
+

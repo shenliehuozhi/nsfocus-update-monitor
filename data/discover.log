@@ -26458,3 +26458,16 @@
 2026-05-29 16:30:23 [confirm] thread started: user_id=1, prod_added=1, prod_removed=0, pkg_changes=17
 2026-05-29 16:30:33 [confirm] ERROR: Database write lock timeout after 10s
 2026-05-29 16:30:33 [confirm] ❌ 错误: Database write lock timeout after 10s
+2026-06-01 14:47:47 [auto_discover] service started: restored pending result from temp file
+2026-06-01 14:52:12 [auto_discover] service started: restored pending result from temp file
+2026-06-05 13:34:51 [auto_discover] service started: restored pending result from temp file
+2026-06-05 19:06:26 [auto_discover] service started: restored pending result from temp file
+2026-06-07 09:36:49 [auto_discover] service started: restored pending result from temp file
+2026-06-07 10:39:29 [auto_discover] service started: restored pending result from temp file
+2026-06-07 12:14:52 [auto_discover] service started: restored pending result from temp file
+2026-06-07 18:15:09 [auto_discover] service started: restored pending result from temp file
+2026-06-07 21:14:29 [auto_discover] service started: restored pending result from temp file
+2026-06-11 11:14:41 [auto_discover] service started: restored pending result from temp file
+2026-06-12 20:44:37 [auto_discover] service started: restored pending result from temp file
+2026-06-12 22:48:43 [auto_discover] service started: restored pending result from temp file
+2026-06-12 23:47:26 [confirm] discarded pending discover result

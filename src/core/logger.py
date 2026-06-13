@@ -12,6 +12,10 @@ _console_handler: Optional[logging.StreamHandler] = None
 _debug_restore_timer: Optional[threading.Timer] = None
 _log_dir = None
 
+# Shared rotation config (10 MB per file, keep 10 backups)
+_ROTATE_MAX_BYTES = 10 * 1024 * 1024
+_ROTATE_BACKUP_COUNT = 10
+
 
 def _resolve_level(name: str) -> int:
     """Resolve log level from env or string."""
@@ -40,11 +44,11 @@ def get_logger(name: str = 'monitor') -> logging.Logger:
         datefmt='%Y-%m-%d %H:%M:%S'
     )
 
-    # File handler with rotation (10 MB, keep 5)
+    # File handler with rotation (10 MB, keep 10)
     _file_handler = logging.handlers.RotatingFileHandler(
         os.path.join(_log_dir, 'app.log'),
-        maxBytes=10 * 1024 * 1024,
-        backupCount=10,
+        maxBytes=_ROTATE_MAX_BYTES,
+        backupCount=_ROTATE_BACKUP_COUNT,
         encoding='utf-8'
     )
     _file_handler.setLevel(default_level)
@@ -75,6 +79,25 @@ def get_log_dir() -> str:
     if _log_dir is None:
         _log_dir = os.getenv('MONITOR_LOG_DIR', '/tmp')
     return _log_dir
+
+
+def new_rotating_file_handler(filename: str, level: int = logging.INFO) -> logging.handlers.RotatingFileHandler:
+    """Create a RotatingFileHandler with shared config (10 MB, 10 backups).
+
+    Use this instead of plain FileHandler for all log files so they all
+    get automatic rotation and cleanup.
+    """
+    global _log_dir
+    log_dir = _log_dir or os.getenv('MONITOR_LOG_DIR', '/tmp')
+    os.makedirs(log_dir, exist_ok=True)
+    handler = logging.handlers.RotatingFileHandler(
+        os.path.join(log_dir, filename),
+        maxBytes=_ROTATE_MAX_BYTES,
+        backupCount=_ROTATE_BACKUP_COUNT,
+        encoding='utf-8'
+    )
+    handler.setLevel(level)
+    return handler
 
 
 def get_current_level() -> str:

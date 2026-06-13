@@ -762,13 +762,17 @@ def get_latest_snapshots():
                 pt = None
         else:
             pt = None
+        final_pt = pt or {'types': [], 'paths': [], 'modes': {}}
+        import sys
+        if s['id'] == 6:
+            print(f'[DEBUG get_latest_snapshots] UTS pt type={type(pt).__name__} paths={len(final_pt.get("paths", []))}', file=sys.stderr)
         source_map[s['id']] = {
             'id': s['id'],
             'name': s['name'],
             'entry_url': (lambda u: u[len(BASE_URL):] if u.startswith(BASE_URL) else u)(s.get('entry_url') or ''),
             'display_name': s.get('display_name') or s['name'],
             'is_active': bool(s.get('is_active')),
-            'package_type': pt or {'types': [], 'paths': [], 'modes': {}},
+            'package_type': final_pt,
             'last_collected_at': s.get('last_collected_at'),
             'snapshots': [],
         }
@@ -865,6 +869,20 @@ def trigger_collection():
     t = threading.Thread(target=_run, daemon=True)
     t.start()
     return jsonify({'code': 0, 'data': result, 'message': '采集任务已触发，请查看日志'})
+
+
+@bp_settings.route('/cleanup', methods=['POST'])
+@require_auth
+def trigger_cleanup():
+    """手动触发数据库清理（清空 heartbeat_log，清理 30 天前的 audit_log 和 90 天前的 delivery_log）。"""
+    from src.core.scheduler import _run_db_cleanup
+    import threading
+    result = {'status': 'started'}
+    def _run():
+        _run_db_cleanup()
+    t = threading.Thread(target=_run, daemon=True)
+    t.start()
+    return jsonify({'code': 0, 'data': result, 'message': '数据库清理已在后台执行，请查看日志'})
 
 
 @bp_settings.route('/config', methods=['GET'])
