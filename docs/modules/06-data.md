@@ -49,8 +49,12 @@ scheduler.run_now(mode)
 3. 对每个 URL 发 GET 请求，读取前 50KB HTML
 4. 计算页面内容的 MD5（page_hash），与 `snapshots.page_hash` 比较
 5. hash 相同 → 页面无变化，复用已有快照
-6. hash 变化 → 重新解析 HTML 表格，提取包列表
-7. 对比新旧快照列表：新增 / 变化 / 消失
+6. hash 变化 → 调用 `_extract_table_items()` 解析该页面**所有包**（不是只取最新一个）
+7. 将解析出的所有包逐个与数据库对比：
+   - 新 key（file_name+package_type）→ `► NEW`
+   - key 存在但 MD5 变化 → `► CHANGE`
+   - key 消失（旧的有、新的没有）→ `◄ REMOVED`（触发撤回检测）
+8. **所有包**都加入 items 列表，由后续 `run_detection()` 判断是新增还是变化
 
 **耗时**：约 20 秒（5 个产品 × 若干页面）
 
