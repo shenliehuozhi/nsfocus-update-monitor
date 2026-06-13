@@ -98,5 +98,47 @@ def get_dashboard():
             'push_week': push_week,
             'total_snapshots': total_snapshots,
             'recent_deliveries': recent_deliveries,
+            'product_stats': _product_pie_stats(int(days)),
+            'timeline_stats': _timeline_stats(int(days)),
         }
     })
+
+
+def _product_pie_stats(days: int = 30):
+    """按产品统计近days天发布包数量（仅已启用产品）"""
+    from src.models.database import query
+    rows = query(f"""
+        SELECT cs.name, COUNT(s.id) as cnt
+        FROM snapshots s
+        JOIN content_sources cs ON s.source_id = cs.id
+        WHERE cs.is_active = 1
+          AND s.published_at >= date('now', '-{days} days')
+          AND s.published_at != ''
+        GROUP BY cs.id, cs.name
+        ORDER BY cnt DESC
+    """)
+    return [{'name': r['name'], 'count': r['cnt']} for r in rows]
+
+
+def _timeline_stats(days: int):
+    """每日各产品发布包数量趋势（最近days天，仅已启用产品）"""
+    from src.models.database import query
+    rows = query(f"""
+        SELECT DATE(s.published_at) as dt, cs.name as product, COUNT(*) as cnt
+        FROM snapshots s
+        JOIN content_sources cs ON s.source_id = cs.id
+        WHERE cs.is_active = 1
+          AND s.published_at >= date('now', '-{days} days')
+          AND s.published_at != ''
+        GROUP BY DATE(s.published_at), cs.id, cs.name
+        ORDER BY dt ASC, cs.name
+    """)
+    # 组装：{date: {product: count, ...}, ...}
+    result = {}
+    for r in rows:
+        dt = r['dt']
+        if dt not in result:
+            result[dt] = {}
+        result[dt][r['product']] = r['cnt']
+    # 转成 [{date, counts: {product: count, ...}}]
+    return [{'date': dt, 'counts': counts} for dt, counts in result.items()]

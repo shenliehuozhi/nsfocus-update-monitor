@@ -479,7 +479,54 @@ async function dashboard(range){
       </div>
     </div>
     </div>
+
+    <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:nowrap;align-items:stretch;height:430px">
+      <div class="card" style="flex:2;min-width:0">
+        <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px">
+          <span>📈 包发布趋势</span>
+          <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
+            <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
+            <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
+            <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+          </div>
+        </div>
+        <div class="card-bd" style="padding:12px;box-sizing:border-box;height:375px;display:flex;flex-direction:column">
+          <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
+          <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div>
+        </div>
+      </div>
+
+      <div class="card" style="flex:1;min-width:280px;max-width:400px;display:flex;flex-direction:column">
+        <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+          <span>📊 产品发布分布</span>
+          <div id="pieRange" style="display:flex;gap:4px;margin-left:8px">
+            <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
+            <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
+            <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+          </div>
+        </div>
+        <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
+          <div id="prodDistTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
+        </div>
+      </div>
+    </div>
     `;
+    // 渲染图表
+    window._tlData = d.timeline_stats || [];
+    window._tlDays = parseInt(rng);
+    // 初始化：所有产品可见
+    const allProds = [...new Set((d.timeline_stats||[]).flatMap(t => Object.keys(t.counts)))];
+    if(!window._tlVisible) window._tlVisible = {};
+    allProds.forEach(p => { if(window._tlVisible[p]===undefined) window._tlVisible[p]=true; });
+    _renderProdDistTable(d.product_stats || []);
+    _renderTimelineChart('chartTimeline', window._tlData, window._tlDays, window._tlVisible);
+    _renderTlLegend(allProds, window._tlVisible);
+    // 高亮当前选中范围按钮
+    document.querySelectorAll('#pieRange .btn, #tlRange .btn').forEach(b => {
+      const v = b.textContent.trim();
+      b.className = 'btn btn-xs ' + (v === rng + '天' ? 'btn-primary' : 'btn-outline');
+    });
+
   // Start/stop progress poll (must be in JS, not innerHTML script tag)
   if(sch.is_running){
     if(!window._dashPollTimer){pollDashProgress();window._dashPollTimer=setInterval(pollDashProgress,3000);}
@@ -498,6 +545,276 @@ async function dashboard(range){
 //   toISOString() would show UTC (8h behind CST). See commit 884a835.
 // ═══════════════════════════════════════════════════════════════
 function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t.endsWith('Z')?t:t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
+
+// ── Dashboard Charts ─────────────────────────────────────────────
+const PIE_COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
+
+function _renderProdDistTable(data){
+  const container = document.getElementById('prodDistTable');
+  if(!container) return;
+  if(!data || data.length===0){
+    container.innerHTML='<div style="padding:16px;text-align:center;color:#999;font-size:12px">暂无数据</div>'; return;
+  }
+  const total = data.reduce((s,e)=>s+e.count,0);
+  const max = data[0].count;
+  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr style="background:#f6f8fa;border-bottom:1px solid #e5e7eb">'+
+      '<th style="padding:8px 12px;text-align:left;color:#6b7280;font-weight:500">产品</th>'+
+      '<th style="padding:8px 12px;text-align:right;color:#6b7280;font-weight:500">包数量</th>'+
+      '<th style="padding:8px 12px;width:160px;color:#6b7280;font-weight:500">占比</th>'+
+    '</tr></thead><tbody>'+
+    data.map((item,i)=>{
+      const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
+      return `<tr style="border-bottom:1px solid #f3f4f6">
+        <td style="padding:9px 12px;display:flex;align-items:center;gap:6px">
+          <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>
+          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px" title="${item.name}">${item.name}</span>
+        </td>
+        <td style="padding:9px 12px;text-align:right;color:#374151;font-variant-numeric:tabular-nums">${item.count}</td>
+        <td style="padding:9px 12px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;height:5px;background:#f3f4f6;border-radius:3px;overflow:hidden">
+              <div style="width:${pct}%;height:100%;background:${PIE_COLORS[i%PIE_COLORS.length]};border-radius:3px"></div>
+            </div>
+            <span style="color:#6b7280;font-size:11px;min-width:36px;text-align:right">${pct}%</span>
+          </div>
+        </td>
+      </tr>`;
+    }).join('')+
+    '</tbody></table>';
+}
+
+function _renderTimelineChart(canvasId, data, days, visible){
+  const canvas = document.getElementById(canvasId);
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth || 700;
+  const H = 200;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0,0,W,H);
+
+  if(!data || data.length===0){
+    ctx.font='13px system-ui'; ctx.fillStyle='#9ca3af'; ctx.textAlign='center';
+    ctx.fillText('暂无数据', W/2, H/2); return;
+  }
+
+  const allProducts = [...new Set(data.flatMap(d => Object.keys(d.counts)))];
+  const visibleProds = allProducts.filter(p => visible[p]);
+  if(visibleProds.length===0){
+    ctx.font='12px system-ui'; ctx.fillStyle='#9ca3af'; ctx.textAlign='center';
+    ctx.fillText('请点击上方产品标签显示曲线', W/2, H/2); return;
+  }
+
+  const COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
+  const prodColor = {};
+  allProducts.forEach((p,i) => { prodColor[p] = COLORS[i % COLORS.length]; });
+
+  // 填充日期空洞
+  const today=new Date();
+  const dateMap={};
+  data.forEach(d=>{ dateMap[d.date]=d.counts; });
+  const points=[];
+  for(let i=days-1;i>=0;i--){
+    const dt=new Date(today); dt.setDate(dt.getDate()-i);
+    const ds=dt.toISOString().substring(0,10);
+    const counts={};
+    allProducts.forEach(p=>{ counts[p] = (dateMap[ds] && dateMap[ds][p]) || 0; });
+    points.push({date:ds, counts});
+  }
+
+  const max = Math.max(...points.map(p=>Math.max(...visibleProds.map(pd=>p.counts[pd]),0)),1);
+  const pad=46, top=16, bot=H-16, right=12;
+  const chartW=W-pad-right, chartH=bot-top;
+  const xStep=chartW/(days-1||1);
+
+  // 网格线（淡色）
+  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1;
+  const gridN=4;
+  for(let g=0;g<=gridN;g++){
+    const y=top+(chartH/gridN)*g;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-right,y); ctx.stroke();
+    ctx.fillStyle='#9ca3af'; ctx.font='11px system-ui'; ctx.textAlign='right';
+    ctx.fillText(Math.round(max-(max/gridN)*g),pad-6,y+4);
+  }
+  // Y轴线
+  ctx.strokeStyle='#d1d5db';
+  ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,top); ctx.lineTo(pad,bot); ctx.stroke();
+  // X轴底线
+  ctx.beginPath(); ctx.moveTo(pad,bot); ctx.lineTo(W-right,bot); ctx.stroke();
+
+  // X轴标签：每个点都显示
+  ctx.textAlign='center';
+  for(let i=0;i<points.length;i++){
+    const x=pad+i*xStep;
+    const dt=new Date(points[i].date);
+    ctx.fillStyle='#9ca3af'; ctx.font='10px system-ui';
+    ctx.fillText((dt.getMonth()+1)+'/'+dt.getDate(),x,bot+14);
+  }
+
+  // 绘制每条可见产品曲线（只有主线条）
+  visibleProds.forEach(product => {
+    ctx.beginPath();
+    points.forEach((p,i)=>{
+      const x=pad+i*xStep;
+      const y=bot-(p.counts[product]/max)*chartH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle=prodColor[product]; ctx.lineWidth=2; ctx.stroke();
+
+    // 数据点（稍大一点）
+    points.forEach((p,i)=>{
+      if(p.counts[product]===0) return;
+      const x=pad+i*xStep;
+      const y=bot-(p.counts[product]/max)*chartH;
+      ctx.beginPath();
+      ctx.arc(x,y,3,0,Math.PI*2);
+      ctx.fillStyle=prodColor[product]; ctx.fill();
+    });
+  });
+
+  // 保存数据供 tooltip 使用
+  canvas._chartData = { points, allProducts, visibleProds, prodColor, max, pad, top, bot, chartW, chartH, xStep, days, chartH, W, right };
+  canvas.onmousemove = (ev) => _showChartTooltip(ev, canvas);
+  canvas.onmouseleave = (ev) => _hideChartTooltip(ev, canvas);
+}
+
+function _showChartTooltip(e, canvas){
+  const d = canvas._chartData;
+  if(!d) return;
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = canvas.width / rect.width;
+  const mx = (e.clientX - rect.left) * scaleX / (window.devicePixelRatio||1);
+  if(mx < d.pad || mx > d.pad + d.chartW) { _hideChartTooltip(e, canvas); return; }
+
+  // 重绘图表清除旧线
+  _renderTimelineChart_Redraw(d, mx, e);
+}
+
+function _renderTimelineChart_Redraw(d, mx, e){
+  const canvas = document.getElementById('chartTimeline');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const W = canvas.offsetWidth || 700;
+  const H = 200;
+  ctx.clearRect(0,0,W,H);
+  const pad=d.pad, top=d.top, bot=d.bot, chartH=d.chartH, chartW=d.chartW, right=d.right;
+  const max=d.max, points=d.points, visibleProds=d.visibleProds, prodColor=d.prodColor, days=d.days;
+  const xStep=d.xStep;
+
+  // 重新绘制网格和轴
+  ctx.strokeStyle='#e5e7eb'; ctx.lineWidth=1;
+  const gridN=4;
+  for(let g=0;g<=gridN;g++){
+    const y=top+(chartH/gridN)*g;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-right,y); ctx.stroke();
+    ctx.fillStyle='#9ca3af'; ctx.font='11px system-ui'; ctx.textAlign='right';
+    ctx.fillText(Math.round(max-(max/gridN)*g),pad-6,y+4);
+  }
+  ctx.strokeStyle='#d1d5db'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(pad,top); ctx.lineTo(pad,bot); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pad,bot); ctx.lineTo(W-right,bot); ctx.stroke();
+
+  // X轴标签
+  ctx.textAlign='center';
+  for(let i=0;i<points.length;i++){
+    const x=pad+i*xStep;
+    const dt=new Date(points[i].date);
+    ctx.fillStyle='#9ca3af'; ctx.font='10px system-ui';
+    ctx.fillText((dt.getMonth()+1)+'/'+dt.getDate(),x,bot+14);
+  }
+
+  // 绘制曲线
+  visibleProds.forEach(product => {
+    ctx.beginPath();
+    points.forEach((p,i)=>{
+      const x=pad+i*xStep;
+      const y=bot-(p.counts[product]/max)*chartH;
+      i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle=prodColor[product]; ctx.lineWidth=2; ctx.stroke();
+
+    points.forEach((p,i)=>{
+      if(p.counts[product]===0) return;
+      const x=pad+i*xStep;
+      const y=bot-(p.counts[product]/max)*chartH;
+      ctx.beginPath();
+      ctx.arc(x,y,3,0,Math.PI*2);
+      ctx.fillStyle=prodColor[product]; ctx.fill();
+    });
+  });
+
+  // 垂直参考线
+  const idx = Math.round((mx - pad) / xStep);
+  const clampedX = Math.max(pad, Math.min(pad + idx * xStep, pad + chartW));
+  ctx.beginPath();
+  ctx.moveTo(clampedX, top);
+  ctx.lineTo(clampedX, bot);
+  ctx.strokeStyle='#9ca3af'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
+
+  // tooltip
+  const ptIdx = Math.round((clampedX - pad) / xStep);
+  if(ptIdx >=0 && ptIdx < points.length){
+    const pt = points[ptIdx];
+    const dt = new Date(pt.date);
+    const dateStr = (dt.getMonth()+1)+'月'+dt.getDate()+'日';
+
+    let html = `<div style="font-size:11px;color:#6b7280;margin-bottom:4px">${dateStr}</div>`;
+    visibleProds.forEach(p => {
+      const val = pt.counts[p] || 0;
+      const color = prodColor[p];
+      html += `<div style="display:flex;align-items:center;gap:6px;font-size:12px">
+        <span style="width:8px;height:2px;background:${color};display:inline-block"></span>
+        <span style="color:#374151">${p}</span>
+        <span style="margin-left:auto;font-weight:600;color:#111;font-variant-numeric:tabular-nums">${val}</span>
+      </div>`;
+    });
+
+    let tip = document.getElementById('chartTip');
+    if(!tip){ tip=document.createElement('div'); tip.id='chartTip'; document.body.appendChild(tip); }
+    tip.style.cssText='position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:9999;pointer-events:none;font-family:system-ui;min-width:140px';
+    tip.innerHTML = html;
+    const tx = e.clientX + 14, ty = e.clientY - 10;
+    tip.style.left = tx + 'px';
+    tip.style.top = ty + 'px';
+    tip.style.display = 'block';
+  }
+}
+
+function _hideChartTooltip(e, canvas){
+  const tip = document.getElementById('chartTip');
+  if(tip) tip.style.display = 'none';
+  // 重绘清除虚线
+  const d = canvas._chartData;
+  if(d) _renderTimelineChart_Redraw(d, -9999);
+}
+
+function _renderTlLegend(allProducts, visible){
+  const container = document.getElementById('tlLegend');
+  if(!container) return;
+  const COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
+  const prodColor = {};
+  allProducts.forEach((p,i) => { prodColor[p] = COLORS[i % COLORS.length]; });
+
+  container.innerHTML = allProducts.map((p,i) => {
+    const on = visible[p];
+    return `<span onclick="_toggleTlProd('${p.replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'#aaa'};text-decoration:${on?'none':'line-through'}">
+      <span style="width:10px;height:2px;background:${prodColor[p]};display:inline-block;border-radius:2px"></span>
+      ${p}
+    </span>`;
+  }).join('');
+}
+
+function _toggleTlProd(p){
+  window._tlVisible[p] = !window._tlVisible[p];
+  _renderTimelineChart('chartTimeline', window._tlData, window._tlDays, window._tlVisible);
+  const allProds = Object.keys(window._tlVisible);
+  _renderTlLegend(allProds, window._tlVisible);
+}
 // ── Data Page ──────────────────────────────────────────────
 const PAGE_SIZE = 20;
 let _dataQuery = '';
@@ -2226,8 +2543,8 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:#e8f0fe;border:1px solid #c2d8fc;border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'#dbeafe':'#fef3c7'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:#e8f0fe;border:1px solid #c2d8fc;border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'#dbeafe':'#fef3c7'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${(r.notification_targets||[]).join(', ')}">${(r.notification_targets||[]).join(', ')||'<span style="color:var(--muted)">—</span>'}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:100px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="8" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
 

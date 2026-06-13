@@ -80,6 +80,7 @@ def get_enabled_rules() -> list:
 
 def list_rules(user_id: int = None) -> list:
     from src.models.database import query
+    from src.models.channel import _decrypt_config
     if user_id:
         rows = query("SELECT * FROM subscription_rules WHERE user_id = ? ORDER BY name", (user_id,))
     else:
@@ -87,7 +88,25 @@ def list_rules(user_id: int = None) -> list:
     rules = [_parse_rule(r) for r in rows]
     for rule in rules:
         ch_rows = query("SELECT channel_id FROM rule_channels WHERE rule_id = ?", (rule['id'],))
-        rule['channels'] = [r['channel_id'] for r in ch_rows if r.get('channel_id')]
+        channel_ids = [r['channel_id'] for r in ch_rows if r.get('channel_id')]
+        # 解析每个渠道的通知对象：email显示邮箱，机器人显示name
+        notification_targets = []
+        for cid in channel_ids:
+            ch = query("SELECT * FROM channels WHERE id = ?", (cid,))
+            if ch:
+                ch = _decrypt_config(ch[0])
+                ch_type = ch.get('type', '')
+                if ch_type == 'email':
+                    to_list = ch.get('config', {}).get('to_list', [])
+                    notification_targets.extend([e for e in to_list if e])
+                else:
+                    type_label = {'wecom': '企业微信', 'dingtalk': '钉钉', 'feishu': '飞书'}.get(ch_type, ch_type)
+                    notification_targets.append(f"{ch.get('name', '')}({type_label})")
+        rule['channels'] = channel_ids
+        # 通知对象：优先取规则的 customer_emails（邮件通知对象），没有则取渠道名（机器人类型）
+        rule['notification_targets'] = [e.strip() for e in (rule.get('customer_emails') or '').split(',') if e.strip()]
+        if not rule['notification_targets']:
+            rule['notification_targets'] = notification_targets
     return rules
 
 
