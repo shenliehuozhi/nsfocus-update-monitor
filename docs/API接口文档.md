@@ -510,6 +510,9 @@ data: {"processed": 3, "errors": 0}
 ## 8. 仪表盘
 
 ### GET /api/dashboard
+
+**参数**：`range` = `7` | `30` | `90`（默认30）
+
 ```json
 {
   "code": 0,
@@ -521,10 +524,36 @@ data: {"processed": 3, "errors": 0}
     "products_summary": [
       {"name": "WAF", "total_packages": 45, "latest_release": "2026-05-07T13:59:41"},
       {"name": "IPS", "total_packages": 23, "latest_release": "2026-04-20T10:00:00"}
+    ],
+    "product_stats": [
+      {"name": "WAF", "count": 12},
+      {"name": "IPS", "count": 8}
+    ],
+    "timeline_stats": [
+      {"date": "2026-05-01", "counts": {"WAF": 2, "IPS": 1}},
+      {"date": "2026-05-02", "counts": {"WAF": 1, "IPS": 0}}
     ]
   }
 }
 ```
+
+**字段说明**：
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| `session_status.pool_active` | int | 当前活跃的 Cookie Session 数量 |
+| `session_status.pool_total` | int | Session 池总容量 |
+| `last_collection.time` | ISO8601 | 上次采集完成时间 |
+| `last_collection.duration_ms` | int | 上次采集耗时（毫秒） |
+| `last_collection.products_ok` | int | 上次采集成功的产品数 |
+| `last_collection.products_fail` | int | 上次采集失败的产品数 |
+| `stats_today` | object | 今日统计 |
+| `stats_this_week` | object | 本周统计 |
+| `products_summary` | array | 各产品包统计概览 |
+| `product_stats` | array | 近N天（range参数）各产品发布包数量分布，按数量降序 |
+| `timeline_stats` | array | 近N天每日各产品发布包数量趋势，按日期升序 |
+
+> **时区说明**：所有时间字段均为 UTC，前端通过 `fmtTZ()` 转换显示为本地时间（CST）。
 
 ---
 
