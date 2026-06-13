@@ -514,8 +514,8 @@ async function dashboard(range){
     // 渲染图表
     window._tlData = d.timeline_stats || [];
     window._tlDays = parseInt(rng);
-    // 初始化：所有产品可见
-    const allProds = [...new Set((d.timeline_stats||[]).flatMap(t => Object.keys(t.counts)))];
+    // 从 product_stats 取所有产品列表（确保全0产品也被初始化）
+    const allProds = (d.product_stats || []).map(p => p.name);
     if(!window._tlVisible) window._tlVisible = {};
     allProds.forEach(p => { if(window._tlVisible[p]===undefined) window._tlVisible[p]=true; });
     _renderProdDistTable(d.product_stats || []);

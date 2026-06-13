@@ -68,7 +68,7 @@ def get_dashboard():
 
     # Recent deliveries with time range
     range_days = request.args.get('range', '7')
-    range_map = {'1': '1', '7': '7', '30': '30', '365': '365'}
+    range_map = {'1': '1', '7': '7', '30': '30', '90': '90', '365': '365'}
     days = range_map.get(range_days, '7')
 
     recent = query(
@@ -105,15 +105,15 @@ def get_dashboard():
 
 
 def _product_pie_stats(days: int = 30):
-    """按产品统计近days天发布包数量（仅已启用产品）"""
+    """按产品统计近days天发布包数量（仅已启用产品，无更新也显示0）"""
     from src.models.database import query
     rows = query(f"""
         SELECT cs.name, COUNT(s.id) as cnt
-        FROM snapshots s
-        JOIN content_sources cs ON s.source_id = cs.id
-        WHERE cs.is_active = 1
+        FROM content_sources cs
+        LEFT JOIN snapshots s ON s.source_id = cs.id
           AND s.published_at >= date('now', '-{days} days')
           AND s.published_at != ''
+        WHERE cs.is_active = 1
         GROUP BY cs.id, cs.name
         ORDER BY cnt DESC
     """)
@@ -121,8 +121,17 @@ def _product_pie_stats(days: int = 30):
 
 
 def _timeline_stats(days: int):
-    """每日各产品发布包数量趋势（最近days天，仅已启用产品）"""
+    """每日各产品发布包数量趋势（最近days天，仅已启用产品，0值也保留）"""
     from src.models.database import query
+    from datetime import datetime, timedelta
+
+    # 取出所有活跃产品
+    products = query("SELECT id, name FROM content_sources WHERE is_active = 1 ORDER BY name")
+    if not products:
+        return []
+    prod_names = [p['name'] for p in products]
+
+    # 取出近days天有快照的记录
     rows = query(f"""
         SELECT DATE(s.published_at) as dt, cs.name as product, COUNT(*) as cnt
         FROM snapshots s
@@ -133,12 +142,19 @@ def _timeline_stats(days: int):
         GROUP BY DATE(s.published_at), cs.id, cs.name
         ORDER BY dt ASC, cs.name
     """)
-    # 组装：{date: {product: count, ...}, ...}
-    result = {}
+
+    # 按日期建map
+    date_map = {}
     for r in rows:
-        dt = r['dt']
-        if dt not in result:
-            result[dt] = {}
-        result[dt][r['product']] = r['cnt']
-    # 转成 [{date, counts: {product: count, ...}}]
-    return [{'date': dt, 'counts': counts} for dt, counts in result.items()]
+        date_map.setdefault(r['dt'], {})[r['product']] = r['cnt']
+
+    # 补齐所有日期 + 所有产品，缺失处填0
+    today = datetime.utcnow()
+    result = []
+    for i in range(days - 1, -1, -1):
+        dt = (today - timedelta(days=i)).strftime('%Y-%m-%d')
+        counts = {}
+        for p in prod_names:
+            counts[p] = date_map.get(dt, {}).get(p, 0)
+        result.append({'date': dt, 'counts': counts})
+    return result
