@@ -756,9 +756,10 @@ function _renderTimelineChart_Redraw(d, mx, e){
   ctx.lineTo(clampedX, bot);
   ctx.strokeStyle='#9ca3af'; ctx.lineWidth=1; ctx.setLineDash([4,4]); ctx.stroke(); ctx.setLineDash([]);
 
-  // tooltip
-  const ptIdx = Math.round((clampedX - pad) / xStep);
-  if(ptIdx >=0 && ptIdx < points.length){
+  // tooltip（仅在有效范围内绘制）
+  if(mx >= pad && mx <= pad + chartW){
+    const ptIdx = Math.round((clampedX - pad) / xStep);
+    if(ptIdx >=0 && ptIdx < points.length){
     const pt = points[ptIdx];
     const dt = new Date(pt.date);
     const dateStr = (dt.getMonth()+1)+'月'+dt.getDate()+'日';
@@ -782,6 +783,7 @@ function _renderTimelineChart_Redraw(d, mx, e){
     tip.style.left = tx + 'px';
     tip.style.top = ty + 'px';
     tip.style.display = 'block';
+    }
   }
 }
 
