@@ -3277,7 +3277,7 @@ async function products(){
       <table class="table" style="table-layout:auto;width:100%">
         <thead><tr>
           <th style="width:36px">#</th>
-          <th style="width:40px"></th>
+          <th style="width:40px"><input type="checkbox" id="prod-sel-all" onchange="toggleAllProds(this.checked)" style="cursor:pointer" title="全选/取消全选"></th>
           <th style="width:64px">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
@@ -4954,6 +4954,12 @@ function _updateBatchUI(){
   const bd=document.getElementById('btn-batch-disable');
   if(be){be.disabled=n===0;be.style.opacity=n===0?'0.4':'1';}
   if(bd){bd.disabled=n===0;bd.style.opacity=n===0?'0.4':'1';}
+  const allCb=document.getElementById('prod-sel-all');
+  if(allCb&&cbs.length>0)allCb.checked=n===cbs.length&&n>0;
+}
+function toggleAllProds(checked){
+  document.querySelectorAll('.prod-cb').forEach(cb=>cb.checked=checked);
+  _updateBatchUI();
 }
 async function batchEnable(){await batchAction('enable');}
 async function batchDisable(){await batchAction('disable');}
