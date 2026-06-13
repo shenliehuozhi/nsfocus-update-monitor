@@ -1,53 +1,217 @@
-# 模块九：产品管理 (Products)
+# 模块九：产品管理与自动发现 (Products)
 
 ## 功能说明
 
-产品管理用于控制哪些绿盟产品参与采集。系统内置了78个产品定义，但默认只启用5个（WAF/IPS/NF/RSAS/UTS）。用户可以通过产品管理界面启用/禁用单个或批量产品。
+产品管理用于控制哪些绿盟产品参与采集，以及自动发现每个产品下有哪些版本分支和包类型。
 
-## 数据模型
+---
 
-### content_sources 表
+## 产品入口地址（内置静态配置）
 
-```sql
-CREATE TABLE content_sources (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT NOT NULL,                   -- 产品名称
-    display_name TEXT,                    -- 显示名称
-    source_type TEXT,                      -- nsfocus/manual
-    entry_url TEXT,                       -- 入口页面相对路径
-    config TEXT DEFAULT '{}',             -- 采集配置（JSON）
-    is_active INTEGER DEFAULT 1,           -- 1=启用采集, 0=禁用
-    health_status TEXT DEFAULT 'unknown',  -- ok/error/unknown
-    last_collected_at TEXT,               -- 最后一次采集时间
-    strategy TEXT DEFAULT 'standard',     -- standard/recursive
-    is_manual INTEGER DEFAULT 0,           -- 是否手动添加
-    package_type TEXT,                    -- 包类型（聚合显示）
-    force_type TEXT,
-    package_type_discovered TEXT,
-    package_type_changed INTEGER DEFAULT 0,
-    created_at TEXT
-)
+系统内置 6 个产品的入口路径：
+
+```python
+PRODUCTS = {
+    'WAF':  '/update/wafIndex',
+    'IPS':  '/update/listIps',
+    'IDS':  '/update/listIds',
+    'RSAS': '/update/listAuroraIndex',
+    'NF':   '/update/ListNf',
+    'UTS':  '/update/bsaUtsIndex',
+}
 ```
 
-## 内置产品列表（仅列出默认启用的5个）
+但这只是入口，实际运行时从 `content_sources` 表读取 `entry_url` 和 `is_active` 状态。
 
-| 产品 | name | is_active |
-|------|------|-----------|
-| WEB应用防护系统(WAF) | WEB应用防护系统(WAF) | 1 |
-| 网络入侵防护系统(IPS) | 网络入侵防护系统(IPS) | 1 |
-| 下一代防火墙(NF) | 下一代防火墙(NF) | 1 |
-| 绿盟远程安全评估系统(RSAS) | 绿盟远程安全评估系统(RSAS) | 1 |
-| 威胁预警系统(UTS) | 威胁预警系统(UTS) | 1 |
+---
 
-其余73个产品的 `is_active` 默认为 0。
+## 自动发现流程（discover_package_types）
 
-## API 设计
+### 调用时机
+
+1. **首次确认时**：用户在 UI 点击"确认"一个新发现结果
+2. **手动触发**：通过 API `POST /api/system/discover` 触发
+3. **产品首次启用时**：scheduler 发现某产品 `package_type_discovered` 为空，自动触发
+
+### 递归抓取算法
+
+```
+discover_package_types(source_id, session_cookie)
+        ↓
+抓取入口页面 HTML（/update/wafIndex）
+        ↓
+提取页面中的 section 标题（ser_c_b_tit 标记）
+        示例："WEB应用防护系统(WAF)列表"
+        ↓
+提取顶级链接（排除侧边栏）：
+  _extract_content_links(html)
+        ↓
+  排除 _is_sidebar_link() 和 _is_stopped() 的链接
+        ↓
+对每个顶级链接开始递归（depth ≤ 6）：
+        ↓
+  recurse(page_url, chain=[], depth=0)
+        │
+        ├── depth > 6 → 返回（防止无限递归）
+        ├── 已访问过 → 返回（防止环形链接）
+        │
+        ├── 获取页面 HTML
+        │
+        ├── 判断是否为最终包页面：
+        │   _extract_table_items(html) → 有记录？
+        │       ├── 有 → 这是最终页，记录 chain[-1] 为包类型名
+        │       │      paths.append({chain, types: [type_name], url})
+        │       └── 无 → 继续递归
+        │
+        ├── 提取子链接（排除侧边栏和停止链接）
+        │
+        └── 对每个子链接递归：
+            recurse(sub_url, chain + [sub_text], depth+1)
+```
+
+### 递归深度示例
+
+WAF 的典型结构（3层）：
+
+```
+入口：/update/wafIndex
+  ├── V6.0.9（顶级链接）
+  │     ├── 规则升级包（子链接）
+  │     │     └── 表格页（最终页）→ 包类型="规则升级包"，url="/update/wafIndex/v/6.0.9/rule"
+  │     └── 系统升级包（子链接）
+  │           └── 表格页（最终页）→ 包类型="系统升级包"，url="/update/wafIndex/v/6.0.9/sys"
+  └── V6.0.8（顶级链接）
+        └── 规则升级包
+              └── 表格页 → 包类型="规则升级包"，url="/update/wafIndex/v/6.0.8/rule"
+```
+
+RSAS/NF 的深层结构（4层，变量深度）：
+
+```
+入口：/update/listAuroraIndex
+  ├── RSAS V6.0（顶级）
+  │     ├── Web漏洞扫描（第二层）
+  │     │     ├── 规则库（第三层）
+  │     │     │     └── 表格页 → url
+  │     │     └── 升级包
+  │     │           └── 表格页 → url
+  │     └── 系统卷（第二层）
+  │           └── 表格页 → url
+  └── RSAS V5.6（顶级）
+        └── ...
+```
+
+### /upLic 重定向处理
+
+有些页面需要虚拟机环境，访问时 302 重定向到 `/update/upLic`：
+
+```python
+except RedirectToLicenseError:
+    # 记录为 VM 类型（url=None），采集时会跳过
+    paths.append({
+        'chain': chain,
+        'types': [type_name],
+        'url': None,
+        'vm': True
+    })
+```
+
+`_collect_quick` 会自动跳过 `url=None` 的路径。
+
+### 发现结果存储
+
+发现结果存入 `content_sources.package_type_discovered`：
+
+```json
+{
+  "types": ["规则升级包", "系统升级包", "威胁情报升级包"],
+  "paths": [
+    {
+      "chain": ["WEB应用防护系统(WAF)", "V6.0.9", "规则升级包"],
+      "types": ["规则升级包"],
+      "url": "/update/wafIndex/v/6.0.9/rule"
+    }
+  ],
+  "modes": {
+    "规则升级包": "auto",
+    "系统升级包": "auto"
+  }
+}
+```
+
+### section 标题提取
+
+页面 HTML 中包含 `ser_c_b_tit` 标记的区域标识产品分类区块：
+
+```python
+# 从入口页面提取 section 标题
+for sec_match in re.finditer(r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html):
+    sec_title = sec_match.group(1).strip()
+    # 找到该 section 内所有链接，建立 url→section 映射
+    section_titles[link_url] = sec_title
+```
+
+---
+
+## 包类型变化检测（diff_package_types）
+
+每次发现完成后，对比新旧 `package_type_discovered`：
+
+```python
+diff = NsfocusCollector.diff_package_types(old_discovered, new_discovered)
+
+# added_paths: 新增的路径（产品线新增了某个版本或包类型）
+# deleted_paths: 消失的路径（某个版本下线）
+# modified_paths: 路径存在但包类型变化
+```
+
+**比较主键**：`chain + types` 的组合字符串（不用 URL，因为同一 URL 可能有细微变化）
+
+---
+
+## 侧边栏链接过滤（_is_sidebar_link）
+
+很多链接指向其他产品入口侧边栏，需要排除：
+
+```python
+# 需要排除的侧边栏 URL 模式
+IS_SIDEBAR_PATTERNS = [
+    r'/bmgIndex$', r'/cdgIndex$', r'/bsaIndex$', r'/bsaUtsIndex$',
+    r'/listEspcL$', r'/listDms$', r'/DsitIndex$', r'/DsdbIndex$',
+    r'/listIds$', r'/listIps$', r'/listTac', r'/listScm',
+    r'/wafIndex$', r'/ListNf$', r'/listAuroraIndex$',
+    ...
+]
+```
+
+判断逻辑：
+
+```python
+def _is_sidebar_link(url: str) -> bool:
+    return any(re.search(p, url) for p in IS_SIDEBAR_PATTERNS)
+```
+
+---
+
+## 停止链接过滤（_is_stopped）
+
+有些链接虽然格式正确但指向"已停止维护"的版本（页面中有 `default` 标记）：
+
+```python
+def _is_stopped(url: str, html: str) -> bool:
+    pos = html.find(url)
+    context = html[max(0, pos-100):pos+len(url)+50]
+    return 'default' in context  # 有 "default" 标记说明该链接已停止
+```
+
+---
+
+## 产品管理 API
 
 ### GET /api/options/products/all
 
-返回所有产品（含 is_active 状态）。
+返回所有产品（含 is_active、health_status、package_type_discovered）：
 
-**响应**：
 ```json
 {
   "code": 0,
@@ -56,18 +220,12 @@ CREATE TABLE content_sources (
       "id": 1,
       "name": "WEB应用防护系统(WAF)",
       "display_name": "WEB应用防护系统(WAF)",
+      "entry_url": "/update/wafIndex",
       "is_active": 1,
       "health_status": "ok",
       "last_collected_at": "2026-06-12T10:00:00",
-      "package_type": "rule"
-    },
-    {
-      "id": 2,
-      "name": "网络入侵防护系统(IPS)",
-      "is_active": 1,
-      "health_status": "unknown",
-      "last_collected_at": null,
-      "package_type": "sys"
+      "package_type": "rule,sys",
+      "package_type_discovered": "{\"types\":[\"规则升级包\"],\"paths\":[...]}"
     }
   ]
 }
@@ -75,62 +233,78 @@ CREATE TABLE content_sources (
 
 ### PATCH /api/options/products/:id
 
-单个启用/禁用产品。
+单个启用/禁用产品：
 
-**请求体**：
 ```json
-{
-  "is_active": 0
-}
+// 禁用
+{ "is_active": 0 }
+
+// 启用
+{ "is_active": 1 }
 ```
 
 ### POST /api/options/products/batch
 
-批量启用/禁用产品。
+批量操作：
 
-**请求体**：
+```json
+// 批量启用
+{ "ids": [1, 2, 3], "action": "enable" }
+
+// 批量禁用
+{ "ids": [4, 5, 6], "action": "disable" }
+```
+
+### POST /api/system/discover
+
+触发自动发现（后台执行）：
+
 ```json
 {
-  "ids": [1, 2, 3],
-  "action": "enable"
+  "source_id": 1,
+  "session_id": 2
 }
 ```
 
-或：
+---
 
-```json
-{
-  "ids": [4, 5, 6],
-  "action": "disable"
-}
+## 数据模型
+
+### content_sources 表
+
+```sql
+CREATE TABLE content_sources (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    entry_url TEXT,                     -- 如 "/update/wafIndex"
+    is_active INTEGER DEFAULT 1,         -- 采集开关
+    health_status TEXT DEFAULT 'unknown', -- ok/error/unknown
+    last_collected_at TEXT,              -- UTC 时间戳
+    -- 包类型发现
+    package_type TEXT,                   -- 逗号分隔的包类型（聚合显示）
+    package_type_discovered TEXT,        -- JSON，发现的完整路径和类型
+    package_type_changed INTEGER DEFAULT 0,  -- 每次发现后是否变化
+    ...
+)
 ```
 
-## 字段说明
+---
 
-| 字段 | 说明 |
-|------|------|
-| is_active | 控制是否参与采集（=0 时 scheduler 跳过该产品） |
-| health_status | 上次采集结果：ok=成功 / error=失败 / unknown=从未采集 |
-| last_collected_at | 最后一次成功采集的时间（UTC） |
-| package_type | 采集时发现的包类型（JSON），供前端树状展示 |
+## 健康状态（health_status）
 
-## 采集流程中的角色
+| 值 | 含义 | 触发条件 |
+|----|------|---------|
+| `ok` | 健康 | 采集该产品时所有页面返回 200 且有内容 |
+| `error` | 异常 | 采集时遇到网络错误或 Session 失效 |
+| `unknown` | 未知 | 尚未采集过，或首次启用 |
 
-`content_sources.is_active` 在 scheduler 中使用：
-
-```python
-# scheduler.py — 加载采集源时过滤
-sources = list_sources('nsfocus')
-active_sources = [s for s in sources if s.get('is_active')]
-```
-
-禁用产品不会删除已采集的快照数据，只是跳过新的采集。
+---
 
 ## 相关文件
 
 | 文件 | 说明 |
 |------|------|
+| `src/collectors/nsfocus.py` | `discover_package_types()` 递归发现算法 |
+| `src/web/routes/system_routes.py` | discover/confirm API 路由 |
 | `src/models/content_source.py` | content_sources 数据访问层 |
-| `src/web/routes/api_routes.py` | 产品管理 API |
-| `data/initial_sources.json` | 初始产品数据（78个产品定义） |
-| `src/collectors/nsfocus.py` | 采集器（根据 is_active 决定是否采集） |
+| `src/core/scheduler.py` | 调度器调用发现流程 |
