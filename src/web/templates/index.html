@@ -655,7 +655,10 @@ function _renderTimelineChart(canvasId, data, days, visible){
     ctx.fillText((dt.getMonth()+1)+'/'+dt.getDate(),x,bot+14);
   }
 
-  // 绘制每条可见产品曲线（只有主线条）
+  // 绘制每条可见产品曲线（hover 高亮：被悬停产品加粗，其他变淡）
+  const hover = window._tlHover;
+  const isHover = (p) => hover && hover === p;
+  const isDim   = (p) => hover && hover !== p;
   visibleProds.forEach(product => {
     ctx.beginPath();
     points.forEach((p,i)=>{
@@ -663,7 +666,10 @@ function _renderTimelineChart(canvasId, data, days, visible){
       const y=bot-(p.counts[product]/max)*chartH;
       i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     });
-    ctx.strokeStyle=prodColor[product]; ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle=prodColor[product];
+    ctx.lineWidth=isHover(product)?4:2;
+    ctx.globalAlpha=isDim(product)?0.22:1;
+    ctx.stroke();
 
     // 数据点（稍大一点）
     points.forEach((p,i)=>{
@@ -671,15 +677,34 @@ function _renderTimelineChart(canvasId, data, days, visible){
       const x=pad+i*xStep;
       const y=bot-(p.counts[product]/max)*chartH;
       ctx.beginPath();
-      ctx.arc(x,y,3,0,Math.PI*2);
-      ctx.fillStyle=prodColor[product]; ctx.fill();
+      ctx.arc(x,y,isHover(product)?5:3,0,Math.PI*2);
+      ctx.fillStyle=prodColor[product];
+      ctx.fill();
     });
   });
+  ctx.globalAlpha=1;
 
   // 保存数据供 tooltip 使用
   canvas._chartData = { points, allProducts, visibleProds, prodColor, max, pad, top, bot, chartW, chartH, xStep, days, chartH, W, right };
   canvas.onmousemove = (ev) => _showChartTooltip(ev, canvas);
   canvas.onmouseleave = (ev) => _hideChartTooltip(ev, canvas);
+}
+
+function _tlFindHoveredProduct(d, mx, my){
+  // 在 mx 最近的 X 索引上,找鼠标 Y 距离哪条可见产品曲线最近(阈值 8px)
+  if(!d || d.visibleProds.length===0) return null;
+  const idx = Math.round((mx - d.pad) / d.xStep);
+  if(idx < 0 || idx >= d.points.length) return null;
+  const pt = d.points[idx];
+  const chartH = d.chartH, bot = d.bot, max = d.max;
+  let best = null, bestDist = 8;  // 8px 阈值
+  for(const p of d.visibleProds){
+    const v = pt.counts[p] || 0;
+    const y = bot - (v / max) * chartH;
+    const dist = Math.abs(my - y);
+    if(dist < bestDist){ bestDist = dist; best = p; }
+  }
+  return best;
 }
 
 function _showChartTooltip(e, canvas){
@@ -688,7 +713,13 @@ function _showChartTooltip(e, canvas){
   const rect = canvas.getBoundingClientRect();
   const scaleX = canvas.width / rect.width;
   const mx = (e.clientX - rect.left) * scaleX / (window.devicePixelRatio||1);
+  const scaleY = canvas.height / rect.height;
+  const my = (e.clientY - rect.top) * scaleY / (window.devicePixelRatio||1);
   if(mx < d.pad || mx > d.pad + d.chartW) { _hideChartTooltip(e, canvas); return; }
+
+  // 检测鼠标是否靠近某条曲线 → 设置 hover 高亮
+  const hovered = _tlFindHoveredProduct(d, mx, my);
+  window._tlHover = hovered;
 
   // 重绘图表清除旧线
   _renderTimelineChart_Redraw(d, mx, e);
@@ -728,7 +759,10 @@ function _renderTimelineChart_Redraw(d, mx, e){
     ctx.fillText((dt.getMonth()+1)+'/'+dt.getDate(),x,bot+14);
   }
 
-  // 绘制曲线
+  // 绘制曲线（hover 高亮：被悬停产品加粗，其他变淡）
+  const hover = window._tlHover;
+  const isHover = (p) => hover && hover === p;
+  const isDim   = (p) => hover && hover !== p;
   visibleProds.forEach(product => {
     ctx.beginPath();
     points.forEach((p,i)=>{
@@ -736,17 +770,22 @@ function _renderTimelineChart_Redraw(d, mx, e){
       const y=bot-(p.counts[product]/max)*chartH;
       i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
     });
-    ctx.strokeStyle=prodColor[product]; ctx.lineWidth=2; ctx.stroke();
+    ctx.strokeStyle=prodColor[product];
+    ctx.lineWidth=isHover(product)?4:2;
+    ctx.globalAlpha=isDim(product)?0.22:1;
+    ctx.stroke();
 
     points.forEach((p,i)=>{
       if(p.counts[product]===0) return;
       const x=pad+i*xStep;
       const y=bot-(p.counts[product]/max)*chartH;
       ctx.beginPath();
-      ctx.arc(x,y,3,0,Math.PI*2);
-      ctx.fillStyle=prodColor[product]; ctx.fill();
+      ctx.arc(x,y,isHover(product)?5:3,0,Math.PI*2);
+      ctx.fillStyle=prodColor[product];
+      ctx.fill();
     });
   });
+  ctx.globalAlpha=1;
 
   // 垂直参考线
   const idx = Math.round((mx - pad) / xStep);
@@ -790,6 +829,8 @@ function _renderTimelineChart_Redraw(d, mx, e){
 function _hideChartTooltip(e, canvas){
   const tip = document.getElementById('chartTip');
   if(tip) tip.style.display = 'none';
+  // 清空 hover 状态
+  if(window._tlHover){ window._tlHover = null; }
   // 重绘清除虚线
   const d = canvas._chartData;
   if(d) _renderTimelineChart_Redraw(d, -9999);
