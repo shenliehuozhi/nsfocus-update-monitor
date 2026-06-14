@@ -114,6 +114,7 @@ def test_channel(ch_id: int):
     from src.models.channel import get_by_id
     from src.notifiers.base import NotificationMessage
     from src.notifiers.router import NOTIFIERS
+    from src.notifiers.email import TestLogWriter
 
     ch = get_by_id(ch_id)
     if not ch:
@@ -135,8 +136,86 @@ def test_channel(ch_id: int):
     if not notifier:
         return jsonify({'code': 40001, 'message': f'Unknown channel type: {ch["type"]}'}), 400
 
-    result = notifier.send(test_msg, ch['config'])
-    return jsonify({'code': 0, 'data': {'success': result.success, 'error': result.error_message}})
+    # Only email currently emits per-step traces; other notifiers get the null writer.
+    if ch['type'] == 'email':
+        log_writer = TestLogWriter(ch_id, ch.get('name', ''))
+        ch_cfg = dict(ch['config'])
+        ch_cfg['_test_log_writer'] = log_writer
+        result = notifier.send(test_msg, ch_cfg)
+    else:
+        result = notifier.send(test_msg, ch['config'])
+
+    return jsonify({
+        'code': 0,
+        'data': {
+            'success': result.success,
+            'error': result.error_message,
+            'log_path': f'/tmp/email_test_{ch_id}.log' if ch['type'] == 'email' else None,
+        }
+    })
+
+
+@bp_channels.route('/<int:ch_id>/test-log', methods=['GET'])
+@require_auth
+def get_channel_test_log(ch_id: int):
+    """Read the most recent test log for an email channel.
+    Returns 404 if no test has been run yet."""
+    import os
+    path = f'/tmp/email_test_{ch_id}.log'
+    if not os.path.exists(path):
+        return jsonify({'code': 40400, 'message': '尚未运行测试'}), 404
+    try:
+        stat = os.stat(path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except OSError as e:
+        return jsonify({'code': 50000, 'message': f'读取失败: {e}'}), 500
+    return jsonify({
+        'code': 0,
+        'data': {
+            'path': path,
+            'size': stat.st_size,
+            'mtime': stat.st_mtime,
+            'content': content,
+        }
+    })
+
+
+@bp_channels.route('/log-file', methods=['GET'])
+@require_auth
+def read_log_file():
+    """Generic log file reader restricted to whitelisted email log paths.
+
+    Used by the push result modal to display the SMTP trace produced during
+    a manual push (which lives at /tmp/email_push_{channel_id}.log, a path
+    the frontend receives as part of the push response).
+
+    Path traversal protection: only allow files under /tmp whose name
+    matches the email_test_*.log or email_push_*.log pattern.
+    """
+    import os
+    import re
+    path = request.args.get('path', '')
+    # Whitelist: must be exactly /tmp/email_{test,push}_<digits>.log
+    if not re.fullmatch(r'/tmp/email_(test|push)_\d+\.log', path):
+        return jsonify({'code': 40001, 'message': '非法的日志文件路径'}), 400
+    if not os.path.exists(path):
+        return jsonify({'code': 40400, 'message': '日志文件不存在'}), 404
+    try:
+        stat = os.stat(path)
+        with open(path, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except OSError as e:
+        return jsonify({'code': 50000, 'message': f'读取失败: {e}'}), 500
+    return jsonify({
+        'code': 0,
+        'data': {
+            'path': path,
+            'size': stat.st_size,
+            'mtime': stat.st_mtime,
+            'content': content,
+        }
+    })
 
 # ── Customers ────────────────────────────────────────────
 
@@ -436,10 +515,13 @@ def push_by_mode(sid: int):
     mode = data.get('mode', '')
     target_id = data.get('target_id', 0)
     manual_emails = data.get('email', '')
+    # Issue #3: manual_email mode can pick which SMTP channel to send through.
+    # Optional — when omitted, falls back to the first active email channel.
+    manual_channel_id = int(data.get('channel_id') or 0)
 
     from src.notifiers.router import _is_maintenance_mode
     if _is_maintenance_mode():
-        return jsonify({'code': 40001, 'message': '维护模式已开启，所有推送已静默'}), 400
+        return jsonify({'code': 40001, 'message': '维护模式已开启,所有推送已静默'}), 400
 
     if mode not in ('customer', 'channel', 'manual_email'):
         return jsonify({'code': 40001, 'message': f'不支持的推送模式: {mode}'}), 400
@@ -517,12 +599,19 @@ def push_by_mode(sid: int):
     elif mode == 'manual_email':
         if not manual_emails.strip():
             return jsonify({'code': 40001, 'message': '请输入邮箱地址'}), 400
-        # Find an active email channel
+        # Issue #3: honor the SMTP channel the user picked (or fall back to first active)
         email_ch = None
-        for ch in list_active():
-            if ch['type'] == 'email':
-                email_ch = ch
-                break
+        if manual_channel_id:
+            email_ch = get_by_id(manual_channel_id)
+            if not email_ch or email_ch.get('type') != 'email':
+                return jsonify({'code': 40001, 'message': '所选 SMTP 渠道无效'}), 400
+            if not email_ch.get('is_active'):
+                return jsonify({'code': 40001, 'message': '所选 SMTP 渠道已停用'}), 400
+        else:
+            for ch in list_active():
+                if ch['type'] == 'email':
+                    email_ch = ch
+                    break
         if not email_ch:
             return jsonify({'code': 40001, 'message': '没有可用的邮件渠道，请先在通知渠道中配置邮箱'}), 400
 
@@ -579,11 +668,25 @@ def push_by_mode(sid: int):
             ch_cfg['_cust_daily_limit'] = limits['cust_daily']
             ch_cfg['_global_hourly_limit'] = limits['global_hourly']
             ch_cfg['_global_daily_limit'] = limits['global_daily']
+            # Issue #4: capture SMTP trace for email channels so the user
+            # can see exactly what happened during this push.
+            log_path = None
+            if ch['type'] == 'email':
+                from src.notifiers.email import PushLogWriter
+                log_path = f'/tmp/email_push_{ch["id"]}.log'
+                ch_cfg['_test_log_writer'] = PushLogWriter(ch['id'], label, log_path)
+                # "按渠道发送" 邮件渠道:收件人为 SMTP 用户自己(测试链路用)
+                # 渠道 config 里现在没有 to_list(已迁移),如不存在则 fallback
+                if not ch_cfg.get('to_list'):
+                    smtp_user = ch_cfg.get('smtp_user') or ''
+                    if smtp_user:
+                        ch_cfg['to_list'] = [smtp_user]
             result = notifier.send(message, ch_cfg)
             results.append({
                 'channel': label,
                 'success': result.success,
-                'error': result.error_message
+                'error': result.error_message,
+                'log_path': log_path if (ch['type'] == 'email') else None,
             })
             log_delivery(
                 snapshot_id=sid, channel_id=ch['id'],
@@ -593,11 +696,21 @@ def push_by_mode(sid: int):
             )
         else:
             # customer / manual_email: use relay config
+            log_path = None
+            if email_ch.get('type') == 'email':
+                from src.notifiers.email import PushLogWriter
+                log_path = f'/tmp/email_push_{email_ch["id"]}.log'
+                relay_config['_test_log_writer'] = PushLogWriter(
+                    email_ch['id'],
+                    relay_config.get('name', email_ch.get('name', 'email')),
+                    log_path,
+                )
             result = notifier.send(message, relay_config)
             results.append({
                 'channel': label,
                 'success': result.success,
-                'error': result.error_message
+                'error': result.error_message,
+                'log_path': log_path,
             })
             log_delivery(
                 snapshot_id=sid, channel_id=ch['id'],
@@ -618,6 +731,134 @@ def push_by_mode(sid: int):
         'code': 0,
         'data': {'results': results, 'total': len(results), 'success': success_count},
         'message': f'已推送到 {success_count}/{len(results)} 个目标',
+    })
+
+
+@bp_history.route('/<int:sid>/email-push', methods=['POST'])
+@require_auth
+def push_email(sid: int):
+    """Unified email push: pick SMTP channel + recipients.
+
+    Body: {"channel_id": <int>, "recipients": ["a@x.com", "b@y.com"]}
+
+    Recipients can be customer emails resolved client-side or any manually
+    entered email. Server doesn't care about the source — it just sends one
+    email to all listed recipients via the chosen SMTP channel.
+
+    Returns structured results with smtp_channel_name so the frontend can
+    show which SMTP server actually handled the push.
+    """
+    data = request.get_json() or {}
+    channel_id = int(data.get('channel_id') or 0)
+    recipients = data.get('recipients') or []
+
+    from src.notifiers.router import _is_maintenance_mode
+    if _is_maintenance_mode():
+        return jsonify({'code': 40001, 'message': '维护模式已开启,所有推送已静默'}), 400
+
+    if not channel_id:
+        return jsonify({'code': 40001, 'message': '请选择 SMTP 渠道'}), 400
+    if not recipients or not isinstance(recipients, list) or not all(isinstance(e, str) for e in recipients):
+        return jsonify({'code': 40001, 'message': '请提供收件人列表'}), 400
+
+    recipients = [e.strip() for e in recipients if e and e.strip()]
+    if not recipients:
+        return jsonify({'code': 40001, 'message': '请提供有效的收件人'}), 400
+
+    import re
+    email_re = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+    invalid = [e for e in recipients if not email_re.match(e)]
+    if invalid:
+        return jsonify({'code': 40001, 'message': f'邮箱格式无效: {", ".join(invalid)}'}), 400
+
+    from src.models.snapshot import get_snapshot
+    from src.notifiers.router import NOTIFIERS, _get_email_rate_settings
+    from src.notifiers.email import PushLogWriter
+    from src.models.subscription import log_delivery
+    from src.models.channel import get_by_id
+
+    snap = get_snapshot(sid)
+    if not snap:
+        return jsonify({'code': 40400, 'message': '快照不存在'}), 404
+
+    ch = get_by_id(channel_id)
+    if not ch or ch.get('type') != 'email':
+        return jsonify({'code': 40001, 'message': '所选 SMTP 渠道无效'}), 400
+    if not ch.get('is_active'):
+        return jsonify({'code': 40001, 'message': '所选 SMTP 渠道已停用'}), 400
+
+    notifier = NOTIFIERS.get('email')
+    if not notifier:
+        return jsonify({'code': 40001, 'message': 'email notifier unavailable'}), 400
+
+    from src.notifiers.base import NotificationMessage
+    message = NotificationMessage.from_snapshot(snap)
+
+    # Rate-limit key — single key for the whole send (one email goes to N recipients)
+    rate_key = recipients[0] if len(recipients) == 1 else f'manual:{",".join(sorted(recipients))}'
+
+    from src.core.rate_limiter import check, record
+    allowed, err_msg, retry_after = check(rate_key)
+    if not allowed:
+        return jsonify({
+            'code': 42900,
+            'message': err_msg,
+            'data': {'retry_after': retry_after}
+        }), 429
+
+    # Build relay config
+    relay_config = dict(ch['config'])
+    relay_config['to_list'] = recipients
+    relay_config['name'] = f"{ch.get('name', 'email')} → {','.join(recipients)}"
+    relay_config['_channel_id'] = ch['id']
+    relay_config['_customer_id'] = 0
+    relay_config['_email_hourly_limit'] = ch.get('email_hourly_limit', 0)
+    relay_config['_email_daily_limit'] = ch.get('email_daily_limit', 0)
+    limits = _get_email_rate_settings()
+    relay_config['_cust_hourly_limit'] = limits['cust_hourly']
+    relay_config['_cust_daily_limit'] = limits['cust_daily']
+    relay_config['_global_hourly_limit'] = limits['global_hourly']
+    relay_config['_global_daily_limit'] = limits['global_daily']
+
+    # Inject SMTP trace writer
+    log_path = f'/tmp/email_push_{ch["id"]}.log'
+    relay_config['_test_log_writer'] = PushLogWriter(
+        ch['id'], relay_config.get('name', ch.get('name', 'email')), log_path,
+    )
+
+    result = notifier.send(message, relay_config)
+
+    # Log delivery (one row per push, regardless of recipient count)
+    log_delivery(
+        snapshot_id=sid,
+        channel_id=ch['id'],
+        channel_type='email',
+        channel_name=relay_config['name'],
+        customer_id=0,
+        status='sent' if result.success else 'failed',
+        error=result.error_message,
+    )
+    record(rate_key)
+
+    results = [{
+        'channel': ch.get('name', 'email'),
+        'smtp_channel_name': ch.get('name', 'email'),
+        'smtp_host': (ch.get('config') or {}).get('smtp_host', ''),
+        'recipients': recipients,
+        'success': result.success,
+        'error': result.error_message,
+        'log_path': log_path,
+    }]
+
+    return jsonify({
+        'code': 0 if result.success else 50001,
+        'data': {
+            'results': results,
+            'total': 1,
+            'success': 1 if result.success else 0,
+            'smtp_channel_name': ch.get('name', 'email'),
+        },
+        'message': '已发送' if result.success else f'发送失败: {result.error_message}',
     })
 
 

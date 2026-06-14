@@ -383,7 +383,8 @@ def _chunk_text(text: str, max_bytes: int) -> list[str]:
     return chunks
 
 
-def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> str:
+def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
+                       sender_contact: dict | None = None) -> str:
     """Format a NotificationMessage as HTML for email — aligned with WeCom/DingTalk markdown template."""
     urgency_colors = {'normal': '#4a90d9', 'high': '#f5a623', 'critical': '#d0021b'}
     urgency_icons = {'normal': 'ℹ️', 'high': '⚠️', 'critical': '🔴'}
@@ -456,14 +457,50 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
     else:
         type_cell = msg.package_type
 
+    # Sender identification — yellow strip immediately under the title bar, only
+    # renders when ALL three fields (name/email/phone) are non-empty. The
+    # previous gray footer line has been removed per user request.
+    sender_strip_html = ''
+    has_strip = False
+    if sender_contact:
+        name = (sender_contact.get('name') or '').strip()
+        email = (sender_contact.get('email') or '').strip()
+        phone = (sender_contact.get('phone') or '').strip()
+        if name and email and phone:
+            has_strip = True
+            sender_strip_html = (
+                '<tr><td style="padding:12px 16px;background:#fff8e6;'
+                'border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0;'
+                'font-size:13px;color:#333;border-top:2px solid #f5c842">'
+                '<span style="color:#c27800;font-weight:600">⚠️ 本邮件由绿盟科技工程师</span> '
+                f'<strong>{name}</strong>'
+                ' ('
+                f'<a href="mailto:{email}" style="color:#1d4ed8;text-decoration:none">{email}</a>'
+                ' / '
+                f'<span style="white-space:nowrap">{phone}</span>'
+                ') '
+                '<span style="color:#c27800;font-weight:600">发送,如对邮件来源有疑问请联系核实。</span>'
+                '</td></tr>'
+            )
+    # Outer card border: top edge from title bar, bottom edge from content area
+    title_border = 'border:1px solid #e0e0e0;border-bottom:none'
+    content_border = 'border:1px solid #e0e0e0'
+    if has_strip:
+        # No border between strip and content (seamless yellow→white transition)
+        content_border = 'border-left:1px solid #e0e0e0;border-right:1px solid #e0e0e0;border-bottom:1px solid #e0e0e0;border-top:none'
+    else:
+        # No strip → content area directly under title, give it rounded bottom
+        content_border = 'border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px'
+
     return f'''<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">
 <table style="width:100%;border-collapse:collapse">
-<tr><td style="background:{color};padding:16px;border-radius:8px 8px 0 0">
+<tr><td style="background:{color};padding:16px;border-radius:8px 8px 0 0;{title_border}">
     <h2 style="color:#fff;margin:0">{icon} {msg.title}</h2>
 </td></tr>
-<tr><td style="padding:16px;border:1px solid #e0e0e0">
+{sender_strip_html}
+<tr><td style="padding:16px;{content_border}">
     {rollback_banner}
     <table style="width:100%;font-size:14px;color:#333">
         <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
@@ -476,9 +513,6 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False) -> s
         {desc_html}
         {dl_btn}
     </table>
-</td></tr>
-<tr><td style="padding:12px 16px;background:#f5f5f5;border-radius:0 0 8px 8px;color:#999;font-size:12px">
-    此邮件由绿盟升级监控平台自动发送 | 如需调整订阅，请联系管理员
 </td></tr>
 </table>
 </body></html>'''

@@ -5,6 +5,57 @@ import logging
 import logging.handlers
 from flask import Flask, request, g
 
+
+def _migrate_email_channel_to_list():
+    """Strip legacy to_list from email channel configs.
+
+    The channel-level recipient field was removed when the email provider
+    templates were added. Recipients now live on subscription rules
+    (customer_emails) or are specified per manual push. This function is
+    idempotent — running it on already-clean configs is a no-op.
+    """
+    import json
+    from src.core.crypto import encrypt, decrypt
+    from src.models.database import query, execute
+    from src.core.logger import get_logger
+    logger = get_logger('migration')
+
+    rows = query("SELECT id, name, config FROM channels WHERE type = 'email' AND config IS NOT NULL")
+    if not rows:
+        return
+
+    migrated = 0
+    for row in rows:
+        try:
+            cfg_str = decrypt(row['config']) if row['config'] else ''
+            cfg = json.loads(cfg_str) if cfg_str else {}
+        except Exception:
+            continue  # unreadable config — leave it alone, user will fix
+        if not isinstance(cfg, dict):
+            continue
+        if 'to_list' not in cfg:
+            continue
+        old = cfg.pop('to_list')
+        try:
+            new_cfg_str = json.dumps(cfg, ensure_ascii=False)
+            execute(
+                "UPDATE channels SET config = ? WHERE id = ?",
+                (encrypt(new_cfg_str), row['id'])
+            )
+            migrated += 1
+            logger.info(
+                f"Migrated email channel id={row['id']} name={row['name']!r}: "
+                f"stripped to_list={old} (recipients must now be configured on subscription rules)"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to migrate channel id={row['id']}: {e}")
+
+    if migrated:
+        logger.info(f"email channel to_list migration: cleared {migrated} channel(s)")
+    else:
+        logger.debug("email channel to_list migration: nothing to do")
+
+
 def create_app(config_path=None):
     app = Flask(__name__,
                 template_folder='src/web/templates',
@@ -63,6 +114,16 @@ def create_app(config_path=None):
     # Ensure directories exist
     os.makedirs(app.config['DATA_DIR'], exist_ok=True)
     os.makedirs(app.config['LOG_DIR'], exist_ok=True)
+
+    # One-time migration: strip to_list from existing email channels.
+    # Channel-level to_list was removed in the email provider template UI;
+    # recipients now live on subscription rules (customer_emails) or are
+    # specified per manual push. Idempotent — safe to run on every boot.
+    try:
+        _migrate_email_channel_to_list()
+    except Exception as e:
+        from src.core.logger import get_logger
+        get_logger('migration').warning(f'email channel to_list migration skipped: {e}')
 
     # Hook Flask's own logger into our file handler so uncaught exceptions
     # and werkzeug messages appear in app.log

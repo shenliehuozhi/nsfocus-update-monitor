@@ -549,6 +549,28 @@ function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t.endsWith('Z')?t:t+'Z'
 // ── Dashboard Charts ─────────────────────────────────────────────
 const PIE_COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
 
+// ── Email provider templates ───────────────────────────────────────────────
+// Quick-select preset for common SMTP providers. User picks one to autofill
+// host/port (still editable). "custom" leaves fields blank for manual entry.
+// Recipients are no longer collected on channel config — see the rule-level
+// `customer_emails` field on subscription rules for that.
+const EMAIL_PROVIDERS = {
+  '163':     { name: '163 邮箱',     host: 'smtp.163.com',     port: 465, user_ph: 'liloyo_x@163.com',   hint: '需用 163 邮箱授权码(非登录密码)。设置 → POP3/SMTP/IMAP → 开启并生成授权码。' },
+  'qq':      { name: 'QQ 邮箱',      host: 'smtp.qq.com',      port: 465, user_ph: '123456789@qq.com',   hint: '需用 QQ 邮箱授权码。设置 → 账户 → POP3/IMAP/SMTP/Exchange/CardDAV/CalDAV服务 → 开启。' },
+  'nsfocus': { name: 'nsfocus 邮箱', host: 'mail.nsfocus.com', port: 465, user_ph: 'xuzijun@nsfocus.com',hint: '绿盟企业邮箱,请登录企业微信-工作台-IT智能客服,点击账号相关,再点击获取外网邮箱账号,获取发信密码。' },
+  'custom':  { name: '自定义',        host: '',                 port: 465, user_ph: 'user@example.com',   hint: '请手动填写 SMTP 服务器地址、端口和完整邮箱地址(含 @domain)。仅支持 SSL(465)或 STARTTLS(587)加密连接。' },
+};
+
+function _matchEmailProvider(host){
+  // Find the template whose configured host matches the given SMTP host.
+  // Exact string match only — anything else falls back to "custom".
+  if(!host) return 'custom';
+  for(const [key, p] of Object.entries(EMAIL_PROVIDERS)){
+    if(p.host && p.host === host) return key;
+  }
+  return 'custom';
+}
+
 function _renderProdDistTable(data){
   const container = document.getElementById('prodDistTable');
   if(!container) return;
@@ -2175,63 +2197,313 @@ function dataBackToAgg() {
 function toggleRollback(v) { sessionStorage.setItem('dataShowRollback', v ? '1' : '0'); dataPage(); }
 async function manualPush(sid) { await confirmAct('确认推送？', async ()=>{ const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }, '📤', '确认推送'); }
 
-// ── Push Modal ──
-let _pushSid=0,_pushMode='customer',_pushTarget=0,_pushEmail='',_banTimer=null;
+// ── Push Modal (email send OR channel send) ──
+let _pushSid=0,_pushTab='email',_pushRecipientMode='customer',_pushSelectedCustomers=new Set(),_pushChannelId=0,_pushManualEmail='',_pushBotChannelId=0,_banTimer=null;
+
 async function showPushModal(sid,product,version,pkgType){
-  _pushSid=sid;_pushMode='customer';_pushTarget=0;_pushEmail='';
+  _pushSid=sid;
+  _pushTab='email';
+  _pushRecipientMode='customer';
+  _pushSelectedCustomers.clear();
+  _pushChannelId=0;
+  _pushManualEmail='';
+  _pushBotChannelId=0;
   if(_banTimer){clearInterval(_banTimer);_banTimer=null;}
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div id="pushModal" class="push-modal" onclick="if(event.target===this)closePushModal()">
-      <div class="card" onclick="event.stopPropagation()">
-        <div class="card-hd">📤 推送快照 #${sid} <span style="color:var(--muted);font-weight:400;font-size:11px">${product} ${version} ${pkgType}</span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="closePushModal()">×</button></div>
-        <div class="card-bd">
-          <div class="push-modes">
-            <label><input type="radio" name="pm" value="customer" checked onchange="switchPushMode('customer')"><span>👤 按客户</span></label>
-            <label><input type="radio" name="pm" value="channel" onchange="switchPushMode('channel')"><span>📡 按通知渠道</span></label>
-            <label><input type="radio" name="pm" value="manual_email" onchange="switchPushMode('manual_email')"><span>✉️ 手动填写邮箱</span></label>
+      <div class="card" onclick="event.stopPropagation()" style="width:560px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="card-hd">📤 推送通知 <span style="color:var(--muted);font-weight:400;font-size:11px">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="closePushModal()">×</button></div>
+        <div class="card-bd" style="overflow-y:auto;flex:1">
+          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <div onclick="switchPushTab('email')" id="pushTabEmailBtn" style="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid var(--primary);color:var(--primary);margin-bottom:-2px">📧 邮件发送</div>
+            <div onclick="switchPushTab('bot')" id="pushTabBotBtn" style="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px">🤖 按渠道发送</div>
           </div>
-          <div id="pushTargets" class="push-target"><div class="empty">加载中...</div></div>
-          <div id="pushEmailInput" class="hidden">
-            <input id="pushEmail" type="text" placeholder="输入邮箱，多个用逗号分隔" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:13px;outline:none" oninput="onPushEmailChange()" onfocus="this.style.borderColor='var(--primary)'" onblur="this.style.borderColor='var(--border)'">
-            <div id="pushEmailHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+          <div id="pushTabEmail">
+            <div class="form-group">
+              <label>发件渠道 (SMTP)</label>
+              <div id="pushChannelSelect"><div class="empty" style="padding:8px">加载中...</div></div>
+            </div>
+            <div class="form-group">
+              <label>收件人来源</label>
+              <div style="display:flex;gap:6px">
+                <label style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="customer" checked onchange="switchRecipientMode('customer')"> 👤 从客户选择</label>
+                <label style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="manual" onchange="switchRecipientMode('manual')"> ✏️ 自定义填写</label>
+              </div>
+            </div>
+            <div id="pushCustomerList" class="push-target"></div>
+            <div id="pushManualInput" class="hidden">
+              <textarea id="pushEmail" rows="3" placeholder="输入邮箱，多个用逗号或换行分隔" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:13px;outline:none;resize:vertical" oninput="onPushEmailChange()"></textarea>
+              <div id="pushEmailHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+            </div>
           </div>
-          <div class="flex gap8 mt12"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" onclick="confirmPush()" disabled>确认推送</button><button class="btn btn-sm btn-outline" onclick="closePushModal()">取消</button></div>
+          <div id="pushTabBot" class="hidden">
+            <p class="cfg-hint" style="margin-bottom:8px;color:#6b7d95">将通知推送到所选渠道(企业微信/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
+            <div id="pushBotChannelList" class="push-target"><div class="empty" style="padding:8px">加载中...</div></div>
+          </div>
+        </div>
+        <div style="padding:12px 16px;border-top:1px solid var(--border);background:#f8fafc">
+          <div class="flex gap8"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" onclick="confirmPush()" disabled>确认推送</button><button class="btn btn-sm btn-outline" onclick="closePushModal()">取消</button></div>
         </div>
       </div>
     </div>`);
-  loadPushTargets();
+  await loadPushChannelSelect();
+  await loadPushCustomerList();
+  await loadPushBotChannels();
+  updatePushConfirmState();
 }
+
 function closePushModal(){let m=document.getElementById('pushModal');if(m){if(_banTimer){clearInterval(_banTimer);_banTimer=null;}m.remove();}}
-async function switchPushMode(mode){_pushMode=mode;_pushTarget=0;_pushEmail='';document.getElementById('pushConfirmBtn').disabled=true;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));let ei=document.getElementById('pushEmailInput');if(ei)ei.classList.toggle('hidden',mode!=='manual_email');if(mode==='manual_email'){loadPushTargets();}else{loadPushTargets();}}
-function onPushEmailChange(){let v=document.getElementById('pushEmail').value.trim();_pushEmail=v;let hint=document.getElementById('pushEmailHint');let btn=document.getElementById('pushConfirmBtn');if(!v){hint.textContent='';btn.disabled=true;return;}let emails=v.split(',').map(e=>e.trim()).filter(e=>e);let re=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;let bad=emails.filter(e=>!re.test(e));if(bad.length){hint.textContent='⚠️ 格式无效: '+bad.join(', ');hint.style.color='var(--danger)';btn.disabled=true;}else{hint.textContent='✅ '+emails.length+' 个邮箱';hint.style.color='var(--success)';btn.disabled=false;}}
-async function loadPushTargets(){
-  let el=document.getElementById('pushTargets');if(_pushMode==='manual_email'){el.innerHTML='<div style="padding:8px;color:var(--muted);font-size:12px;text-align:center">直接在上方输入框填写邮箱</div>';return;}
-  el.innerHTML='<div class="empty">加载中...</div>';
+
+function switchPushTab(tab){
+  _pushTab=tab;
+  const emailBtn=document.getElementById('pushTabEmailBtn');
+  const botBtn=document.getElementById('pushTabBotBtn');
+  const emailPanel=document.getElementById('pushTabEmail');
+  const botPanel=document.getElementById('pushTabBot');
+  if(tab==='email'){
+    emailBtn.style.color='var(--primary)';emailBtn.style.borderBottomColor='var(--primary)';
+    botBtn.style.color='var(--muted)';botBtn.style.borderBottomColor='transparent';
+    emailPanel.classList.remove('hidden');
+    botPanel.classList.add('hidden');
+  }else{
+    botBtn.style.color='var(--primary)';botBtn.style.borderBottomColor='var(--primary)';
+    emailBtn.style.color='var(--muted)';emailBtn.style.borderBottomColor='transparent';
+    botPanel.classList.remove('hidden');
+    emailPanel.classList.add('hidden');
+  }
+  updatePushConfirmState();
+}
+
+function switchRecipientMode(mode){
+  _pushRecipientMode=mode;
+  document.getElementById('pushCustomerList').classList.toggle('hidden',mode!=='customer');
+  document.getElementById('pushManualInput').classList.toggle('hidden',mode!=='manual');
+  if(mode==='manual'){
+    const saved=localStorage.getItem('pushModalLastManualEmail')||'';
+    const input=document.getElementById('pushEmail');
+    if(input && !input.value && saved){ input.value=saved; }
+    onPushEmailChange();
+  }
+  updatePushConfirmState();
+}
+
+function onPushEmailChange(){
+  const input=document.getElementById('pushEmail');
+  const v=(input?.value||'').trim();
+  _pushManualEmail=v;
+  const hint=document.getElementById('pushEmailHint');
+  if(!v){hint.textContent='';updatePushConfirmState();return;}
+  const emails=v.split(/[,\n]/).map(e=>e.trim()).filter(Boolean);
+  const re=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  const bad=emails.filter(e=>!re.test(e));
+  if(bad.length){hint.textContent='⚠️ 格式无效: '+bad.join(', ');hint.style.color='var(--danger)';}
+  else{hint.textContent='✅ '+emails.length+' 个邮箱';hint.style.color='var(--success)';}
+  updatePushConfirmState();
+}
+
+async function loadPushChannelSelect(){
+  const el=document.getElementById('pushChannelSelect');
+  if(!el) return;
+  let channels=[];
   try{
-    let list=[];
-    if(_pushMode==='channel'){let r=await api('/channels');list=(r.data||[]).map(x=>({id:x.id,label:x.name||x.type,sub:x.type+(x.is_active?'':' (已停用)'),active:x.is_active}));}
-    else if(_pushMode==='customer'){let r=await api('/customers');list=(r.data||[]).filter(x=>(x.email||'').trim()).map(x=>({id:x.id,label:x.name,sub:(x.email||'')+(x.company?' · '+x.company:''),active:true}));}
-    if(!list.length){el.innerHTML='<div class="empty">'+( _pushMode==='customer'?'暂无有邮箱的客户，请先在客户管理中设置邮箱':'暂无可用目标')+'</div>';return;}
-    el.innerHTML=list.map(x=>`<div class="item" data-id="${x.id}" onclick="selectPushTarget(${x.id})" style="${!x.active?'opacity:.4':''}"><span style="font-weight:500">${x.label}</span><span style="color:var(--muted);font-size:11px;margin-left:auto">${x.sub||''}</span></div>`).join('');
+    const r=await api('/channels');
+    channels=(r.data||[]).filter(x=>x.type==='email' && x.is_active);
+  }catch(e){}
+  if(!channels.length){
+    el.innerHTML='<div style="padding:8px;color:var(--danger);font-size:12px">暂无可用 SMTP 渠道,请先在通知渠道中配置邮箱</div>';
+    return;
+  }
+  const nsfocus=channels.find(c=>c.config?.smtp_host==='mail.nsfocus.com');
+  const defaultCh=nsfocus||channels[0];
+  _pushChannelId=defaultCh.id;
+  el.innerHTML='<select id="pushChannelDropdown" onchange="_pushChannelId=parseInt(this.value);updatePushConfirmState()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:7px;font-size:13px;background:#fff">'
+    +channels.map(c=>`<option value="${c.id}" ${c.id===defaultCh.id?'selected':''}>${escHtml(c.name)} (${escHtml(c.config?.smtp_host||'')}:${c.config?.smtp_port||''})</option>`).join('')
+    +'</select>';
+}
+
+async function loadPushCustomerList(){
+  const el=document.getElementById('pushCustomerList');
+  if(!el) return;
+  el.innerHTML='<div class="empty" style="padding:8px">加载中...</div>';
+  try{
+    const r=await api('/customers');
+    const list=(r.data||[]).filter(x=>(x.email||'').trim());
+    if(!list.length){
+      el.innerHTML='<div class="empty" style="padding:8px;color:var(--muted)">暂无有邮箱的客户,请先在客户管理中设置邮箱</div>';
+      return;
+    }
+    el.innerHTML=list.map(c=>`<label class="item" data-custid="${c.id}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px">
+      <input type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" onchange="onCustomerCheck(this)" style="flex-shrink:0">
+      <span style="flex:1;min-width:0">
+        <span style="font-weight:500">${escHtml(c.name)}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:6px">${escHtml(c.email)}</span>
+        ${c.company?`<span style="color:var(--muted);font-size:11px;margin-left:6px">· ${escHtml(c.company)}</span>`:''}
+      </span>
+    </label>`).join('');
   }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
 }
-function selectPushTarget(id){_pushTarget=id;let items=document.querySelectorAll('#pushTargets .item');items.forEach(el=>el.classList.remove('selected'));let sel=document.querySelector('#pushTargets .item[data-id="'+id+'"]');if(sel)sel.classList.add('selected');document.getElementById('pushConfirmBtn').disabled=false;}
-async function confirmPush(){
-  let body={mode:_pushMode};
-  if(_pushMode==='manual_email'){
-    if(!_pushEmail)return toast('请输入邮箱地址','error');
-    body.email=_pushEmail;
-  }else{
-    if(!_pushTarget)return toast('请选择推送目标','error');
-    body.target_id=_pushTarget;
-  }
-  let btn=document.getElementById('pushConfirmBtn');btn.disabled=true;btn.textContent='推送中...';
+
+async function loadPushBotChannels(){
+  const el=document.getElementById('pushBotChannelList');
+  if(!el) return;
+  let list=[];
   try{
-    let r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify(body)});
-    if(r.code===0){toast(r.message||'已推送','success');closePushModal();}
-    else if(r.code===42900){let sec=r.data?.retry_after||600;toast(r.message,'error');startBanCountdown(sec);}
-    else{toast(r.message||'推送失败','error');btn.disabled=false;btn.textContent='确认推送';}
+    const r=await api('/channels');
+    list=(r.data||[]).filter(x=>x.is_active);
+  }catch(e){}
+  if(!list.length){
+    el.innerHTML='<div class="empty" style="padding:8px;color:var(--muted)">暂无可用渠道</div>';
+    return;
+  }
+  const typeLabel={wecom:'企业微信',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
+  el.innerHTML=list.map(c=>{
+    const isEmail=c.type==='email';
+    const sub=isEmail
+      ? `${escHtml((c.config?.smtp_user)||'')} → 自己`
+      : typeLabel[c.type]||c.type;
+    return `<label class="item" data-botchid="${c.id}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 12px">
+      <input type="radio" name="botch" value="${c.id}" onchange="onBotChannelCheck(this)" style="flex-shrink:0">
+      <span style="flex:1;min-width:0">
+        <span style="font-weight:500">${escHtml(c.name)}</span>
+        <span style="color:var(--muted);font-size:11px;margin-left:6px">${sub}</span>
+      </span>
+    </label>`;
+  }).join('');
+}
+
+function onCustomerCheck(cb){
+  const id=parseInt(cb.dataset.custid);
+  const email=cb.dataset.email;
+  if(cb.checked){ _pushSelectedCustomers.add(id+'|'+email); }
+  else{ _pushSelectedCustomers.delete(id+'|'+email); }
+  updatePushConfirmState();
+}
+
+function onBotChannelCheck(rb){
+  _pushBotChannelId=parseInt(rb.value);
+  updatePushConfirmState();
+}
+
+function updatePushConfirmState(){
+  const btn=document.getElementById('pushConfirmBtn');
+  if(!btn) return;
+  let ready=false;
+  if(_pushTab==='email'){
+    let hasRecipients=false;
+    if(_pushRecipientMode==='customer'){
+      hasRecipients=_pushSelectedCustomers.size>0;
+    }else{
+      const emails=_pushManualEmail.split(/[,\n]/).map(e=>e.trim()).filter(Boolean);
+      const re=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+      hasRecipients=emails.length>0 && emails.every(e=>re.test(e));
+    }
+    ready=hasRecipients && _pushChannelId>0;
+  }else{
+    ready=_pushBotChannelId>0;
+  }
+  btn.disabled=!ready;
+}
+
+async function confirmPush(){
+  const btn=document.getElementById('pushConfirmBtn');
+  btn.disabled=true;btn.textContent='推送中...';
+  try{
+    let r;
+    if(_pushTab==='email'){
+      if(!_pushChannelId)return toast('请选择 SMTP 渠道','error');
+      let recipients=[];
+      if(_pushRecipientMode==='customer'){
+        recipients=Array.from(_pushSelectedCustomers).map(s=>s.split('|')[1]).filter(Boolean);
+        if(!recipients.length)return toast('请至少选择一个客户','error');
+      }else{
+        recipients=_pushManualEmail.split(/[,\n]/).map(e=>e.trim()).filter(Boolean);
+        if(!recipients.length)return toast('请输入邮箱','error');
+        try{localStorage.setItem('pushModalLastManualEmail', _pushManualEmail);}catch(e){}
+      }
+      r=await api('/history/'+_pushSid+'/email-push',{method:'POST',body:JSON.stringify({channel_id:_pushChannelId, recipients})});
+    }else{
+      if(!_pushBotChannelId)return toast('请选择渠道','error');
+      r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify({mode:'channel', target_id:_pushBotChannelId})});
+    }
+    if(r.code===0){
+      showPushResult(r.data||{}, true);
+      closePushModal();
+    }else if(r.code===42900){
+      let sec=r.data?.retry_after||600;toast(r.message,'error');startBanCountdown(sec);
+    }else{
+      if(r.data){ showPushResult(r.data, false); }
+      else{ toast(r.message||'推送失败','error'); }
+      btn.disabled=false;btn.textContent='确认推送';
+    }
   }catch(e){toast('推送失败','error');btn.disabled=false;btn.textContent='确认推送';}
+}
+
+// Issue #6: structured push result toast with per-channel status
+function showPushResult(data, success){
+  const results = data.results || [];
+  if(!results.length){
+    toast(data.message || (success ? '已推送' : '推送失败'), success ? 'success' : 'error');
+    return;
+  }
+  // Build HTML list
+  const lines = results.map(r => {
+    const ok = r.success;
+    const icon = ok ? '✓' : '✗';
+    const color = ok ? 'var(--success)' : 'var(--danger)';
+    const logBtn = (!ok && r.log_path)
+      ? ` <a href="#" onclick="showPushLogByPath(${JSON.stringify(r.log_path)},${JSON.stringify(r.channel||'')});return false;" style="color:var(--primary);font-size:11px;margin-left:6px">📋 日志</a>`
+      : '';
+    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px">
+      <span style="color:${color};font-weight:600">${icon}</span>
+      <span>${escHtml(r.channel||'')}</span>
+      ${r.error ? `<span style="color:var(--muted);font-size:11px">${escHtml(r.error)}</span>` : ''}
+      ${logBtn}
+    </div>`;
+  }).join('');
+  const head = success
+    ? `<div style="font-weight:600;color:var(--success);margin-bottom:4px">推送完成</div>`
+    : `<div style="font-weight:600;color:var(--danger);margin-bottom:4px">推送失败</div>`;
+  showRichToast(head + lines, success ? 'success' : 'error', 8000);
+}
+
+// Reuse the existing test log viewer for push log files too
+async function showPushLogByPath(path, name){
+  // Just reuse showTestLog with a synthetic channel id derived from filename
+  // (showTestLog reads /tmp/email_test_{id}.log, but push uses push_{id}_{ts}.log
+  // — we need a direct file read instead.)
+  showLogFile(path, name || '推送日志');
+}
+
+async function showLogFile(path, name){
+  const existing=document.getElementById('testLogModal');if(existing)existing.remove();
+  // Fetch via a generic log endpoint — we'll add it on backend
+  const r=await fetch(API+'/channels/log-file?path='+encodeURIComponent(path),{headers:{'Authorization':'Bearer '+T}});
+  const body=await r.json();
+  const content=body.code===0 ? body.data.content : `(${body.message||'读取失败'})`;
+  const m=document.createElement('div');
+  m.id='testLogModal';
+  m.className='confirm-modal active';
+  m.innerHTML=`<div class="confirm-box" style="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+    <div class="confirm-icon">📋</div>
+    <div class="confirm-title">日志 - ${escHtml(name)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${path}</div>
+    <pre style="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
+    <div class="confirm-btns" style="margin-top:14px">
+      <button class="confirm-btn-cancel" onclick="document.getElementById('testLogModal').remove()">关闭</button>
+    </div>
+  </div>`;
+  m.addEventListener('click', e=>{if(e.target===m)m.remove();});
+  document.body.appendChild(m);
+}
+
+// Rich HTML toast (replaces text-only toast for structured results)
+function showRichToast(html, type, durationMs){
+  const e=document.createElement('div');
+  e.className=`toast toast-${type}`;
+  e.style.cssText='max-width:520px;white-space:normal;text-align:left;line-height:1.5';
+  e.innerHTML=html;
+  document.body.appendChild(e);
+  setTimeout(()=>e.remove(), durationMs||4000);
 }
 function startBanCountdown(seconds){
   let btn=document.getElementById('pushConfirmBtn');if(!btn)return;
@@ -2441,9 +2713,107 @@ function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=
 async function channels(){
   const r=await api('/channels');chList=r.data||[];
   const typeMap={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
-  let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}return `<tr><td>${c.name}${extra}</td><td>${typeLabel}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-outline" onclick="testCh(${c.id})">测试</button> <button class="btn btn-danger btn-xs" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
+let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}const testLogBtn=c.type==='email'?`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escHtml(c.name)}')">📋 日志</button>`:'';return `<tr><td>${c.name}${extra}</td><td>${typeLabel}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-success" onclick="testCh(${c.id})">测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openChModal()">+ 添加渠道</button><table class="mt16"><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
-function chTypeCh(){const t=document.getElementById('cht').value,d=document.getElementById('chcfg');d.innerHTML=t==='email'?`<div class="grid2"><div class="form-group"><label>SMTP</label><input id="sh"></div><div class="form-group"><label>端口</label><input id="sp" value="465"></div></div><div class="grid2"><div class="form-group"><label>用户</label><input id="su"></div><div class="form-group"><label>密码</label><input id="sw" type="password" placeholder="留空则不修改"></div></div><div class="grid2"><div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div><div class="form-group"><label>收件人 <span style="color:var(--danger);font-size:11px">*必填</span></label><input id="st" placeholder="a@x.com,b@x.com"></div></div><div class="grid2"><div class="form-group"><label>每小时上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div><div class="form-group"><label>每天上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div></div>`:`<div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div><div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>`;}
+function chTypeCh(){
+  const t=document.getElementById('cht').value,d=document.getElementById('chcfg');
+  d.innerHTML=t==='email'?`
+    <div class="cfg-row">
+      <div class="form-group">
+        <label>邮箱模板</label>
+        <select id="chtmpl" onchange="onEmailTmplChange()">
+          ${Object.entries(EMAIL_PROVIDERS).map(([k,p])=>{
+            const detail = p.host ? `${p.host}:${p.port}` : '';
+            return `<option value="${k}">${p.name}${detail ? ' ('+detail+')' : ''}</option>`;
+          }).join('')}
+        </select>
+      </div>
+    </div>
+    <div class="cfg-row">
+      <div class="form-group"><label>SMTP</label><input id="sh"></div>
+      <div class="form-group">
+        <label>加密方式</label>
+        <select id="senc" onchange="onEmailEncChange()">
+          <option value="ssl">SSL (端口 465)</option>
+          <option value="starttls">STARTTLS (端口 587)</option>
+        </select>
+      </div>
+    </div>
+    <div class="cfg-row">
+      <div class="form-group">
+        <label>端口 <span style="font-size:10px;color:var(--muted)">根据加密方式自动填,通常无需修改</span></label>
+        <input id="sp" value="465">
+      </div>
+    </div>
+    <div class="cfg-row">
+      <div class="form-group"><label>用户</label><input id="su" placeholder="user@example.com"></div>
+      <div class="form-group"><label>密码</label><input id="sw" type="password" placeholder="留空则不修改"></div>
+    </div>
+    <p class="cfg-hint" style="margin-top:-6px;color:#c27800">⚠️ 用户名必须填写完整邮箱地址(含 @domain 后缀),SMTP 服务器会用它作为登录账号和发件人。</p>
+    <p id="emailTmplHint" class="cfg-hint" style="margin-top:-6px;color:#6b7d95"></p>
+    <div class="cfg-row">
+      <div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div>
+    </div>
+    <p class="cfg-hint" style="margin-top:-6px;color:#6b7d95">收件人由订阅规则的"客户邮箱"决定,不在此处配置。手动推送时可指定收件人。</p>
+    <div class="cfg-row">
+      <div class="form-group"><label>每小时上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div>
+      <div class="form-group"><label>每天上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div>
+    </div>
+  `:`<div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div><div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>`;
+  // Reset template selection when channel type changes
+  if(t==='email'){document.getElementById('chtmpl').value='custom';onEmailTmplChange();}
+}
+
+function onEmailTmplChange(){
+  const k=document.getElementById('chtmpl')?.value;
+  if(!k) return;
+  const p=EMAIL_PROVIDERS[k];
+  if(!p) return;
+  // Autofill host/port, but only if those fields are empty or still match a
+  // previous template's defaults — never clobber the user's manual edits.
+  const sh=document.getElementById('sh');
+  const sp=document.getElementById('sp');
+  if(sh && (sh.value==='' || Object.values(EMAIL_PROVIDERS).some(x=>x.host===sh.value))){
+    sh.value=p.host;
+  }
+  if(sp){
+    sp.value=p.port;
+  }
+  // SSL is the default encryption for all built-in templates
+  const senc=document.getElementById('senc');
+  if(senc){ senc.value='ssl'; }
+  // Update user input placeholder to suggest the right format per provider
+  const su=document.getElementById('su');
+  if(su && p.user_ph && !su.value){
+    su.placeholder=p.user_ph;
+  }
+  const hint=document.getElementById('emailTmplHint');
+  if(hint) hint.textContent=p.hint||'';
+}
+
+// Switch port when encryption mode changes
+function onEmailEncChange(){
+  const enc=document.getElementById('senc')?.value;
+  const sp=document.getElementById('sp');
+  if(!enc || !sp) return;
+  if(enc==='ssl'){ sp.value=465; }
+  else if(enc==='starttls'){ sp.value=587; }
+}
+
+// Detect when user manually edits the SMTP host and sync the template dropdown
+function _onEmailHostChange(){
+  const host=document.getElementById('sh')?.value||'';
+  const matched=_matchEmailProvider(host);
+  const sel=document.getElementById('chtmpl');
+  if(sel && sel.value!==matched){
+    sel.value=matched;
+    const p=EMAIL_PROVIDERS[matched];
+    const su=document.getElementById('su');
+    if(su && p?.user_ph && !su.value){ su.placeholder=p.user_ph; }
+    const hint=document.getElementById('emailTmplHint');
+    if(hint) hint.textContent=p?.hint||'';
+  }
+}
 
 function openChModal(id){
   editingChId=id||0;
@@ -2469,12 +2839,34 @@ function openChModal(id){
       if(c.type==='email'){
         document.getElementById('sh').value=(c.config||{}).smtp_host||'';
         document.getElementById('sp').value=(c.config||{}).smtp_port||465;
+        // smtp_encryption: new field. Fall back to port-based inference for
+        // legacy channel configs (port 465 → ssl, else → starttls).
+        let enc=(c.config||{}).smtp_encryption;
+        if(!enc){
+          enc=((c.config||{}).smtp_port===465) ? 'ssl' : 'starttls';
+        }
+        const senc=document.getElementById('senc');
+        if(senc){ senc.value=enc; }
         document.getElementById('su').value=(c.config||{}).smtp_user||'';
         document.getElementById('sw').value='';
         document.getElementById('sf').value=(c.config||{}).from_name||'绿盟升级通知';
-        document.getElementById('st').value=((c.config||{}).to_list||[]).join(', ');
         document.getElementById('seh').value=c.email_hourly_limit||0;
         document.getElementById('sed').value=c.email_daily_limit||0;
+        // Auto-match template from existing host so the dropdown reflects
+        // what the user actually configured, even if the host differs.
+        const tmpl=_matchEmailProvider((c.config||{}).smtp_host||'');
+        const tmplSel=document.getElementById('chtmpl');
+        if(tmplSel){ tmplSel.value=tmpl; }
+        // Apply template's user placeholder (only when current user field is empty)
+        const su=document.getElementById('su');
+        if(su && !su.value && EMAIL_PROVIDERS[tmpl]?.user_ph){
+          su.placeholder=EMAIL_PROVIDERS[tmpl].user_ph;
+        }
+        const hint=document.getElementById('emailTmplHint');
+        if(hint){ hint.textContent=EMAIL_PROVIDERS[tmpl]?.hint||''; }
+        // Bind host → template sync (in case user manually edits host later)
+        const sh=document.getElementById('sh');
+        if(sh && !sh.dataset.bound){ sh.dataset.bound='1'; sh.addEventListener('input',_onEmailHostChange); }
       }else{
         document.getElementById('cw').value=_maskWebhook((c.config||{}).webhook_url||'');
         document.getElementById('cs').value='';
@@ -2482,12 +2874,83 @@ function openChModal(id){
     },50);
   }else{
     chTypeCh();
-
-
+    // Bind host → template sync for new channels too
+    setTimeout(()=>{
+      const sh=document.getElementById('sh');
+      if(sh && !sh.dataset.bound){ sh.dataset.bound='1'; sh.addEventListener('input',_onEmailHostChange); }
+    },50);
   }
 }
-async function saveCh(){const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();if(!n){toast('请输入渠道名称','error');return}let c={},eh=0,ed=0;if(t==='email'){const to_list=(document.getElementById('st')?.value||'').split(',').map(s=>s.trim()).filter(Boolean);if(!to_list.length){toast('请填写至少一个收件人邮箱','error');return}const pw=document.getElementById('sw')?.value||'';c={smtp_host:document.getElementById('sh')?.value||'',smtp_port:parseInt(document.getElementById('sp')?.value||'465'),smtp_user:document.getElementById('su')?.value||'',smtp_password:pw||(_origChConfig.smtp_password||''),from_name:document.getElementById('sf')?.value||'绿盟升级通知',to_list};eh=parseInt(document.getElementById('seh')?.value)||0;ed=parseInt(document.getElementById('sed')?.value)||0}else{const wu=document.getElementById('cw')?.value||'';if(wu&&_origChConfig.webhook_url&&wu===_maskWebhook(_origChConfig.webhook_url))wu=_origChConfig.webhook_url;c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}}let r;if(editingChId){r=await api('/channels/'+editingChId,{method:'PUT',body:JSON.stringify({name:n,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}else{r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;document.getElementById('chModalWrap')?.remove();channels();}else toast(r.message,'error')}
-async function testCh(id){const r=await api('/channels/'+id+'/test',{method:'POST'});toast(r.data?.success?'已发送':r.data?.error||'失败',r.data?.success?'success':'error');}
+async function saveCh(){
+  const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();
+  if(!n){toast('请输入渠道名称','error');return}
+  let c={},eh=0,ed=0;
+  if(t==='email'){
+    const pw=document.getElementById('sw')?.value||'';
+    c={
+      smtp_host:document.getElementById('sh')?.value||'',
+      smtp_port:parseInt(document.getElementById('sp')?.value||'465'),
+      smtp_encryption:document.getElementById('senc')?.value||'ssl',
+      smtp_user:document.getElementById('su')?.value||'',
+      smtp_password:pw||(_origChConfig.smtp_password||''),
+      from_name:document.getElementById('sf')?.value||'绿盟升级通知',
+    };
+    if(c.smtp_encryption!=='ssl' && c.smtp_encryption!=='starttls'){
+      toast('加密方式仅支持 SSL 或 STARTTLS','error');return;
+    }
+    eh=parseInt(document.getElementById('seh')?.value)||0;
+    ed=parseInt(document.getElementById('sed')?.value)||0;
+    // Recipients no longer configured at channel level — they're set on
+    // subscription rules (customer_emails) or specified per manual push.
+    // Strip any legacy to_list so the channel config reflects the new model.
+    if(!editingChId){ c.to_list=[]; }
+    if(!c.smtp_host||!c.smtp_user){toast('请填写 SMTP 服务器和用户','error');return}
+    if(!c.smtp_user.includes('@')){toast('用户名必须是完整邮箱地址(含 @domain 后缀),如 user@163.com','error');return}
+  }else{
+    const wu=document.getElementById('cw')?.value||'';
+    if(wu&&_origChConfig.webhook_url&&wu===_maskWebhook(_origChConfig.webhook_url))wu=_origChConfig.webhook_url;
+    c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}
+  }
+  let r;
+  if(editingChId){r=await api('/channels/'+editingChId,{method:'PUT',body:JSON.stringify({name:n,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}
+  else{r=await api('/channels',{method:'POST',body:JSON.stringify({name:n,type:t,config:c,email_hourly_limit:eh,email_daily_limit:ed})})}
+  if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;document.getElementById('chModalWrap')?.remove();channels();}
+  else toast(r.message,'error')
+}
+async function testCh(id){
+  const r=await api('/channels/'+id+'/test',{method:'POST'});
+  if(r.data?.success){
+    toast('✅ 邮件发送成功','success');
+  } else {
+    const err=r.data?.error||'失败';
+    toast('❌ '+err,'error',8000);
+    // For email channels, auto-open the log so the user can see why
+    const ch=chList.find(c=>c.id===id);
+    if(ch && ch.type==='email'){
+      setTimeout(()=>showTestLog(id, ch.name), 300);
+    }
+  }
+}
+
+async function showTestLog(id, name){
+  const existing=document.getElementById('testLogModal');if(existing)existing.remove();
+  const r=await api('/channels/'+id+'/test-log');
+  const content=r.code===0 ? r.data.content : `(${r.message||'尚未运行测试'})`;
+  const m=document.createElement('div');
+  m.id='testLogModal';
+  m.className='confirm-modal active';
+  m.innerHTML=`<div class="confirm-box" style="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+    <div class="confirm-icon">📋</div>
+    <div class="confirm-title">测试日志 - ${escHtml(name)}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">文件: /tmp/email_test_${id}.log | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
+    <pre style="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
+    <div class="confirm-btns" style="margin-top:14px">
+      <button class="confirm-btn-cancel" onclick="document.getElementById('testLogModal').remove()">关闭</button>
+    </div>
+  </div>`;
+  m.addEventListener('click', e=>{if(e.target===m)m.remove();});
+  document.body.appendChild(m);
+}
 async function delCh(id){await confirmAct('删除此渠道？', async ()=>{const r=await api('/channels/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');channels();}else toast(r.message,'error');}, '🗑️', '删除');}
 // ── Customers ──
 let custProdOpts='';
@@ -3421,6 +3884,19 @@ async function settings(){
       <div class="cfg-row">
         <div class="form-group"><label>客户-每小时上限</label><input id="cfg-email-cust-h" type="number" value="${cfg.email_customer_hourly_limit||10}" min="0" max="9999"><p class="cfg-hint">每个客户独立计数</p></div>
         <div class="form-group"><label>客户-每天上限</label><input id="cfg-email-cust-d" type="number" value="${cfg.email_customer_daily_limit||50}" min="0" max="99999"><p class="cfg-hint">每个客户独立计数</p></div>
+      </div>
+    </div>
+
+    <div class="cfg-section">
+      <div class="cfg-section-hd">📤 通知联系信息</div>
+      <p class="cfg-section-sub">用于在邮件正文与底部显示运维联系方式。由于邮件通常通过第三方 SMTP 渠道(如阿里云/腾讯企业邮箱)而非公司域名发送,客户收到邮件时可能误判为钓鱼邮件。配置后,客户可看到明确的发件人姓名、邮箱和联系电话。</p>
+      <p class="cfg-section-sub" style="color:#c27800">⚠️ 姓名、邮箱、电话<strong>三项必须全部填写</strong>才会显示;任一为空则邮件中不展示该信息(避免半填给客户造成更大困惑)。</p>
+      <div class="cfg-row">
+        <div class="form-group"><label>工程师姓名</label><input id="cfg-ops-name" type="text" value="${cfg.ops_contact_name||''}" placeholder="如:张三" maxlength="50"></div>
+        <div class="form-group"><label>工程师邮箱</label><input id="cfg-ops-email" type="email" value="${cfg.ops_contact_email||''}" placeholder="如:zhangsan@company.com" maxlength="100"></div>
+      </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>联系电话</label><input id="cfg-ops-phone" type="tel" value="${cfg.ops_contact_phone||''}" placeholder="如:138-0000-0000" maxlength="30"><p class="cfg-hint">邮件中会渲染为 tel: 链接,手机端可点击直接拨号</p></div>
       </div>
     </div>
 
@@ -5043,7 +5519,10 @@ async function forceStopAndSave(){
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
-    email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value};
+    email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value,
+    ops_contact_name:document.getElementById('cfg-ops-name').value.trim(),
+    ops_contact_email:document.getElementById('cfg-ops-email').value.trim(),
+    ops_contact_phone:document.getElementById('cfg-ops-phone').value.trim()};
   const r=await api('/settings/force-stop',{method:'POST',body:JSON.stringify(d)});
   const eventEnabled=document.getElementById('cfg-event-enabled').checked;
   const eventChannel=document.getElementById('cfg-event-channel').value;
@@ -5064,7 +5543,10 @@ async function saveSettings(){
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
-    email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value};
+    email_customer_daily_limit:document.getElementById('cfg-email-cust-d').value,
+    ops_contact_name:document.getElementById('cfg-ops-name').value.trim(),
+    ops_contact_email:document.getElementById('cfg-ops-email').value.trim(),
+    ops_contact_phone:document.getElementById('cfg-ops-phone').value.trim()};
   const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
 
   // 保存系统事件配置
