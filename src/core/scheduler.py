@@ -422,6 +422,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
     summary = {
         'status': 'ok', 'mode': mode,
         'started_at': datetime.utcnow().isoformat(),
+        'finished_at': None,  # Set on every completion path (L519, L640, L654) and used by L521/L641/L663
         'products': {},
         'total_new': 0, 'total_rollback': 0, 'total_notified': 0,
         'errors': [],
@@ -518,7 +519,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             # 发送采集完成通知（即使无新包）
             summary['finished_at'] = datetime.utcnow().isoformat()
             # 扫描 app.log 中的网络错误，汇总通知
-            net_errors = _scan_network_errors_from_log(summary['started_at'], summary['finished_at'])
+            net_errors = _scan_network_errors_from_log(summary['started_at'], summary.get('finished_at') or summary['started_at'])
             if net_errors:
                 from src.core.event_handler import emit_network_error
                 emit_network_error(net_errors)
@@ -614,6 +615,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         process_delayed_queue()
 
         summary['duration_s'] = int(time.time() - start)
+        summary['finished_at'] = datetime.utcnow().isoformat()
         if mode == 'full':
             _last_full_run = datetime.utcnow()
             _save_last_full_scan()
@@ -638,7 +640,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
         # Emit collection summary event
         from src.core.event_handler import emit_collection_summary, emit_network_error
-        net_errors = _scan_network_errors_from_log(summary['started_at'], summary['finished_at'])
+        net_errors = _scan_network_errors_from_log(summary['started_at'], summary.get('finished_at') or summary['started_at'])
         if net_errors:
             emit_network_error(net_errors)
         emit_collection_summary(summary, mode)
@@ -660,7 +662,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['finished_at'] = datetime.utcnow().isoformat()
         # 发送采集失败通知
         from src.core.event_handler import emit_collection_summary, emit_network_error
-        net_errors = _scan_network_errors_from_log(summary['started_at'], summary['finished_at'])
+        net_errors = _scan_network_errors_from_log(summary['started_at'], summary.get('finished_at') or summary['started_at'])
         if net_errors:
             emit_network_error(net_errors)
         emit_collection_summary(summary, mode)
