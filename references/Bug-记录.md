@@ -340,3 +340,86 @@ for sess in sessions:
   - 第 823-829 行：入口抖动 + 跳过概率
   - 第 845-846 行：session 间延迟
 - `src/web/templates/index.html` 第 428 行：心跳时间时区转换（Bug #008 修复）
+
+---
+
+## Bug #010：刷新包类型时同 URL 不同 chain 被 visited 去重丢弃
+
+**严重程度**：高（数据完整性 bug，导致海光系列规则升级包完全丢失）
+
+**日期**：2026-06-15
+
+**产品**：采集发现模块（`src/collectors/nsfocus.py`）+ 产品管理 / 刷新包类型
+
+**现象**：
+- WEB 应用防护系统（WAF）有"信息技术应用创新"分类，旗下包含"海光系列 HG"和"飞腾系列 FT"两条产品线
+- 绿盟 NSFocus 升级页 `/update/wafHGIndex/v/WAF-HG-v68` 上展示两个 section：
+  - `海光系列 V6.0.8 系统升级` → `/update/listWafFTDetail/v/WAF-HG-sys`
+  - `海光系列 V6.0.8 规则升级` → `/update/listWafV68Detail/v/rule`
+- 注意：海光的"规则升级"链接 url 跟普通 WAF V6.0.8 的"规则升级"完全相同
+- 点"刷新包类型"按钮后，DB 缺失"海光系列 V6.0.8 规则升级"；跳转时，DB 里存的"规则升级"chain 退化成了普通 WAF V6.0.8 的链（不含"海光系列HG"）
+- 同理 V6.0.9 海光系列只能找到"系统升级"那条，缺"规则升级"和"威胁情报升级"
+
+**根因**：
+
+### 单 URL 去重吞掉同 URL 不同祖先链
+
+`NsfocusCollector.discover_package_types()` 内部递归用 `visited = set()` 按 URL 去重：
+
+```python
+# 旧代码（错误）
+def recurse(page_url: str, chain: list, depth: int):
+    if depth > 6 or page_url in visited:   # ← 只看 url
+        return
+    visited.add(page_url)
+```
+
+爬树顺序：
+
+```
+1. /update/wafIndex
+   → /update/wafV68Index（普通 WAF V6.0.8 索引）
+     → /update/listWafV68Detail/v/sys   ← visited.add
+     → /update/listWafV68Detail/v/rule  ← visited.add
+   → /update/wafHGIndex/v/WAF-HG
+     → /update/wafHGIndex/v/WAF-HG-v68（海光 V6.0.8 索引）
+       → /update/listWafFTDetail/v/WAF-HG-sys  ← 新 url，正常
+       → /update/listWafV68Detail/v/rule       ← **已在 visited 中（从普通 WAF V6.0.8 链加进去的）！直接 return，链 context 丢失**
+```
+
+后果：海光 V6.0.8 规则升级"那条 path"在 `paths[]` 列表里**完全没出现**；即便后续普通 WAF V6.0.8 链留下的记录还在，chain 已经错位成"普通 WAF V6.0.8"语义。
+
+**修复**：
+
+将 `visited` 改为 `(url, chain_tuple)` 复合 key，让同 URL 不同祖先链被视为不同分支：
+
+```python
+# 新代码（src/collectors/nsfocus.py）
+def recurse(page_url: str, chain: list, depth: int):
+    # Visit-key 包含 chain：同 url 不同祖先链视为不同发现分支
+    visit_key = (page_url, tuple(chain))
+    if depth > 6 or visit_key in visited:
+        return
+    visited.add(visit_key)
+    ...
+```
+
+**副作用评估**：
+
+- 副作用 1（良性）：同 URL 在不同链下被访问多次，HTTP 请求增多。对 NSFocus 这种怪结构而言是必需代价
+- 副作用 2（无影响）：`_is_stopped()` / `_is_sidebar()` 过滤仍然生效
+- 副作用 3（无影响）：`depth > 6` 深度限制仍然生效，防止无限扩展
+
+**验证**（WAF 刷新后）：
+
+| 项 | 修复前 | 修复后 |
+|----|--------|--------|
+| WAF 总 paths | 24 | 27 |
+| 海光 V6.0.8 paths | 1（系统升级）| 2（系统升级 + 规则升级）|
+| 海光 V6.0.9 paths | 1（系统升级）| 3（系统升级 + 规则升级 + 威胁情报升级）|
+| 海光 V6.0.8 规则升级 chain | `['...WAF V6.0.8', 'WAF V6.0.8 规则升级包']`（普通链）| `['...海光系列HG', '海光系列 V6.0.8', '海光系列 V6.0.8 规则升级']`（海光链）|
+
+**涉及文件**：
+- `src/collectors/nsfocus.py`：
+  - 第 152 行：visited 注释更新
+  - 第 196-202 行：`recurse()` 改用 `(url, tuple(chain))` 作 visit_key

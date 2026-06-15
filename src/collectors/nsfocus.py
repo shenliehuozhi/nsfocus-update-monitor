@@ -149,7 +149,12 @@ class NsfocusCollector(BaseCollector):
 
         all_types = []    # union list
         paths = []        # list of {chain, types}
-        visited = set()  # prevent loops
+        # Visited keyed by (url, chain_tuple) so that the same URL reached via
+        # different ancestors (e.g. WAF V6.0.8 规则 reached via 普通 WAF V6.0.8
+        # vs via 海光系列 V6.0.8) is treated as a separate path. NSFocus uses
+        # the same detail URL for both branches, so pure URL dedup collapses
+        # them and the 海光 branch loses its chain context.
+        visited = set()  # set[(url, chain_tuple_str)]  prevent loops while preserving chain context
 
         try:
             _log(f'入口: {url}')
@@ -188,9 +193,14 @@ class NsfocusCollector(BaseCollector):
                 return {'types': sorted(all_types), 'paths': paths, 'modes': {t: 'auto' for t in all_types}}
 
             def recurse(page_url: str, chain: list, depth: int):
-                if depth > 6 or page_url in visited:
+                # Visit-key includes the current chain so that the same URL reached
+                # via different ancestors is treated as a separate discovery branch.
+                # E.g. NSFocus's 海光 V6.0.8 规则 uses the same detail URL as 普通
+                # WAF V6.0.8 规则; without the chain-key they would collide.
+                visit_key = (page_url, tuple(chain))
+                if depth > 6 or visit_key in visited:
                     return
-                visited.add(page_url)
+                visited.add(visit_key)
 
                 _log('  ' * (depth + 1) + f'{"└── " if chain else ""}{chain[-1] if chain else url} ({page_url})')
                 try:
