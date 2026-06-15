@@ -1349,17 +1349,35 @@ function dataRenderLeft() {
 }
 
 // ── Tree toggle (inline onclick) ──
+// Two callers:
+//   1. User clicks arrow: treeToggleById(childId, thisArrowSpan)
+//   2. Programmatic: treeToggleById(childId) — no arrowEl, must look it up
+//
+// Note: data-target="childId" is set on the <span class="tree-children"> itself
+// (NOT on the arrow span), so a querySelector fallback would return the
+// children div — not a tree-node ancestor. We resolve the tree-node via the
+// arrow when available, otherwise via children.previousElementSibling.
 function treeToggleById(childrenId, arrowEl) {
   if (!childrenId) return;
-  var arrow = arrowEl || document.querySelector('[data-target="' + CSS.escape(childrenId) + '"]');
-  if (!arrow) return;
-  var treeNode = arrow.closest('.tree-node');
+  let treeNode = null;
+  if (arrowEl && arrowEl.closest) {
+    treeNode = arrowEl.closest('.tree-node');
+  }
+  if (!treeNode) {
+    const children = document.getElementById(childrenId);
+    if (children && children.previousElementSibling && children.previousElementSibling.classList.contains('tree-node')) {
+      treeNode = children.previousElementSibling;
+    }
+  }
   if (!treeNode) return;
-  var children = treeNode.nextElementSibling;
+  const children = treeNode.nextElementSibling;
   if (!children || !children.classList.contains('tree-children')) return;
-  var isHidden = children.style.display === 'none' || children.style.display === '';
+  // Find the arrow inside this tree-node to update its glyph
+  const arrow = treeNode.querySelector('span[data-toggle-arrow], span[onclick*="treeToggleById"]');
+  const isHidden = children.style.display === 'none' || children.style.display === '';
   children.style.display = isHidden ? 'block' : 'none';
-  arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
+  if (arrow) arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
+  if (children._wasHidden === undefined) children._wasHidden = isHidden;
 }
 
 // Card product toggle (body id string, not element reference)
@@ -1905,13 +1923,19 @@ function dataRightGoto(sid, chainJson) {
   _dataSelectedChain = targetChain;
   _dataSelectedUrl = null;
   // Derive version & package type hints from the target chain's last node for right-panel filtering.
+  // Match the FULL chain against paths to avoid ambiguity when multiple versions
+  // share the same leaf name (e.g. several "入侵检测规则升级包" across versions
+  // V2.0R00F01 / V2.0R00F05 / V2.0R00F06_CW would otherwise all match by leaf alone).
   const src = _dataAll[sid];
   let verHint = null, pkgHint = null;
   if (src && targetChain && targetChain.length > 0) {
-    const leafName = targetChain[targetChain.length - 1];
     const pt = src.package_type;
     if (pt && pt.paths) {
-      const path = pt.paths.find(p => (p.chain || [])[(p.chain || []).length - 1] === leafName);
+      const path = pt.paths.find(p =>
+        Array.isArray(p.chain) &&
+        p.chain.length === targetChain.length &&
+        p.chain.every((seg, i) => seg === targetChain[i])
+      );
       if (path && path.url) {
         const snap = (src.snapshots || []).find(s => s.source_url === path.url);
         if (snap) {
