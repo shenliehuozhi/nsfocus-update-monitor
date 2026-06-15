@@ -910,7 +910,7 @@ async function dataPage() {
     api('/settings/config').catch(() => ({})),
   ]);
   _dataAll = r.data || {};
-  _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.feed_pkg_limit) || 3);
+  _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.snapshots_per_group) || 5);
   const t0 = performance.now();
   // Build _srcUrlChainMap once: URL→chain lookup per source
   // Also clear chain prefix cache since _dataAll changed
@@ -3870,8 +3870,7 @@ async function settings(){
         <div class="form-group"><label>附件上限 <span class="cfg-unit">(MB)</span></label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p class="cfg-hint">邮件附件最大体积；超过则在正文显示下载地址</p></div>
       </div>
       <div class="cfg-row">
-        <div class="form-group"><label>快照保留条数</label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||10}" min="1" max="500"><p class="cfg-hint">后端磁盘存储上限：每个(版本+包类型)组合最多存几条历史快照，超出则删旧</p></div>
-        <div class="form-group"><label>每类型包显示数</label><input id="cfg-feed-pkg-limit" type="number" value="${cfg.feed_pkg_limit||3}" min="1" max="50"><p class="cfg-hint">界面显示上限：采集数据页每(版本+包类型)组合在右侧详情显示几条；与「快照保留条数」配合，前者控制界面，后者控制磁盘</p></div>
+        <div class="form-group"><label>历史保留条数 <span style="font-size:10px;color:var(--muted)">(每版本+包类型组合)</span></label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||5}" min="1" max="10"><p class="cfg-hint">每个(版本+包类型)组合保留几条历史快照。后端磁盘存储与前端采集数据页显示共用此值;超出自动删旧。</p></div>
       </div>
     </div>
 
@@ -5544,7 +5543,6 @@ async function handleSchedulerToggle(cb){
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
-    feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
@@ -5568,7 +5566,6 @@ async function forceStopAndSave(){
 
 async function saveSettings(){
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
-    feed_pkg_limit:document.getElementById('cfg-feed-pkg-limit').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,

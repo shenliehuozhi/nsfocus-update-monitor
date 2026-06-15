@@ -1503,7 +1503,7 @@ def _run_db_cleanup():
         # 4. snapshots: 按 (version_branch, package_type) 分组，每组保留 N 条最新快照
         from src.models.database import query as db_query
         limit_cfg = db_query("SELECT value FROM system_settings WHERE key = 'snapshots_per_group'")
-        per_group = int(limit_cfg[0]['value']) if limit_cfg else 10
+        per_group = int(limit_cfg[0]['value']) if limit_cfg else 5
 
         # 统计清理前
         before = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
