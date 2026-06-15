@@ -2453,16 +2453,16 @@ function showPushResult(data, success){
     const logBtn = (!ok && r.log_path)
       ? ` <a href="#" onclick="showPushLogByPath(${JSON.stringify(r.log_path)},${JSON.stringify(r.channel||'')});return false;" style="color:var(--primary);font-size:11px;margin-left:6px">📋 日志</a>`
       : '';
-    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px">
-      <span style="color:${color};font-weight:600">${icon}</span>
+    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#ffffff">
+      <span style="font-weight:600">${icon}</span>
       <span>${escHtml(r.channel||'')}</span>
-      ${r.error ? `<span style="color:var(--muted);font-size:11px">${escHtml(r.error)}</span>` : ''}
+      ${r.error ? `<span style="color:rgba(255,255,255,.7);font-size:11px">${escHtml(r.error)}</span>` : ''}
       ${logBtn}
     </div>`;
   }).join('');
   const head = success
-    ? `<div style="font-weight:600;color:var(--success);margin-bottom:4px">推送完成</div>`
-    : `<div style="font-weight:600;color:var(--danger);margin-bottom:4px">推送失败</div>`;
+    ? `<div style="font-weight:700;color:#ffffff;margin-bottom:4px">推送完成</div>`
+    : `<div style="font-weight:700;color:#ffffff;margin-bottom:4px">推送失败</div>`;
   showRichToast(head + lines, success ? 'success' : 'error', 8000);
 }
 
@@ -2496,11 +2496,17 @@ async function showLogFile(path, name){
   document.body.appendChild(m);
 }
 
-// Rich HTML toast (replaces text-only toast for structured results)
+// Rich HTML toast (replaces text-only toast for structured results).
+// Inline styles fully override the global .toast class because CSS class
+// rules like `white-space:nowrap; overflow:hidden; max-width:90vw` would
+// otherwise chop off the multi-line push result content (the "推送完成"
+// header and the per-channel list rows). We re-center using left:50% +
+// transform:translateX(-50%) since the .toast class only provides centering
+// for single-line text and our HTML has multiple lines.
 function showRichToast(html, type, durationMs){
   const e=document.createElement('div');
   e.className=`toast toast-${type}`;
-  e.style.cssText='max-width:520px;white-space:normal;text-align:left;line-height:1.5';
+  e.style.cssText='position:fixed;top:20px;left:50%;transform:translateX(-50%);color:#fff;font-size:13px;font-weight:500;padding:12px 18px;border-radius:8px;z-index:99999;box-shadow:0 4px 16px rgba(0,0,0,.25);animation:fadeDown .2s ease;white-space:normal;max-width:520px;min-width:240px;overflow:visible;text-align:left;line-height:1.5';
   e.innerHTML=html;
   document.body.appendChild(e);
   setTimeout(()=>e.remove(), durationMs||4000);
