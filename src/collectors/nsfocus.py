@@ -304,21 +304,12 @@ class NsfocusCollector(BaseCollector):
         current_paths = current.get('paths', []) if current else []
         discovered_paths = discovered.get('paths', []) if discovered else []
 
-        # Identity key is primarily the URL — URLs are stable across runs.
-        # Earlier versions used chain+types concatenation, which is fragile:
-        # NSFocus's auto-discovery may emit the same physical path with slight
-        # chain variations (whitespace, version-segment position, extra sub-chain
-        # entries) between runs. That made the same URL look like "delete + add",
-        # inflating the diff by ~30x (e.g. 295 reported changes for what was
-        # actually 8 real URL additions). URL is the only thing that survives.
+        # Use chain+types as identity key — 'url' is just the page URL where it was
+        # discovered and may differ between old/new data for the same actual path.
+        # chain elements are stripped to handle whitespace inconsistencies between
+        # runs (e.g. section titles extracted with or without leading space).
         def path_key(p):
-            url = p.get('url') or ''
-            if url:
-                return url
-            # Fallback for VM / upLic paths where url is null: use last chain
-            # element, which is the human-readable package type name.
-            chain = p.get('chain', [])
-            return chain[-1] if chain else ''
+            return '|'.join([s.strip() for s in p.get('chain', [])] + p.get('types', []))
 
         cur_map = {path_key(p): p for p in current_paths}
         disc_map = {path_key(p): p for p in discovered_paths}
