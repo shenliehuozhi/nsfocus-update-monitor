@@ -887,21 +887,7 @@ def _check_package_types_fresh(existing_sources: dict, cookie: str, emit):
             new_types_list = discovered.get('types', [])
             new_types = set(new_types_list)
 
-            # Also compute current/new path URL sets so that paths-only changes
-            # (e.g. a chain branch dropped, or NSFocus redirected an intermediate
-            # page) are surfaced as "changed" too. Without this, types stays the
-            # same but the package layout shifts, leaving the user to discover
-            # the mismatch via missing snapshots in the data page.
-            try:
-                cur_obj_for_paths = json.loads(current_raw) if current_raw else {}
-                cur_paths = (cur_obj_for_paths.get('paths', []) if isinstance(cur_obj_for_paths, dict) else []) or []
-            except Exception:
-                cur_paths = []
-            new_paths = discovered.get('paths', []) or []
-            cur_urls = {p.get('url') for p in cur_paths if p.get('url')}
-            new_urls = {p.get('url') for p in new_paths if p.get('url')}
-
-            if new_types != current_types or new_urls != cur_urls:
+            if new_types != current_types:
                 # 有变化: 构造新格式并存入 package_type_discovered
                 # 复用现有 modes（如果当前有的话），新增的 type 默认 auto
                 try:
@@ -967,14 +953,6 @@ def _check_package_types_fresh(existing_sources: dict, cookie: str, emit):
                 changed_products.append(name)
                 logger.info(f'[pkg_refresh] {name}: {current_types} -> {new_types}, '
                             f'affected_rules={len(affected_rules)}')
-            else:
-                # 无变化: 清理之前可能残留的 package_type_changed=1 标记
-                # (否则一旦被标 1,后续每次自动发现都进弹窗却看不到任何差异,误导用户)
-                if src.get('package_type_changed') == 1:
-                    update_source(src['id'],
-                                  package_type_discovered='',
-                                  package_type_changed=0)
-                    logger.info(f'[pkg_refresh] {name}: 无变化,清理残留 changed=1 标记')
         except Exception as e:
             logger.warning(f'[pkg_refresh] {name}: {e}')
 
