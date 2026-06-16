@@ -149,6 +149,21 @@ class NsfocusCollector(BaseCollector):
 
         all_types = []    # union list
         paths = []        # list of {chain, types}
+
+        def _finalize_types(all_types_list: list, paths_list: list) -> list:
+            """Remove orphan types that appear in all_types but have no matching
+            path entry. Keeps the types list in sync with the paths list, so
+            every type name in `types` is guaranteed to be reachable via at
+            least one path. Returns the cleaned all_types list (order preserved).
+            """
+            referenced = set()
+            for p in paths_list:
+                for t in (p.get('types') or []):
+                    referenced.add(t)
+            cleaned = [t for t in all_types_list if t in referenced]
+            if len(cleaned) != len(all_types_list):
+                _log(f'清理 orphan types: {len(all_types_list) - len(cleaned)} 个无对应路径的 type 被移除')
+            return cleaned
         # Visited keyed by (url, chain_tuple) so that the same URL reached via
         # different ancestors (e.g. WAF V6.0.8 规则 reached via 普通 WAF V6.0.8
         # vs via 海光系列 V6.0.8) is treated as a separate path. NSFocus uses
@@ -190,6 +205,7 @@ class NsfocusCollector(BaseCollector):
                     all_types.append(type_name)
                     paths.append({'chain': [name], 'types': [type_name], 'url': url})
                 _log(f'完成，共 {len(all_types)} 种包类型，{len(paths)} 条路径')
+                all_types = _finalize_types(all_types, paths)
                 return {'types': sorted(all_types), 'paths': paths, 'modes': {t: 'auto' for t in all_types}}
 
             def recurse(page_url: str, chain: list, depth: int):
@@ -264,6 +280,7 @@ class NsfocusCollector(BaseCollector):
 
             _log(f'完成，共 {len(all_types)} 种包类型，{len(paths)} 条最终路径')
             logger.debug(f'[{source_id}] {name}: discovered types={all_types}, paths={paths}')
+            all_types = _finalize_types(all_types, paths)
             return {'types': sorted(all_types), 'paths': paths, 'modes': {t: 'auto' for t in all_types}}
 
         except Exception as e:

@@ -492,7 +492,7 @@ async function dashboard(range){
         </div>
         <div class="card-bd" style="padding:12px;box-sizing:border-box;height:375px;display:flex;flex-direction:column">
           <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
-          <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px"></div>
+          <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;overflow-y:auto;flex:1;min-height:0;align-content:flex-start"></div>
         </div>
       </div>
 
@@ -4723,6 +4723,19 @@ function editPkgType(id){
     const added=[...discSet].filter(x=>!currentSet.has(x));
     const removed=[...currentSet].filter(x=>!discSet.has(x));
 
+    // ── paths URL 差集 (本轮新增/丢失的 URL) ──
+    const curUrls = new Set((pt.paths||[]).map(pp=>pp.url).filter(u=>u));
+    const newUrls = new Set((disc.paths||[]).map(pp=>pp.url).filter(u=>u));
+    const addedUrls   = [...newUrls].filter(u=>!curUrls.has(u));
+    const removedUrls = [...curUrls].filter(u=>!newUrls.has(u));
+
+    // 把 URL 末尾段做简称,避免 UI 过长
+    const shortUrl = u => {
+      const m = u.match(/\/v\/([^/?#]+)$/);
+      if (m) return m[1];
+      return u.replace(/^https?:\/\/[^/]+/, '').slice(-40);
+    };
+
     let diffRows='';
     if(added.length){
       diffRows+=added.map(t=>`<span style="background:#d1fae5;color:#065f46;font-size:12px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">+${MAP[t]||t}</span>`).join(' ');
@@ -4730,8 +4743,28 @@ function editPkgType(id){
     if(removed.length){
       diffRows+=removed.map(t=>`<span style="background:#fee2e2;color:#991b1b;font-size:12px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block;text-decoration:line-through">-${MAP[t]||t}</span>`).join(' ');
     }
-    if(!added.length && !removed.length){
-      diffRows=`<span style="color:#9ca3af;font-size:13px">包类型集合无变化，但采集时检测到差异</span>`;
+
+    let pathDiffRows='';
+    if(addedUrls.length){
+      const MAX = 20;
+      const shown = addedUrls.slice(0, MAX);
+      const more = addedUrls.length - shown.length;
+      pathDiffRows += shown.map(u=>`<span style="background:#d1fae5;color:#065f46;font-size:11px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block;font-family:monospace" title="${escHtml(u)}">+${escHtml(shortUrl(u))}</span>`).join(' ');
+      if (more > 0) pathDiffRows += `<span style="background:#d1fae5;color:#065f46;font-size:11px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">+${more} more</span>`;
+    }
+    if(removedUrls.length){
+      const MAX = 20;
+      const shown = removedUrls.slice(0, MAX);
+      const more = removedUrls.length - shown.length;
+      pathDiffRows += shown.map(u=>`<span style="background:#fee2e2;color:#991b1b;font-size:11px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block;font-family:monospace;text-decoration:line-through" title="${escHtml(u)}">-${escHtml(shortUrl(u))}</span>`).join(' ');
+      if (more > 0) pathDiffRows += `<span style="background:#fee2e2;color:#991b1b;font-size:11px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">-${more} more</span>`;
+    }
+
+    if(!added.length && !removed.length && !addedUrls.length && !removedUrls.length){
+      diffRows=`<span style="color:#9ca3af;font-size:13px">包类型与路径均无变化，但采集时检测到差异</span>`;
+    } else if (!added.length && !removed.length) {
+      // types 集合没变,但 paths 有差异 — 顶部加一句说明
+      diffRows += `<div style="color:#6b7280;font-size:12px;margin-top:4px">包类型集合无变化，但路径结构发生了变化（见下方「路径变更」）</div>`;
     }
 
     // diff 模式下的 modes 编辑
@@ -4781,6 +4814,10 @@ function editPkgType(id){
       <div style="background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:14px;margin-bottom:16px">
         <div style="font-size:12px;color:#92400e;font-weight:600;margin-bottom:8px">📊 变更明细</div>
         <div>${diffRows}</div>
+        ${pathDiffRows ? `<div style="margin-top:10px;padding-top:10px;border-top:1px dashed #fbbf24">
+          <div style="font-size:11px;color:#92400e;font-weight:600;margin-bottom:6px">🛣️ 路径变更 (${addedUrls.length > 0 ? '+'+addedUrls.length : ''}${removedUrls.length > 0 ? ' / -'+removedUrls.length : ''})</div>
+          <div>${pathDiffRows}</div>
+        </div>` : ''}
       </div>
       ${rulesWarning}
       ${pathTreeHtml}
