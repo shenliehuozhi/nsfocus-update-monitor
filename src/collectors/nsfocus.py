@@ -498,68 +498,73 @@ class NsfocusCollector(BaseCollector):
                 else:
                     prev = prev_hash or '无'
                     logger.info(f'【{product_name}】CHANGE {display_url}  {prev} → {page_hash}')
-                existing = snap_query(
-                    """SELECT id FROM snapshots
-                       WHERE source_id = ? AND source_url = ? AND page_hash = ?
-                       LIMIT 1""",
-                    (source_id, full_url, page_hash)
-                )
-                if existing:
-                    # Hash matched — but verify the page is actually the real data page,
-                    # not a login page that accidentally collides with the stored hash.
-                    # Strategy: if this URL has known snapshots with MD5 values,
-                    # check whether any of those MD5s appear in the current page text.
-                    # If none found → treat as changed (force re-extract).
-                    known_md5s = snap_query(
-                        """SELECT md5_hash FROM snapshots
-                           WHERE source_id=? AND source_url=? AND md5_hash != ''""",
-                        (source_id, full_url)
+                # ── skip_page_hash 模式:跳过 L501-562 的 hash 撞库 + md5 撞库检查 ──
+                # skip_page_hash=True 时,所有 URL 强制走下方 CHANGE 分支(L564+)重新解析
+                # 不再做 page_hash 撞库和 md5 撞库验证(避免"login page collision?"误报)
+                # 配合 scheduler.py:474 的 stored_hash=None,本段双重保险
+                if not skip_page_hash:
+                    existing = snap_query(
+                        """SELECT id FROM snapshots
+                           WHERE source_id = ? AND source_url = ? AND page_hash = ?
+                           LIMIT 1""",
+                        (source_id, full_url, page_hash)
                     )
-                    force_changed = False
-                    if known_md5s:
-                        md5_found = any(m['md5_hash'] in html for m in known_md5s)
-                        if not md5_found:
-                            logger.info(f'Quick [{product_name}] hash matched but content differs (login page collision?), re-extracting')
-                            force_changed = True
-
-                    if not force_changed:
-                        # Page truly unchanged — reconstruct existing snapshots as items
-                        # so they are included in seen_ids for rollback detection
-                        existing_snaps = snap_query(
-                            """SELECT * FROM snapshots
-                               WHERE source_id = ? AND source_url = ? AND status = 'active'""",
+                    if existing:
+                        # Hash matched — but verify the page is actually the real data page,
+                        # not a login page that accidentally collides with the stored hash.
+                        # Strategy: if this URL has known snapshots with MD5 values,
+                        # check whether any of those MD5s appear in the current page text.
+                        # If none found → treat as changed (force re-extract).
+                        known_md5s = snap_query(
+                            """SELECT md5_hash FROM snapshots
+                               WHERE source_id=? AND source_url=? AND md5_hash != ''""",
                             (source_id, full_url)
                         )
-                        for s in existing_snaps:
-                            desc_parsed = s.get('description_parsed', '{}')
-                            if isinstance(desc_parsed, str):
-                                try: desc_parsed = json.loads(desc_parsed)
-                                except Exception: desc_parsed = {}
-                            item = UnifiedContentItem(
-                                source_id=source_id, source_type='nsfocus',
-                                product_name=s['product_name'], version_branch=s['version_branch'],
-                                package_type=s['package_type'], file_name=s['file_name'],
-                                package_version=s.get('package_version', ''),
-                                md5_hash=s['md5_hash'], file_size=s.get('file_size', 0),
-                                description_raw=s.get('description_raw', ''),
-                                description_parsed=desc_parsed,
-                                min_sys_version=s.get('min_sys_version', ''),
-                                restart_required=bool(s.get('restart_required', 0)),
-                                urgency=s.get('urgency', 'normal'),
-                                download_id=s.get('download_id', 0),
-                                published_at=s.get('published_at', ''),
-                                page_hash=page_hash, source_url=full_url,
+                        force_changed = False
+                        if known_md5s:
+                            md5_found = any(m['md5_hash'] in html for m in known_md5s)
+                            if not md5_found:
+                                logger.info(f'Quick [{product_name}] hash matched but content differs (login page collision?), re-extracting')
+                                force_changed = True
+
+                        if not force_changed:
+                            # Page truly unchanged — reconstruct existing snapshots as items
+                            # so they are included in seen_ids for rollback detection
+                            existing_snaps = snap_query(
+                                """SELECT * FROM snapshots
+                                   WHERE source_id = ? AND source_url = ? AND status = 'active'""",
+                                (source_id, full_url)
                             )
-                            items.append(item)
-                            # BUG #006 FIX: also add to seen_ids so mark_rollback_pending
-                            # doesn't re-mark these as rollback_pending (they were already active)
-                            seen_ids.add(s['id'])
-                        # Update prev_page_hash to track the change trail
-                        # NOTE: do NOT update page_hash itself here — that would erase
-                        # the "changed" signal for the next quick run (Bug #008 fix)
-                        # Queue for batch execution after HTTP loop
-                        pending_pagehash_updates.append(('prev_page_hash', source_id, full_url))
-                        continue
+                            for s in existing_snaps:
+                                desc_parsed = s.get('description_parsed', '{}')
+                                if isinstance(desc_parsed, str):
+                                    try: desc_parsed = json.loads(desc_parsed)
+                                    except Exception: desc_parsed = {}
+                                item = UnifiedContentItem(
+                                    source_id=source_id, source_type='nsfocus',
+                                    product_name=s['product_name'], version_branch=s['version_branch'],
+                                    package_type=s['package_type'], file_name=s['file_name'],
+                                    package_version=s.get('package_version', ''),
+                                    md5_hash=s['md5_hash'], file_size=s.get('file_size', 0),
+                                    description_raw=s.get('description_raw', ''),
+                                    description_parsed=desc_parsed,
+                                    min_sys_version=s.get('min_sys_version', ''),
+                                    restart_required=bool(s.get('restart_required', 0)),
+                                    urgency=s.get('urgency', 'normal'),
+                                    download_id=s.get('download_id', 0),
+                                    published_at=s.get('published_at', ''),
+                                    page_hash=page_hash, source_url=full_url,
+                                )
+                                items.append(item)
+                                # BUG #006 FIX: also add to seen_ids so mark_rollback_pending
+                                # doesn't re-mark these as rollback_pending (they were already active)
+                                seen_ids.add(s['id'])
+                            # Update prev_page_hash to track the change trail
+                            # NOTE: do NOT update page_hash itself here — that would erase
+                            # the "changed" signal for the next quick run (Bug #008 fix)
+                            # Queue for batch execution after HTTP loop
+                            pending_pagehash_updates.append(('prev_page_hash', source_id, full_url))
+                            continue
 
                 # --- Page changed (or login-collision forced re-extract) ---
                 changed += 1
