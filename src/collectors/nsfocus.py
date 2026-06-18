@@ -27,6 +27,7 @@ import time
 import random
 from typing import Optional
 from datetime import datetime
+from dataclasses import replace
 
 import requests
 from bs4 import BeautifulSoup
@@ -530,17 +531,30 @@ class NsfocusCollector(BaseCollector):
                     # URL already fetched — reuse cached items
                     cached_items = url_cache[full_url]
 
-                # ── Attribute cached items to current chain (ver, pkg) ──
-                # _extract_table_items hard-coded (ver, pkg) into each item for the
-                # first chain. For subsequent chains sharing this URL, rewrite the
-                # (ver, pkg) fields to match the current chain. Item count
-                # (file_name, md5, etc.) is identical because NSFocus returns the
-                # same content for the same URL regardless of chain.
+                # ── Attribute cached items to current chain (ver, pkg, path_id) ──
+                # _extract_table_items hard-coded (ver, pkg, path_id) into each item
+                # for the FIRST chain. For subsequent chains sharing this URL, rewrite
+                # these fields to match the current chain. Item count (file_name, md5,
+                # etc.) is identical because NSFocus returns the same content for the
+                # same URL regardless of chain.
+                #
+                # CRITICAL: We must clone via replace() BEFORE extending into items.
+                # Otherwise the in-place mutation (ti.path_id = ...) corrupts the cache
+                # AND any items already extended into the outer items list from prior
+                # chains (all of which share the same dataclass instances). The fix:
+                # build a per-chain list of NEW instances, extend that, and let the
+                # cache hold its own reference (untouched).
+                chain_path_id = hashlib.md5(
+                    (full_url + json.dumps(chain, ensure_ascii=False)).encode()
+                ).hexdigest()[:12]
+                per_chain_items = []
                 for ti in cached_items:
-                    ti.version_branch = ver
-                    ti.package_type = pkg
-
-                items.extend(cached_items)
+                    new_ti = replace(ti,
+                                     version_branch=ver,
+                                     package_type=pkg,
+                                     path_id=chain_path_id)
+                    per_chain_items.append(new_ti)
+                items.extend(per_chain_items)
 
             except SessionExpiredError:
                 raise

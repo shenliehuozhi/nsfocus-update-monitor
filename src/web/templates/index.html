@@ -896,6 +896,10 @@ let _snapDetailCache = {};
 // Per-source URL→chain map: keyed by sid, value = { normalizedUrl: chain }
 // Built once in dataPage() after _dataAll loads, reused by dataBuildFeed every render
 let _srcUrlChainMap = {};
+// Per-source URL→path_id map (matches save_snapshot 4-tuple UNIQUE index).
+// Backend attaches path_id = MD5(BASE_URL + url + JSON(chain))[:12] to each
+// path in /latest/snapshots; we index by URL for O(1) lookup in dataRightGoto.
+let _srcUrlPathIdMap = {};
 
 async function dataPage() {
   _dataExpanded.clear();
@@ -915,17 +919,23 @@ async function dataPage() {
   // Build _srcUrlChainMap once: URL→chain lookup per source
   // Also clear chain prefix cache since _dataAll changed
   _srcUrlChainMap = {};
+  _srcUrlPathIdMap = {};
   _dataChainPrefixCache = {};
   Object.entries(_dataAll).forEach(([sid, src]) => {
     if (!src.package_type?.paths) return;
     const map = {};
+    const pathIdMap = {};
     src.package_type.paths.forEach(p => {
       if (p.url && Array.isArray(p.chain) && p.chain.length > 0) {
         const norm = ('/' + p.url).replace(/\/+$/, '');
         map[norm] = p.chain;
+        // Backend attaches path_id to each path in /latest/snapshots — use it
+        // directly (matches save_snapshot 4-tuple UNIQUE index).
+        if (p.path_id) pathIdMap[norm] = p.path_id;
       }
     });
     _srcUrlChainMap[sid] = map;
+    _srcUrlPathIdMap[sid] = pathIdMap;
   });
 
   // Fetch scheduler + detailed progress in parallel
@@ -1110,6 +1120,7 @@ let _dataSelectedChain = null; // selected tree node chain
 let _dataSelectedUrl = null; // selected leaf URL (for exact URL filtering)
 let _dataSelectedVerHint = null; // version_branch hint for intermediate node filtering
 let _dataSelectedPkgHint = null; // package_type hint for intermediate node filtering
+let _dataSelectedPathId = null; // path_id for exact chain match (avoids URL-collision false positives)
 
 function dataChipHtml(key, label) {
   const active = _dataFilters[key] ? 'data-chip-active' : '';
@@ -1405,6 +1416,7 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
     _dataSelectedUrl = null;
     _dataSelectedVerHint = null;
     _dataSelectedPkgHint = null;
+    _dataSelectedPathId = null;
     _lastSelectedNode = null;
     _dataExpanded.clear();
     document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
@@ -1420,6 +1432,7 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
   _dataSelectedUrl = url || null;
   _dataSelectedVerHint = verHint || null;
   _dataSelectedPkgHint = pkgHint || null;
+  _dataSelectedPathId = null;  // not available here; computed in dataRightGoto for exact chain match
   _lastSelectedNode = node;
   _dataFeedPage = 1;
 
@@ -1528,8 +1541,15 @@ function dataBuildFeed() {
       if (isHintClick) {
         if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
         if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
+        // Exact path_id match — disambiguates when several chains share a URL and
+        // have the same (ver, pkg) but different chains (NSFocus real structure).
+        if (_dataSelectedPathId && s.path_id !== _dataSelectedPathId) return;
       }
-      const k = (s.version_branch || '?') + '|' + (s.package_type || '?');
+      // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
+      // This makes NSFocus's multi-chain-shared-URL structure show as N distinct rows
+      // (one per chain), instead of N "identical files" collapsing into one group.
+      // Fallback to (ver|pkg) when path_id is empty (legacy rows from old algorithm).
+      const k = (s.path_id || (s.version_branch || '?') + '|' + (s.package_type || '?'));
       if (!byKey[k]) byKey[k] = [];
       byKey[k].push(s);
     });
@@ -1928,6 +1948,7 @@ function dataRightGoto(sid, chainJson) {
   // V2.0R00F01 / V2.0R00F05 / V2.0R00F06_CW would otherwise all match by leaf alone).
   const src = _dataAll[sid];
   let verHint = null, pkgHint = null;
+  let targetPathId = null;
   if (src && targetChain && targetChain.length > 0) {
     const pt = src.package_type;
     if (pt && pt.paths) {
@@ -1937,7 +1958,14 @@ function dataRightGoto(sid, chainJson) {
         p.chain.every((seg, i) => seg === targetChain[i])
       );
       if (path && path.url) {
-        const snap = (src.snapshots || []).find(s => s.source_url === path.url);
+        // Backend attaches path_id to each path in /latest/snapshots; use it
+        // directly to locate the snapshot row that belongs to *this* chain.
+        // Without this, NSFocus's multi-chain-shared-URL structure would resolve
+        // to the first matching snap (wrong chain) and feed would show wrong data.
+        targetPathId = path.path_id || null;
+        const snap = targetPathId
+          ? (src.snapshots || []).find(s => s.path_id === targetPathId)
+          : null;
         if (snap) {
           verHint = snap.version_branch || null;
           pkgHint = snap.package_type || null;
@@ -1947,6 +1975,7 @@ function dataRightGoto(sid, chainJson) {
   }
   _dataSelectedVerHint = verHint;
   _dataSelectedPkgHint = pkgHint;
+  _dataSelectedPathId = targetPathId;
   _dataFeedPage = 1;
   // Do NOT call dataRenderLeft() — it rebuilds the DOM and wipes all expanded states.
   // Instead, directly manipulate the existing DOM: expand target card + tree path, then scroll.
