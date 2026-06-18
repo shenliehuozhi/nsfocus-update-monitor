@@ -825,20 +825,33 @@ function _renderTimelineChart_Redraw(d, mx, e){
     const dt = new Date(pt.date);
     const dateStr = (dt.getMonth()+1)+'月'+dt.getDate()+'日';
 
-    let html = `<div style="font-size:11px;color:#6b7280;margin-bottom:4px">${dateStr}</div>`;
-    visibleProds.forEach(p => {
+    // Sort products by today's publish count (desc) so the most active ones
+    // appear first and don't get cut off by the tooltip height.
+    // Then split into 2 columns to keep the tooltip compact.
+    const sortedProds = visibleProds.slice().sort((a, b) =>
+      (pt.counts[b] || 0) - (pt.counts[a] || 0));
+    const half = Math.ceil(sortedProds.length / 2);
+    const left = sortedProds.slice(0, half);
+    const right = sortedProds.slice(half);
+    const buildCol = (prods) => prods.map(p => {
       const val = pt.counts[p] || 0;
       const color = prodColor[p];
-      html += `<div style="display:flex;align-items:center;gap:6px;font-size:12px">
-        <span style="width:8px;height:2px;background:${color};display:inline-block"></span>
-        <span style="color:#374151">${p}</span>
+      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.5">
+        <span style="width:8px;height:2px;background:${color};display:inline-block;flex-shrink:0"></span>
+        <span style="color:#374151;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px" title="${p}">${p}</span>
         <span style="margin-left:auto;font-weight:600;color:#111;font-variant-numeric:tabular-nums">${val}</span>
       </div>`;
-    });
+    }).join('');
+
+    let html = `<div style="font-size:11px;color:#6b7280;margin-bottom:6px">${dateStr}</div>`;
+    html += `<div style="display:flex;gap:14px">`;
+    html += `<div style="flex:1;min-width:140px">${buildCol(left)}</div>`;
+    if (right.length) html += `<div style="flex:1;min-width:140px">${buildCol(right)}</div>`;
+    html += `</div>`;
 
     let tip = document.getElementById('chartTip');
     if(!tip){ tip=document.createElement('div'); tip.id='chartTip'; document.body.appendChild(tip); }
-    tip.style.cssText='position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:9999;pointer-events:none;font-family:system-ui;min-width:140px';
+    tip.style.cssText='position:fixed;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:10px 12px;box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:9999;pointer-events:none;font-family:system-ui;max-width:360px';
     tip.innerHTML = html;
     const tx = e.clientX + 14, ty = e.clientY - 10;
     tip.style.left = tx + 'px';
