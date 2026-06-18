@@ -4555,7 +4555,7 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
   // tree node __pathId = p.url (relative path from product management)
   // Direct URL comparison — no version/type matching needed
   Object.entries(snapshotsMap || {}).forEach(([urlKey, snaps]) => {
-    function attach(node) {
+function attach(node) {
       if (node.__isPkg && node.__pathId) {
         // Normalize both URLs: strip protocol/host, ensure single leading /
         // node.__pathId may or may not have leading /, urlKey may or may not
@@ -4564,16 +4564,36 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
         const normNode = '/' + stripSlashes(node.__pathId);
         const normKey  = '/' + stripSlashes(urlKey);
         if (normNode === normKey) {
-          node.__snapshots = snaps;
-          return true;
+          // Several chains share this URL (NSFocus real structure). Don't
+          // `return true` — keep walking so every chain's leaf gets a chance
+          // to match. Only attach snaps to the leaf whose __backendPathId is
+          // in the snap array; other leaves leave __snapshots as [].
+          // Note: with one URL key, attach is called once and walks the tree.
+          const leafPid = node.__backendPathId;
+          const matchedSnap = leafPid && snaps.find(s => s.path_id === leafPid);
+          if (matchedSnap) {
+            node.__snapshots = [matchedSnap];
+          } else if (!leafPid) {
+            // No path_id on the leaf (legacy) — fall back to first matching
+            // (ver, pkg) snap in the array.
+            const matchedByVer = snaps.find(s => {
+              const last2 = (node.__chain || []).slice(-2);
+              return last2[0] === s.version_branch && last2[1] === s.package_type;
+            });
+            node.__snapshots = matchedByVer ? [matchedByVer] : [];
+          } else {
+            // path_id exists but no snap matches — leave empty (the right
+            // panel dataBuildFeed uses snap.path_id to display correctly).
+            node.__snapshots = [];
+          }
+          // Do NOT return — keep walking so sibling leaves can try.
         }
       }
       if (node.__children) {
         for (const [, child] of Object.entries(node.__children)) {
-          if (attach(child)) return true;
+          attach(child);  // no early return — every leaf gets a chance
         }
       }
-      return false;
     }
     attach(root);
   });
