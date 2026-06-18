@@ -10,14 +10,22 @@ CREATE TABLE IF NOT EXISTS customers (
     phone TEXT DEFAULT '',
     owned_products TEXT DEFAULT '[]',
     notes TEXT DEFAULT '',
+    attachment_max_mb INTEGER DEFAULT 0,
     created_by INTEGER REFERENCES users(id),
     created_at TEXT DEFAULT (datetime('now'))
 )
 """
 
+# Migration: add attachment_max_mb to existing customer rows
+def _migrate_customer_attachment(db):
+    cols = [r[1] for r in db.execute("PRAGMA table_info(customers)")]
+    if 'attachment_max_mb' not in cols:
+        db.execute("ALTER TABLE customers ADD COLUMN attachment_max_mb INTEGER DEFAULT 0")
+
 
 def create_tables(db):
     db.execute(SCHEMA_CUSTOMER)
+    _migrate_customer_attachment(db)
 
 
 def create(created_by: int, **kwargs) -> int:
@@ -28,7 +36,7 @@ def create(created_by: int, **kwargs) -> int:
     # Ensure created_by is in kwargs for the field lookup
     kwargs['created_by'] = created_by
     fields = ['name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes',
-              'created_by']
+              'attachment_max_mb', 'created_by']
     values = [kwargs.get(f, '') for f in fields]
     placeholders = ','.join(['?'] * len(fields))
     sql = f"INSERT INTO customers ({','.join(fields)}) VALUES ({placeholders})"

@@ -3068,8 +3068,8 @@ async function customers(){
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   custProdOpts=`<option value="">全部产品</option>`+PROD.map(p=>`<option>${p}</option>`).join('');
 
-  let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}')">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无</td></tr>'}</table></div></div>`;}
+  let rows=list.map(c=>`<tr><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.attachment_max_mb?'<span style="font-size:11px;color:var(--muted)">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}',${c.attachment_max_mb||0})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
 function removeCProd(btn){
   btn.closest('div').remove();
@@ -3106,18 +3106,19 @@ function addCProd(p){
   }
 }
 
-function openCModal(id,n,co,em,ph,pr){
+function openCModal(id,n,co,em,ph,pr,attMb){
   let modal=document.createElement('div');
   modal.id='cModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
   document.getElementById('cid').value=id||'';
   document.getElementById('cnm').value=n||'';
   document.getElementById('ccm').value=co||'';
   document.getElementById('cem').value=em||'';
   document.getElementById('cph').value=ph||'';
+  document.getElementById('camb').value=attMb||0;
   document.getElementById('cprods').innerHTML='';
   if(pr){
     const prods=(pr||'').split('|').filter(Boolean);
@@ -3139,7 +3140,8 @@ async function saveC(){
   if(!em)return toast('邮箱必填','error');
   if(!/^[^@]+@[^@]+$/.test(em))return toast('邮箱格式错误','error');
   let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value;if(p)prods.push(esc(p));});
-  const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),owned_products:prods};
+  const amb=parseInt(document.getElementById('camb').value)||0;
+  const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),owned_products:prods,attachment_max_mb:amb};
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('cModalWrap')?.remove();customers();}else toast(r.message,'error');
 }
