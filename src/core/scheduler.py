@@ -684,18 +684,14 @@ def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bo
     Keeps the package-level dedup from delta mode as safety net.
     """
     _collector._set_cookie(cookie)
-    from src.models.snapshot import get_active_snapshots
 
-    # Build known-package index for dedup safety net
-    known_packages = set()
-    for src_name in existing_sources:
-        snaps = get_active_snapshots(existing_sources[src_name]['id'])
-        for s in snaps:
-            known_packages.add((
-                s.get('product_name', ''),
-                s.get('file_name', ''),
-                s.get('md5_hash', ''),
-            ))
+    # Note: No dedup safety net here — save_snapshot's 5-tuple unique key
+    # (source_id, product_name, version_branch, package_type, md5_hash) handles
+    # INSERT-or-UPDATE naturally, so re-feeding items that already exist in DB
+    # is a no-op UPDATE (last_seen_at refresh). The previous dedup safety net
+    # used (product_name, file_name, md5_hash) without version_branch, which
+    # caused all chains sharing a single NSFocus URL (e.g. UTS /wcl_V2.0R00F06
+    # shared by 7 chains) to be filtered out after the first chain wrote its row.
 
     all_items = []
     products = list(_collector_products().items())
@@ -711,23 +707,10 @@ def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bo
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
             items = _collector._collect_quick(src['id'], name, skip_page_hash)
-
-            # Dedup safety net
-            new_items = []
-            for item in items:
-                key = (item.product_name, item.file_name, item.md5_hash)
-                if key not in known_packages:
-                    new_items.append(item)
-
-            skipped = len(items) - len(new_items)
-            if new_items:
-                logger.info(f'Quick: {name} has {len(new_items)} new packages (skipped {skipped} known)')
-            elif items:
-                logger.debug(f'Quick: {name} {len(items)} known, no changes')
-            # No log when items is empty (no known URLs or all unchanged)
-
-            all_items.extend(new_items)
-            emit('collecting', product=name, items=len(new_items))
+            all_items.extend(items)
+            if items:
+                logger.info(f'Quick: {name} extracted {len(items)} items')
+            emit('collecting', product=name, items=len(items))
             update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
             # Bump last_seen_at for unchanged packages too (reflects collection ran)
             touched_source_ids.append(src['id'])

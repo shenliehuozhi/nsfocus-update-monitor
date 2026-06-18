@@ -26,7 +26,7 @@ class UnifiedContentItem:
     published_at: str = ''
     page_hash: str = ''
     source_url: str = ''           # detail page URL for quick-mode HEAD check
-    path_id: str = ''              # MD5(source_url)[:12], unique per path
+    path_id: str = ''              # MD5(source_url + JSON(chain))[:12], unique per (url, chain)
 
     def to_snapshot_dict(self) -> dict:
         return {

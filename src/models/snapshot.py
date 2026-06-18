@@ -293,7 +293,7 @@ SNAPSHOT_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_snapshots_product ON snapshots(product_name, version_branch)",
     "CREATE INDEX IF NOT EXISTS idx_snapshots_status ON snapshots(status)",
     "CREATE INDEX IF NOT EXISTS idx_snapshots_md5 ON snapshots(md5_hash)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_snapshots_unique ON snapshots(source_id, product_name, version_branch, package_type, md5_hash)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_snapshots_unique ON snapshots(source_id, path_id, file_name, md5_hash)",
 ]
 
 
@@ -321,16 +321,22 @@ def save_snapshot(snap: dict) -> int:
     import json
     from src.models.database import execute, query
 
+    # ── Defensive guard: skip "half-parsed" items (file_name empty but md5 present) ──
+    # These come from NSFocus detail pages where the parser failed to extract file_name
+    # but did extract md5_hash. Inserting them creates "ghost rows" that pollute the
+    # "latest packages" view in the frontend. If file_name is missing, parser is broken.
+    if not snap.get('file_name', ''):
+        return 0  # 0 = "skipped, not a real snapshot" (caller treats 0 as no-op)
+
     desc_parsed = snap.get('description_parsed', {})
     if not isinstance(desc_parsed, str):
         desc_parsed = json.dumps(desc_parsed, ensure_ascii=False)
 
     existing = query(
-        """SELECT id FROM snapshots 
-           WHERE source_id = ? AND product_name = ? AND version_branch = ? 
-           AND package_type = ? AND md5_hash = ?""",
-        (snap['source_id'], snap['product_name'], snap['version_branch'],
-         snap['package_type'], snap['md5_hash'])
+        """SELECT id FROM snapshots
+           WHERE source_id = ? AND path_id = ? AND file_name = ? AND md5_hash = ?""",
+        (snap['source_id'], snap.get('path_id', ''),
+         snap.get('file_name', ''), snap['md5_hash'])
     )
 
     if existing:

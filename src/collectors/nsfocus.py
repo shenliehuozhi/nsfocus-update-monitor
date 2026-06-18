@@ -220,7 +220,7 @@ class NsfocusCollector(BaseCollector):
                     return
 
                 # Check if this is a final package page (has table/download items)
-                table_items = self._extract_table_items(page_html, source_id, name, '', '', page_url=f'{BASE_URL}{page_url}')
+                table_items = self._extract_table_items(page_html, source_id, name, '', '', page_url=f'{BASE_URL}{page_url}', current_chain=list(chain))
                 if table_items:
                     type_name = chain[-1] if chain else self._clean_version(name) or name
                     if type_name not in all_types:
@@ -366,17 +366,13 @@ class NsfocusCollector(BaseCollector):
         from src.models.database import execute as snap_exec
         items = []
         seen_ids = set()  # track snapshot IDs for rollback detection (Bug #006)
-        # Batch page_hash writes: collect and execute after all HTTP requests finish.
-        # Prevents DB writes inside the HTTP request loop (reduces lock contention).
-        pending_pagehash_inserts = []   # [(source_id, product_name, ver, pkg, page_hash, full_url), ...]
-        pending_pagehash_updates = []   # [(page_hash, source_id, full_url), ...]
 
         # ── Step 1: get final-page URLs from content_sources.package_type_discovered ──
         src_rows = snap_query(
             "SELECT package_type_discovered FROM content_sources WHERE id = ?",
             (source_id,)
         )
-        paths_urls = []   # [(url, version_branch, package_type), ...]
+        paths_urls = []   # [(url, version_branch, package_type, chain), ...]
         if src_rows and src_rows[0].get('package_type_discovered'):
             try:
                 pkg_data = _json.loads(src_rows[0]['package_type_discovered'])
@@ -389,7 +385,9 @@ class NsfocusCollector(BaseCollector):
                     ver = chain[-2] if len(chain) >= 2 else ''
                     # package type is the last chain element
                     pkg_type = chain[-1] if chain else ''
-                    paths_urls.append((url, ver, pkg_type))
+                    # Carry the full chain so we can compute per-chain path_id
+                    # in _extract_table_items (used by new UNIQUE index).
+                    paths_urls.append((url, ver, pkg_type, chain))
             except Exception:
                 pass
 
@@ -404,7 +402,9 @@ class NsfocusCollector(BaseCollector):
             (source_id,)
         )
         if rows:
-            snap_urls = [(r['source_url'], r['version_branch'], r['package_type']) for r in rows]
+            # Legacy fallback rows have no stored chain — use empty chain (path_id
+            # will collapse to MD5(url)[:12], same as old behavior).
+            snap_urls = [(r['source_url'], r['version_branch'], r['package_type'], []) for r in rows]
 
         # Use paths_urls if available, otherwise fall back to snap_urls
         if paths_urls:
@@ -418,7 +418,18 @@ class NsfocusCollector(BaseCollector):
         checked = 0
         changed = 0
 
-        for url, ver, pkg in urls:
+        # ── URL dedup cache: same URL across multiple chains fetched only once ──
+        # NSFocus paths often map N chains to 1 URL (e.g. UTS /wcl2.0.0 has 13 chains).
+        # We fetch the URL once, parse once, then attribute the same items to each chain.
+        # Note: NSFocus's _extract_table_items only reads the first <table> per page,
+        # so all chains sharing a URL get identical items — safe to dedup.
+        # Cached value is a list of (file_name, md5_hash, package_version, file_size,
+        # description_raw, ...) primitives — i.e. we DON'T cache UnifiedContentItem
+        # objects directly because mutating them (ti.version_branch = ...) would corrupt
+        # the cached copy. Each chain rebuilds its own items from the cached template.
+        url_cache: dict = {}  # url -> list of dicts (raw fields from items)
+
+        for url, ver, pkg, chain in urls:
             checked += 1
             # Prepend BASE_URL if url is a relative path; if url already has scheme (// or http://) use as-is
             if url.startswith('//') or url.startswith('http://') or url.startswith('https://'):
@@ -427,233 +438,116 @@ class NsfocusCollector(BaseCollector):
                 full_url = f'{BASE_URL}{url}'
             else:
                 full_url = f'{BASE_URL}/{url}'
-            try:
-                # Try HEAD with If-Modified-Since
-                self._delay()
-                head_resp = self.session.head(full_url, timeout=15, allow_redirects=True)
-                if head_resp.status_code == 200:
-                    # Server supports HEAD — but HEAD doesn't give us the body
-                    # We still need GET to check if content actually changed
-                    # Fall through to GET below
-                    pass
-            except Exception:
-                pass  # HEAD failed, try GET instead
 
             try:
-                # Use GET with stream to read headers without full body
-                self._delay()
-                resp = self.session.get(full_url, timeout=TIMEOUT, stream=True)
-                content_length = resp.headers.get('Content-Length', '')
-                last_modified = resp.headers.get('Last-Modified', '')
+                # ── URL dedup: fetch + parse only on first encounter ──
+                if full_url not in url_cache:
+                    self._delay()
+                    resp = self.session.get(full_url, timeout=TIMEOUT, stream=True)
+                    content_length = resp.headers.get('Content-Length', '')
+                    last_modified = resp.headers.get('Last-Modified', '')
 
-                # Detect login-page redirect (session valid for some products but not this one)
-                if '/portal/' in resp.url or '/login' in resp.url.lower() or '登录' in resp.text[:200]:
-                    raise SessionExpiredError(f'Session invalid for {product_name} (login page)')
+                    # Detect login-page redirect (session valid for some products but not this one)
+                    if '/portal/' in resp.url or '/login' in resp.url.lower() or '登录' in resp.text[:200]:
+                        raise SessionExpiredError(f'Session invalid for {product_name} (login page)')
 
-                # Quick check: if page is small enough and has last_modified,
-                # we can compute a hash from headers alone
-                # For now: always do a light GET to read page hash
-                html = resp.text[:50000]  # Read up to 50KB
-                resp.close()
+                    # Quick check: if page is small enough and has last_modified,
+                    # we can compute a hash from headers alone
+                    # For now: always do a light GET to read page hash
+                    html = resp.text[:50000]  # Read up to 50KB
+                    resp.close()
 
-                # Also verify this isn't a login page by title
-                if '<title>' in html:
-                    title = html[html.find('<title>')+7:html.find('</title>')]
-                    if '登录' in title:
-                        raise SessionExpiredError(f'Session invalid for {product_name} (login title: {title[:30]})')
+                    # Also verify this isn't a login page by title
+                    if '<title>' in html:
+                        title = html[html.find('<title>')+7:html.find('</title>')]
+                        if '登录' in title:
+                            raise SessionExpiredError(f'Session invalid for {product_name} (login title: {title[:30]})')
 
-                # Compute page hash for comparison
-                import hashlib
-                page_hash = hashlib.md5(html.encode()).hexdigest()
-                _stored = snap_query("SELECT page_hash, prev_page_hash FROM snapshots WHERE source_id=? AND source_url=? LIMIT 1", (source_id, full_url))
-                stored_hash = _stored[0]['page_hash'] if _stored else None
-                prev_hash = _stored[0]['prev_page_hash'] if _stored else None
+                    # Compute page hash for comparison
+                    import hashlib
+                    page_hash = hashlib.md5(html.encode()).hexdigest()
 
-                # ── skip_page_hash 模式：强制所有 URL 走 CHANGE 分支 ──
-                # 跳过 page_hash 对比，每次都重新解析页面
-                if skip_page_hash:
-                    stored_hash = None
+                    # ── Log hash change: prev → current ─────────────────────
+                    # Display URL uses the clean original url (from DB paths, no corruption)
+                    display_url = url[-50:]  # last 50 chars of clean path
+                    logger.info(f'【{product_name}】FETCH {display_url}  hash={page_hash}')
 
-                # ── Bug fix: INSERT placeholder row when URL first seen ──
-                # When stored_hash is None, snapshots has no row for this URL yet.
-                # The UPDATE below (line ~566) needs a matching row to work.
-                # Without this INSERT, page_hash is never recorded and every
-                # subsequent quick scan re-visits the URL as if it were new.
-                if stored_hash is None:
-                    # stored_hash is None → queue placeholder INSERT for after the loop
-                    # (DB writes moved outside HTTP loop to reduce lock contention)
-                    pending_pagehash_inserts.append((source_id, product_name, ver, pkg, page_hash, full_url))
-                    _stored = None
-                    stored_hash = None
-                    prev_hash = None
+                    # Extract items from the page
+                    table_items = self._extract_table_items(
+                        html, source_id, product_name, ver, pkg,
+                        page_url=full_url, current_chain=chain)
 
-                # ── Log hash change: prev → current ─────────────────────
-                # Display URL uses the clean original url (from DB paths, no corruption)
-                display_url = url[-50:]  # last 50 chars of clean path
-                if stored_hash is None:
-                    logger.info(f'【{product_name}】NEW  {display_url}  无 → {page_hash}')
-                elif page_hash == stored_hash:
-                    prev = prev_hash or '无'
-                    logger.info(f'【{product_name}】SAME {display_url}  {prev} → {page_hash}')
+                    # ── Clone items for cache (avoid shared-reference mutation) ──
+                    # _extract_table_items returns the SAME item list shared across all
+                    # chains that dedup-hit this URL. If we cache the live objects and
+                    # later mutate ti.version_branch = ... the cached copy gets clobbered
+                    # with the LAST chain's ver/pkg, not the first. Clone via dataclass
+                    # replace() so each chain works on its own copy.
+                    from dataclasses import replace
+                    cached_items = [replace(ti) for ti in table_items]
+
+                    # ── Log package-level diff (only on first fetch per URL) ──
+                    # Query existing active snapshots for this URL as the "before" state
+                    old_snaps = snap_query(
+                        """SELECT file_name, md5_hash, package_version, package_type, file_size
+                           FROM snapshots
+                           WHERE source_id=? AND source_url=? AND status='active'""",
+                        (source_id, full_url))
+                    old_map = {(s['file_name'], s['package_type']): s for s in old_snaps}
+
+                    if cached_items:
+                        for ti in cached_items:
+                            key = (ti.file_name, ti.package_type)
+                            old_s = old_map.get(key)
+                            if old_s is None:
+                                status = '► NEW  '
+                                old_info = '  (none)'
+                            else:
+                                status = '► CHANGE'
+                                old_ver = old_s['package_version'] or ''
+                                old_md5 = old_s['md5_hash'] or ''
+                                old_info = f'{old_s["file_name"]} md5={old_md5[:12]}... → {ti.md5_hash[:12]}...'
+                            ver_str = f' v{ti.package_version}' if ti.package_version else ''
+                            size_str = f' ({ti.file_size} bytes)' if ti.file_size else ''
+                            logger.info(f'  {status} {ti.file_name}{ver_str}{size_str}')
+                            if old_s is None:
+                                logger.info(f'    {ti.package_type}  md5={ti.md5_hash[:12]}...')
+                            else:
+                                logger.info(f'    {old_info}')
+                                logger.info(f'    {ti.package_type}')
+
+                        # Detect removed packages (in old but not in new)
+                        new_keys = {(ti.file_name, ti.package_type) for ti in cached_items}
+                        for (fname, ptype), old_s in old_map.items():
+                            if (fname, ptype) not in new_keys:
+                                old_md5 = old_s['md5_hash'] or ''
+                                logger.info(f'  ◄ REMOVED {fname} ({old_s["file_size"] or 0} bytes)')
+                                logger.info(f'    type={ptype}  md5={old_md5[:12]}...')
+
+                    # Cache result for other chains that share this URL
+                    url_cache[full_url] = cached_items
                 else:
-                    prev = prev_hash or '无'
-                    logger.info(f'【{product_name}】CHANGE {display_url}  {prev} → {page_hash}')
-                # ── skip_page_hash 模式:跳过 L501-562 的 hash 撞库 + md5 撞库检查 ──
-                # skip_page_hash=True 时,所有 URL 强制走下方 CHANGE 分支(L564+)重新解析
-                # 不再做 page_hash 撞库和 md5 撞库验证(避免"login page collision?"误报)
-                # 配合 scheduler.py:474 的 stored_hash=None,本段双重保险
-                if not skip_page_hash:
-                    existing = snap_query(
-                        """SELECT id FROM snapshots
-                           WHERE source_id = ? AND source_url = ? AND page_hash = ?
-                           LIMIT 1""",
-                        (source_id, full_url, page_hash)
-                    )
-                    if existing:
-                        # Hash matched — but verify the page is actually the real data page,
-                        # not a login page that accidentally collides with the stored hash.
-                        # Strategy: if this URL has known snapshots with MD5 values,
-                        # check whether any of those MD5s appear in the current page text.
-                        # If none found → treat as changed (force re-extract).
-                        known_md5s = snap_query(
-                            """SELECT md5_hash FROM snapshots
-                               WHERE source_id=? AND source_url=? AND md5_hash != ''""",
-                            (source_id, full_url)
-                        )
-                        force_changed = False
-                        if known_md5s:
-                            md5_found = any(m['md5_hash'] in html for m in known_md5s)
-                            if not md5_found:
-                                logger.info(f'Quick [{product_name}] hash matched but content differs (login page collision?), re-extracting')
-                                force_changed = True
+                    # URL already fetched — reuse cached items
+                    cached_items = url_cache[full_url]
 
-                        if not force_changed:
-                            # Page truly unchanged — reconstruct existing snapshots as items
-                            # so they are included in seen_ids for rollback detection
-                            existing_snaps = snap_query(
-                                """SELECT * FROM snapshots
-                                   WHERE source_id = ? AND source_url = ? AND status = 'active'""",
-                                (source_id, full_url)
-                            )
-                            for s in existing_snaps:
-                                desc_parsed = s.get('description_parsed', '{}')
-                                if isinstance(desc_parsed, str):
-                                    try: desc_parsed = json.loads(desc_parsed)
-                                    except Exception: desc_parsed = {}
-                                item = UnifiedContentItem(
-                                    source_id=source_id, source_type='nsfocus',
-                                    product_name=s['product_name'], version_branch=s['version_branch'],
-                                    package_type=s['package_type'], file_name=s['file_name'],
-                                    package_version=s.get('package_version', ''),
-                                    md5_hash=s['md5_hash'], file_size=s.get('file_size', 0),
-                                    description_raw=s.get('description_raw', ''),
-                                    description_parsed=desc_parsed,
-                                    min_sys_version=s.get('min_sys_version', ''),
-                                    restart_required=bool(s.get('restart_required', 0)),
-                                    urgency=s.get('urgency', 'normal'),
-                                    download_id=s.get('download_id', 0),
-                                    published_at=s.get('published_at', ''),
-                                    page_hash=page_hash, source_url=full_url,
-                                )
-                                items.append(item)
-                                # BUG #006 FIX: also add to seen_ids so mark_rollback_pending
-                                # doesn't re-mark these as rollback_pending (they were already active)
-                                seen_ids.add(s['id'])
-                            # Update prev_page_hash to track the change trail
-                            # NOTE: do NOT update page_hash itself here — that would erase
-                            # the "changed" signal for the next quick run (Bug #008 fix)
-                            # Queue for batch execution after HTTP loop
-                            pending_pagehash_updates.append(('prev_page_hash', source_id, full_url))
-                            continue
+                # ── Attribute cached items to current chain (ver, pkg) ──
+                # _extract_table_items hard-coded (ver, pkg) into each item for the
+                # first chain. For subsequent chains sharing this URL, rewrite the
+                # (ver, pkg) fields to match the current chain. Item count
+                # (file_name, md5, etc.) is identical because NSFocus returns the
+                # same content for the same URL regardless of chain.
+                for ti in cached_items:
+                    ti.version_branch = ver
+                    ti.package_type = pkg
 
-                # --- Page changed (or login-collision forced re-extract) ---
-                changed += 1
-                old_items_count = len(items)
-                logger.info(f'Quick {product_name}: changed {full_url[-60:]} ({checked}/{total})')
-
-                # Extract items from the page
-                table_items = self._extract_table_items(
-                    html, source_id, product_name, ver, pkg, page_url=full_url)
-
-                # ── Log package-level diff ───────────────────────────────
-                # Query existing active snapshots for this URL as the "before" state
-                old_snaps = snap_query(
-                    """SELECT file_name, md5_hash, package_version, package_type, file_size
-                       FROM snapshots
-                       WHERE source_id=? AND source_url=? AND status='active'""",
-                    (source_id, full_url))
-                old_map = {(s['file_name'], s['package_type']): s for s in old_snaps}
-
-                if table_items:
-                    for ti in table_items:
-                        key = (ti.file_name, ti.package_type)
-                        old_s = old_map.get(key)
-                        if old_s is None:
-                            status = '► NEW  '
-                            old_info = '  (none)'
-                        else:
-                            status = '► CHANGE'
-                            old_ver = old_s['package_version'] or ''
-                            old_md5 = old_s['md5_hash'] or ''
-                            old_info = f'{old_s["file_name"]} md5={old_md5[:12]}... → {ti.md5_hash[:12]}...'
-                        ver_str = f' v{ti.package_version}' if ti.package_version else ''
-                        size_str = f' ({ti.file_size} bytes)' if ti.file_size else ''
-                        logger.info(f'  {status} {ti.file_name}{ver_str}{size_str}')
-                        if old_s is None:
-                            logger.info(f'    {ti.package_type}  md5={ti.md5_hash[:12]}...')
-                        else:
-                            logger.info(f'    {old_info}')
-                            logger.info(f'    {ti.package_type}')
-
-                    # Detect removed packages (in old but not in new)
-                    new_keys = {(ti.file_name, ti.package_type) for ti in table_items}
-                    for (fname, ptype), old_s in old_map.items():
-                        if (fname, ptype) not in new_keys:
-                            old_md5 = old_s['md5_hash'] or ''
-                            logger.info(f'  ◄ REMOVED {fname} ({old_s["file_size"] or 0} bytes)')
-                            logger.info(f'    type={ptype}  md5={old_md5[:12]}...')
-
-                items.extend(table_items)
-                # Also update page_hash on ALL snapshots for this URL,
-                # so the "unchanged path" works even if items don't match
-                # existing snapshots (due to md5 changes on the page).
-                # Queue for batch execution after HTTP loop to reduce DB lock contention.
-                pending_pagehash_updates.append(('prev_and_page', source_id, full_url, page_hash))
+                items.extend(cached_items)
 
             except SessionExpiredError:
                 raise
             except Exception as e:
                 logger.warning(f'Quick {product_name}: {full_url}: {e}')
 
-        # ── Flush all queued page_hash writes in a single batch ──
-        # This is the core DB lock fix: moves writes out of the HTTP request loop.
-        if pending_pagehash_inserts:
-            from src.models.database import execute as snap_exec
-            for (sid, pname, ver, pkg, phash, furl) in pending_pagehash_inserts:
-                snap_exec(
-                        """INSERT INTO snapshots
-                           (source_id, product_name, version_branch, package_type,
-                            file_name, md5_hash, page_hash, source_url, status)
-                           VALUES (?, ?, ?, ?, '', '', ?, ?, 'active')""",
-                        (sid, pname, ver, pkg, phash, furl)
-                    )
-        if pending_pagehash_updates:
-            from src.models.database import execute as snap_exec
-            for op in pending_pagehash_updates:
-                if op[0] == 'prev_page_hash':
-                    _, sid, furl = op
-                    snap_exec(
-                        "UPDATE snapshots SET prev_page_hash=page_hash WHERE source_id=? AND source_url=?",
-                        (sid, furl)
-                    )
-                elif op[0] == 'prev_and_page':
-                    _, sid, furl, phash = op
-                    snap_exec(
-                        "UPDATE snapshots SET prev_page_hash=page_hash, page_hash=? WHERE source_id=? AND source_url=?",
-                        (phash, sid, furl)
-                    )
-
-        logger.info(f'Quick {product_name}: {changed}/{total} pages changed, {len(items)} items')
+        logger.info(f'Quick {product_name}: {len(items)} items extracted from {total} URLs (deduped to {len(url_cache)} unique URLs)')
         return items
 
     # ── Internal ──────────────────────────────────────────────
@@ -776,9 +670,18 @@ class NsfocusCollector(BaseCollector):
 
     def _extract_table_items(self, html: str, source_id: int, product_name: str,
                              version_branch: str, package_type: str,
-                             page_url: str = '') -> list:
+                             page_url: str = '', current_chain: list = None) -> list:
         import hashlib
+        import json as _json
         page_hash = hashlib.md5(html[:50000].encode()).hexdigest()
+        # path_id = MD5(page_url + JSON(chain))[:12] — encodes BOTH url and the
+        # chain text so that multiple chains sharing one URL get distinct path_ids.
+        # Used as part of UNIQUE index (source_id, path_id, file_name, md5_hash).
+        if current_chain is None:
+            current_chain = []
+        path_id = hashlib.md5(
+            (page_url + _json.dumps(current_chain, ensure_ascii=False)).encode()
+        ).hexdigest()[:12]
         items = []
         soup = BeautifulSoup(html, 'html.parser')
         table = soup.find('table')
@@ -825,7 +728,7 @@ class NsfocusCollector(BaseCollector):
                 item = self._build_item(current_item, source_id, product_name,
                                         version_branch, package_type, download_id,
                                         source_url=page_url,
-                                        path_id=hashlib.md5(page_url.encode()).hexdigest()[:12])
+                                        path_id=path_id)
                 items.append(item)
                 current_item = {}
                 download_id = 0
@@ -835,7 +738,7 @@ class NsfocusCollector(BaseCollector):
                     item = self._build_item(current_item, source_id, product_name,
                                             version_branch, package_type, download_id,
                                             source_url=page_url,
-                                            path_id=hashlib.md5(page_url.encode()).hexdigest()[:12])
+                                            path_id=path_id)
                     items.append(item)
                 current_item = {}
 
@@ -847,7 +750,7 @@ class NsfocusCollector(BaseCollector):
             item = self._build_item(current_item, source_id, product_name,
                                     version_branch, package_type, download_id,
                                     source_url=page_url,
-                                    path_id=hashlib.md5(page_url.encode()).hexdigest()[:12])
+                                    path_id=path_id)
             items.append(item)
 
         for it in items:
