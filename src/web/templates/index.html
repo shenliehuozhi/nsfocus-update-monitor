@@ -1111,7 +1111,9 @@ async function dataPage() {
     const snapIds = (node.getAttribute('data-snapids') || '').split(',').filter(Boolean);
     const verHint = node.getAttribute('data-verhint') || '';
     const pkgHint = node.getAttribute('data-pkghint') || '';
-    dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint);
+    // Backend-computed path_id for exact chain match (preferred over verHint).
+    const pathId = node.getAttribute('data-pathid') || '';
+    dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint, pathId);
   });
 }
 
@@ -1408,7 +1410,7 @@ function productCardToggle(bodyId) {
 
 let _lastSelectedNode = null; // track last clicked tree node for toggle-off
 
-function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint) {
+function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint, pathId) {
   // Toggle off if same node clicked again
   if (_lastSelectedNode === node) {
     _dataSelectedSid = null;
@@ -1430,9 +1432,19 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
   _dataSelectedSid = sid;
   _dataSelectedChain = chain;
   _dataSelectedUrl = url || null;
-  _dataSelectedVerHint = verHint || null;
-  _dataSelectedPkgHint = pkgHint || null;
-  _dataSelectedPathId = null;  // not available here; computed in dataRightGoto for exact chain match
+  // Backend path_id takes precedence over ver/pkg hints (the latter are
+  // guessed by propagateHints and break when several chains share one URL).
+  // For leaf nodes path_id is exact; for intermediate nodes fall back to
+  // ver/pkg if no path_id was provided.
+  if (pathId) {
+    _dataSelectedPathId = pathId;
+    _dataSelectedVerHint = null;
+    _dataSelectedPkgHint = null;
+  } else {
+    _dataSelectedPathId = null;
+    _dataSelectedVerHint = verHint || null;
+    _dataSelectedPkgHint = pkgHint || null;
+  }
   _lastSelectedNode = node;
   _dataFeedPage = 1;
 
@@ -1514,8 +1526,14 @@ function dataBuildFeed() {
     sources = src ? [[_dataSelectedSid, src]] : [];
   }
 
-  // Determine if this is an intermediate node click with hints for filtering
-  const isHintClick = !_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint);
+  // Determine if this is a leaf or intermediate node click with hints/path_id for filtering.
+  // Path_id (preferred) takes precedence over ver/pkg hints. For leaf nodes
+  // (isLeaf=true → _dataSelectedUrl is set), isHintClick MUST be true so the
+  // exact path_id filter runs; otherwise all snaps sharing the leaf URL leak
+  // through and wrong-chain rows appear in the feed.
+  const isHintClick = (
+    !!_dataSelectedPathId || _dataSelectedVerHint || _dataSelectedPkgHint
+  );
 
   const rows = [];
   sources.forEach(([sid, src]) => {
@@ -1561,9 +1579,17 @@ function dataBuildFeed() {
       }
     });
     Object.values(byKey).forEach(snapList => snapList.forEach(s => {
-      // Attach chain for goto precision: look up by source_url
+      // Attach chain for goto precision: look up by path_id (preferred) so the
+      // snap's true chain is attached even when many chains share one URL.
+      // Fall back to urlChainMap (URL → chain single-value map) for legacy rows.
       let _chain = null;
-      if (s.source_url) {
+      if (s.path_id) {
+        // Reverse-lookup: scan all source paths for one whose path_id matches.
+        const allPaths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
+        const matched = allPaths.find(p => p.path_id === s.path_id);
+        if (matched && matched.chain) _chain = matched.chain;
+      }
+      if (!_chain && s.source_url) {
         const norm = ('/' + s.source_url).replace(/\/+$/, '');
         _chain = urlChainMap[norm] || null;
       }
@@ -1816,7 +1842,15 @@ function dataRightToggleRow(rowId) {
   const pt = src.package_type || {};
   const paths = pt.paths || [];
   const entryUrl = src.entry_url || '';
-  const matchedPath = paths.find(p => p.url === snap.source_url);
+  // Match path by snap.path_id (exact, distinguishes multi-chain shared URLs).
+  // Fall back to URL match only for legacy rows that have no path_id.
+  let matchedPath = null;
+  if (snap.path_id) {
+    matchedPath = paths.find(p => p.path_id === snap.path_id);
+  }
+  if (!matchedPath && snap.source_url) {
+    matchedPath = paths.find(p => p.url === snap.source_url);
+  }
   if (matchedPath && matchedPath.chain && matchedPath.chain.length > 0) {
     const chain = matchedPath.chain;
     const leafUrl = matchedPath.url || '';
@@ -4507,6 +4541,10 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
         const rawType = (p.types || [])[0] || '';
         node.__pkgKey = chain[chain.length - 1] || (ver + '|' + rawType);
         node.__pathId = p.url || '';
+        // Store the backend-computed path_id on the leaf node so tree clicks can
+        // pass it directly to _dataSelectedPathId (avoids the verHint/pkgHint
+        // ambiguity when several chains share one URL — see propagateHints).
+        if (p.path_id) node.__backendPathId = p.path_id;
       }
       accChain = node.__chain;
     });
@@ -4617,6 +4655,12 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
     // Hints for filtering: version_branch and package_type shared by all descendants
     const verHint = node.__verHint || '';
     const pkgHint = node.__pkgHint || '';
+    // Backend-computed path_id (MD5(BASE_URL+url+chain)[:12]) — preferred over
+    // verHint/pkgHint when the URL is shared by multiple chains (NSFocus
+    // NSFocus chains can map to the same URL with different ver segments).
+    // Empty when this is an intermediate (non-leaf) node or the path has no
+    // backend path_id yet.
+    const nodePathId = node.__backendPathId || '';
 
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = isPkg ? name : (MAP[name] || name);
@@ -4633,7 +4677,7 @@ function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
     const arrow = hasChildren || isPkg
       ? `<span onclick="treeToggleById('${childDivId}', this); event.stopPropagation();" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
       : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
-    let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
+    let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" data-pathid="${escHtml(nodePathId)}" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
     html += arrow;
     html += `<span style="font-size:13px;color:#334155;flex-shrink:0">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
     html += `</div>`;
