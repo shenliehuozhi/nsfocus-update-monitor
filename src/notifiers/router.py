@@ -207,20 +207,16 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         if channel['type'] == 'email':
             if rule.get('customer_emails'):
                 ch_config['rule_emails'] = rule['customer_emails']
-            # Attachment size priority: subscription rule > customer > global default.
-            # Look up customer.attachment_max_mb when rule doesn't override.
-            customer_attach_mb = 0
+            # Attachment size: read from customer only (per-customer setting).
+            # Falls back to global default when customer is unset (0).
             cust_id = binding.get('customer_id', 0)
             if cust_id:
                 from src.models.database import query as _q
                 _crow = _q("SELECT attachment_max_mb FROM customers WHERE id=?", (cust_id,))
                 if _crow:
                     customer_attach_mb = int(_crow[0].get('attachment_max_mb') or 0)
-            # Rule wins if set (>0); else fall back to customer; else global default.
-            rule_attach_mb = int(rule.get('attachment_max_mb') or 0)
-            effective_attach_mb = rule_attach_mb if rule_attach_mb > 0 else customer_attach_mb
-            if effective_attach_mb > 0:
-                ch_config['attachment_max_mb'] = str(effective_attach_mb)
+                    if customer_attach_mb > 0:
+                        ch_config['attachment_max_mb'] = str(customer_attach_mb)
             # Inject rate-limit context
             ch_config['_channel_id'] = channel_id
             ch_config['_customer_id'] = binding.get('customer_id', 0)

@@ -3678,7 +3678,7 @@ async function openRModal(id){
     <button class="btn btn-xs btn-outline" onclick="openChanSelModal()">+ 添加渠道</button>
     <div id="emailFields" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">
       <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
-      <div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="ratt" type="number" value="0" min="0" max="50"></div>
+      <div class="form-group"><label>附件大小限制 <span style="font-weight:400;color:var(--muted);font-size:11px">从所选客户的"附件大小限制"读取；客户未配则使用全局默认</span></label><input id="ratt" type="number" min="0" max="50" disabled style="background:var(--snap-bg);cursor:not-allowed"></div>
     </div>
     </div>
 
