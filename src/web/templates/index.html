@@ -3167,6 +3167,7 @@ function onCustChange(){
   let cid=document.getElementById('rcust').value;
   let row=document.getElementById('custInfoRow');
   let emailSpan=document.getElementById('custEmailDisplay');
+  let attInput=document.getElementById('ratt');
   if(!cid||!window._custs){
     if(row)row.style.display='none';
     return;
@@ -3177,6 +3178,14 @@ function onCustChange(){
     row.style.display='';
   }else if(row){
     row.style.display='none';
+  }
+  // Default the rule's attachment_max_mb to the customer's value when the
+  // user hasn't typed anything yet (input is 0/empty). Editing a saved
+  // rule keeps its own value because we only overwrite when current input
+  // is 0 — selecting a different customer does NOT silently overwrite a
+  // custom value either, which is the safer default.
+  if(c && attInput && (!attInput.value || parseInt(attInput.value) === 0) && c.attachment_max_mb){
+    attInput.value=c.attachment_max_mb;
   }
 }
 
