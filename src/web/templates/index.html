@@ -2512,15 +2512,23 @@ async function confirmPush(){
     if(_pushTab==='email'){
       if(!_pushChannelId)return toast('请选择 SMTP 渠道','error');
       let recipients=[];
-      if(_pushRecipientMode==='customer'){
-        recipients=Array.from(_pushSelectedCustomers).map(s=>s.split('|')[1]).filter(Boolean);
+      let customerIds = [];
+      if (_pushRecipientMode === 'customer') {
+        _pushSelectedCustomers.forEach(item => {
+            const parts = item.split('|');
+            if (parts.length === 2) {
+                recipients.push(parts[1]);
+                customerIds.push(parseInt(parts[0]));
+            }
+        });
         if(!recipients.length)return toast('请至少选择一个客户','error');
       }else{
         recipients=_pushManualEmail.split(/[,\n]/).map(e=>e.trim()).filter(Boolean);
         if(!recipients.length)return toast('请输入邮箱','error');
         try{localStorage.setItem('pushModalLastManualEmail', _pushManualEmail);}catch(e){}
       }
-      r=await api('/history/'+_pushSid+'/email-push',{method:'POST',body:JSON.stringify({channel_id:_pushChannelId, recipients})});
+      const firstCustId = customerIds.length > 0 ? customerIds[0] : null;
+      r=await api('/history/'+_pushSid+'/email-push',{method:'POST',body:JSON.stringify({channel_id:_pushChannelId, recipients: recipients, customer_id: firstCustId})});
     }else{
       if(!_pushBotChannelId)return toast('请选择渠道','error');
       r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify({mode:'channel', target_id:_pushBotChannelId})});

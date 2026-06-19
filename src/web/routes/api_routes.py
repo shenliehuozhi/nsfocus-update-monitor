@@ -2,6 +2,8 @@
 
 from flask import Blueprint, request, jsonify, g
 from src.web.auth import require_auth
+from src.core.logger import get_logger
+logger = get_logger('api')
 
 BASE_URL = 'https://update.nsfocus.com'
 
@@ -559,6 +561,7 @@ def push_by_mode(sid: int):
         targets.append((rate_key, ch, notifier, ch.get('name', ch['type'])))
 
     elif mode == 'customer':
+        logger.info('[DEBUG] 进入 customer 推送分支')
         if not target_id:
             return jsonify({'code': 40001, 'message': '缺少客户ID'}), 400
         from src.models.customer import get_by_id as get_cust
@@ -568,7 +571,6 @@ def push_by_mode(sid: int):
         cust_email = (cust.get('email') or '').strip()
         if not cust_email:
             return jsonify({'code': 40001, 'message': '该客户未设置邮箱，无法推送'}), 400
-
         # Find an active email channel to relay through
         email_ch = None
         for ch in list_active():
@@ -586,6 +588,10 @@ def push_by_mode(sid: int):
         relay_config['_customer_id'] = target_id
         relay_config['_email_hourly_limit'] = email_ch.get('email_hourly_limit', 0)
         relay_config['_email_daily_limit'] = email_ch.get('email_daily_limit', 0)
+        cust_attach_mb = cust.get('attachment_max_mb', 0)
+        if cust_attach_mb > 0:
+            relay_config['attachment_max_mb'] = str(cust_attach_mb)
+            logger.info(f'[INFO] set attachment_max_mb to {cust_attach_mb} for customer {target_id}')
         # Inject global/customer limits from system_settings
         from src.notifiers.router import _get_email_rate_settings
         limits = _get_email_rate_settings()
@@ -751,7 +757,7 @@ def push_email(sid: int):
     data = request.get_json() or {}
     channel_id = int(data.get('channel_id') or 0)
     recipients = data.get('recipients') or []
-
+    customer_id = data.get('customer_id')
     from src.notifiers.router import _is_maintenance_mode
     if _is_maintenance_mode():
         return jsonify({'code': 40001, 'message': '维护模式已开启,所有推送已静默'}), 400
@@ -811,9 +817,18 @@ def push_email(sid: int):
     relay_config['to_list'] = recipients
     relay_config['name'] = f"{ch.get('name', 'email')} → {','.join(recipients)}"
     relay_config['_channel_id'] = ch['id']
-    relay_config['_customer_id'] = 0
+    relay_config['_customer_id'] = customer_id or 0
     relay_config['_email_hourly_limit'] = ch.get('email_hourly_limit', 0)
     relay_config['_email_daily_limit'] = ch.get('email_daily_limit', 0)
+    
+    if customer_id:
+        from src.models.customer import get_by_id as get_cust
+        cust = get_cust(customer_id)
+        if cust:
+            cust_attach_mb = cust.get('attachment_max_mb', 0)
+            if cust_attach_mb > 0:
+                relay_config['attachment_max_mb'] = str(cust_attach_mb)
+                logger.info(f'[DEBUG] push_email: set attachment_max_mb to {cust_attach_mb} for customer {customer_id}')
     limits = _get_email_rate_settings()
     relay_config['_cust_hourly_limit'] = limits['cust_hourly']
     relay_config['_cust_daily_limit'] = limits['cust_daily']
