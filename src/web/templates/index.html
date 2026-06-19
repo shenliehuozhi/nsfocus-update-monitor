@@ -3167,9 +3167,10 @@ function onCustChange(){
   let cid=document.getElementById('rcust').value;
   let row=document.getElementById('custInfoRow');
   let emailSpan=document.getElementById('custEmailDisplay');
-  let attInput=document.getElementById('ratt');
+  let attDisplay=document.getElementById('rattDisplay');
   if(!cid||!window._custs){
     if(row)row.style.display='none';
+    if(attDisplay) attDisplay.textContent='选客户后自动显示';
     return;
   }
   let c=window._custs.find(x=>x.id==cid);
@@ -3179,13 +3180,15 @@ function onCustChange(){
   }else if(row){
     row.style.display='none';
   }
-  // Default the rule's attachment_max_mb to the customer's value when the
-  // user hasn't typed anything yet (input is 0/empty). Editing a saved
-  // rule keeps its own value because we only overwrite when current input
-  // is 0 — selecting a different customer does NOT silently overwrite a
-  // custom value either, which is the safer default.
-  if(c && attInput && (!attInput.value || parseInt(attInput.value) === 0) && c.attachment_max_mb){
-    attInput.value=c.attachment_max_mb;
+  // Display the customer's attachment_max_mb (read-only — comes from customer).
+  if(attDisplay){
+    if(c && c.attachment_max_mb){
+      attDisplay.textContent = c.attachment_max_mb + ' MB（来自客户档案）';
+      attDisplay.style.color = '';
+    }else{
+      attDisplay.textContent = '未配置（使用全局默认）';
+      attDisplay.style.color = 'var(--muted)';
+    }
   }
 }
 
@@ -3678,7 +3681,7 @@ async function openRModal(id){
     <button class="btn btn-xs btn-outline" onclick="openChanSelModal()">+ 添加渠道</button>
     <div id="emailFields" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">
       <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
-      <div class="form-group"><label>附件大小限制 <span style="font-weight:400;color:var(--muted);font-size:11px">从所选客户的"附件大小限制"读取；客户未配则使用全局默认</span></label><input id="ratt" type="number" min="0" max="50" disabled style="background:var(--snap-bg);cursor:not-allowed"></div>
+      <div class="form-group"><label>附件大小限制 <span style="font-weight:400;color:var(--muted);font-size:11px">从所选客户的"附件大小限制"读取；客户未配则使用全局默认</span></label><div id="rattDisplay" style="padding:6px 10px;background:var(--snap-bg);border-radius:4px;font-size:13px;color:var(--muted)">选客户后自动显示</div></div>
     </div>
     </div>
 
@@ -3696,7 +3699,10 @@ async function openRModal(id){
     document.getElementById('rcust').value=r.customer_id||'';
     document.getElementById('remails').value=r.customer_emails||'';
     onCustChange();
-    document.getElementById('ratt').value=r.attachment_max_mb||0;
+    // NOTE: subscription_rules.attachment_max_mb is deprecated. The customer's
+    // value drives everything (onCustChange() above writes it to rattDisplay)
+    // — we deliberately do NOT read r.attachment_max_mb here, as it would
+    // mislead users into thinking the field still works.
     let f=r.filter_conditions||{};
     const isAll=!(f.chains||[]).length;
     document.getElementById('rall').checked=isAll;
@@ -3728,7 +3734,7 @@ async function openRModal(id){
     onWinToggle();
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('ratt').value='0';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();onCustChange();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rattDisplay').textContent='选客户后自动显示';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();onCustChange();
   }
 }
 
@@ -3790,9 +3796,8 @@ function validateRuleConf(){
   const isAll=document.getElementById('rall').checked;
   const fc=isAll?{}:{chains:window._condChains||[]};
   const emails=document.getElementById('remails')?.value.trim()||'';
-  const attMb=parseInt(document.getElementById('ratt')?.value)||0;
   const nrr=document.getElementById('rnr')?.checked?1:0;
-  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,attachment_max_mb:attMb};
+  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails};
   const dm=d.digest_mode;
   if(dm){
     let dc={};

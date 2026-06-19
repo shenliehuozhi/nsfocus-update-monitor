@@ -130,9 +130,10 @@ class EmailNotifier(BaseNotifier):
         if rule_emails:
             extra = [e.strip() for e in rule_emails.split(',') if e.strip()]
             to_list = list(dict.fromkeys(to_list + extra))  # dedup preserving order
-        # Rule-level override: attachment size
-        rule_attach_mb = int(config.get('attachment_max_mb', 0))
-        max_attach = (rule_attach_mb * 1048576) if rule_attach_mb > 0 else ATTACHMENT_MAX_SIZE
+        # Customer-level attachment size (router injects customer.attachment_max_mb
+        # into ch_config before sending; 0/unset → ATTACHMENT_MAX_SIZE default).
+        customer_attach_mb = int(config.get('attachment_max_mb', 0))
+        max_attach = (customer_attach_mb * 1048576) if customer_attach_mb > 0 else ATTACHMENT_MAX_SIZE
 
         # Test-mode fallback: if no recipient was configured (the new UI no
         # longer collects to_list on channel config), send the test email to
