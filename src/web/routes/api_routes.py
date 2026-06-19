@@ -849,7 +849,7 @@ def push_email(sid: int):
         channel_id=ch['id'],
         channel_type='email',
         channel_name=relay_config['name'],
-        customer_id=0,
+        customer_id=customer_id or 0,
         status='sent' if result.success else 'failed',
         error=result.error_message,
     )
