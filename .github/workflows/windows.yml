@@ -45,21 +45,23 @@ jobs:
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: nsfocus-monitor-win
+          name: nsfocus-monitor-win-${{ github.sha }}
           path: |
             dist/nsfocus-monitor.exe
             dist/nsfocus-monitor-win.zip
           retention-days: 30
 
-      # 自动清理：每次上传成功后，遍历仓库下 nsfocus-monitor-win 这类
+      # 自动清理：每次上传成功后，遍历仓库下 nsfocus-monitor-win-* 这类
       # 旧 artifact，只保留最新 10 个。避免 push 频繁时免费额度被打爆。
+      # artifact name 用 commit short SHA 命名，所以 cleanup 按前缀匹配，
+      # 覆盖 history 重写导致的多次 push（commit 不变 → name 不变 → 覆盖）。
       - name: Cleanup old Windows artifacts
         if: success()
         uses: actions/github-script@v7
         with:
           script: |
             const KEEP_COUNT = 10;
-            const ARTIFACT_NAME = 'nsfocus-monitor-win';
+            const ARTIFACT_PREFIX = 'nsfocus-monitor-win-';
             try {
               const opts = github.rest.actions.listArtifactsForRepo.endpoint.merge({
                 owner: context.repo.owner,
@@ -69,19 +71,12 @@ jobs:
               const allArtifacts = await github.paginate(opts);
               // 只清当前 workflow 产出的 artifact；其它 artifact（docker 等）
               // 不动，避免误删。
-              const mine = allArtifacts.filter(a => a.name === ARTIFACT_NAME);
-              // 旧 = 排除当前这次 run 上传的（避免删自己）
-              const currentRunId = context.runId;
-              const others = mine.filter(a => {
-                // GitHub Actions artifact 没有直接的 run_id 字段，但 workflow_run
-                // 关联能拿到。仅对当前 run 的 artifact 跳过删除。
-                return !(a.workflow_run && a.workflow_run.id === currentRunId);
-              });
+              const mine = allArtifacts.filter(a => a.name.startsWith(ARTIFACT_PREFIX));
               // 按创建时间从新到旧排序
-              others.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-              if (others.length > KEEP_COUNT) {
-                const toDelete = others.slice(KEEP_COUNT);
-                console.log(`当前 ${ARTIFACT_NAME} 共有 ${mine.length} 个（含本次 ${1} 个），超出限制 ${KEEP_COUNT}，准备删除 ${toDelete.length} 个...`);
+              mine.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+              if (mine.length > KEEP_COUNT) {
+                const toDelete = mine.slice(KEEP_COUNT);
+                console.log(`当前 ${ARTIFACT_PREFIX}* 共有 ${mine.length} 个，超出限制 ${KEEP_COUNT}，准备删除 ${toDelete.length} 个...`);
                 for (const artifact of toDelete) {
                   await github.rest.actions.deleteArtifact({
                     owner: context.repo.owner,
@@ -91,7 +86,7 @@ jobs:
                   console.log(`🗑️ Deleted old artifact: ${artifact.name} (id=${artifact.id}, created=${artifact.created_at})`);
                 }
               } else {
-                console.log(`当前 ${ARTIFACT_NAME} 共 ${mine.length} 个（含本次），未超出 ${KEEP_COUNT}，无需清理。`);
+                console.log(`当前 ${ARTIFACT_PREFIX}* 共 ${mine.length} 个，未超出 ${KEEP_COUNT}，无需清理。`);
               }
             } catch (e) {
               console.warn(`Cleanup failed: ${e.message}`);
