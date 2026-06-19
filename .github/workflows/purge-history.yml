@@ -1,0 +1,80 @@
+name: 🚨 批量清理历史运行记录(保留最新10个)
+
+on:
+  workflow_dispatch: # 允许在网页端手动点击触发
+
+# 必须赋予写权限，否则无法删除历史
+permissions:
+  actions: write
+
+jobs:
+  purge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Purge Old Workflow Runs
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const KEEP_COUNT = 10; // [这里设置] 你想保留的运行记录数量
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            
+            console.log(`正在获取 ${owner}/${repo} 的所有历史运行记录...`);
+            
+            // 1. 分页捞出所有的 workflow runs
+            let allRuns = [];
+            let hasMore = true;
+            let page = 1;
+            
+            while (hasMore) {
+              const res = await github.rest.actions.listWorkflowRunsForRepo({
+                owner,
+                repo,
+                per_page: 100,
+                page
+              });
+              
+              const runs = res.data.workflow_runs;
+              if (runs.length === 0) {
+                hasMore = false;
+                break;
+              }
+              
+              allRuns.extend = allRuns.push(...runs);
+              
+              if (runs.length < 100) {
+                hasMore = false;
+              } else {
+                page++;
+              }
+            }
+            
+            // ⚠️ 过滤掉当前正在运行的这个任务，避免自己把自己掐断
+            allRuns = allRuns.filter(run => run.id !== context.runId);
+            
+            // 2. 按照创建时间从新到旧排序（防万一，API 默认一般也是从新到旧）
+            allRuns.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            
+            console.log(`当前除本次运行外，全仓库共有历史记录 ${allRuns.length} 个。`);
+            
+            // 3. 如果总量超过了要保留的数量，执行切片删除
+            if (allRuns.length > KEEP_COUNT) {
+              const toDelete = allRuns.slice(KEEP_COUNT); // 丢弃前10个最新的，剩下的全部进入删除队列
+              console.log(`👉 保持最新的 ${KEEP_COUNT} 个记录不动，准备删除较旧的 ${toDelete.length} 个记录...`);
+              
+              for (const run of toDelete) {
+                try {
+                  await github.rest.actions.deleteWorkflowRun({
+                    owner,
+                    repo,
+                    run_id: run.id
+                  });
+                  console.log(`🗑️ 已成功删除旧记录: Run ID: ${run.id} | ${run.display_title || run.name}`);
+                } catch (err) {
+                  console.warn(`❌ 无法删除 Run ${run.id}: ${err.message}`);
+                }
+              }
+              console.log(`✨ 清理完成！`);
+            } else {
+              console.log(`✅ 当前历史记录总数未超过 ${KEEP_COUNT} 个，无需清理。`);
+            }
