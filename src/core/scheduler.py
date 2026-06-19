@@ -1485,7 +1485,14 @@ def _run_db_cleanup():
         logger.warning('delivery_log 清理失败: %s', e)
 
     try:
-        # 4. snapshots: 按 (version_branch, package_type) 分组，每组保留 N 条最新快照
+        # 4. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
+        #    每组保留 N 条最新快照。
+        #    关键：必须把 path_id 加进 group 维度。
+        #    NSFocus 多 chain (海光/飞腾/鲲鹏/标准版/...) 共享同一升级文件，
+        #    同一文件在 DB 里按 path_id 存了多条。如果 group 不带 path_id，
+        #    这些跨 chain 行会被错误合并到一个组，每组数 > per_group 时
+        #    凌晨清理会 DELETE 老 path_id 的行，下次 collect 重新入库形成
+        #    phantom-新增（detector 误报为新包）。
         from src.models.database import query as db_query
         limit_cfg = db_query("SELECT value FROM system_settings WHERE key = 'snapshots_per_group'")
         per_group = int(limit_cfg[0]['value']) if limit_cfg else 5
@@ -1500,35 +1507,68 @@ def _run_db_cleanup():
         cur = db.cursor()
         # 找出所有需要清理的组（组内记录数 > per_group 且有非 rollback 记录）
         cur.execute("""
-            SELECT source_id, product_name, version_branch, package_type, COUNT(*) as cnt
+            SELECT source_id, path_id, version_branch, package_type, COUNT(*) as cnt
             FROM snapshots
-            WHERE status != 'rollback'
-            GROUP BY source_id, product_name, version_branch, package_type
+            WHERE status != 'rollback' AND path_id != ''
+            GROUP BY source_id, path_id, version_branch, package_type
             HAVING COUNT(*) > ?
         """, (per_group,))
         groups = cur.fetchall()
 
         for g in groups:
-            src_id, prod, ver, pkgtype, cnt = g['source_id'], g['product_name'], g['version_branch'], g['package_type'], g['cnt']
+            src_id, pid, ver, pkgtype, cnt = g['source_id'], g['path_id'], g['version_branch'], g['package_type'], g['cnt']
             # 保留该组最新 per_group 条，其余删除
             cur.execute("""
                 DELETE FROM snapshots
                 WHERE source_id = ?
-                  AND product_name = ?
+                  AND path_id = ?
                   AND version_branch = ?
                   AND package_type = ?
                   AND status != 'rollback'
                   AND id NOT IN (
                       SELECT id FROM snapshots
                       WHERE source_id = ?
-                        AND product_name = ?
+                        AND path_id = ?
                         AND version_branch = ?
                         AND package_type = ?
                         AND status != 'rollback'
                       ORDER BY published_at DESC
                       LIMIT ?
                   )
-            """, (src_id, prod, ver, pkgtype, src_id, prod, ver, pkgtype, per_group))
+            """, (src_id, pid, ver, pkgtype, src_id, pid, ver, pkgtype, per_group))
+            deleted += cur.rowcount
+
+        # Cleanup fallback: 仍按旧的 (source_id, version_branch, package_type) 分组，
+        # 但只处理 path_id 为空的 snap（legacy rows，pre-path_id migration）。
+        # path_id 非空行已经在上面按 path_id 处理过了。
+        cur.execute("""
+            SELECT source_id, version_branch, package_type, COUNT(*) as cnt
+            FROM snapshots
+            WHERE status != 'rollback' AND path_id = ''
+            GROUP BY source_id, version_branch, package_type
+            HAVING COUNT(*) > ?
+        """, (per_group,))
+        legacy_groups = cur.fetchall()
+        for g in legacy_groups:
+            src_id, ver, pkgtype, cnt = g['source_id'], g['version_branch'], g['package_type'], g['cnt']
+            cur.execute("""
+                DELETE FROM snapshots
+                WHERE source_id = ?
+                  AND version_branch = ?
+                  AND package_type = ?
+                  AND path_id = ''
+                  AND status != 'rollback'
+                  AND id NOT IN (
+                      SELECT id FROM snapshots
+                      WHERE source_id = ?
+                        AND version_branch = ?
+                        AND package_type = ?
+                        AND path_id = ''
+                        AND status != 'rollback'
+                      ORDER BY published_at DESC
+                      LIMIT ?
+                  )
+            """, (src_id, ver, pkgtype, src_id, ver, pkgtype, per_group))
             deleted += cur.rowcount
 
         after = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
