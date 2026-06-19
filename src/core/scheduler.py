@@ -1449,11 +1449,30 @@ def _run_db_cleanup():
       - heartbeat_log: 已废弃，全量清空
       - audit_log: 保留 30 天
       - delivery_log: 保留 90 天
-    仅清理，不抛异常，由 scheduler 启动和定时任务调用。"""
+    仅清理，不抛异常，由 scheduler 启动和定时任务调用。
+
+    每次执行结束（或异常）后通过 emit_cleanup_summary 发送一条系统事件，
+    在 system_event_log 留痕 + 按系统事件配置通知渠道。
+    """
     from src.models.database import execute, query, get_db
     from src.models.audit import cleanup_old
     from src.models.subscription import clear_history
     logger = get_logger('cleanup')
+
+    # 收集每步执行情况，最后统一发系统事件
+    summary = {
+        'started_at': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'),
+        'steps': [],
+        'errors': [],
+    }
+
+    def _record_step(name: str, ok: bool, detail: str, **extra):
+        summary['steps'].append({
+            'name': name,
+            'ok': ok,
+            'detail': detail,
+            **extra,
+        })
 
     try:
         # 1. heartbeat_log 已废弃，直接清空
@@ -1462,8 +1481,11 @@ def _run_db_cleanup():
             logger.info('heartbeat_log 清空: %d 条', count)
         else:
             logger.debug('heartbeat_log 无数据')
+        _record_step('heartbeat_log', True, f'清理 {count} 条', deleted=count)
     except Exception as e:
         logger.warning('heartbeat_log 清空失败: %s', e)
+        summary['errors'].append(f'heartbeat_log: {e}')
+        _record_step('heartbeat_log', False, str(e))
 
     try:
         # 2. audit_log 保留 30 天
@@ -1471,8 +1493,12 @@ def _run_db_cleanup():
         cleanup_old(days=30)
         after = query("SELECT COUNT(*) as c FROM audit_log")[0]['c']
         logger.info('audit_log 清理完成: 清理前 %d 条，保留 %d 条（30天）', before, after)
+        _record_step('audit_log', True, f'清理前 {before} 条，保留 {after} 条（30天）',
+                     before=before, after=after, deleted=before - after)
     except Exception as e:
         logger.warning('audit_log 清理失败: %s', e)
+        summary['errors'].append(f'audit_log: {e}')
+        _record_step('audit_log', False, str(e))
 
     try:
         # 3. delivery_log 保留 90 天
@@ -1481,8 +1507,13 @@ def _run_db_cleanup():
         after = query("SELECT COUNT(*) as c FROM delivery_log")[0]['c']
         logger.info('delivery_log 清理完成: 清理前 %d 条，删除 %d 条，保留 %d 条（90天）',
                      before, cleared, after)
+        _record_step('delivery_log', True,
+                     f'清理前 {before} 条，删除 {cleared} 条，保留 {after} 条（90天）',
+                     before=before, after=after, deleted=cleared)
     except Exception as e:
         logger.warning('delivery_log 清理失败: %s', e)
+        summary['errors'].append(f'delivery_log: {e}')
+        _record_step('delivery_log', False, str(e))
 
     try:
         # 4. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
@@ -1575,6 +1606,22 @@ def _run_db_cleanup():
         after_rb = db_query("SELECT COUNT(*) as c FROM snapshots WHERE status = 'rollback'")[0]['c']
         logger.info('snapshots 清理完成: 清理前 %d 条（含rollback %d），删除 %d 条，保留 %d 条（rollback %d），每组上限 %d',
                     before, before_rb, deleted, after, after_rb, per_group)
+        _record_step('snapshots', True,
+                     f'清理前 {before} 条（含 rollback {before_rb}），删除 {deleted} 条，保留 {after} 条，每组上限 {per_group}',
+                     before=before, before_rb=before_rb,
+                     after=after, after_rb=after_rb,
+                     deleted=deleted, per_group=per_group)
     except Exception as e:
         logger.warning('snapshots 清理失败: %s', e)
+        summary['errors'].append(f'snapshots: {e}')
+        _record_step('snapshots', False, str(e))
+
+    # ── 发送清理汇总系统事件 ──
+    try:
+        from src.core.event_handler import emit_cleanup_summary
+        summary['finished_at'] = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
+        summary['ok'] = len(summary['errors']) == 0
+        emit_cleanup_summary(summary)
+    except Exception as e:
+        logger.warning(f'清理汇总事件发送失败: {e}')
 

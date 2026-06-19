@@ -221,6 +221,114 @@ def emit_push_summary(summaries: list):
             logger.error(f'Failed to send push summary: {e}')
 
 
+def emit_cleanup_summary(summary: dict):
+    """清理任务执行完成后调用
+
+    summary 字段（来自 _run_db_cleanup）:
+      - started_at, finished_at: UTC ISO
+      - ok: bool，是否全部步骤成功
+      - steps: [{name, ok, detail, deleted/before/after/per_group/...}, ...]
+      - errors: [str, ...]
+    """
+    event_type = 'cleanup_summary'
+
+    if not is_event_enabled(event_type):
+        return
+
+    # 防重：最近 1 分钟内已有相同事件跳过（cron 触发，可能与其他 cron 撞时间）
+    try:
+        from src.models.database import query
+        rows = query(
+            "SELECT id FROM system_event_log WHERE event_type=? "
+            "AND created_at>=datetime('now','-1 minute') LIMIT 1",
+            (event_type,)
+        )
+        if rows:
+            logger.debug(f'Skip duplicate {event_type} (recent event already sent)')
+            return
+    except Exception:
+        pass
+
+    steps = summary.get('steps', [])
+    errors = summary.get('errors', [])
+    ok = summary.get('ok', len(errors) == 0)
+
+    # 1) 写 system_event_log（按系统事件配置：失败时 WARNING，否则 INFO）
+    severity = 'INFO' if ok else 'WARNING'
+    try:
+        log_event(
+            event_type=event_type,
+            severity=severity,
+            product_name='',
+            message={
+                'started_at': summary.get('started_at', ''),
+                'finished_at': summary.get('finished_at', ''),
+                'ok': ok,
+                'steps': steps,
+                'errors': errors,
+            },
+        )
+    except Exception as e:
+        logger.warning(f'Failed to log cleanup_summary event: {e}')
+
+    # 2) 按配置发通知
+    channel = get_notify_channel()
+    if not channel:
+        return
+
+    from src.notifiers.base import _utc_to_cst_display
+    cst_now = _utc_to_cst_display(
+        summary.get('finished_at', datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+    )
+
+    # 渲染消息体
+    icon = '🧹' if ok else '⚠️'
+    title = f'{icon} 清理任务{"完成" if ok else "部分失败"}'
+    lines = [title, f"执行时间：{cst_now}", ""]
+
+    # 步骤详情
+    name_cn = {
+        'heartbeat_log': 'heartbeat_log',
+        'audit_log': 'audit_log (30天)',
+        'delivery_log': 'delivery_log (90天)',
+        'snapshots': 'snapshots (按 path_id 分组)',
+    }
+    for step in steps:
+        nm = name_cn.get(step['name'], step['name'])
+        mark = '✓' if step['ok'] else '✗'
+        lines.append(f"{mark} {nm}: {step['detail']}")
+
+    if errors:
+        lines.append('')
+        lines.append('错误:')
+        for err in errors:
+            lines.append(f"  - {err}")
+
+    message_text = '\n'.join(lines)
+
+    notifier = _get_notifier(channel)
+    if notifier:
+        from src.notifiers.base import NotificationMessage
+        msg = NotificationMessage(
+            title='绿盟监控 - 数据清理汇总',
+            product_name='',
+            version_branch='',
+            package_type='',
+            file_name='',
+            package_version='',
+            md5_hash='',
+            description_full=message_text,
+        )
+        try:
+            result = notifier.send(msg, channel.get('config', {}))
+            if result.success:
+                logger.info(f'Cleanup summary notification sent: ok={ok}')
+            else:
+                logger.error(f'Cleanup summary notification failed: {result.error_message}')
+        except Exception as e:
+            logger.error(f'Failed to send cleanup summary: {e}')
+
+
 def _fmt_duration(seconds: int) -> str:
     """Format duration in human-readable form."""
     if seconds < 60:
