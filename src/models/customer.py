@@ -47,7 +47,7 @@ def update(customer_id: int, **kwargs) -> None:
     from src.models.database import execute
     import json
     # Whitelist: only allow actual columns to be updated
-    _ALLOWED = {'name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes'}
+    _ALLOWED = {'name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes', 'attachment_max_mb'}
     kwargs = {k: v for k, v in kwargs.items() if k in _ALLOWED}
     if not kwargs:
         return

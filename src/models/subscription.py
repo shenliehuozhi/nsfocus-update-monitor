@@ -42,7 +42,12 @@ def create_rule(user_id: int, **kwargs) -> int:
     fields = ['user_id', 'name', 'enabled', 'filter_conditions', 'delay_days',
               'delay_strategy', 'min_interval_hours', 'digest_mode', 'digest_config',
               'customer_id', 'valid_until', 'quiet_start', 'quiet_end', 'notify_rollback',
-              'customer_emails', 'attachment_max_mb', 'window_config']
+              'customer_emails', 'window_config']
+    # NOTE: subscription_rules.attachment_max_mb column is deprecated.
+    # Email attachment size is read from customers.attachment_max_mb (see
+    # notifiers/router.py). The column is retained in SCHEMA_SUBSCRIPTION for
+    # backward compatibility with existing rows but create_rule() no longer
+    # writes to it — new code must read customers.attachment_max_mb instead.
     values = [kwargs.get(f, '') for f in fields]
     values[2] = int(values[2]) if values[2] != '' else 1
     values[4] = values[4] or 0
