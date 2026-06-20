@@ -1615,14 +1615,14 @@ function dataBuildFeed() {
   rows.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
 
   let filtered = rows;
-  if (_dataQuery && !_dataSelectedPathId) {
+  if (_dataQuery) {
     const q = _dataQuery.toLowerCase();
     filtered = filtered.filter(r =>
-        (r.file_name || '').toLowerCase().includes(q) ||
-        (r.version_branch || '').toLowerCase().includes(q) ||
-        (r.package_type || '').toLowerCase().includes(q)
+      (r.file_name || '').toLowerCase().includes(q) ||
+      (r.version_branch || '').toLowerCase().includes(q) ||
+      (r.package_type || '').toLowerCase().includes(q)
     );
-}
+  }
   if (_dataFilters.urgency) {
     filtered = filtered.filter(r => r.urgency === _dataFilters.urgency && r.status === 'active');
   }

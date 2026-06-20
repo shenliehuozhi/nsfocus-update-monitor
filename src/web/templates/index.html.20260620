@@ -1556,36 +1556,34 @@ function dataBuildFeed() {
     const urlChainMap = _srcUrlChainMap[sid] || {};
 
     snaps.forEach(s => {
-            // Filter by has_new: only active snapshots with no delivery record
-            if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
-            // Filter by has_rb: skip active ones when "含撤回" is active
-            if (_dataFilters.has_rb && s.status !== 'rollback') return;
-            // Filter by urgency
-            if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
-
-            // ✅ 精确 path_id 匹配（优先，对所有节点生效）
-            if (_dataSelectedPathId) {
-                if (s.path_id !== _dataSelectedPathId) return;
-            } else {
-                // Filter by exact URL when a leaf node is selected
-                if (_dataSelectedUrl) {
-                    const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
-                    const normSnap = '/' + stripSlashes(s.source_url || '');
-                    const normSelected = '/' + stripSlashes(_dataSelectedUrl);
-                    if (normSnap !== normSelected) return;
-                }
-                // Filter by hints when an intermediate node is selected
-                if (!_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint)) {
-                    if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
-                    if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
-                }
-            }
-
-            // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
-            const k = (s.path_id || (s.version_branch || '?') + '|' + (s.package_type || '?'));
-            if (!byKey[k]) byKey[k] = [];
-            byKey[k].push(s);
-        });
+      // Filter by has_new: only active snapshots with no delivery record
+      if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
+      // Filter by has_rb: skip active ones when "含撤回" is active
+      if (_dataFilters.has_rb && s.status !== 'rollback') return;
+      // Filter by exact URL when a leaf node is selected
+      // Normalize both the same way before comparing
+      if (_dataSelectedUrl) {
+        const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
+        const normSnap = '/' + stripSlashes(s.source_url || '');
+        const normSelected = '/' + stripSlashes(_dataSelectedUrl);
+        if (normSnap !== normSelected) return;
+      }
+      // Filter by hints when an intermediate node is selected
+      if (isHintClick) {
+        if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
+        if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
+        // Exact path_id match — disambiguates when several chains share a URL and
+        // have the same (ver, pkg) but different chains (NSFocus real structure).
+        if (_dataSelectedPathId && s.path_id !== _dataSelectedPathId) return;
+      }
+      // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
+      // This makes NSFocus's multi-chain-shared-URL structure show as N distinct rows
+      // (one per chain), instead of N "identical files" collapsing into one group.
+      // Fallback to (ver|pkg) when path_id is empty (legacy rows from old algorithm).
+      const k = (s.path_id || (s.version_branch || '?') + '|' + (s.package_type || '?'));
+      if (!byKey[k]) byKey[k] = [];
+      byKey[k].push(s);
+    });
     // Sort + limit AFTER all snaps are collected (not per push)
     Object.entries(byKey).forEach(([k, snapList]) => {
       snapList.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
@@ -1615,14 +1613,14 @@ function dataBuildFeed() {
   rows.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
 
   let filtered = rows;
-  if (_dataQuery && !_dataSelectedPathId) {
+  if (_dataQuery) {
     const q = _dataQuery.toLowerCase();
     filtered = filtered.filter(r =>
-        (r.file_name || '').toLowerCase().includes(q) ||
-        (r.version_branch || '').toLowerCase().includes(q) ||
-        (r.package_type || '').toLowerCase().includes(q)
+      (r.file_name || '').toLowerCase().includes(q) ||
+      (r.version_branch || '').toLowerCase().includes(q) ||
+      (r.package_type || '').toLowerCase().includes(q)
     );
-}
+  }
   if (_dataFilters.urgency) {
     filtered = filtered.filter(r => r.urgency === _dataFilters.urgency && r.status === 'active');
   }
