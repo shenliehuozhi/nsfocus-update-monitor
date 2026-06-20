@@ -228,31 +228,27 @@ class EmailNotifier(BaseNotifier):
             log.info('⏭️ 不满足附件附加条件，跳过')
 
         # ── 7. 构建HTML正文（含下载提示）─────────────────────
-        if not attachment_attached and not message.is_rollback:
-            if message.file_size > max_attach:
-                reason = f'文件大小({message.size_display})超过附件上限'
-            elif not message.download_url:
-                reason = '无下载链接'
-            else:
-                reason = '附件下载失败'
+        if not message.is_rollback:
+            md5_guide = f'''
+            <div style="margin-top:12px;padding:12px;background:#f0f8ff;border-radius:4px;border-left:4px solid #1e90ff;font-size:13px;color:#333">
+                <strong style="color:#1e90ff">🔍 MD5 校验</strong><br/>
+                <span style="color:#666">建议下载后校验文件完整性：</span><br/>
+                <strong>Linux/macOS：</strong><code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">md5sum {message.file_name}</code><br/>
+                <strong>Windows：</strong><code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">certutil -hashfile {message.file_name} MD5</code><br/>
+                预期值：<code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">{message.md5_hash}</code>
+            </div>
+            '''
+            combined = md5_guide
 
-            log.info(f'ℹ️ 将在邮件正文中插入下载链接 (原因: {reason})')
+            if not attachment_attached:
+                download_note = f'''
+                <p style="color:#d0021b;font-size:14px;margin:16px 0 8px 0;padding:10px;background:#fff3cd;border-radius:4px;border-left:4px solid #d0021b">
+                ⚠️ 文件大小({message.size_display})超过附件上限，请<a href="{message.download_url}" style="color:#d0021b;font-weight:bold">点击此处下载</a>获取升级包。
+                </p>
+                '''
+                combined = download_note + md5_guide
 
-            note_html = (
-                f'<p style="color:#d0021b;font-size:14px;margin:16px 0 8px 0;padding:10px;background:#fff3cd;border-radius:4px;border-left:4px solid #d0021b">'
-                f'⚠️ {reason}，请<a href="{message.download_url}" style="color:#d0021b;font-weight:bold">点击此处下载</a>获取升级包。</p>'
-                f'<div style="margin-top:12px;padding:12px;background:#fff3cd;border-radius:4px;border-left:4px solid #d0021b;font-size:13px;color:#333">'
-                f'<strong style="color:#d0021b">强烈建议下载完成后校验MD5是否一致</strong><br/><br/>'
-                f'<strong>Linux/macOS：</strong><code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">md5sum {message.file_name}</code><br/><br/>'
-                f'<strong>Windows：</strong><code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">certutil -hashfile {message.file_name} MD5</code><br/><br/>'
-                f'预期值：<code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">{message.md5_hash}</code>'
-                f'</div>'
-            )
-            html_body = html_body.replace(
-                '</table>\n</td></tr>',
-                f'</table>\n{note_html}\n</td></tr>',
-                1
-            )
+            html_body = html_body.replace('</table>\n</td></tr>', f'</table>\n{combined}\n</td></tr>', 1)
 
         email_msg.attach(MIMEText(html_body, 'html', 'utf-8'))
 
