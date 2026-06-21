@@ -167,12 +167,9 @@ def _get_log_files() -> list:
     files = []
     
     # app.log and rotated backups (scanner's own log is handled separately above)
-    for name in os.listdir(LOG_DIR):
-        if name.startswith('app.log') and name != 'log_scanner.log':
-            filepath = os.path.join(LOG_DIR, name)
-            if os.path.isfile(filepath):
-                files.append(filepath)
-    
+    app_log = os.path.join(LOG_DIR, 'app.log')
+    if os.path.isfile(app_log):
+        files.append(app_log)
     # service_error.log
     service_error = os.path.join(LOG_DIR, 'service_error.log')
     if os.path.isfile(service_error):
