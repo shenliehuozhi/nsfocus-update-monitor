@@ -3831,6 +3831,9 @@ async function history(){
   let days=new URLSearchParams(location.hash.split('?')[1]||'').get('days')||'30';
   const r=await api('/history?limit=200&days='+days);const list=r.data?.items||[];
   // 不再按 minute-level 聚合,每个 delivery 直接一行
+  // 渠道类型 → 中文标签 + emoji
+  const botTypeCN = {wecom:'企业微信', dingtalk:'钉钉', feishu:'飞书', webhook:'Webhook'};
+  const botTypes = new Set(Object.keys(botTypeCN));
   let html='';
   list.forEach(h=>{
     let dels=h.deliveries||[];
@@ -3838,11 +3841,17 @@ async function history(){
       html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono">${(h.file_name||'').substring(0,30)}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
-        // 收件人:email 渠道显示 to_list;机器人渠道 (wecom/dingtalk/feishu) 没个人收件人,
-        // 用 channel_name 替代,跟机器人名一致
+        // 渠道列: 机器人显示「🤖 类型: 渠道名」;email 显示「渠道名 (收件人)」
+        let channelDisp;
+        if (botTypes.has(d.channel_type)) {
+          channelDisp = `🤖 ${botTypeCN[d.channel_type]}: ${d.channel_name||'—'}`;
+        } else if (d.channel_type === 'email') {
+          channelDisp = d.recipient ? `${d.channel_name||'—'} (${d.recipient})` : (d.channel_name||'—');
+        } else {
+          channelDisp = d.channel_name || '—';
+        }
+        // 收件人:email 渠道显示邮箱;机器人渠道没个人收件人,用 channel_name 替代,跟机器人名一致
         let recipient = d.recipient || d.channel_name || '—';
-        // 渠道列:email 渠道在 channel_name 后用括号显示收件人,机器人渠道没个人收件人只显示 channel_name
-        let channelDisp = d.recipient ? `${d.channel_name||'—'} (${d.recipient})` : (d.channel_name||'—');
         html += `<tr style="background:#f8f8f8">
             <td>${fmtTZ(d.sent_at||h.pushed_at||h.first_seen_at||'',true)}</td>
             <td>${d.customer_name||'—'}</td>
@@ -3850,15 +3859,15 @@ async function history(){
             <td>${typeCN(h.package_type)}</td>
             <td class="mono">${(h.file_name||'').substring(0,30)}</td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
-            <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td>${escHtml(channelDisp)}</td>
+            <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
             <td>${d.channel_id?`<button class="btn btn-xs btn-primary" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">📤 重推</button>`:''}</td>
         </tr>`;
       });
     }
   });
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px"><select onchange="let d=this.value;location.hash='history?days='+d;history()" style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px"><option value="1" ${days==='1'?'selected':''}>近1天</option><option value="3" ${days==='3'?'selected':''}>近3天</option><option value="7" ${days==='7'?'selected':''}>近7天</option><option value="30" ${days==='30'?'selected':''}>近30天</option><option value="90" ${days==='90'?'selected':''}>近90天</option><option value="365" ${days==='365'?'selected':''}>近1年</option><option value="0" ${days==='0'?'selected':''}>全部</option></select><a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>收件人</th><th>渠道</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px"><select onchange="let d=this.value;location.hash='history?days='+d;history()" style="padding:3px 8px;border:1px solid var(--border);border-radius:5px;font-size:11px"><option value="1" ${days==='1'?'selected':''}>近1天</option><option value="3" ${days==='3'?'selected':''}>近3天</option><option value="7" ${days==='7'?'selected':''}>近7天</option><option value="30" ${days==='30'?'selected':''}>近30天</option><option value="90" ${days==='90'?'selected':''}>近90天</option><option value="365" ${days==='365'?'selected':''}>近1年</option><option value="0" ${days==='0'?'selected':''}>全部</option></select><a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;
 }
 async function confirmClearHistory(){
   let days=document.querySelector('#app select')?.value||'30';
