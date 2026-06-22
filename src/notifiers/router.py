@@ -176,17 +176,23 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         if not channel or not channel.get('is_active'):
             continue
 
-        # Deduplication: skip if this snapshot+channel already sent successfully
+        # Deduplication: skip if THIS rule already pushed this snapshot through this
+        # channel successfully. Multiple rules sharing the same channel (e.g. ch_id=3
+        # bound to both rule 14 "邮箱推送" and rule 25 "华兴银行") must each push their
+        # own recipient list — to_list comes from rule.customer_emails, not channel,
+        # so cross-rule dedup incorrectly silences other rules' recipients.
         # (failed records don't block — rate-limit failures are transient)
         from src.models.database import query
         existing = query(
             """SELECT id FROM delivery_log
-               WHERE snapshot_id = ? AND channel_id = ? AND delivery_status = 'sent'
+               WHERE snapshot_id = ? AND channel_id = ? AND rule_id = ?
+                     AND delivery_status = 'sent'
                LIMIT 1""",
-            (snap['id'], channel_id)
+            (snap['id'], channel_id, rule['id'])
         )
         if existing:
-            logger.info(f'Skip duplicate: snapshot {snap["id"]} already sent to channel {channel_id}')
+            logger.info(f'Skip duplicate: snapshot {snap["id"]} already sent to '
+                        f'channel {channel_id} by rule {rule["id"]}')
             continue
 
         notifier = NOTIFIERS.get(channel['type'])

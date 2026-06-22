@@ -225,7 +225,8 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
                 logger.info(f'[订阅匹配] 检查包: {snap.get("file_name")}')
                 snap_chain = _get_chain(
                     snap.get('source_id', 0),
-                    snap.get('source_url', '')
+                    snap.get('source_url', ''),
+                    snap.get('path_id'),  # 优先 path_id 精确匹配,解决同 URL 多 chain 共享
                 )
                 logger.info(f'[订阅匹配] snap_chain: {snap_chain}')
                 if not _chain_matches(snap_chain, chains):
@@ -249,48 +250,9 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
             logger.info(f'[订阅匹配] 规则 {rule.get("name")} 匹配结果: {len(matched)} 个包')
             return matched
 
-    # ── 旧结构：products / versions / package_types（向后兼容）───────────
-    products = conditions.get('products', [])
-    versions = conditions.get('versions', [])
-    pkg_types = conditions.get('package_types', [])
-    urgency = conditions.get('urgency', [])
-    keywords = conditions.get('keywords', [])
-
-    matched = []
-    for sid, snap in new_items:
-        # Check product filter
-        if products and snap.get('product_name') not in products:
-            continue
-
-        # Check version filter
-        if versions and snap.get('version_branch') not in versions:
-            continue
-
-        # Check package type filter (supports comma-separated values per entry)
-        if pkg_types:
-            flat_types = set()
-            for pt in pkg_types:
-                if pt:
-                    for t in pt.split(','):
-                        t = t.strip()
-                        if t:
-                            flat_types.add(t)
-            if flat_types and snap.get('package_type') not in flat_types:
-                continue
-
-        # Check urgency filter
-        if urgency and snap.get('urgency') not in urgency:
-            continue
-
-        # Check keyword filter (in description)
-        if keywords:
-            desc = snap.get('description_raw', '')
-            if not any(kw.lower() in desc.lower() for kw in keywords):
-                continue
-
-        matched.append((sid, snap))
-
-    return matched
+    # chains 字段为空/缺失时,不匹配任何 snap（"空条件匹配全部" 已在 line 206-207 处理）
+    logger.info(f'[订阅匹配] 规则 {rule.get("name")} 无 chains 条件,不匹配任何包')
+    return []
 
 
 def compute_push_time(delay_days: int) -> str:

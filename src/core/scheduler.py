@@ -33,17 +33,35 @@ from src.models.subscription import get_enabled_rules
 
 logger = get_logger('scheduler')
 
-# ── URL → Chain 缓存（用于订阅规则链路径匹配）────────────────────────
-# 结构: _url_chain_cache[source_id][norm_url] = chain_list
-# 在 start_scheduler 时通过 _build_url_chain_cache() 构建
-_url_chain_cache: dict[int, dict[str, list]] = {}
+# ── URL / path_id → Chain 缓存（用于订阅规则链路径匹配）─────────────
+# 结构: _url_chain_cache[source_id] = {
+#   'by_url':      {norm_url: chain_list},         # legacy fallback
+#   'by_path_id':  {path_id: chain_list},          # 精确匹配(优先)
+# }
+# 在 start_scheduler 时通过 _build_url_chain_cache() 构建。
+#
+# path_id 算法与 _collect_quick / _extract_table_items 完全一致:
+#   MD5(BASE_URL + url + json.dumps(chain, ensure_ascii=False))[:12]
+# content_sources.package_type.paths[].path_id 字段当前未存(discover 时未写),
+# 因此 cache 重建时实时计算,确保与 snapshots.path_id 字符串完全一致。
+_url_chain_cache: dict[int, dict[str, dict]] = {}
 _chain_cache_loaded = False
+
+_BASE_URL = 'https://update.nsfocus.com'
+
+
+def _compute_path_id(source_url: str, chain: list) -> str:
+    """计算 chain 的 path_id,与 _collect_quick 写入 snapshots.path_id 时算法一致。"""
+    import hashlib as _hl
+    import json as _json
+    full = source_url if (source_url or '').startswith('http') else _BASE_URL + (source_url or '')
+    return _hl.md5((full + _json.dumps(chain, ensure_ascii=False)).encode()).hexdigest()[:12]
 
 
 def _build_url_chain_cache():
-    """从 DB 加载所有 source 的 package_type.paths，构建 URL→chain 映射缓存。
+    """从 DB 加载所有 source 的 package_type.paths，构建 chain 反查缓存。
 
-    snapshot 通过 source_url 在这里反查 chain，用于订阅规则链路径匹配。
+    snapshot 通过 source_url + path_id 在这里反查 chain，用于订阅规则链路径匹配。
     每次 scheduler 启动时重建（产品管理修改路径后下次调度自动刷新）。
     """
     global _url_chain_cache, _chain_cache_loaded
@@ -58,17 +76,28 @@ def _build_url_chain_cache():
         except Exception:
             pt = {}
         url_map = {}
+        path_id_map = {}
         for p in pt.get('paths', []):
             url = p.get('url')
             chain = p.get('chain')
-            if url and chain and isinstance(chain, list):
-                # 标准化 URL 格式：去除尾部斜线，确保前导斜线
-                norm = '/' + url.lstrip('/').rstrip('/')
-                url_map[norm] = chain
-        _url_chain_cache[row['id']] = url_map
+            if not (url and chain and isinstance(chain, list)):
+                continue
+            # 标准化 URL 格式：去除尾部斜线，确保前导斜线
+            norm = '/' + url.lstrip('/').rstrip('/')
+            url_map[norm] = chain
+            # 实时算 path_id (content_sources.package_type.paths[].path_id 字段未存)
+            try:
+                pid = _compute_path_id(norm, chain)
+                path_id_map[pid] = chain
+            except Exception:
+                pass
+        _url_chain_cache[row['id']] = {
+            'by_url': url_map,
+            'by_path_id': path_id_map,
+        }
 
     _chain_cache_loaded = True
-    logger.debug(f'URL→Chain cache built: {len(_url_chain_cache)} sources')
+    logger.debug(f'URL/path_id→Chain cache built: {len(_url_chain_cache)} sources')
 
 
 def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
@@ -154,20 +183,32 @@ def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
     return errors
 
 
-def _get_chain(source_id: int, source_url: str) -> list:
+def _get_chain(source_id: int, source_url: str, path_id: str = None) -> list:
     """从缓存反查 snapshot 的完整 chain 路径。
 
-    通过 snapshot.source_url 在 source.package_type.paths 中查找匹配路径。
+    优先 path_id 精确匹配（解决同 URL 多 chain 共享场景），
+    fallback URL 匹配（兼容 legacy snap 无 path_id 的旧行）。
+
     返回 chain 数组，如找不到返回空列表。
     """
     if not _chain_cache_loaded:
         _build_url_chain_cache()
-    url_map = _url_chain_cache.get(source_id, {})
-    # 剥离 domain 前缀，把 'https://update.nsfocus.com/update/...' 转为 '/update/...'
+    cache = _url_chain_cache.get(source_id, {})
+    if not isinstance(cache, dict):
+        # 防御:旧缓存结构意外残留 → 回退 URL 匹配
+        cache = {'by_url': cache, 'by_path_id': {}}
+    # 1) path_id 精确匹配（推荐路径，同 URL 多 chain 时唯一区分）
+    if path_id:
+        by_path = cache.get('by_path_id') or {}
+        ch = by_path.get(path_id)
+        if ch:
+            return ch
+    # 2) URL fallback（兼容老 snap 无 path_id 或 path_id 算错的极端情况）
+    by_url = cache.get('by_url') or {}
     import re as _re
     m = _re.match(r'^https?://[^/]+(.*)', source_url or '')
     rel_path = '/' + m.group(1).lstrip('/').rstrip('/') if m else ('/' + source_url.lstrip('/').rstrip('/') if source_url else '/')
-    return url_map.get(rel_path, [])
+    return by_url.get(rel_path, [])
 
 
 def invalidate_chain_cache():
