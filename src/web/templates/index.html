@@ -3851,7 +3851,7 @@ async function history(){
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td>${d.channel_name||'—'}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
-            <td>${d.channel_id?`<button class="btn btn-xs btn-outline" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">重推</button>`:''}</td>
+            <td>${d.channel_id?`<button class="btn btn-xs btn-primary" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">📤 重推</button>`:''}</td>
         </tr>`;
       });
     }
