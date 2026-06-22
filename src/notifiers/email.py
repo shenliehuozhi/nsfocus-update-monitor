@@ -188,7 +188,7 @@ class EmailNotifier(BaseNotifier):
 
         # ── 6. 附件处理（新增详细日志）─────────────────────────
         sender_contact = self._load_sender_contact()
-        html_body = _format_html_body(message, message.is_rollback, sender_contact=sender_contact)
+
 
         email_msg = MIMEMultipart('mixed')
         email_msg['Subject'] = subject
@@ -227,6 +227,7 @@ class EmailNotifier(BaseNotifier):
         else:
             log.info('⏭️ 不满足附件附加条件，跳过')
 
+        html_body = _format_html_body(message, message.is_rollback, sender_contact=sender_contact,show_download_btn=attachment_attached)
         # ── 7. 构建HTML正文（含下载提示）─────────────────────
         if not message.is_rollback:
             md5_guide = f'''

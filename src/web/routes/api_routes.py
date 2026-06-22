@@ -432,7 +432,7 @@ def resend(sid: int):
 @require_auth
 def resend_targeted(sid: int):
     """Re-push a snapshot to a specific customer and channel.
-    
+
     Body: {"channel_id": 1, "customer_id": 3}
     """
     data = request.get_json() or {}
@@ -448,7 +448,7 @@ def resend_targeted(sid: int):
 
     snap = get_snapshot(sid)
     if not snap:
-        return jsonify({'code': 40400}), 404
+        return jsonify({'code': 40400, 'message': '快照不存在'}), 404
 
     channel = get_by_id(channel_id)
     if not channel:
@@ -456,29 +456,79 @@ def resend_targeted(sid: int):
     if not channel.get('is_active'):
         return jsonify({'code': 40001, 'message': '渠道已停用'}), 400
 
-    # Look up customer name for the title
+    # ── 构建 relay_config（复用手动推送的配置）──
+    # 先复制渠道配置
+    relay_config = dict(channel['config'])
+
     customer_name = ''
+    # 从客户档案获取邮箱和附件大小
     if customer_id:
         try:
             from src.models.customer import get_by_id as get_cust
             cust = get_cust(customer_id)
             if cust:
                 customer_name = cust.get('name', '')
+                cust_email = cust.get('email', '').strip()
+                if cust_email:
+                    relay_config['to_list'] = [cust_email]
+                cust_attach_mb = cust.get('attachment_max_mb', 0)
+                if cust_attach_mb > 0:
+                    relay_config['attachment_max_mb'] = str(cust_attach_mb)
         except Exception:
             pass
 
+    # 如果客户没有邮箱，尝试从订阅规则获取
+    if not relay_config.get('to_list'):
+        try:
+            from src.models.subscription import get_rule
+            # 获取关联的规则
+            from src.models.database import query
+            rows = query(
+                "SELECT rule_id FROM delivery_log WHERE snapshot_id = ? AND channel_id = ? LIMIT 1",
+                (sid, channel_id)
+            )
+            if rows:
+                rule = get_rule(rows[0]['rule_id'])
+                if rule and rule.get('customer_emails'):
+                    relay_config['rule_emails'] = rule['customer_emails']
+        except Exception:
+            pass
+
+    # 如果还是没有收件人，使用 SMTP 用户作为 fallback
+    if not relay_config.get('to_list') and not relay_config.get('rule_emails'):
+        smtp_user = channel['config'].get('smtp_user', '')
+        if smtp_user:
+            relay_config['to_list'] = [smtp_user]
+            import logging
+            logging.getLogger('api').warning(f'[resend] 无收件人，使用 smtp_user({smtp_user}) 作为 fallback')
+
+    # 注入渠道和客户 ID（用于限流和日志）
+    relay_config['_channel_id'] = channel_id
+    relay_config['_customer_id'] = customer_id or 0
+
+    # 获取邮件速率限制配置
+    from src.notifiers.router import _get_email_rate_settings
+    limits = _get_email_rate_settings()
+    relay_config['_cust_hourly_limit'] = limits['cust_hourly']
+    relay_config['_cust_daily_limit'] = limits['cust_daily']
+    relay_config['_global_hourly_limit'] = limits['global_hourly']
+    relay_config['_global_daily_limit'] = limits['global_daily']
+
+    # ── 构造消息 ──
     message = NotificationMessage.from_snapshot(snap)
     if customer_name:
         message.title = f'[重推至{customer_name}] {message.title}'
 
+    # ── 发送 ──
     from src.notifiers.router import NOTIFIERS
     notifier = NOTIFIERS.get(channel['type'])
     if not notifier:
         return jsonify({'code': 40001, 'message': f'不支持的渠道类型: {channel["type"]}'}), 400
 
-    result = notifier.send(message, channel['config'])
+    # 使用 relay_config 发送（包含收件人信息）
+    result = notifier.send(message, relay_config)
 
-    # 写入投递日志，FK 失败（如 customer_id 不存在）不影响返回成功
+    # 写入投递日志（customer_id 已经正确传入，不需要改）
     try:
         from src.models.subscription import log_delivery
         log_delivery(
@@ -499,6 +549,7 @@ def resend_targeted(sid: int):
         'data': {'success': result.success, 'error': result.error_message},
         'message': '已推送' if result.success else f'推送失败: {result.error_message}',
     })
+
 
 # ── Push by mode (customer/channel/manual_email) ──────────────
 
@@ -820,7 +871,7 @@ def push_email(sid: int):
     relay_config['_customer_id'] = customer_id or 0
     relay_config['_email_hourly_limit'] = ch.get('email_hourly_limit', 0)
     relay_config['_email_daily_limit'] = ch.get('email_daily_limit', 0)
-    
+
     if customer_id:
         from src.models.customer import get_by_id as get_cust
         cust = get_cust(customer_id)
@@ -988,11 +1039,11 @@ bp_latest = Blueprint('latest', __name__, url_prefix='/api/latest')
 @require_auth
 def get_latest_snapshots():
     """Get latest snapshots grouped by source (product).
-    
+
     Returns dict keyed by source_id, each containing:
       - name, is_active, package_type (paths for tree building)
       - snapshots list (only is_active=true sources, all snapshots kept in DB)
-    
+
     Query params:
       - show_rollback: '1' to include rollback snapshots
     """

@@ -294,7 +294,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
                             max_bytes: int = 4000, skip_empty_meta: bool = False
                             ) -> list[str]:
     """Format message as one or more markdown bodies, splitting at 4000-byte limit.
-    
+
     Returns a list of body strings. Never truncates — splits into multiple messages.
     Each message respects the WeCom/DingTalk 4096-byte hard limit.
     """
@@ -384,7 +384,8 @@ def _chunk_text(text: str, max_bytes: int) -> list[str]:
 
 
 def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
-                       sender_contact: dict | None = None) -> str:
+                       sender_contact: dict | None = None,
+                       show_download_btn: bool = True) -> str:
     """Format a NotificationMessage as HTML for email — aligned with WeCom/DingTalk markdown template."""
     urgency_colors = {'normal': '#4a90d9', 'high': '#f5a623', 'critical': '#d0021b'}
     urgency_icons = {'normal': 'ℹ️', 'high': '⚠️', 'critical': '🔴'}
@@ -442,7 +443,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
 
     # Download button
     dl_btn = ''
-    if msg.download_url and msg.file_name:
+    if msg.download_url and msg.file_name and show_download_btn:
         dl_btn = f'''<tr><td colspan="2" style="padding:16px 0 0 0;text-align:center">
             <a href="{msg.download_url}" style="display:inline-block;background:{color};color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold">下载升级包</a>
         </td></tr>'''

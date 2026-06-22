@@ -136,23 +136,38 @@ def _chain_matches(snap_chain: list, rule_chains: list) -> bool:
     Returns:
         True if any rule_chain entry matches, False otherwise.
     """
+    logger.info(f'[链匹配] snap_chain={snap_chain}, rule_chains={rule_chains}')
+
+    if not snap_chain:
+            logger.warning(f'[链匹配] snap_chain 为空，无法匹配')
+            return False
+
     if not rule_chains:
+        logger.info(f'[链匹配] rule_chains 为空，匹配全部')
         return True  # 无 chains 条件 = 全部匹配
 
     for entry in rule_chains:
         rc = entry.get('chain', [])
         mode = entry.get('match', 'leaf')
+        logger.info(f'[链匹配] 尝试匹配: rc={rc}, mode={mode}')
 
         if not rc:
+            logger.info(f'[链匹配] ⏭️ 跳过空的 rule chain')
             continue
 
         if mode == 'leaf':
             if snap_chain == rc:
+                logger.info(f'[链匹配] ✅ leaf 匹配成功: {snap_chain} == {rc}')
                 return True
+            else:
+                logger.info(f'[链匹配] ❌ leaf 不匹配: {snap_chain} != {rc}')
         elif mode == 'subtree':
             # subtree: snap_chain 的前缀必须等于 rule_chain
             if len(snap_chain) >= len(rc) and snap_chain[:len(rc)] == rc:
+                logger.info(f'[链匹配] ✅ subtree 匹配成功: {snap_chain[:len(rc)]} == {rc}')
                 return True
+            else:
+                logger.info(f'[链匹配] ❌ subtree 不匹配: {snap_chain[:len(rc)]} != {rc}')
 
     return False
 
@@ -173,7 +188,9 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
     Returns:
         匹配的 [(snapshot_id, snapshot_dict), ...]
     """
+    logger.info(f'[订阅匹配] 规则: {rule.get("name")}, 待匹配包数: {len(new_items)}')
     conditions = rule.get('filter_conditions', {})
+    logger.info(f'[订阅匹配] 条件: {conditions}')
 
     # 校验 valid_until：过期规则不匹配任何新包
     valid_until = rule.get('valid_until', '')
@@ -205,25 +222,31 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
         if _get_chain:
             matched = []
             for sid, snap in new_items:
+                logger.info(f'[订阅匹配] 检查包: {snap.get("file_name")}')
                 snap_chain = _get_chain(
                     snap.get('source_id', 0),
                     snap.get('source_url', '')
                 )
+                logger.info(f'[订阅匹配] snap_chain: {snap_chain}')
                 if not _chain_matches(snap_chain, chains):
+                    logger.info(f'[订阅匹配] ❌ chain 不匹配，跳过')
                     continue
 
                 # Chain 匹配通过后，再检查 urgency 和 keywords
                 urgency = conditions.get('urgency', [])
                 if urgency and snap.get('urgency') not in urgency:
+                    logger.info(f'[订阅匹配] ❌ urgency 不匹配: {snap.get("urgency")} 不在 {urgency} 中')
                     continue
 
                 keywords = conditions.get('keywords', [])
                 if keywords:
                     desc = snap.get('description_raw', '')
                     if not any(kw.lower() in desc.lower() for kw in keywords):
+                        logger.info(f'[订阅匹配] ❌ keywords 不匹配: {keywords} 不在描述中')
                         continue
-
+                logger.info(f'[订阅匹配] ✅ 全部条件匹配，加入结果')
                 matched.append((sid, snap))
+            logger.info(f'[订阅匹配] 规则 {rule.get("name")} 匹配结果: {len(matched)} 个包')
             return matched
 
     # ── 旧结构：products / versions / package_types（向后兼容）───────────
