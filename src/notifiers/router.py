@@ -247,7 +247,12 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
             channel_id=channel_id,
             channel_type=channel['type'],
             channel_name=channel.get('name', ''),
-            customer_id=binding.get('customer_id'),
+            # Fix: subscription_rules.customer_id 是推送客户的唯一来源
+            # (rule_channels.customer_id 在前端表单里永远不会被填,因为后端
+            # 期望的字段名是 'customers' (复数 list),前端却传 'customer_id' (单值))。
+            # 不再用 binding.get('customer_id') —— 改用 rule.get('customer_id'),
+            # 兼容老 binding 行 (None) 不会写 NULL,旧历史也保持原样不动。
+            customer_id=rule.get('customer_id') or binding.get('customer_id'),
             status='sent' if result.success else 'failed',
             error=result.error_message
         )
@@ -480,7 +485,8 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list):
                 channel_id=channel_id,
                 channel_type=channel['type'],
                 channel_name=channel.get('name', ''),
-                customer_id=binding.get('customer_id'),
+                # 同 _send_immediate:用 rule.customer_id,不是 binding 的(永远是 NULL)
+                customer_id=rule.get('customer_id') or binding.get('customer_id'),
                 status='sent',
             )
 
