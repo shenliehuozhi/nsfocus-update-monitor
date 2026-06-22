@@ -895,14 +895,16 @@ def push_email(sid: int):
     result = notifier.send(message, relay_config)
 
     # Log delivery (one row per push, regardless of recipient count)
+    # channel_name 只存渠道名(不带邮箱),收件人单独存 recipient 列 — 避免前端两列重复
     log_delivery(
         snapshot_id=sid,
         channel_id=ch['id'],
         channel_type='email',
-        channel_name=relay_config['name'],
+        channel_name=ch.get('name', 'email'),
         customer_id=customer_id or 0,
         status='sent' if result.success else 'failed',
         error=result.error_message,
+        recipient=','.join(recipients),
     )
     record(rate_key)
 

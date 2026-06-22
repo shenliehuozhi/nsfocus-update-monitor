@@ -3841,6 +3841,8 @@ async function history(){
         // 收件人:email 渠道显示 to_list;机器人渠道 (wecom/dingtalk/feishu) 没个人收件人,
         // 用 channel_name 替代,跟机器人名一致
         let recipient = d.recipient || d.channel_name || '—';
+        // 渠道列:email 渠道在 channel_name 后用括号显示收件人,机器人渠道没个人收件人只显示 channel_name
+        let channelDisp = d.recipient ? `${d.channel_name||'—'} (${d.recipient})` : (d.channel_name||'—');
         html += `<tr style="background:#f8f8f8">
             <td>${fmtTZ(d.sent_at||h.pushed_at||h.first_seen_at||'',true)}</td>
             <td>${d.customer_name||'—'}</td>
@@ -3849,7 +3851,7 @@ async function history(){
             <td class="mono">${(h.file_name||'').substring(0,30)}</td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
-            <td>${d.channel_name||'—'}</td>
+            <td>${escHtml(channelDisp)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
             <td>${d.channel_id?`<button class="btn btn-xs btn-primary" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">📤 重推</button>`:''}</td>
         </tr>`;
