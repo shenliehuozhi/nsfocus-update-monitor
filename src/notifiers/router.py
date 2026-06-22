@@ -239,6 +239,19 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         result = notifier.send(message, ch_config)
         results.append(result)
 
+        # Calculate recipient string for delivery_log (push history UI).
+        # email 渠道: 拼接 to_list + rule_emails(去重),跟 email.py 内部逻辑保持一致
+        # 机器人渠道 (wecom/dingtalk/feishu): 推送目标是 webhook,没有"收件人"概念,
+        # 留空,前端回退到 channel_name 当"收件人"展示
+        recipient_str = ''
+        if channel['type'] == 'email':
+            to_list = list(ch_config.get('to_list') or [])
+            rule_emails = (ch_config.get('rule_emails') or '').strip()
+            if rule_emails:
+                extras = [e.strip() for e in rule_emails.split(',') if e.strip()]
+                to_list = list(dict.fromkeys(to_list + extras))
+            recipient_str = ','.join(to_list)
+
         # Log delivery
         from src.models.subscription import log_delivery
         log_delivery(
@@ -254,7 +267,8 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
             # 兼容老 binding 行 (None) 不会写 NULL,旧历史也保持原样不动。
             customer_id=rule.get('customer_id') or binding.get('customer_id'),
             status='sent' if result.success else 'failed',
-            error=result.error_message
+            error=result.error_message,
+            recipient=recipient_str,
         )
 
         # Accumulate for push summary (replaces per-delivery emit_push)
@@ -488,6 +502,8 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list):
                 # 同 _send_immediate:用 rule.customer_id,不是 binding 的(永远是 NULL)
                 customer_id=rule.get('customer_id') or binding.get('customer_id'),
                 status='sent',
+                # digest 是机器人渠道,recipient 留空,前端回退到 channel_name
+                recipient='',
             )
 
 
