@@ -3838,7 +3838,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono">${(h.file_name||'').substring(0,30)}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 渠道列: 机器人显示「🤖 类型: 渠道名」;email 显示「渠道名 (收件人)」
@@ -3857,7 +3857,7 @@ async function history(){
             <td>${d.customer_name||'—'}</td>
             <td>${h.product_name||''}</td>
             <td>${typeCN(h.package_type)}</td>
-            <td class="mono">${(h.file_name||'').substring(0,30)}</td>
+            <td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
             <td>${escHtml(channelDisp)}</td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
