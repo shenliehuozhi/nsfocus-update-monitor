@@ -277,7 +277,7 @@ CREATE TABLE IF NOT EXISTS snapshots (
     published_at TEXT DEFAULT '',
     first_seen_at TEXT DEFAULT (datetime('now')),
     last_seen_at TEXT DEFAULT (datetime('now')),
-    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'rollback_pending', 'rollback')),
+    status TEXT DEFAULT 'active' CHECK(status IN ('active', 'superseded', 'withdrawn')),
     rollback_confirmed_at TEXT,
     page_hash TEXT DEFAULT '',
     prev_page_hash TEXT DEFAULT '',
