@@ -494,29 +494,33 @@ class NsfocusCollector(BaseCollector):
                     # inside _extract_table_items as MD5(page_url + json(chain))[:12],
                     # identical to the algorithm in src/core/scheduler.py:_compute_path_id.
                     chain_path_id = table_items[0].path_id if table_items else ''
+                    # md5 是文件身份的最终标识 — 把 md5_hash 也纳入 key 维度
+                    # (file_name, path_id, md5_hash) 任一不同都视为不同文件身份。
+                    # 老 DB 有同 (filename, path_id) 但不同 md5 → 视为 NEW (撤回重发 / 文件被替换)
+                    # 老 DB 有同 (filename, path_id, md5)  → 视为已存在,走 UNCHANGED 分支
+                    # key 用 ti.md5_hash or '':两边都为空时 key 仍能匹配,当作 UNCHANGED (无法判定保守处理)
+                    # SQL 仍按 path_id 捞所有 (filename, path_id) 的 active 行 (覆盖所有历史 md5),
+                    # 由 key 三元组自然区分 — 这样多 ti 时每条独立判定,不用 SQL 只对第一个 ti 的 md5。
                     old_snaps = snap_query(
                         """SELECT file_name, md5_hash, package_version, package_type, file_size, path_id
                            FROM snapshots
                            WHERE source_id=? AND source_url=? AND path_id=? AND status='active'""",
                         (source_id, full_url, chain_path_id))
-                    old_map = {(s['file_name'], s['path_id']): s for s in old_snaps}
+                    old_map = {(s['file_name'], s['path_id'], s['md5_hash'] or ''): s for s in old_snaps}
 
                     if cached_items:
                         for ti in cached_items:
-                            key = (ti.file_name, ti.path_id)
+                            key = (ti.file_name, ti.path_id, ti.md5_hash or '')
                             old_s = old_map.get(key)
                             if old_s is None:
+                                # DB 没有 (filename, path_id, md5_hash) 这个组合 → 文件身份不同 → NEW
                                 status = '► NEW  '
                                 old_info = '  (none)'
                             else:
+                                # 三元组命中 → 必是 md5 一致 → UNCHANGED (含 md5 双空兜底)
+                                status = '► UNCHANGED'
                                 old_md5 = old_s['md5_hash'] or ''
-                                # md5 两边都存在且相等 → 真没变,打 UNCHANGED
-                                if old_md5 and ti.md5_hash and old_md5 == ti.md5_hash:
-                                    status = '► UNCHANGED'
-                                    old_info = f'md5={old_md5[:12]}... (unchanged)'
-                                else:
-                                    status = '► CHANGE'
-                                    old_info = f'{old_s["file_name"]} md5={old_md5[:12]}... → {ti.md5_hash[:12]}...'
+                                old_info = f'md5={old_md5[:12]}... (unchanged)'
                             ver_str = f' v{ti.package_version}' if ti.package_version else ''
                             size_str = f' ({ti.file_size} bytes)' if ti.file_size else ''
                             logger.info(f'  {status} {ti.file_name}{ver_str}{size_str}')
