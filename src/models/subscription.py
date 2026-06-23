@@ -291,7 +291,7 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
                FROM delivery_log dl
                LEFT JOIN customers c ON dl.customer_id = c.id
                WHERE dl.snapshot_id = ?
-               ORDER BY dl.sent_at""",
+               ORDER BY dl.sent_at DESC""",
             (row['id'],)
         )
         row['deliveries'] = [dict(d) for d in deliveries]
