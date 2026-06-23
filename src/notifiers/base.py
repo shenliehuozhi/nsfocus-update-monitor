@@ -413,28 +413,6 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
             <div style="color:#555;margin-top:4px;line-height:1.8;font-size:15px">{desc_text}</div>
         </td></tr>'''
 
-    # Parsed rule details (added/modified/deleted)
-    parsed = msg.description_parsed
-    if parsed.get('added') or parsed.get('modified') or parsed.get('deleted'):
-        rules_html = ''
-        if parsed.get('added'):
-            ids = parsed['added'][:10]
-            more = f' ...等共{len(parsed["added"])}条' if len(parsed['added']) > 10 else ''
-            rules_html += f'<div>📋 新增: {", ".join(ids)}{more}</div>'
-        if parsed.get('modified'):
-            ids = parsed['modified'][:5]
-            more = f' ...等共{len(parsed["modified"])}条' if len(parsed['modified']) > 5 else ''
-            rules_html += f'<div>📝 修改: {", ".join(ids)}{more}</div>'
-        if parsed.get('deleted'):
-            ids = parsed['deleted'][:5]
-            more = f' ...等共{len(parsed["deleted"])}条' if len(parsed['deleted']) > 5 else ''
-            rules_html += f'<div>🗑️ 删除: {", ".join(ids)}{more}</div>'
-        desc_html += f'''
-        <tr><td colspan="2" style="padding:8px 0">
-            <strong>规则变更详情</strong>
-            <div style="color:#555;margin-top:4px;font-size:13px">{rules_html}</div>
-        </td></tr>'''
-
     # Dependencies (matching markdown template) — 保持与上方元信息一致的两列对齐
     dep_html = ''
     if msg.min_sys_version:
