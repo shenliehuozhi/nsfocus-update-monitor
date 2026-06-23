@@ -509,10 +509,14 @@ class NsfocusCollector(BaseCollector):
                                 status = '► NEW  '
                                 old_info = '  (none)'
                             else:
-                                status = '► CHANGE'
-                                old_ver = old_s['package_version'] or ''
                                 old_md5 = old_s['md5_hash'] or ''
-                                old_info = f'{old_s["file_name"]} md5={old_md5[:12]}... → {ti.md5_hash[:12]}...'
+                                # md5 两边都存在且相等 → 真没变,打 UNCHANGED
+                                if old_md5 and ti.md5_hash and old_md5 == ti.md5_hash:
+                                    status = '► UNCHANGED'
+                                    old_info = f'md5={old_md5[:12]}... (unchanged)'
+                                else:
+                                    status = '► CHANGE'
+                                    old_info = f'{old_s["file_name"]} md5={old_md5[:12]}... → {ti.md5_hash[:12]}...'
                             ver_str = f' v{ti.package_version}' if ti.package_version else ''
                             size_str = f' ({ti.file_size} bytes)' if ti.file_size else ''
                             logger.info(f'  {status} {ti.file_name}{ver_str}{size_str}')
