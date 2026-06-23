@@ -488,7 +488,7 @@ class NsfocusCollector(BaseCollector):
                     # ── Log package-level diff (only on first fetch per URL) ──
                     # Query existing active snapshots for this URL + path_id as the
                     # "before" state. Path_id isolation prevents cross-chain false
-                    # NEW/REMOVED reports when multiple chains share one URL
+                    # NEW/SUPERSEDED reports when multiple chains share one URL
                     # (e.g. NSFocus 海光 + 标准版 both pointing at /apprule6.0.60).
                     # path_id comes from the first extracted item — it was computed
                     # inside _extract_table_items as MD5(page_url + json(chain))[:12],
@@ -527,7 +527,7 @@ class NsfocusCollector(BaseCollector):
                         for (fname, ptype), old_s in old_map.items():
                             if (fname, ptype) not in new_keys:
                                 old_md5 = old_s['md5_hash'] or ''
-                                logger.info(f'  ◄ REMOVED {fname} ({old_s["file_size"] or 0} bytes)')
+                                logger.info(f'  ◄ SUPERSEDED {fname} ({old_s["file_size"] or 0} bytes)')
                                 logger.info(f'    type={ptype}  md5={old_md5[:12]}...')
 
                     # Cache result for other chains that share this URL
