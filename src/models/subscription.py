@@ -268,12 +268,16 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
     )
     total = total[0]['cnt'] if total else 0
 
-    # Get distinct snapshots with their pushed_at time
+    # Get distinct snapshots with their latest pushed_at time
+    # ⚠️ 不能直接 SELECT DISTINCT s.* + dl.sent_at — 因为同 snap 有多条 delivery_log,
+    #    每个 dl.sent_at 不同 → DISTINCT 不工作 → 同 snap 重复出现 N 次
+    # 用 GROUP BY + MAX(dl.sent_at) 聚合,确保每个 snap 只 1 行
     rows = query(
-        f"""SELECT DISTINCT s.*, dl.sent_at as pushed_at
+        f"""SELECT s.*, MAX(dl.sent_at) as pushed_at
             FROM delivery_log dl JOIN snapshots s ON dl.snapshot_id = s.id
             WHERE {where}
-            ORDER BY dl.sent_at DESC LIMIT ? OFFSET ?""",
+            GROUP BY s.id
+            ORDER BY pushed_at DESC LIMIT ? OFFSET ?""",
         tuple(params) + (limit, (page - 1) * limit)
     )
 
