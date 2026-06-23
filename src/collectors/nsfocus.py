@@ -502,7 +502,7 @@ class NsfocusCollector(BaseCollector):
                     # SQL 仍按 path_id 捞所有 (filename, path_id) 的 active 行 (覆盖所有历史 md5),
                     # 由 key 三元组自然区分 — 这样多 ti 时每条独立判定,不用 SQL 只对第一个 ti 的 md5。
                     old_snaps = snap_query(
-                        """SELECT file_name, md5_hash, package_version, package_type, file_size, path_id
+                        """SELECT file_name, md5_hash, package_version, package_type, file_size, path_id, published_at
                            FROM snapshots
                            WHERE source_id=? AND source_url=? AND path_id=? AND status='active'""",
                         (source_id, full_url, chain_path_id))
@@ -531,12 +531,33 @@ class NsfocusCollector(BaseCollector):
                                 logger.info(f'    {ti.package_type}')
 
                         # Detect removed packages (in old but not in new)
-                        new_keys = {(ti.file_name, ti.path_id) for ti in cached_items}
-                        for (fname, pid), old_s in old_map.items():
-                            if (fname, pid) not in new_keys:
-                                old_md5 = old_s['md5_hash'] or ''
-                                logger.info(f'  ◄ OLD {fname} ({old_s["file_size"] or 0} bytes)')
-                                logger.info(f'    type={old_s["package_type"]}  md5={old_md5[:12]}...')
+                        # 第二遍用三元组 (file_name, path_id, md5_hash) 做 key 跟第一遍对称 —
+                        # 老行 md5 跟本次抓到任一新包都不同 = 真正被取代或撤回,单凭 (file_name, path_id)
+                        # 会把"撤回重发"场景的老行错认为还在。
+                        new_keys = {(ti.file_name, ti.path_id, ti.md5_hash or '') for ti in cached_items}
+                        # 拿本次所有新包 published_at,用于判定 OLD vs WITHDRAWN:
+                        #   老行 pub 早于任一新包 → 被新版取代 → OLD
+                        #   老行 pub 不早于任一新包 → 绿盟主动撤回/下架 → WITHDRAWN
+                        #   缺 pub 数据 → 保守 OLD
+                        new_pubs = [ti.published_at for ti in cached_items if ti.published_at]
+                        for (fname, pid, old_md5), old_s in old_map.items():
+                            if (fname, pid, old_md5) not in new_keys:
+                                old_pub = old_s.get('published_at', '')
+                                md5_short = (old_s['md5_hash'] or '')[:12]
+                                type_str = old_s['package_type']
+                                size = old_s['file_size'] or 0
+                                if not old_pub or not new_pubs:
+                                    # 缺 pub 数据,保守按被取代
+                                    logger.info(f'  ◄ OLD {fname} ({size} bytes)')
+                                    logger.info(f'    type={type_str}  md5={md5_short}...')
+                                elif any(np > old_pub for np in new_pubs):
+                                    # 老行 pub 早于至少一个新包 → 被新版取代
+                                    logger.info(f'  ◄ OLD {fname} ({size} bytes)')
+                                    logger.info(f'    type={type_str}  md5={md5_short}...')
+                                else:
+                                    # 老行 pub 不早于任一新包 → 绿盟主动撤回/下架
+                                    logger.info(f'  ◄ WITHDRAWN {fname} ({size} bytes)')
+                                    logger.info(f'    type={type_str}  md5={md5_short}...')
 
                     # Cache result for other chains that share this URL
                     url_cache[full_url] = cached_items
