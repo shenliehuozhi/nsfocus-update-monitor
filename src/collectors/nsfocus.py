@@ -486,12 +486,19 @@ class NsfocusCollector(BaseCollector):
                     cached_items = [replace(ti) for ti in table_items]
 
                     # ── Log package-level diff (only on first fetch per URL) ──
-                    # Query existing active snapshots for this URL as the "before" state
+                    # Query existing active snapshots for this URL + path_id as the
+                    # "before" state. Path_id isolation prevents cross-chain false
+                    # NEW/REMOVED reports when multiple chains share one URL
+                    # (e.g. NSFocus 海光 + 标准版 both pointing at /apprule6.0.60).
+                    # path_id comes from the first extracted item — it was computed
+                    # inside _extract_table_items as MD5(page_url + json(chain))[:12],
+                    # identical to the algorithm in src/core/scheduler.py:_compute_path_id.
+                    chain_path_id = table_items[0].path_id if table_items else ''
                     old_snaps = snap_query(
                         """SELECT file_name, md5_hash, package_version, package_type, file_size
                            FROM snapshots
-                           WHERE source_id=? AND source_url=? AND status='active'""",
-                        (source_id, full_url))
+                           WHERE source_id=? AND source_url=? AND path_id=? AND status='active'""",
+                        (source_id, full_url, chain_path_id))
                     old_map = {(s['file_name'], s['package_type']): s for s in old_snaps}
 
                     if cached_items:
