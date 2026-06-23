@@ -2628,7 +2628,23 @@ function startBanCountdown(seconds){
   tick();_banTimer=setInterval(tick,1000);
 }
 
-async function resendTargeted(sid,cid,custid){await confirmAct('确认重新推送到该客户？', async ()=>{const r=await api('/history/'+sid+'/resend-targeted',{method:'POST',body:JSON.stringify({channel_id:cid,customer_id:custid})});toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');}, '📤', '确认推送');}
+async function resendTargeted(sid,cid,custid){
+  await confirmAct('确认重新推送到该客户？', async ()=>{
+    // 推送期间 disable 同 snap 的所有重推按钮,防误点
+    // 用 [data-resend-sid] 属性选,history() 重渲染后属性消失 → finally 兜底
+    const btns = document.querySelectorAll(`button[data-resend-sid="${sid}"]`);
+    btns.forEach(b => { b.disabled = true; b.textContent = '⏳ 推送中...'; });
+    try {
+      const r = await api('/history/'+sid+'/resend-targeted',{method:'POST',body:JSON.stringify({channel_id:cid,customer_id:custid})});
+      toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');
+      // 推送成功后刷新历史列表,显示新生成的 delivery_log 行
+      await history();
+    } finally {
+      // history() 重渲染后原按钮对象已失效,query 重新选
+      document.querySelectorAll(`button[data-resend-sid="${sid}"]`).forEach(b => { b.disabled = false; b.textContent = '📤 重推'; });
+    }
+  }, '📤', '确认推送');
+}
 
 // ── Sessions ──
 const SES_PURPOSE={'discover':'发现','collect':'采集'};
@@ -3864,7 +3880,7 @@ async function history(){
             <td>${escHtml(channelDisp)}</td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
-            <td>${d.channel_id?`<button class="btn btn-xs btn-primary" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">📤 重推</button>`:''}</td>
+            <td>${d.channel_id?`<button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">📤 重推</button>`:''}</td>
         </tr>`;
       });
     }
