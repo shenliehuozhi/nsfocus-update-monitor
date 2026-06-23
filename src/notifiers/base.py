@@ -213,6 +213,7 @@ class DeliveryResult:
     channel_type: str
     channel_name: str
     error_message: str = ''
+    sender: str = ''  # 发件邮箱/发件标识(仅 email 类型填 smtp_user,其他类型留空)
 
 
 class BaseNotifier(ABC):

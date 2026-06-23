@@ -269,6 +269,7 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
             status='sent' if result.success else 'failed',
             error=result.error_message,
             recipient=recipient_str,
+            sender=getattr(result, 'sender', '') or '',
         )
 
         # Accumulate for push summary (replaces per-delivery emit_push)

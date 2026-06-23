@@ -539,6 +539,7 @@ def resend_targeted(sid: int):
             customer_id=customer_id,
             status='sent' if result.success else 'failed',
             error=result.error_message,
+            sender=getattr(result, 'sender', '') or '',
         )
     except Exception as e:
         import logging
@@ -896,6 +897,7 @@ def push_email(sid: int):
 
     # Log delivery (one row per push, regardless of recipient count)
     # channel_name 只存渠道名(不带邮箱),收件人单独存 recipient 列 — 避免前端两列重复
+    # sender 存 SMTP 发件邮箱(从 result.sender 读,email.py 已填)
     log_delivery(
         snapshot_id=sid,
         channel_id=ch['id'],
@@ -905,6 +907,7 @@ def push_email(sid: int):
         status='sent' if result.success else 'failed',
         error=result.error_message,
         recipient=','.join(recipients),
+        sender=getattr(result, 'sender', '') or '',
     )
     record(rate_key)
 

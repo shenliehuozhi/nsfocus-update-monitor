@@ -3841,12 +3841,14 @@ async function history(){
       html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
-        // 渠道列: 机器人显示「🤖 类型: 渠道名」;email 显示「渠道名 (收件人)」
+        // 渠道列: 机器人显示「🤖 类型: 渠道名」;email 显示「渠道名 (发件邮箱)」
+        // 发件邮箱 sender 由 email notifier 写入;老数据/机器人渠道为空时 fallback 到 recipient
         let channelDisp;
         if (botTypes.has(d.channel_type)) {
           channelDisp = `🤖 ${botTypeCN[d.channel_type]}: ${d.channel_name||'—'}`;
         } else if (d.channel_type === 'email') {
-          channelDisp = d.recipient ? `${d.channel_name||'—'} (${d.recipient})` : (d.channel_name||'—');
+          let senderEmail = d.sender || d.recipient || '';
+          channelDisp = senderEmail ? `${d.channel_name||'—'} (${senderEmail})` : (d.channel_name||'—');
         } else {
           channelDisp = d.channel_name || '—';
         }

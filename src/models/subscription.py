@@ -207,7 +207,7 @@ CREATE TABLE IF NOT EXISTS delivery_log (
 def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
                  channel_name: str = '', customer_id: int = None,
                  status: str = 'pending', error: str = '',
-                 rule_id: int = None, recipient: str = '') -> int:
+                 rule_id: int = None, recipient: str = '', sender: str = '') -> int:
     from src.models.database import execute
     sent_at = None
     if status == 'sent':
@@ -215,9 +215,9 @@ def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
         sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     return execute(
         """INSERT INTO delivery_log (snapshot_id, rule_id, channel_id, channel_type, channel_name,
-           customer_id, delivery_status, error_message, sent_at, recipient)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at, recipient)
+           customer_id, delivery_status, error_message, sent_at, recipient, sender)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at, recipient, sender)
     )
 
 
@@ -286,7 +286,7 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         deliveries = query(
             """SELECT dl.channel_name, dl.channel_type, dl.delivery_status,
                       dl.error_message, dl.sent_at, dl.channel_id, dl.customer_id,
-                      dl.recipient,
+                      dl.recipient, dl.sender,
                       c.name as customer_name, c.company as customer_company
                FROM delivery_log dl
                LEFT JOIN customers c ON dl.customer_id = c.id

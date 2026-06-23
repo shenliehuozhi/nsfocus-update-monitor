@@ -139,14 +139,14 @@ class EmailNotifier(BaseNotifier):
                 log.error('❌ 无收件人 (to_list为空且无rule_emails)')
                 logger.warning('[EMAIL] No recipient configured')
                 return DeliveryResult(False, 'email', config.get('name', ''),
-                                      'No recipient configured')
+                                      'No recipient configured', sender=smtp_user)
 
         log.info(f'  收件人({len(to_list)}): {", ".join(to_list[:5])}{"..." if len(to_list)>5 else ""}')
 
         if not smtp_host:
             log.error('❌ SMTP_HOST 为空')
             return DeliveryResult(False, 'email', config.get('name', ''),
-                                  'Missing SMTP config')
+                                  'Missing SMTP config', sender=smtp_user)
 
         # ── 4. 速率限制 ──────────────────────────────────────────
         ch_id = int(config.get('_channel_id') or 0)
@@ -167,18 +167,18 @@ class EmailNotifier(BaseNotifier):
             if not allowed:
                 log.warn(f'⛔ 渠道限流: {reason}')
                 logger.warning(f'[EMAIL] Channel rate limit: {reason}')
-                return DeliveryResult(False, 'email', config.get('name', ''), reason)
+                return DeliveryResult(False, 'email', config.get('name', ''), reason, sender=smtp_user)
         if cust_id:
             allowed, reason = check_customer(cust_id, cust_hourly, cust_daily)
             if not allowed:
                 log.warn(f'⛔ 客户限流: {reason}')
                 logger.warning(f'[EMAIL] Customer rate limit: {reason}')
-                return DeliveryResult(False, 'email', config.get('name', ''), reason)
+                return DeliveryResult(False, 'email', config.get('name', ''), reason, sender=smtp_user)
         allowed, reason = check_global(global_hourly, global_daily)
         if not allowed:
             log.warn(f'⛔ 全局限流: {reason}')
             logger.warning(f'[EMAIL] Global rate limit: {reason}')
-            return DeliveryResult(False, 'email', config.get('name', ''), reason)
+            return DeliveryResult(False, 'email', config.get('name', ''), reason, sender=smtp_user)
 
         log.info('✅ 速率限制检查通过')
 
@@ -265,7 +265,7 @@ class EmailNotifier(BaseNotifier):
             if encryption not in ('ssl', 'starttls'):
                 log.error(f'❌ 不支持的加密方式: {encryption}')
                 return DeliveryResult(False, 'email', config.get('name', ''),
-                                      'Encryption required: SSL or STARTTLS')
+                                      'Encryption required: SSL or STARTTLS', sender=smtp_user)
 
             if encryption == 'ssl':
                 log.info(f'🔒 使用SSL连接 {smtp_host}:{smtp_port}')
@@ -279,7 +279,7 @@ class EmailNotifier(BaseNotifier):
                 if not server.has_extn('starttls'):
                     log.error('❌ 服务器不支持STARTTLS')
                     return DeliveryResult(False, 'email', config.get('name', ''),
-                                          'Server does not advertise STARTTLS')
+                                          'Server does not advertise STARTTLS', sender=smtp_user)
                 log.info('🔒 升级TLS...')
                 server.starttls()
                 server.ehlo()
@@ -309,7 +309,7 @@ class EmailNotifier(BaseNotifier):
                 log.warn(f'⚠️ 部分收件人拒绝: {refused_str}')
                 server.quit()
                 return DeliveryResult(False, 'email', config.get('name', ''),
-                                      f'Recipients refused: {refused_str}')
+                                      f'Recipients refused: {refused_str}', sender=smtp_user)
 
             server.quit()
             log.ok(f'✅ 邮件发送成功! 总耗时 {(time.monotonic()-t0)*1000:.0f}ms')
@@ -319,37 +319,37 @@ class EmailNotifier(BaseNotifier):
                 log.info(f'📊 已记录限流计数: channel={ch_id}, customer={cust_id}')
 
             logger.info(f'[EMAIL] Sent successfully to {len(to_list)} recipients: {message.file_name}')
-            return DeliveryResult(True, 'email', config.get('name', ''))
+            return DeliveryResult(True, 'email', config.get('name', ''), sender=smtp_user)
 
         except smtplib.SMTPAuthenticationError as e:
             log.error(f'❌ SMTP认证失败: {e.smtp_code} {e.smtp_error}')
             logger.error(f'[EMAIL] SMTP auth failed: {e.smtp_code} {e.smtp_error}')
-            return DeliveryResult(False, 'email', config.get('name', ''), f'{e.smtp_code} {e.smtp_error}')
+            return DeliveryResult(False, 'email', config.get('name', ''), f'{e.smtp_code} {e.smtp_error}', sender=smtp_user)
         except smtplib.SMTPRecipientsRefused as e:
             refused_str = '; '.join(f'{rcpt}={code} {msg}' for rcpt, (code, msg) in e.recipients.items())
             log.error(f'❌ 收件人全部拒绝: {refused_str}')
             logger.error(f'[EMAIL] Recipients refused: {refused_str}')
-            return DeliveryResult(False, 'email', config.get('name', ''), f'Recipients refused: {refused_str}')
+            return DeliveryResult(False, 'email', config.get('name', ''), f'Recipients refused: {refused_str}', sender=smtp_user)
         except smtplib.SMTPServerDisconnected as e:
             log.error(f'❌ 服务器断开: {e}')
             logger.error(f'[EMAIL] Server disconnected: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), f'Server disconnected: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), f'Server disconnected: {e}', sender=smtp_user)
         except smtplib.SMTPException as e:
             log.error(f'❌ SMTP错误: {e}')
             logger.error(f'[EMAIL] SMTP error: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), str(e))
+            return DeliveryResult(False, 'email', config.get('name', ''), str(e), sender=smtp_user)
         except TimeoutError as e:
             log.error(f'❌ 连接超时: {e}')
             logger.error(f'[EMAIL] Timeout: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), f'Timeout: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), f'Timeout: {e}', sender=smtp_user)
         except OSError as e:
             log.error(f'❌ 网络错误: {e}')
             logger.error(f'[EMAIL] Network error: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), f'Network: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), f'Network: {e}', sender=smtp_user)
         except Exception as e:
             log.error(f'❌ 未知错误: {type(e).__name__}: {e}')
             logger.error(f'[EMAIL] Unexpected error: {type(e).__name__}: {e}')
-            return DeliveryResult(False, 'email', config.get('name', ''), f'{type(e).__name__}: {e}')
+            return DeliveryResult(False, 'email', config.get('name', ''), f'{type(e).__name__}: {e}', sender=smtp_user)
         finally:
             if server is not None:
                 try:
