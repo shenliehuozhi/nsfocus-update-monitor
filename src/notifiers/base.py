@@ -435,12 +435,12 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
             <div style="color:#555;margin-top:4px;font-size:13px">{rules_html}</div>
         </td></tr>'''
 
-    # Dependencies (matching markdown template)
+    # Dependencies (matching markdown template) — 保持与上方元信息一致的两列对齐
     dep_html = ''
     if msg.min_sys_version:
-        dep_html += f'<tr><td style="padding:4px 0"><strong>⚠️ 依赖</strong>: 系统版本 ≥ {msg.min_sys_version}</td></tr>'
+        dep_html += f'<tr><td style="padding:4px 0;width:80px;color:#666">依赖</td><td style="word-break:break-all">系统版本 ≥ {msg.min_sys_version}</td></tr>'
     if msg.restart_required:
-        dep_html += '<tr><td style="padding:4px 0"><strong>🔄 升级后需重启</strong></td></tr>'
+        dep_html += '<tr><td style="padding:4px 0;width:80px;color:#666">重启</td><td>升级后需重启</td></tr>'
 
     # Download button
     dl_btn = ''
