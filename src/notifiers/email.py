@@ -227,7 +227,8 @@ class EmailNotifier(BaseNotifier):
         else:
             log.info('⏭️ 不满足附件附加条件，跳过')
 
-        html_body = _format_html_body(message, message.is_rollback, sender_contact=sender_contact,show_download_btn=attachment_attached)
+        # 按钮只在无附件时显示;有附件时改为在 MD5 校验段后用文字提示兜底
+        html_body = _format_html_body(message, message.is_rollback, sender_contact=sender_contact, show_download_btn=not attachment_attached)
         # ── 7. 构建HTML正文（含下载提示）─────────────────────
         if not message.is_rollback:
             md5_guide = f'''
@@ -239,16 +240,16 @@ class EmailNotifier(BaseNotifier):
                 预期值：<code style="background:#e8e8e8;padding:2px 6px;border-radius:3px;font-family:monospace">{message.md5_hash}</code>
             </div>
             '''
-            combined = md5_guide
-
-            if not attachment_attached:
-                download_note = f'''
+            # 兜底文字:仅在有附件时显示,告诉用户附件有问题可走链接(替代按钮)
+            fallback_note = ''
+            if attachment_attached and message.download_url:
+                fallback_note = f'''
                 <p style="color:#d0021b;font-size:14px;margin:16px 0 8px 0;padding:10px;background:#fff3cd;border-radius:4px;border-left:4px solid #d0021b">
-                ⚠️ 文件大小({message.size_display})超过附件上限，请<a href="{message.download_url}" style="color:#d0021b;font-weight:bold">点击此处下载</a>获取升级包。
+                ⚠️ 如果附件下载失败或者校验异常，可以通过此链接直接下载附件：<a href="{message.download_url}" style="color:#d0021b;font-weight:bold">点此下载</a>
                 </p>
                 '''
-                combined = download_note + md5_guide
 
+            combined = md5_guide + fallback_note
             html_body = html_body.replace('</table>\n</td></tr>', f'</table>\n{combined}\n</td></tr>', 1)
 
         email_msg.attach(MIMEText(html_body, 'html', 'utf-8'))
