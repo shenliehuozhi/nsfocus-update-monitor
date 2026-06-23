@@ -502,7 +502,7 @@ class NsfocusCollector(BaseCollector):
                     # SQL 仍按 path_id 捞所有 (filename, path_id) 的 active 行 (覆盖所有历史 md5),
                     # 由 key 三元组自然区分 — 这样多 ti 时每条独立判定,不用 SQL 只对第一个 ti 的 md5。
                     old_snaps = snap_query(
-                        """SELECT file_name, md5_hash, package_version, package_type, file_size, path_id, published_at
+                        """SELECT id, file_name, md5_hash, package_version, package_type, file_size, path_id, published_at
                            FROM snapshots
                            WHERE source_id=? AND source_url=? AND path_id=? AND status='active'""",
                         (source_id, full_url, chain_path_id))
@@ -550,14 +550,20 @@ class NsfocusCollector(BaseCollector):
                                     # 缺 pub 数据,保守按被取代
                                     logger.info(f'  ◄ OLD {fname} ({size} bytes)')
                                     logger.info(f'    type={type_str}  md5={md5_short}...')
+                                    snap_exec("UPDATE snapshots SET status='superseded' WHERE id=?",
+                                              (old_s['id'],))
                                 elif any(np > old_pub for np in new_pubs):
                                     # 老行 pub 早于至少一个新包 → 被新版取代
                                     logger.info(f'  ◄ OLD {fname} ({size} bytes)')
                                     logger.info(f'    type={type_str}  md5={md5_short}...')
+                                    snap_exec("UPDATE snapshots SET status='superseded' WHERE id=?",
+                                              (old_s['id'],))
                                 else:
                                     # 老行 pub 不早于任一新包 → 绿盟主动撤回/下架
                                     logger.info(f'  ◄ WITHDRAWN {fname} ({size} bytes)')
                                     logger.info(f'    type={type_str}  md5={md5_short}...')
+                                    snap_exec("UPDATE snapshots SET status='withdrawn' WHERE id=?",
+                                              (old_s['id'],))
 
                     # Cache result for other chains that share this URL
                     url_cache[full_url] = cached_items
