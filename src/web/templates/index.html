@@ -922,8 +922,9 @@ async function dataPage() {
   _dataSelectedUrl = null;
 
   const showRb = sessionStorage.getItem('dataShowRollback') === '1';
+  const showOld = sessionStorage.getItem('dataShowOld') === '1';
   const [r, cfgR] = await Promise.all([
-    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0')).catch(() => ({ data: {} })),
+    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0') + '&show_old=' + (showOld ? '1' : '0')).catch(() => ({ data: {} })),
     api('/settings/config').catch(() => ({})),
   ]);
   _dataAll = r.data || {};
@@ -1004,6 +1005,9 @@ async function dataPage() {
         <span class="data-count-badge">${totalActive} 个产品</span>
         <label style="cursor:pointer;font-size:11px;margin-left:12px">
           <input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" ${showRb ? 'checked' : ''}> 显示已撤回
+        </label>
+        <label style="cursor:pointer;font-size:11px;margin-left:8px">
+          <input type="checkbox" id="cbShowOld" onchange="toggleShowOld(this.checked)" ${showOld ? 'checked' : ''}> 显示已替代/撤回的旧包
         </label>
       </div>
     </div>
@@ -2110,6 +2114,11 @@ function toggleRollback(checked) {
   dataPage();
 }
 
+function toggleShowOld(checked) {
+  sessionStorage.setItem('dataShowOld', checked ? '1' : '0');
+  dataPage();
+}
+
 // ── Old data page helpers (kept for compatibility) ──
 async function dataShowDrill(sid, url, verHint, pkgHint) {
   const src = _dataAll[sid];
@@ -2297,6 +2306,7 @@ function dataBackToAgg() {
 }
 
 function toggleRollback(v) { sessionStorage.setItem('dataShowRollback', v ? '1' : '0'); dataPage(); }
+function toggleShowOld(v) { sessionStorage.setItem('dataShowOld', v ? '1' : '0'); dataPage(); }
 async function manualPush(sid) { await confirmAct('确认推送？', async ()=>{ const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }, '📤', '确认推送'); }
 
 // ── Push Modal (email send OR channel send) ──
@@ -3236,8 +3246,9 @@ let _condChains = [];  // [{chain:[...], match:'leaf'|'subtree'}]
 // 加载产品数据（填充 _dataAll）
 async function loadDataAll() {
   const showRb = sessionStorage.getItem('dataShowRollback') === '1';
+  const showOld = sessionStorage.getItem('dataShowOld') === '1';
   const [r] = await Promise.all([
-    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0')).catch(() => ({ data: {} })),
+    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0') + '&show_old=' + (showOld ? '1' : '0')).catch(() => ({ data: {} })),
   ]);
   _dataAll = window._dataAll = r.data || {};
   Object.entries(_dataAll).forEach(([sid, src]) => {

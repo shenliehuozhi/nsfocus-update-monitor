@@ -1057,7 +1057,16 @@ def get_latest_snapshots():
     from src.models.snapshot import list_sources
 
     show_rollback = request.args.get('show_rollback', '0') == '1'
-    status_filter = "status IN ('active'" + (",'rollback'" if show_rollback else "") + ")"
+    show_old = request.args.get('show_old', '0') == '1'
+    # show_old: 显示被取代/撤回的旧包 (status='superseded'/'withdrawn')
+    # 跟 show_rollback 平行 — 两个开关互不影响
+    status_parts = ["'active'"]
+    if show_rollback:
+        status_parts.append("'rollback'")
+    if show_old:
+        status_parts.append("'superseded'")
+        status_parts.append("'withdrawn'")
+    status_filter = "status IN (" + ",".join(status_parts) + ")"
 
     # Get all active sources with their package_type paths
     sources = list_sources('nsfocus')
