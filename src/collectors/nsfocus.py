@@ -345,8 +345,7 @@ class NsfocusCollector(BaseCollector):
 
     # ── Quick: HEAD-check known pages, only GET changed ones ──
 
-    def _collect_quick(self, source_id: int, product_name: str,
-                       skip_page_hash: bool = False) -> list:
+    def _collect_quick(self, source_id: int, product_name: str) -> list:
         """Quick collection: revisit known package-page URLs, HEAD-check for changes.
 
         Primary source: content_sources.package_type_discovered.paths (has final-page URLs).
@@ -358,9 +357,8 @@ class NsfocusCollector(BaseCollector):
         - Page unchanged → skip
         - Page changed → full GET + extract new/updated items
 
-        Args:
-            skip_page_hash: if True, skip page-hash comparison and always re-parse
-                            every page (no hash check, always CHANGE branch).
+        Note: historical `skip_page_hash` parameter was a dead switch (no comparison
+        logic against prev_page_hash ever existed in this function). Removed 2026-06-23.
         """
         import json as _json
         from src.models.database import query as snap_query

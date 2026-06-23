@@ -534,12 +534,10 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         all_items = []
 
         if mode == 'quick':
-            skip_hash = _get_setting('skip_page_hash_check', '0') == '1'
-            all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
+            all_items = _collect_quick(existing_sources, cookie, _emit)
         elif mode == 'delta':
             # Legacy: redirect delta to quick
-            skip_hash = _get_setting('skip_page_hash_check', '0') == '1'
-            all_items = _collect_quick(existing_sources, cookie, _emit, skip_hash)
+            all_items = _collect_quick(existing_sources, cookie, _emit)
         else:
             all_items = _collect_full(existing_sources, list(collect_sessions.values()), cookie, _emit)
 
@@ -717,7 +715,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             logger.warning(f'Failed to clear collection_running in finally block: {e}')
 
 
-def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bool = False) -> list:
+def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
     """Quick collection: revisit known snapshot URLs, only GET changed pages.
 
     Uses collector._collect_quick which does HEAD/page-hash checks on known detail pages.
@@ -747,7 +745,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit, skip_page_hash: bo
         src = existing_sources[name]
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
-            items = _collector._collect_quick(src['id'], name, skip_page_hash)
+            items = _collector._collect_quick(src['id'], name)
             all_items.extend(items)
             if items:
                 logger.info(f'Quick: {name} extracted {len(items)} items')

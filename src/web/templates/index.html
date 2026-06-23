@@ -3942,10 +3942,6 @@ async function settings(){
           <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="(async()=>{let v=this.checked?'1':'0';if(v==='1'){await confirmAct('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\n\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。', async()=>{api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'1'})}).then(r=>toast(r.code===0?'🔒 API 已锁定为 localhost':'失败',r.code===0?'success':'error'));},'⚠️','确认开启',true);this.checked=false;}else{api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'0'})}).then(r=>toast(r.code===0?'🔓 API 已开放':'失败',r.code===0?'success':'error'));}})()"><span class="toggle-slider"></span></label><span>🔒 API 仅限本机</span></label>
           <span class="cfg-flag-desc">/api/* 仅允许 127.0.0.1 调用，TCP 层校验不可伪造</span>
         </div>
-        <div class="cfg-flag" style="background:#f0f4ff;border:1px solid #b8d0ff">
-          <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-skip-hash" ${cfg.skip_page_hash_check==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({skip_page_hash_check:v})}).then(r=>toast(r.code===0?(v==='1'?'⚡ 已跳过PageHash检查':'🔄 已恢复PageHash检查'):'失败',r.code===0?'success':'error'))"><span class="toggle-slider"></span></label><span>⚡ 跳过 PageHash 检查</span></label>
-          <span class="cfg-flag-desc">每次快速采集都重新解析所有页面，消耗更高但数据更实时</span>
-        </div>
       </div>
     </div>
 
