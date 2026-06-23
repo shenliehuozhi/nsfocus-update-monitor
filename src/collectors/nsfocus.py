@@ -495,15 +495,15 @@ class NsfocusCollector(BaseCollector):
                     # identical to the algorithm in src/core/scheduler.py:_compute_path_id.
                     chain_path_id = table_items[0].path_id if table_items else ''
                     old_snaps = snap_query(
-                        """SELECT file_name, md5_hash, package_version, package_type, file_size
+                        """SELECT file_name, md5_hash, package_version, package_type, file_size, path_id
                            FROM snapshots
                            WHERE source_id=? AND source_url=? AND path_id=? AND status='active'""",
                         (source_id, full_url, chain_path_id))
-                    old_map = {(s['file_name'], s['package_type']): s for s in old_snaps}
+                    old_map = {(s['file_name'], s['path_id']): s for s in old_snaps}
 
                     if cached_items:
                         for ti in cached_items:
-                            key = (ti.file_name, ti.package_type)
+                            key = (ti.file_name, ti.path_id)
                             old_s = old_map.get(key)
                             if old_s is None:
                                 status = '► NEW  '
@@ -527,12 +527,12 @@ class NsfocusCollector(BaseCollector):
                                 logger.info(f'    {ti.package_type}')
 
                         # Detect removed packages (in old but not in new)
-                        new_keys = {(ti.file_name, ti.package_type) for ti in cached_items}
-                        for (fname, ptype), old_s in old_map.items():
-                            if (fname, ptype) not in new_keys:
+                        new_keys = {(ti.file_name, ti.path_id) for ti in cached_items}
+                        for (fname, pid), old_s in old_map.items():
+                            if (fname, pid) not in new_keys:
                                 old_md5 = old_s['md5_hash'] or ''
                                 logger.info(f'  ◄ OLD {fname} ({old_s["file_size"] or 0} bytes)')
-                                logger.info(f'    type={ptype}  md5={old_md5[:12]}...')
+                                logger.info(f'    type={old_s["package_type"]}  md5={old_md5[:12]}...')
 
                     # Cache result for other chains that share this URL
                     url_cache[full_url] = cached_items
