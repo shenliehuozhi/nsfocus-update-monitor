@@ -36,12 +36,23 @@ jobs:
             console.log(`正在获取 ${owner}/${packageName} (type=${packageType}) 的所有 versions...`);
 
             // 1. 分页捞所有 versions
+            // API 名: listPackageVersionsForPackageOwnedByUser(注意 ByOwned,不是 By)
             const allVersions = [];
             let page = 1;
             let hasMore = true;
 
+            // 兼容 By 和 ByOwned 两种 API 名字(不同 octokit 版本可能不同)
+            const listFn = github.rest.packages.listPackageVersionsForPackageOwnedByUser
+              || github.rest.packages.listPackageVersionsForPackageByUser;
+
+            if (!listFn) {
+              console.log('❌ octokit 没有 listPackageVersionsForPackageOwnedByUser 也没有 ByUser');
+              console.log('   可用的 packages.* 方法: ' + Object.keys(github.rest.packages).filter(k => k.includes('Package')).join(', '));
+              return;
+            }
+
             while (hasMore) {
-              const res = await github.rest.packages.listPackageVersionsForPackageByUser({
+              const res = await listFn({
                 package_type: packageType,
                 package_name: packageName,
                 username: owner,
@@ -84,12 +95,21 @@ jobs:
             console.log(`👉 保留最新 ${KEEP_VERSIONS} 个 versions,准备清理 ${versionsToDelete.length} 个老 versions。`);
 
             // 4. 逐个删
+            // 兼容两种 API 名字(注意 ByUser 和 ByOrg 两种场景)
+            const deleteFn = github.rest.packages.deletePackageVersionForUser
+              || github.rest.packages.deletePackageVersionForOrg;
+
+            if (!deleteFn) {
+              console.log('❌ octokit 没有 deletePackageVersion* 方法');
+              return;
+            }
+
             let totalDeleted = 0;
             let totalBytes = 0;
 
             for (const ver of versionsToDelete) {
               try {
-                await github.rest.packages.deletePackageVersionForUser({
+                await deleteFn({
                   package_type: packageType,
                   package_name: packageName,
                   username: owner,
