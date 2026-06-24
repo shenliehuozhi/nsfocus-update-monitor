@@ -276,12 +276,23 @@ function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=fal
   const overlay = document.createElement('div');
   overlay.className = 'confirm-modal active';
   overlay.id = id;
+  // 防双击/防重复触发:
+  // 1) 第一次 onclick 同步 disable 确认按钮 + 改文字,阻止第二次 click 触达 callback
+  //    (浏览器对 disabled button 不触发 click event)
+  // 2) 同步 delete window._confirmCBs[ctr],即使 disabled 没生效,第二次 onclick
+  //    进来 fn 也是 undefined,if(fn) 不进 → callback 只调 1 次
+  // 3) overlay.remove() 在 callback 执行前同步完成 → DOM 移除,后续点击无元素可点
   overlay.innerHTML = `<div class="confirm-box">
     <div class="confirm-icon">${icon}</div>
     <div class="confirm-title">${msg}</div>
     <div class="confirm-btns">
       <button class="confirm-btn-cancel" onclick="document.getElementById('${id}').remove()">取消</button>
-      <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="document.getElementById('${id}').remove();window._confirmCBs[${ctr}]&&window._confirmCBs[${ctr}]()">${okLabel}</button>
+      <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="
+        var b=event.currentTarget; b.disabled=true; b.textContent='处理中...';
+        document.getElementById('${id}').remove();
+        var fn=window._confirmCBs[${ctr}];
+        if(fn){delete window._confirmCBs[${ctr}];fn();}
+      ">${okLabel}</button>
     </div>
   </div>`;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
