@@ -10,6 +10,9 @@
 - **调度器**：`_shutdown_cleanup` 退出时清理 `collection_running` 标志，避免重启后误判
 - **日志**：`log_scanner` 异常处理增加 `exc_info=True` 输出完整 traceback
 - **采集器**：`NsfocusCollector.collect()` 改为 passive（return [] + DeprecationWarning），避免误触崩溃
+- **推送历史**（`resend-targeted`）：补写 `recipient` 字段，前端不再 fallback 到 `channel_name` 显示（commit 48be988）
+- **推送历史 UI**：重推期间区分当前按钮（"⏳ 推送中..."）和同 snapshot 其他按钮（灰色禁用保留 "📤 重推"），避免用户以为推了多次（commit 48be988）
+- **UI**：`confirmAct` 确认按钮加防双击/防重复触发（同步 disable + delete _confirmCBs 双保险，commit 3d12f1f）
 
 ### 改进
 - **文档**：API 接口文档、用户手册、部署运维、系统架构全面校准（产品名称、采集模式、订阅字段、路径引用）
