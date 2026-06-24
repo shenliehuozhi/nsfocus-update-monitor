@@ -921,10 +921,8 @@ async function dataPage() {
   _dataSelectedChain = null;
   _dataSelectedUrl = null;
 
-  const showRb = sessionStorage.getItem('dataShowRollback') === '1';
-  const showOld = sessionStorage.getItem('dataShowOld') === '1';
   const [r, cfgR] = await Promise.all([
-    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0') + '&show_old=' + (showOld ? '1' : '0')).catch(() => ({ data: {} })),
+    api('/latest/snapshots').catch(() => ({ data: {} })),
     api('/settings/config').catch(() => ({})),
   ]);
   _dataAll = r.data || {};
@@ -1003,12 +1001,6 @@ async function dataPage() {
       </div>
       <div class="data-meta">
         <span class="data-count-badge">${totalActive} 个产品</span>
-        <label style="cursor:pointer;font-size:11px;margin-left:12px">
-          <input type="checkbox" id="cbRollback" onchange="toggleRollback(this.checked)" ${showRb ? 'checked' : ''}> 显示已撤回
-        </label>
-        <label style="cursor:pointer;font-size:11px;margin-left:8px">
-          <input type="checkbox" id="cbShowOld" onchange="toggleShowOld(this.checked)" ${showOld ? 'checked' : ''}> 显示已替代/撤回的旧包
-        </label>
       </div>
     </div>
     <div class="data-layout">
@@ -1169,24 +1161,27 @@ function dataUrgencyChange(v) {
 
 function dataSourceFlags(src) {
   const snaps = src.snapshots || [];
-  const hasRb = snaps.some(s => s.status === 'rollback');
+  const hasRb = snaps.some(s => s.status === 'withdrawn');
+  // hasNew: 有 active 且未推送过(delivery_log 没有 sent 记录)的快照
+  const hasNew = snaps.some(s => s.status === 'active' && !s.last_delivered_at);
   const isEmpty = snaps.length === 0;
   // freshness: newest published_at among all snapshots
-  let freshness = 'idle'; // 'new' ≤7d, 'lowfreq' 8-30d, 'idle' >30d
+  let freshness = 'idle'; // 'new' ≤30d, 'lowfreq' 31-365d, 'idle' >365d 或无 published_at
+  let latestPublishedTs = 0; // 0 = 从未发布过包,排到末尾
   if (!isEmpty) {
     const now = Date.now();
-    const latestPublished = snaps.reduce((max, s) => {
+    latestPublishedTs = snaps.reduce((max, s) => {
       if (!s.published_at) return max;
       const t = new Date(s.published_at).getTime();
       return t > max ? t : max;
     }, 0);
-    if (latestPublished > 0) {
-      const days = (now - latestPublished) / 86400000;
+    if (latestPublishedTs > 0) {
+      const days = (now - latestPublishedTs) / 86400000;
       if (days <= 30) freshness = 'new';
       else if (days <= 365) freshness = 'lowfreq';
     }
   }
-  return { hasRb, freshness, isEmpty };
+  return { hasRb, hasNew, freshness, isEmpty, latestPublishedTs };
 }
 
 function dataFilteredSources() {
@@ -1215,13 +1210,18 @@ function dataFilteredSources() {
 }
 
 function dataSortedSources(filt) {
+  // 主排序:最近发布过更新的产品在前(latestPublishedTs 倒序)
+  // 0 = 从未发布过包 → 排到末尾(其他产品之后)
+  // 次排序:有未推送(hasNew)在前 → 含撤回(hasRb)在前
   return filt.sort(([sid, a], [sid2, b]) => {
     const fa = dataSourceFlags(a), fb = dataSourceFlags(b);
+    const aHas = fa.latestPublishedTs > 0;
+    const bHas = fb.latestPublishedTs > 0;
+    if (aHas !== bHas) return aHas ? -1 : 1;
+    if (fa.latestPublishedTs !== fb.latestPublishedTs) return fb.latestPublishedTs - fa.latestPublishedTs;
     if (fa.hasNew !== fb.hasNew) return fa.hasNew ? -1 : 1;
     if (fa.hasRb !== fb.hasRb) return fa.hasRb ? -1 : 1;
-    const ta = a.last_collected_at || '';
-    const tb = b.last_collected_at || '';
-    return tb.localeCompare(ta);
+    return 0;
   });
 }
 
@@ -1229,6 +1229,20 @@ function dataSortedSources(filt) {
 // Builds from paths.chain: 产品 → 子分类 → 版本 → 包类型
 // ── Data Render (single-column product cards with multi-level tree) ──
 // Fallback: render flat version list when no paths data
+// ── 快照状态 badge helper ──
+// active → 🆕最新包(绿)
+// withdrawn → ↩已撤回(红 + 删除线)
+// superseded → ⊘已替代(灰)
+function statusBadge(status) {
+  if (status === 'withdrawn')  return '<span class="badge badge-err" style="font-size:10px">↩已撤回</span>';
+  if (status === 'superseded') return '<span class="badge badge-grey" style="font-size:10px">⊘已替代</span>';
+  return '<span class="badge badge-ok" style="font-size:10px">🆕最新包</span>';
+}
+// 是否是已撤回/已替代的旧包(用于视觉弱化)
+function isOldSnapshot(s) {
+  return s && (s.status === 'withdrawn' || s.status === 'superseded');
+}
+
 function buildFlatVerTreeHtml(snapshots) {
   const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
   if (!snapshots || snapshots.length === 0) return '<div style="color:var(--muted);font-size:12px;padding:8px">暂无数据</div>';
@@ -1247,7 +1261,7 @@ function buildFlatVerTreeHtml(snapshots) {
   vers.forEach(ver => {
     const snaps = byVer[ver];
     const blockId = 'fv_' + ver.replace(/\W/g, '_');
-    const isRb = snaps.some(s => s.status === 'rollback');
+    const isRb = snaps.some(s => s.status === 'withdrawn');
     const newCount = snaps.filter(s => s.status === 'active' && !s.last_delivered_at).length;
     const badge = isRb ? ' <span style="color:var(--danger);font-size:10px">↩</span>' : '';
     const freshSnap = snaps.reduce((latest, s) => {
@@ -1275,10 +1289,13 @@ function buildFlatVerTreeHtml(snapshots) {
     snaps.forEach(s => {
       const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
       const did = 'dd_v_' + s.id;
-      const isRb = s.status === 'rollback';
+      const isRb = s.status === 'withdrawn';
+      const isOld = isOldSnapshot(s);
       const pkgTypeBadge = `<span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px">${MAP[s.package_type] || s.package_type || ''}</span>`;
-      tbl += `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : ''}" onclick="document.getElementById('${did}').classList.toggle('hidden')">
+      const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue" style="font-size:10px">未推送</span>' : '');
+      tbl += `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" onclick="document.getElementById('${did}').classList.toggle('hidden')">
         ${pkgTypeBadge}
+        ${statusBadges}
         <span style="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${s.file_name || ''}</span>
         <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span style="font-size:11px;color:var(--muted)">${sz}</span>
@@ -1358,7 +1375,6 @@ function dataRenderLeft() {
       treeHtml = buildDataTreeHtml(pt, src.snapshots_map, typeCN, src.ver_type_map || {}, src.name || '', sid);
     }
     const { hasRb, freshness } = dataSourceFlags(src);
-    const rbBadge = hasRb ? ' <span class="badge badge-err" style="font-size:10px">含撤回</span>' : '';
     const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok" style="font-size:10px">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn" style="font-size:10px">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey" style="font-size:10px">沉寂</span>' : ''));
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
@@ -1366,7 +1382,7 @@ function dataRenderLeft() {
       <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span class="tree-arrow" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:6px">&#9658;</span>
         <span>${escHtml(src.display_name || src.name || sid)}</span>
-        ${rbBadge}${freshBadge}
+        ${freshBadge}
         <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
@@ -1563,7 +1579,7 @@ function dataBuildFeed() {
             // Filter by has_new: only active snapshots with no delivery record
             if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
             // Filter by has_rb: skip active ones when "含撤回" is active
-            if (_dataFilters.has_rb && s.status !== 'rollback') return;
+            if (_dataFilters.has_rb && s.status !== 'withdrawn') return;
             // Filter by urgency
             if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
 
@@ -1714,25 +1730,18 @@ function dataRenderRight(sch, p, info) {
   pageSlice.forEach(r => {
     const typeLabel = MAP[r.package_type] || r.package_type || '';
     const isNew = r.status === 'active' && !r.last_delivered_at;
-    const isRb = r.status === 'rollback';
+    const isRb = r.status === 'withdrawn';
     const rowClass = isRb ? 'rollback' : isNew ? 'new' : '';
     let urgencyBadge = '';
     if (r.urgency === 'critical') urgencyBadge = '<span class="badge badge-err" style="font-size:10px">🔴 critical</span>';
     else if (r.urgency === 'high') urgencyBadge = '<span class="badge badge-warn" style="font-size:10px">⚠️ high</span>';
     else if (r.urgency === 'normal') urgencyBadge = '<span class="badge badge-ok" style="font-size:10px">ℹ️ normal</span>';
-    let statusBadge = '';
-    if (r.published_at) {
-      const days = (Date.now() - new Date(r.published_at).getTime()) / 86400000;
-      if (days <= 30) statusBadge = '<span class="badge badge-ok" style="font-size:10px">活跃</span>';
-      else if (days <= 365) statusBadge = '<span class="badge badge-warn" style="font-size:10px">低频</span>';
-      else statusBadge = '<span class="badge badge-grey" style="font-size:10px">沉寂</span>';
-    }
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
   <div class="feed-cell feed-arrow" style="width:28px;flex-shrink:0" onclick="dataRightToggleRow('${rid}')">▶</div>
   <div class="feed-cell" style="width:80px;flex-shrink:0" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></div>
   <div class="feed-cell" style="width:68px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
-  <div class="feed-cell" style="width:56px;flex-shrink:0" ${colStyle}>${statusBadge}</div>
+  <div class="feed-cell" style="width:60px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
   <div class="feed-cell" style="width:180px;flex-shrink:0" title="${escHtml(r._srcName)}">${r._srcName}</div>
   <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
   <div class="feed-cell" style="flex:1;min-width:200px" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
@@ -2109,15 +2118,7 @@ function dataClearFilter() {
   dataRenderRight();
 }
 
-function toggleRollback(checked) {
-  sessionStorage.setItem('dataShowRollback', checked ? '1' : '0');
-  dataPage();
-}
 
-function toggleShowOld(checked) {
-  sessionStorage.setItem('dataShowOld', checked ? '1' : '0');
-  dataPage();
-}
 
 // ── Old data page helpers (kept for compatibility) ──
 async function dataShowDrill(sid, url, verHint, pkgHint) {
@@ -2167,7 +2168,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     const verSnaps = byVer[ver].sort((a, b) => (b.last_seen_at || '').localeCompare(a.last_seen_at || ''));
     const isHighlight = ver === verHint;
 
-    const hasRb = verSnaps.some(s => s.status === 'rollback');
+    const hasRb = verSnaps.some(s => s.status === 'withdrawn');
     const hasNew = verSnaps.some(s => s.status === 'active' && !s.last_delivered_at);
     const latestCollected = verSnaps[0] ? fmtTZ(verSnaps[0].last_seen_at, true) : '—';
     const hasCritical = verSnaps.some(s => s.urgency === 'critical' && s.status === 'active');
@@ -2207,7 +2208,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
       const isLatestPkg = historyCount > 0; // multiple packages exist, this one is the latest by published_at
       const sz = latest.file_size > 1048576 ? (latest.file_size / 1048576).toFixed(1) + 'M' : (latest.file_size / 1024).toFixed(0) + 'K';
       const urg = latest.urgency === 'critical' ? 'badge-err' : latest.urgency === 'high' ? 'badge-warn' : 'badge-ok';
-      const isRb = latest.status === 'rollback';
+      const isRb = latest.status === 'withdrawn';
       const isNewPkg = latest.status === 'active' && !latest.last_delivered_at;
       const histKey = verKey + '_' + pkgType;
 
@@ -2229,7 +2230,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           ${typeSnaps.slice(1).map(s => {
             const sz2 = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
             const urg2 = s.urgency === 'critical' ? 'badge-err' : s.urgency === 'high' ? 'badge-warn' : 'badge-ok';
-            const isRb2 = s.status === 'rollback';
+            const isRb2 = s.status === 'withdrawn';
             return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" onclick="this.classList.toggle('data-hist-expanded')">
               <span style="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
               <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
@@ -2305,8 +2306,6 @@ function dataBackToAgg() {
   dataRenderAgg();
 }
 
-function toggleRollback(v) { sessionStorage.setItem('dataShowRollback', v ? '1' : '0'); dataPage(); }
-function toggleShowOld(v) { sessionStorage.setItem('dataShowOld', v ? '1' : '0'); dataPage(); }
 async function manualPush(sid) { await confirmAct('确认推送？', async ()=>{ const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }, '📤', '确认推送'); }
 
 // ── Push Modal (email send OR channel send) ──
@@ -3245,10 +3244,8 @@ let _condChains = [];  // [{chain:[...], match:'leaf'|'subtree'}]
 
 // 加载产品数据（填充 _dataAll）
 async function loadDataAll() {
-  const showRb = sessionStorage.getItem('dataShowRollback') === '1';
-  const showOld = sessionStorage.getItem('dataShowOld') === '1';
   const [r] = await Promise.all([
-    api('/latest/snapshots?show_rollback=' + (showRb ? '1' : '0') + '&show_old=' + (showOld ? '1' : '0')).catch(() => ({ data: {} })),
+    api('/latest/snapshots').catch(() => ({ data: {} })),
   ]);
   _dataAll = window._dataAll = r.data || {};
   Object.entries(_dataAll).forEach(([sid, src]) => {

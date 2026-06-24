@@ -1048,25 +1048,13 @@ def get_latest_snapshots():
     Returns dict keyed by source_id, each containing:
       - name, is_active, package_type (paths for tree building)
       - snapshots list (only is_active=true sources, all snapshots kept in DB)
-
-    Query params:
-      - show_rollback: '1' to include rollback snapshots
     """
     import json as _json
     from src.models.database import query
     from src.models.snapshot import list_sources
 
-    show_rollback = request.args.get('show_rollback', '0') == '1'
-    show_old = request.args.get('show_old', '0') == '1'
-    # show_old: 显示被取代/撤回的旧包 (status='superseded'/'withdrawn')
-    # 跟 show_rollback 平行 — 两个开关互不影响
-    status_parts = ["'active'"]
-    if show_rollback:
-        status_parts.append("'rollback'")
-    if show_old:
-        status_parts.append("'superseded'")
-        status_parts.append("'withdrawn'")
-    status_filter = "status IN (" + ",".join(status_parts) + ")"
+    # 一次返回所有状态(active/superseded/withdrawn),前端按 status 给最新包/撤回/替代打 badge
+    status_filter = "status IN ('active', 'superseded', 'withdrawn')"
 
     # Get all active sources with their package_type paths
     sources = list_sources('nsfocus')
