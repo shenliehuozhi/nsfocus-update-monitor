@@ -7,6 +7,7 @@ venv/
 # Data — exclude database files (contain encrypted credentials)
 data/*.db
 data/*.db-*
+data/*.db.bak.*
 data/discover.log
 data/discover_pending.json
 # Backups
