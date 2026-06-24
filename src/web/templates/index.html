@@ -38,6 +38,7 @@ td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 .btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
 .btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:5px}
 .btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:#f8fafc}
+.btn-locked{opacity:.5;cursor:not-allowed!important;background:#f1f5f9!important;color:#94a3b8!important;border:1px solid #e2e8f0!important;box-shadow:none!important}
 .form-group{margin-bottom:10px}
 .form-section{margin-bottom:18px;padding:14px 16px;border-bottom:2px solid #f0f0f0;border-radius:8px}
 .form-section:last-of-type{border-bottom:none}
@@ -2648,12 +2649,21 @@ function startBanCountdown(seconds){
   tick();_banTimer=setInterval(tick,1000);
 }
 
-async function resendTargeted(sid,cid,custid){
+async function resendTargeted(sid,cid,custid,btn){
   await confirmAct('确认重新推送到该客户？', async ()=>{
-    // 推送期间 disable 同 snap 的所有重推按钮,防误点
+    // 推送期间:当前按钮变 "⏳ 推送中..." 并 disable;同 snap 其他按钮变灰色 disable
+    // 但保留 "📤 重推" 文本,避免让用户以为那几行也在被推送
     // 用 [data-resend-sid] 属性选,history() 重渲染后属性消失 → finally 兜底
     const btns = document.querySelectorAll(`button[data-resend-sid="${sid}"]`);
-    btns.forEach(b => { b.disabled = true; b.textContent = '⏳ 推送中...'; });
+    btns.forEach(b => {
+      b.disabled = true;
+      if (b === btn) {
+        b.textContent = '⏳ 推送中...';
+      } else {
+        b.classList.add('btn-locked');
+        // 保留原 textContent ("📤 重推"),不改
+      }
+    });
     try {
       const r = await api('/history/'+sid+'/resend-targeted',{method:'POST',body:JSON.stringify({channel_id:cid,customer_id:custid})});
       toast(r.code===0?'已推送':r.message||'失败',r.code===0?'success':'error');
@@ -2661,7 +2671,11 @@ async function resendTargeted(sid,cid,custid){
       await history();
     } finally {
       // history() 重渲染后原按钮对象已失效,query 重新选
-      document.querySelectorAll(`button[data-resend-sid="${sid}"]`).forEach(b => { b.disabled = false; b.textContent = '📤 重推'; });
+      document.querySelectorAll(`button[data-resend-sid="${sid}"]`).forEach(b => {
+        b.disabled = false;
+        b.textContent = '📤 重推';
+        b.classList.remove('btn-locked');
+      });
     }
   }, '📤', '确认推送');
 }
@@ -3899,7 +3913,7 @@ async function history(){
             <td>${escHtml(channelDisp)}</td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
-            <td>${d.channel_id?`<button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0})">📤 重推</button>`:''}</td>
+            <td>${d.channel_id?`<button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" onclick="resendTargeted(${h.id},${d.channel_id},${d.customer_id||0},this)">📤 重推</button>`:''}</td>
         </tr>`;
       });
     }

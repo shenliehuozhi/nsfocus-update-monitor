@@ -528,6 +528,16 @@ def resend_targeted(sid: int):
     # 使用 relay_config 发送（包含收件人信息）
     result = notifier.send(message, relay_config)
 
+    # 还原 email 渠道实际发送时的收件人列表（to_list + rule_emails 去重合并）
+    # 与 src/notifiers/email.py:111-115 保持一致;否则 delivery_log.recipient 字段空,
+    # 推送历史视图只能 fallback 到 channel_name,误导用户
+    final_to_list = list(relay_config.get('to_list') or [])
+    rule_emails_final = (relay_config.get('rule_emails') or '').strip()
+    if rule_emails_final:
+        extras = [e.strip() for e in rule_emails_final.split(',') if e.strip()]
+        final_to_list = list(dict.fromkeys(final_to_list + extras))
+    recipient = ','.join(final_to_list)
+
     # 写入投递日志（customer_id 已经正确传入，不需要改）
     try:
         from src.models.subscription import log_delivery
@@ -540,6 +550,7 @@ def resend_targeted(sid: int):
             status='sent' if result.success else 'failed',
             error=result.error_message,
             sender=getattr(result, 'sender', '') or '',
+            recipient=recipient,
         )
     except Exception as e:
         import logging
