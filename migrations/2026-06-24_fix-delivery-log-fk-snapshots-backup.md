@@ -66,10 +66,96 @@ PRAGMA foreign_keys=ON;
    - [ ] 关键 query dry-run 通过
    - [ ] 列数 / 列顺序对齐(代码字符串 vs 实际)
 
-## 不处理(留到后续议题)
+## 后续议题 (本议题不做)
 
-- 9 个历史 FK 违反(delivery_log→customers 3 行 customer_id=0、rule_channels→subscription_rules 6 行)
-- 时区混乱(log CST / DB UTC / system CST)
+- 9 个历史 FK 违反 (delivery_log→customers customer_id=0, rule_channels→subscription_rules)
+- 时区混乱 (log CST / DB UTC / system CST)
 - UNIQUE 索引无 status 维度
 - last_seen_at 同秒 89 条
 - 0 items 无告警
+
+## 5 个待办最终结论 (本议题收尾)
+
+| # | 议题 | 状态 | 备注 |
+|---|---|---|---|
+| #2 | delivery_log WARNING | ✅ 完成 (commit cbdab0b) | 本议题主任务 |
+| #3+#7 | UNIQUE 索引 | ❌ 不做 | 实际无累积问题,业务正确 |
+| #4 | 时区混乱 | ❌ 不修 | 主要是排查困扰,业务影响小(8h 差对天级判断无影响) |
+| #5 | last_seen_at 同秒 89 条 | ❌ 不修 | 不是 bug,只是显示误导(last_seen_at 是 save_snapshot 写的,cdc2a43 不动它) |
+| #6 | 0 items 无告警 | ❌ 不修 | 用户偏好"宁可空跑,绿盟恢复时能自动抓到" |
+
+## 反思 — 本议题踩坑教训
+
+### 误判 1:认为 89 条 superseded 是 WITHDRAWN
+
+**错的事实**:
+- 89 条 `all_versions` 只返回 1 行 → 错误推断"无 active 版本 = 绿盟下架"
+
+**实际**:
+- 89 条都是 `◄ OLD`(被新版本取代),不是 WITHDRAWN
+- 绿盟升级模式:**不撤回重发**,直接发新版本(用新文件名)
+- 例如 `V7-IPS-1.0.407.dat` superseded,`V7-IPS-1.0.409.dat` active(file_name 不同)
+- 用 (source_id, version_branch) 查询就能看到 409 active 行
+
+**差点导致**:
+- 修改 4a52d14 的 WITHDRAWN 判定逻辑,把 89 条 `OLD` 改成 `WITHDRAWN`
+- 业务语义从"被取代"变"被下架",前端展示/推送策略都可能错
+- 幸亏你反问"你是怎么判断的",我重新查证才发现误判
+
+### 误判 2:4a52d14 逻辑有 bug
+
+**错的事实**:
+- 4a52d14 那个 WITHDRAWN 判定分支在绿盟升级模式下不会触发
+- 不是 bug,只是**绿盟几乎不用撤回重发**
+- 89 条都是合法 `OLD`,标签完全正确
+
+### 误判 3:误报 "12 个 source 0 items 是 session 过期"
+
+**错的事实**:
+- session 实际正常,所有 source 都有 last_collected_at 更新
+- 实际是 **绿盟页面本身没 table**(curl 验证确认)
+- 不是本会话 commit 引入
+
+### 误判 4:误算数据规模
+
+**错的事实**:
+- 之前说"37 NEW" / "570 UNCHANGED" / "89 superseded" 都是基于混乱时间窗的统计
+- 实际本 cycle:0 NEW, 26 UNCHANGED, 0 OLD(cdc2a43 23:30 cycle 标的 89 条不在本 cycle 时间窗内)
+- 时区问题:log CST / DB UTC 混用导致我多次时间推算错
+
+### 误判 5:误读字段值
+
+**错的事实**:
+- 之前说"4 条 isop-vulnDict 字段错位 bug"
+- 实际**字段值完全正常**,是我自己 `c.execute()` 读 tuple 索引错了
+- 4 条 snap 数据 100% 正常,本 cycle 已经刷新过 last_seen_at
+
+## 反思 — 以后怎么避免
+
+### 原则
+
+1. **完整图,再下结论**:看数据先看"全貌",再局部。**只查局部就下结论 = 推断**
+2. **同义词换查询验证**:换 1-2 个查询方式验证同一事实,别只用 1 个查询
+3. **数据"少"未必异常**:可能是业务自然形态,先想"正常情况下数据应该长什么样"
+4. **动手前 dry-run 验证**:如果准备改逻辑,**先 dry-run 一下新逻辑会怎么处理现有数据**
+
+### 实战做法
+
+1. **判断 DB 数据状态时,先查全貌**(skill `nsfocus-snapshot-status-judgment` 详述)
+2. **对结论做"反向验证"**:推论"被下架"→ 反向 curl 绿盟页面验证
+3. **动手前 sanity check**:SELECT id, file_name 看跟推断是否一致
+4. **时区问题**:DB 存 UTC,log 写 CST,排查时先确认 server 当前时间 + UTC/CST 转换
+
+### 本次实践改进
+
+1. **migrations/ 目录** 启用 — 每个 schema 改动一个文件,含 SQL + dry-run + 回滚 SQL + 反思
+2. **.gitignore 加 `data/*.db.bak.*` 规则** — 防止 DB 备份误带 commit
+3. **commit body 必含"反思"段** — 防止下次再犯同样错误
+4. **skill `nsfocus-snapshot-status-judgment`** — 防止误判 89 条 status 场景再发生
+
+## 议题最终状态
+
+- ✅ #2 delivery_log WARNING 修复 (commit `cbdab0b`)
+- ❌ #3+#7 / #4 / #5 / #6 不修(已列理由)
+- ✅ 反思落 commit 文档 + skill 备忘
+- ✅ DB 备份在文件系统(.gitignore 自动忽略)
