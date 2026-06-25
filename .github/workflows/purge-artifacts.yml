@@ -123,17 +123,16 @@ jobs:
             let cacheHasMore = true;
 
             while (cacheHasMore) {
-              // 用 endpoint.merge 模式(跟 windows.yml L66 一致),不依赖具体 method 名
-              // 避免 Octokit 版本升级改了 method 命名导致 workflow 静默失败
-              const cacheOpts = github.rest.actions.listActionsCachesForRepo.endpoint.merge({
+              // github-script v7 的 Octokit 缓存 method 列表是固定的,新增的
+              // actions/caches API 没有 typed method,只能用 github.request 走通用 REST。
+              // 这跟 window.yml 的 endpoint.merge 模式思路一样 — 不依赖具体 method 名
+              const cacheRes = await github.request('GET /repos/{owner}/{repo}/actions/caches', {
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 per_page: 100,
                 page: cachePage,
               });
-              const cacheRes = await github.paginate(cacheOpts);
-              // cacheRes 已经是 array(github.paginate 自动 flat),不是 data wrapper
-              const caches = cacheRes || [];
+              const caches = cacheRes.data.actions_caches || [];
               if (caches.length === 0) {
                 cacheHasMore = false;
                 break;
@@ -141,7 +140,7 @@ jobs:
               for (const c of caches) {
                 if (BUILDKIT_PREFIXES.some(p => c.key.startsWith(p))) {
                   try {
-                    await github.rest.actions.deleteActionsCacheById({
+                    await github.request('DELETE /repos/{owner}/{repo}/actions/caches/{cache_id}', {
                       owner: context.repo.owner,
                       repo: context.repo.repo,
                       cache_id: c.id,
