@@ -1,9 +1,10 @@
 name: Build Windows Executable
 
 on:
-  push:
-    branches:
-      - master
+  # 不再 push 自动 build:避免每次 commit 都消耗 30MB artifact quota
+  # (Free 套餐 monthly artifact quota = 100MB for private repo,2GB for public)
+  # 改手动触发:GitHub UI → Actions → Build Windows Executable → Run workflow
+  # Docker image build 仍在 push 时自动跑(docker.yml 独立配置,artifact 不冲突)
   workflow_dispatch:
 
 jobs:
