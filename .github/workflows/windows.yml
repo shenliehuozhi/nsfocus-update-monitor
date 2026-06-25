@@ -6,6 +6,17 @@ on:
   # 改手动触发:GitHub UI → Actions → Build Windows Executable → Run workflow
   # Docker image build 仍在 push 时自动跑(docker.yml 独立配置,artifact 不冲突)
   workflow_dispatch:
+    inputs:
+      tag_version:
+        description: 'Release tag (e.g. v1.2.3),留空自动用 commit short SHA'
+        required: false
+        type: string
+        default: ''
+      release_name:
+        description: 'Release 显示名,留空用 tag_version 或 build-<sha>'
+        required: false
+        type: string
+        default: ''
 
 jobs:
   build:
@@ -96,11 +107,14 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'workflow_dispatch'
+        # softprops v2 强制要 tag_name(v1 不需要)
+        # 用户在 UI 输 tag_version(如 v1.2.3),留空则 fallback 到 v-build-<7位 SHA>
+        # 永远产出有效 tag(不能是空串)
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/nsfocus-monitor.exe
-            dist/nsfocus-monitor-win.zip
+          tag_name: ${{ inputs.tag_version != '' && format('v{0}', inputs.tag_version) || format('v-build-{0}', github.sha) }}
+          name: ${{ inputs.release_name != '' && inputs.release_name || (inputs.tag_version != '' && inputs.tag_version || format('Build {0}', github.sha)) }}
+          files: dist/nsfocus-monitor-win.zip
           draft: true
           generate_release_notes: true
         env:
