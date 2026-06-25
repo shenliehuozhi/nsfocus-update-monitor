@@ -43,13 +43,14 @@ jobs:
           powershell -Command "Compress-Archive -Path dist\nsfocus-monitor.exe -DestinationPath dist\nsfocus-monitor-win.zip -Force"
 
       - name: Upload artifacts
+        # 只传 exe 不传 zip:zip 是 exe 的 Compress-Archive 副本,内容重复,单独下 exe 即可
+        # 节省 ~50% artifact size,降低 2GB quota 撞限概率
+        # zip 仍保留在 dist/ 目录,供下方 Release 步骤(workflow_dispatch 触发)用
         uses: actions/upload-artifact@v4
         with:
           name: nsfocus-monitor-win-${{ github.sha }}
-          path: |
-            dist/nsfocus-monitor.exe
-            dist/nsfocus-monitor-win.zip
-          retention-days: 30
+          path: dist/nsfocus-monitor.exe
+          retention-days: 7
 
       # 自动清理：每次上传成功后，遍历仓库下 nsfocus-monitor-win-* 这类
       # 旧 artifact，只保留最新 10 个。避免 push 频繁时免费额度被打爆。
