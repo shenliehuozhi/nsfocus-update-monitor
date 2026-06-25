@@ -3,7 +3,7 @@ name: 🧹 批量清理历史 artifacts (保留最近 10 个 run)
 on:
   workflow_dispatch: # 允许在网页端手动点击触发
   schedule:
-    # 每天 UTC 02:00 跑一次,自动清理堆积的 artifacts
+    # 每天 UTC 02:00 跑一次,自动清理堆积的 artifacts 和 buildkit cache
     - cron: '0 2 * * *'
 
 # 必须赋予写权限,否则无法删除 artifacts
@@ -19,6 +19,11 @@ jobs:
         with:
           script: |
             const KEEP_RUNS = 10; // 保留最近 10 个 workflow run
+            // buildkit cache key 前缀(docker/build-push-action 写的 GHA cache)
+            // 这些是 docker.yml 每次 push 累积的 buildkit blob,默认 7 天 retain
+            // 但 GitHub GC 不及时,3 个月就能堆 100+ 个把 2GB 配额吃满
+            // 主动每天清一次,防止再次撞 quota
+            const BUILDKIT_PREFIXES = ['buildkit-blob-', 'buildkit-cache-', 'index-'];
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
@@ -105,5 +110,55 @@ jobs:
               }
             }
 
-            console.log(`\n✨ 清理完成!共删除 ${totalArtifactsDeleted} 个 artifact,共清理 ${runsToPurge.length} 个老 run。`);
-            console.log(`💡 提示:workflow run 本身仍保留(用 .github/workflows/purge-history.yml 删 run)`);
+            console.log(`\n✨ Artifact 清理完成!共删除 ${totalArtifactsDeleted} 个 artifact,共清理 ${runsToPurge.length} 个老 run。`);
+
+            // ── 清理 buildkit cache ───────────────────────────────────
+            // build-push-action 写的 GHA cache key 都是 buildkit-blob-* / index-*
+            // 不分老 run,直接按 key 前缀清,任何时间的都清
+            // (这些 cache 重新 build 一次就重建,留着没意义,只会占 2GB 配额)
+            console.log(`\n🧹 开始清理 buildkit cache (key 前缀: ${BUILDKIT_PREFIXES.join(', ')})...`);
+            let totalCacheDeleted = 0;
+            let totalCacheSize = 0;
+            let cachePage = 1;
+            let cacheHasMore = true;
+
+            while (cacheHasMore) {
+              // 用 endpoint.merge 模式(跟 windows.yml L66 一致),不依赖具体 method 名
+              // 避免 Octokit 版本升级改了 method 命名导致 workflow 静默失败
+              const cacheOpts = github.rest.actions.listActionsCachesForRepo.endpoint.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                per_page: 100,
+                page: cachePage,
+              });
+              const cacheRes = await github.paginate(cacheOpts);
+              // cacheRes 已经是 array(github.paginate 自动 flat),不是 data wrapper
+              const caches = cacheRes || [];
+              if (caches.length === 0) {
+                cacheHasMore = false;
+                break;
+              }
+              for (const c of caches) {
+                if (BUILDKIT_PREFIXES.some(p => c.key.startsWith(p))) {
+                  try {
+                    await github.rest.actions.deleteActionsCacheById({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo,
+                      cache_id: c.id,
+                    });
+                    totalCacheDeleted++;
+                    totalCacheSize += c.size_in_bytes || 0;
+                  } catch (err) {
+                    console.warn(`  ❌ 无法删 cache ${c.id} (${c.key}): ${err.message}`);
+                  }
+                }
+              }
+              if (caches.length < 100) {
+                cacheHasMore = false;
+              } else {
+                cachePage++;
+              }
+            }
+            console.log(`✨ Cache 清理完成!共删除 ${totalCacheDeleted} 个 buildkit cache,释放 ${(totalCacheSize / 1024 / 1024).toFixed(2)} MB。`);
+
+            console.log(`\n💡 提示:workflow run 本身仍保留(用 .github/workflows/purge-history.yml 删 run)`);
