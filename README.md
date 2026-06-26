@@ -4,43 +4,103 @@
 
 ## 一键部署
 
+### 方式 A: Docker 部署 (推荐,跨平台一致)
+
+镜像: `ghcr.io/shenliehuozhi/nsfocus-update-monitor` (已修复 MONITOR_HOST 默认值,HEALTHCHECK 正常工作)
+
+```bash
+# 1. 拉镜像 (latest 跟踪最新,或固定 sha-XXX 长期可重现部署)
+sudo docker pull ghcr.io/shenliehuozhi/nsfocus-update-monitor:latest
+
+# 2. 准备持久化目录
+mkdir -p ~/nsfocus-monitor/{data,logs}
+
+# 3. 启动 (一行搞定)
+sudo docker run -d \
+  --name nsupdate-monitor \
+  --restart unless-stopped \
+  -p 9999:9999 \
+  -v ~/nsfocus-monitor/data:/app/data \
+  -v ~/nsfocus-monitor/logs:/app/logs \
+  ghcr.io/shenliehuozhi/nsfocus-update-monitor:latest
+
+# 4. 等 5 秒看初始密码
+sleep 5 && cat ~/nsfocus-monitor/data/initial_password.txt
+```
+
+**生产推荐用 docker-compose** (更安全,密钥不会进 `docker inspect`):
+```bash
+mkdir -p ~/nsfocus-monitor && cd ~/nsfocus-monitor
+curl -O https://raw.githubusercontent.com/shenliehuozhi/nsfocus-update-monitor/master/docker-compose.yml
+curl -O https://raw.githubusercontent.com/shenliehuozhi/nsfocus-update-monitor/master/.env.example
+cp .env.example .env && chmod 600 .env
+# 编辑 .env 填 MONITOR_SECRET_KEY / MONITOR_JWT_SECRET (openssl rand -hex 32)
+docker compose up -d
+```
+
+> **完整文档**: [INSTALL.md](INSTALL.md) (含升级流程、PHPSESSID 配置、内网离线部署、HTTPS 反代、GHCR 配额、4 个实战踩坑总结)
+
+### 方式 B: systemd 一键安装 (传统 Linux)
+
 ```bash
 git clone https://github.com/shenliehuozhi/nsfocus-update-monitor.git
 cd nsfocus-monitor
 bash start.sh
 ```
 
-首次部署自动完成：环境检测、依赖安装、随机密钥生成、5个产品导入、管理员账户创建。访问 `http://IP:9999` 即可。
+首次部署自动完成:环境检测、依赖安装、随机密钥生成、79 个产品导入、管理员账户创建。访问 `http://IP:9999` 即可。
+
+### 方式 C: Windows 绿色版
+
+见 [Releases](https://github.com/shenliehuozhi/nsfocus-update-monitor/releases) 下载 zip 解压即用。
+
+## 首次登入必做
+
+```bash
+# 1. 拿到初始密码 (Docker 部署)
+cat ~/nsfocus-monitor/data/initial_password.txt
+
+# 2. 浏览器打开 http://IP:9999,用户名 admin,密码上面那行
+# 3. 进入系统后第一件事:右上角「改密」改默认密码
+# 4. 左侧「会话管理」→ 新增监控会话 → 粘贴绿盟 PHPSESSID cookie (F12 抓)
+#    详细步骤见 INSTALL.md §10
+# 5. 配告警渠道:系统设置页 → 通知渠道(企业微信/钉钉/飞书/邮件)
+# 6. 建订阅规则:订阅规则 → 新建规则 → 选产品/版本/渠道/收件人
+```
 
 ## 版本更新
 
-### Linux/Docker
+### Docker 部署
+```bash
+# 拉新镜像 + 重启
+sudo docker pull ghcr.io/shenliehuozhi/nsfocus-update-monitor:latest
+sudo docker stop nsupdate-monitor && sudo docker rm nsupdate-monitor
+# 然后重新跑上面的 docker run 命令 (用新镜像)
+# 或 docker compose 部署:cd ~/nsfocus-monitor && docker compose pull && docker compose up -d
+```
+
+数据文件在 `~/nsfocus-monitor/data/` 目录,不随镜像更新,所有历史数据(产品配置 / Session / 推送记录)不受影响。
+
+### systemd 部署
 ```bash
 cd nsfocus-monitor
 git pull
-# 如果用的是 Docker
-docker-compose pull && docker-compose up -d
-# 如果用的是 systemd
 systemctl restart nsfocus-monitor
 ```
 
-数据文件在 `data/` 目录，不随代码更新，所有历史数据（产品配置、Session、推送记录）不受影响。
-
-### Windows
-> ⚠️ Windows 版为绿色便携版，**数据存储在独立目录**，替换 exe 不会丢失数据。
+### Windows 绿色版
+> ⚠️ Windows 版数据存储在独立目录(`%LOCALAPPDATA%\nsfocus-monitor-data\`),替换 exe 不会丢失数据。
 
 1. 关掉运行中的 `nsfocus-monitor.exe`
 2. 删除旧版 exe
 3. 从 [Releases](https://github.com/shenliehuozhi/nsfocus-update-monitor/releases) 下载最新版覆盖
 4. 重新运行
 
-数据位置：`%LOCALAPPDATA%\nsfocus-monitor-data\`（默认 `C:\Users\用户名\AppData\Local\nsfocus-monitor-data\`），exe 所在目录只放程序本身。
-
 详细操作见 [用户手册](docs/用户手册.md)。
 
 ## 核心能力
 
-- **5 产品监控**: 覆盖 WAF / IPS / NF / RSAS / UTS（其他产品可按需启用）
+- **79 产品监控**: 覆盖 WAF / IPS / IDS / RSAS / UTS 等 79 个绿盟产品线（默认全开,可在 UI 关停个别）
 - **4 渠道通知**: 企业微信 / 钉钉 / 飞书 / 邮件（支持附件）
 - **双模采集**: Quick 扫描（每小时~30s）+ Full 扫描（每24h~25min）
 - **撤回检测**: 全模式支持，最少2次确认，间隔24h
@@ -60,8 +120,9 @@ systemctl restart nsfocus-monitor
 
 | 文档 | 说明 |
 |------|------|
+| [INSTALL.md](INSTALL.md) | **Docker / docker-compose 部署**(推荐) + 4 个实战踩坑 + 升级流程 + PHPSESSID 配置 + 内网离线 + HTTPS 反代 |
 | [用户手册](docs/用户手册.md) | 功能说明 + 参数配置 + FAQ |
-| [部署运维](docs/部署运维.md) | 一键部署 + systemd + 故障处理 |
+| [部署运维](docs/部署运维.md) | systemd 一键安装 + 故障处理 |
 | [需求说明](docs/需求说明.md) | 业务需求 |
 | [架构设计](docs/系统架构.md) | 系统架构 |
 | [数据模型](docs/数据模型.md) | 数据库表结构 |

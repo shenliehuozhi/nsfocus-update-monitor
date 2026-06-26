@@ -1,22 +1,22 @@
 version: '3.8'
-
 services:
-  app:
+  nsfocus-monitor:
+    # 镜像: latest 跟踪最新 release;生产建议固定 :sha-<commit> 长期可重现部署
+    # 例: ghcr.io/shenliehuozhi/nsfocus-update-monitor:sha-560502b31db579e3635240356f6318d576a9c30f
     image: ghcr.io/shenliehuozhi/nsfocus-update-monitor:latest
-    container_name: byakugan-monitor
+    container_name: nsupdate-monitor
     restart: unless-stopped
     ports:
-      - "${MONITOR_PORT:-9999}:9999"
-    environment:
-      MONITOR_JWT_SECRET: ${MONITOR_JWT_SECRET}
-      MONITOR_SECRET_KEY: ${MONITOR_SECRET_KEY}
-      MONITOR_LOG_LEVEL: ${MONITOR_LOG_LEVEL:-INFO}
-      TZ: Asia/Shanghai
+      - "9999:9999"
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+    env_file:
+      - .env
+    # HEALTHCHECK 已写在 Dockerfile 里(MONITOR_HOST 默认 0.0.0.0,健康检查用 python urllib)
+    # 这里用 compose 的 healthcheck 字段等于 Dockerfile 默认值,显式写出来方便用户改
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9999/api/health"]
+      test: ["CMD", "python3", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:9999/api/health',timeout=5).status==200 else 1)"]
       interval: 30s
       timeout: 10s
       retries: 3
