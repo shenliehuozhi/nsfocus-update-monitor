@@ -32,9 +32,16 @@ jobs:
         id: meta
         with:
           images: ghcr.io/${{ github.repository }}
+          # 3 个 tag:
+          #   latest      → 永远指向最新
+          #   YYYYMMDDTHHMM → 精确到分钟(ISO 8601,20260627T1430 这种)
+          #                  type=date 只支持 'T' 分隔符,不支持 '-'
+          #                  用户能看出"这是几号几点发的"
+          #   sha-<long>  → 精确 commit,可重现部署
           tags: |
-            type=sha,format=long
             type=raw,value=latest
+            type=date,format=YYYYMMDDTHHMM
+            type=sha,format=long
 
       - name: Build and push
         uses: docker/build-push-action@v5
