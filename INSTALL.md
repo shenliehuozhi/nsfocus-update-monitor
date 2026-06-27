@@ -57,6 +57,11 @@ newgrp docker   # 重新加载组, 或重新登录
 
 ### 2.3 拉取镜像
 
+**每次 push 自动产生 3 种 tag** (用户按需选):
+- `:latest` — 永远指向最新 build,**默认推荐**
+- `:YYYYMMDDTHHMM` — UTC 精确到分钟(例 `20260627T1429`),能看出"这是几号几点发的"
+- `:sha-<40位长sha>` — 精确 commit,可重现部署,**生产固定版本用这个**
+
 **执行者**: 人手动跑（避免 sudo 后台 PTY 密码问题）
 
 ```bash
@@ -323,7 +328,10 @@ cat /home/hermes/nsfocus-monitor/data/initial_password.txt
 # 1. 看当前跑的 tag
 sudo docker ps --format '{{.Names}}\t{{.Image}}' | grep nsupdate-monitor
 
-# 2. 拉新镜像 (我们 CI 推 :latest + :sha-<commit> 两个 tag)
+# 2. 拉新镜像 (我们 CI 每次 push 推 3 种 tag: :latest / :YYYYMMDDTHHMM / :sha-<commit>)
+#    :latest = 跟踪最新 (方便开发)
+#    :YYYYMMDDTHHMM = UTC 精确到分钟 (能看出"几号几点发的")
+#    :sha-<commit> = 精确可重现 (生产推荐,锁版本不会因 latest 变更意外升级)
 #    长期使用建议固定 sha-XXX,这样可重现部署,不会因 latest 变更意外升级
 sudo docker pull ghcr.io/shenliehuozhi/nsfocus-update-monitor:sha-<新commit>
 

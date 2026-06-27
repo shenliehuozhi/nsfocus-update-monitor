@@ -8,6 +8,11 @@
 
 镜像: `ghcr.io/shenliehuozhi/nsfocus-update-monitor` (已修复 MONITOR_HOST 默认值,HEALTHCHECK 正常工作)
 
+**每次 push 自动产生 3 种 tag** (用户按需选):
+- `:latest` — 永远指向最新 build,**默认推荐**
+- `:YYYYMMDDTHHMM` — UTC 精确到分钟(例 `20260627T1429`),能看出"这是几号几点发的"
+- `:sha-<40位长sha>` — 精确 commit,可重现部署,**生产固定版本用这个**
+
 ```bash
 # 1. 拉镜像 (latest 跟踪最新,或固定 sha-XXX 长期可重现部署)
 sudo docker pull ghcr.io/shenliehuozhi/nsfocus-update-monitor:latest
