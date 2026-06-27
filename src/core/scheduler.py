@@ -140,6 +140,7 @@ def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
     try:
         with open(log_path, encoding='utf-8', errors='replace') as f:
             for line in f:
+                line_dt = None  # init for lines without timestamp prefix
                 m = log_ts_re.match(line)
                 if m:
                     try:
@@ -176,6 +177,7 @@ def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
                         'product_name': product,
                         'url': url,
                         'error_msg': err_msg[:150],
+                        'error_time': line_dt.isoformat() if line_dt else '',  # CST 实际发生时间,避免告警延迟 8h 后看不出真凶
                     })
     except Exception as e:
         logger.debug(f'_scan_network_errors_from_log: {e}')

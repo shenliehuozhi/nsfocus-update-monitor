@@ -735,9 +735,13 @@ def emit_network_error(errors: list, source: str = 'collector'):
 
     lines = ["【采集网络错误】", f"检测时间：{cst_now}", ""]
     for i, e in enumerate(errors[:10], 1):
-        lines.append(f"{i}. 产品：{e['product_name']}")
-        lines.append(f"   URL：{e['url']}")
-        lines.append(f"   错误：{e['error_msg'][:100]}")
+        # error_time 是 log 行的实际时间戳(CST),不是告警生成时间
+        # 解决"告警延迟 8h 后看不出错误什么时候真发生"的问题
+        err_time = e.get('error_time', '').replace('T', ' ')
+        time_str = f"  时间: {err_time}" if err_time else ""
+        lines.append(f"{i}. 产品:{e['product_name']}{time_str}")
+        lines.append(f"   URL:{e['url']}")
+        lines.append(f"   错误:{e['error_msg'][:100]}")
     if len(errors) > 10:
         lines.append(f"... 还有 {len(errors) - 10} 条错误")
 
