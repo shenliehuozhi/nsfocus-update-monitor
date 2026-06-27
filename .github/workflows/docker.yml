@@ -17,6 +17,13 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Compute date tag
+        # metadata-action @v5 没有 type=date,改用 env + type=raw 拼日期 tag
+        # YYYYMMDDTHHMM (UTC) → 精确到分钟(ISO 8601 风格,用 T 分隔)
+        # 用户能看出"这是几号几点发的",latest 兜底指向最新
+        id: date_tag
+        run: echo "tag_date=$(date -u +%Y%m%dT%H%M)" >> "$GITHUB_ENV"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -33,14 +40,13 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}
           # 3 个 tag:
-          #   latest      → 永远指向最新
-          #   YYYYMMDDTHHMM → 精确到分钟(ISO 8601,20260627T1430 这种)
-          #                  type=date 只支持 'T' 分隔符,不支持 '-'
-          #                  用户能看出"这是几号几点发的"
-          #   sha-<long>  → 精确 commit,可重现部署
+          #   latest                → 永远指向最新
+          #   YYYYMMDDTHHMM (UTC)   → 精确到分钟,用户能看出"这是几号几点发的"
+          #                            由前面 date_tag step 写到 env.tag_date
+          #   sha-<long>            → 精确 commit,可重现部署
           tags: |
             type=raw,value=latest
-            type=date,format=YYYYMMDDTHHMM
+            type=raw,value=${{ env.tag_date }}
             type=sha,format=long
 
       - name: Build and push
