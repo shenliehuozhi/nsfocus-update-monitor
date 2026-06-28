@@ -33,7 +33,10 @@ jobs:
         #   tag_version 输 + release_name 空 → tag=v1.2.3, name=YYYY-MM-DD HH:MM - v1.2.3
         #   tag_version 空 + release_name 输 → tag=vYYYYMMDDTHHMM, name=YYYY-MM-DD HH:MM - <name>
         #   tag_version 空 + release_name 空 → tag=vYYYYMMDDTHHMM, name=YYYY-MM-DD HH:MM - vYYYYMMDDTHHMM
+        # shell: bash 显式指定 — windows-2022 runner 默认 shell 是 pwsh,
+        #  pwsh 不认 [ -n \"$x\" ] 这种 bash test 语法 (报 Missing '(' after 'if')
         id: rel
+        shell: bash
         run: |
           DATE_TAG=$(date -u +%Y%m%dT%H%M)
           DATE_DISP=$(date -u +'%Y-%m-%d %H:%M')
