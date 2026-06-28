@@ -8,12 +8,12 @@ on:
   workflow_dispatch:
     inputs:
       tag_version:
-        description: 'Release tag (e.g. 1.2.3,自动加 v 前缀生成 v1.2.3),留空自动用 commit short SHA'
+        description: 'Release tag (e.g. 1.2.3,自动加 v 前缀生成 v1.2.3),留空自动用 vYYYYMMDDTHHMM(精确到分钟,跟 docker 同步)'
         required: false
         type: string
         default: ''
       release_name:
-        description: 'Release 显示名,留空用 tag_version 或 build-<sha>'
+        description: 'Release 显示名,留空自动用 YYYY-MM-DD HH:MM - <tag_name>'
         required: false
         type: string
         default: ''
@@ -25,6 +25,31 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Compute release tag and name
+        # 跟 docker.yml 同步:bash 算日期 + tag_name/name 一起算好
+        # 4 个分支:
+        #   tag_version 输 + release_name 输 → tag=v1.2.3, name=YYYY-MM-DD HH:MM - <name>
+        #   tag_version 输 + release_name 空 → tag=v1.2.3, name=YYYY-MM-DD HH:MM - v1.2.3
+        #   tag_version 空 + release_name 输 → tag=vYYYYMMDDTHHMM, name=YYYY-MM-DD HH:MM - <name>
+        #   tag_version 空 + release_name 空 → tag=vYYYYMMDDTHHMM, name=YYYY-MM-DD HH:MM - vYYYYMMDDTHHMM
+        id: rel
+        run: |
+          DATE_TAG=$(date -u +%Y%m%dT%H%M)
+          DATE_DISP=$(date -u +'%Y-%m-%d %H:%M')
+          if [ -n "${{ inputs.tag_version }}" ]; then
+            TAG="v${{ inputs.tag_version }}"
+          else
+            TAG="v${DATE_TAG}"
+          fi
+          if [ -n "${{ inputs.release_name }}" ]; then
+            NAME="${DATE_DISP} - ${{ inputs.release_name }}"
+          else
+            NAME="${DATE_DISP} - ${TAG}"
+          fi
+          echo "tag_name=${TAG}" >> "$GITHUB_ENV"
+          echo "release_name=${NAME}" >> "$GITHUB_ENV"
+          echo "Computed: tag_name=${TAG} release_name=${NAME}"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -107,13 +132,12 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'workflow_dispatch'
-        # softprops v2 强制要 tag_name(v1 不需要)
-        # 用户在 UI 输 tag_version(如 v1.2.3),留空则 fallback 到 v-build-<7位 SHA>
-        # 永远产出有效 tag(不能是空串)
+        # tag_name / name 由前面 'Compute release tag and name' step 算好,这里只引用
+        # 避免 3-4 层 && || 表达式嵌套
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ inputs.tag_version != '' && format('v{0}', inputs.tag_version) || format('v-build-{0}', github.sha) }}
-          name: ${{ inputs.release_name != '' && inputs.release_name || (inputs.tag_version != '' && inputs.tag_version || format('Build {0}', github.sha)) }}
+          tag_name: ${{ env.tag_name }}
+          name: ${{ env.release_name }}
           files: dist/nsfocus-monitor-win.zip
           draft: true
           generate_release_notes: true
