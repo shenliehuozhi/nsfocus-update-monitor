@@ -52,7 +52,10 @@ jobs:
           fi
           echo "tag_name=${TAG}" >> "$GITHUB_ENV"
           echo "release_name=${NAME}" >> "$GITHUB_ENV"
-          echo "Computed: tag_name=${TAG} release_name=${NAME}"
+          # zip/artifact 文件名统一跟 release tag 一致(带 v 前缀),用户一眼能对照版本
+          ZIP_NAME="nsfocus-monitor-win-${TAG}.zip"
+          echo "zip_name=${ZIP_NAME}" >> "$GITHUB_ENV"
+          echo "Computed: tag_name=${TAG} release_name=${NAME} zip_name=${ZIP_NAME}"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -79,17 +82,21 @@ jobs:
           upx --best --lzma --force dist\nsfocus-monitor.exe
 
       - name: Build portable zip
+        # zip 文件名跟 artifact/release 保持一致(用 env.zip_name),便于一眼对照版本
         run: |
-          powershell -Command "Compress-Archive -Path dist\nsfocus-monitor.exe -DestinationPath dist\nsfocus-monitor-win.zip -Force"
+          powershell -Command "Compress-Archive -Path dist\nsfocus-monitor.exe -DestinationPath dist\${{ env.zip_name }} -Force"
 
       - name: Upload artifacts
-        # 只传 exe 不传 zip:zip 是 exe 的 Compress-Archive 副本,内容重复,单独下 exe 即可
-        # 节省 ~50% artifact size,降低 2GB quota 撞限概率
+        # artifact name 改用日期 tag(vYYYYMMDDTHHMM UTC,跟 docker image tag 同步):
+        #   - 用户下载时一眼能看出"这是几号几点发的"
+        #   - 跟 release tag 一致,GitHub Actions 列表里跟 Release 页面对得上
+        # 副作用:同一次 commit re-run(分钟级)会撞名,但 GitHub 会自动加 -1/-2 后缀;
+        # cleanup 脚本按前缀匹配,不影响
         # zip 仍保留在 dist/ 目录,供下方 Release 步骤(workflow_dispatch 触发)用
         uses: actions/upload-artifact@v4
         with:
-          name: nsfocus-monitor-win-${{ github.sha }}
-          path: dist/nsfocus-monitor.exe
+          name: nsfocus-monitor-win-${{ env.tag_name }}
+          path: dist\nsfocus-monitor.exe
           retention-days: 7
 
       # 自动清理：每次上传成功后，遍历仓库下 nsfocus-monitor-win-* 这类
@@ -135,13 +142,13 @@ jobs:
 
       - name: Upload to GitHub Release
         if: github.event_name == 'workflow_dispatch'
-        # tag_name / name 由前面 'Compute release tag and name' step 算好,这里只引用
-        # 避免 3-4 层 && || 表达式嵌套
+        # tag_name / name / zip_name 由前面 'Compute release tag and name' step 算好,这里只引用
+        # zip 文件名跟 artifact 保持一致,Release 页面下载下来能直接对照 tag
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.tag_name }}
           name: ${{ env.release_name }}
-          files: dist/nsfocus-monitor-win.zip
+          files: dist/${{ env.zip_name }}
           draft: true
           generate_release_notes: true
         env:
