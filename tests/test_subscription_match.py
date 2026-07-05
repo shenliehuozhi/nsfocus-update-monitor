@@ -84,6 +84,31 @@ def test_valid_until_expired_returns_empty(base_snap):
     assert get_new_for_subscription(rule, [base_snap()]) == []
 
 
+def test_valid_until_naive_iso_string_expires(base_snap):
+    """Regression: naive ISO timestamps must be treated as UTC.
+
+    Before the fix, naive string '2020-01-01T00:00:00' raised TypeError
+    on comparison with tz-aware datetime.now(timezone.utc), the except
+    swallowed it, and the rule silently matched everything forever.
+    """
+    rule = {
+        'name': 'naive-expired',
+        'filter_conditions': {},
+        'valid_until': '2020-01-01T00:00:00',  # naive (no tz suffix)
+    }
+    assert get_new_for_subscription(rule, [base_snap()]) == []
+
+
+def test_valid_until_naive_future_matches_all(base_snap):
+    """Naive future timestamp must still allow matches."""
+    rule = {
+        'name': 'naive-future',
+        'filter_conditions': {},
+        'valid_until': '2099-01-01T00:00:00',  # naive (no tz suffix)
+    }
+    assert len(get_new_for_subscription(rule, [base_snap()])) == 1
+
+
 def test_valid_until_future_matches_all(base_snap):
     rule = {
         'name': 'r',

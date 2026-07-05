@@ -198,6 +198,13 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
         from datetime import datetime, timezone
         try:
             expiry = datetime.fromisoformat(valid_until.replace(' ', 'T'))
+            # Compat: front-end may pass naive ISO string (no tzinfo). Treat
+            # naive as UTC so legacy rules with '2020-01-01T00:00:00'-style
+            # values still expire correctly instead of silently matching all
+            # (TypeError on naive vs tz-aware comparison was swallowed by the
+            # bare except below).
+            if expiry.tzinfo is None:
+                expiry = expiry.replace(tzinfo=timezone.utc)
             if datetime.now(timezone.utc) > expiry:
                 return []  # 规则已过期，跳过
         except (ValueError, TypeError):
