@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 venv/
+.pytest_cache/
 
 # Data — exclude database files (contain encrypted credentials)
 data/*.db
