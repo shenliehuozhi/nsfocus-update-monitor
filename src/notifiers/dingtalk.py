@@ -55,6 +55,48 @@ class DingtalkNotifier(BaseNotifier):
         new_first = f'<font color="{color}">{m.group(1)}</font>'
         return new_first + sep + (rest if rest else '')
 
+    # Label → color (钉钉 meta 行 label 染橙色,让字段名跳出来)
+    LABEL_COLOR = '#c27800'  # 项目邮件 cfg-hint 同款橙色,跨视觉系统一致
+
+    # 已知 label 名字(必须跟 base.py meta 列表保持一致)
+    # 修改 _format_markdown_body / _format_markdown_bodies 时,这里也要同步加
+    KNOWN_LABELS = (
+        '发布页面', '文件名称', '版本信息', '文件大小',
+        'MD5', '发布时间', '下载地址',
+    )
+    _LABEL_RE = re.compile(r'^(' + '|'.join(KNOWN_LABELS) + r')\s*:')
+
+    @classmethod
+    def _wrap_labels_with_color(cls, body: str) -> str:
+        """Wrap each meta-row label with <font color>.
+
+        Iterate through body line by line (separator-agnostic), apply label
+        wrap only to lines whose first non-whitespace token is one of the known
+        field labels. Description block, title, and "(i/N)" markers are left
+        untouched.
+        """
+        # Detect separator first (钉钉版通常用 <br/>)
+        sep = None
+        for candidate in ('<br/>', '<br>', '\n'):
+            if candidate in body:
+                sep = candidate
+                break
+        if sep is None:
+            return body
+        lines = body.split(sep)
+        out = []
+        for line in lines:
+            m = cls._LABEL_RE.match(line)
+            if m:
+                # Only color the bare label text, NOT trailing whitespace/padding
+                # (so visual alignment of "MD5       :" remains unchanged).
+                # `m.group(1)` is the label; rest starts with leading spaces (MD5 padding).
+                label = m.group(1)
+                rest = line[len(label):]
+                line = f'<font color="{cls.LABEL_COLOR}">{label}</font>{rest}'
+            out.append(line)
+        return sep.join(out)
+
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
         secret = config.get('secret', '')
@@ -67,8 +109,9 @@ class DingtalkNotifier(BaseNotifier):
         url = _sign_url(webhook_url, secret, timestamp_unit='ms', url_quote=True)
         # 钉钉 markdown 客户端不识别 '\n' 作为换行,使用 '<br/>' 强制换行
         bodies = _format_markdown_bodies(message, message.is_rollback, line_break='<br/>')
-        # 给 title 一行加 <font color> — 仅钉钉通道生效
-        bodies = [self._wrap_title_with_color(b, message) for b in bodies]
+        # 给 title 一行加 <font color> + 给每个 meta 行 label 染橙色
+        bodies = [self._wrap_labels_with_color(self._wrap_title_with_color(b, message))
+                  for b in bodies]
         name = config.get('name', '')
         title = f'{"⚠️ 撤回" if message.is_rollback else "🔔 升级通知"} {message.product_name} {message.package_version}'
 

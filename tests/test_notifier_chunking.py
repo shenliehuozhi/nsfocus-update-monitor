@@ -305,6 +305,46 @@ def test_feishu_many_lines_one_payload():
                 assert '\n' not in text
 
 
+def test_dingtalk_meta_labels_colored():
+    """DingTalk: each meta-row label (发布页面/文件名称/.../下载地址) wrapped in <font color>.
+
+    Verifies that all 7 expected label names get the LABEL_COLOR wrapping,
+    while:
+      - title stays URGENCY_COLOR (separate wrap)
+      - description block untouched
+      - (i/N) markers untouched
+      - MD5 padding (trailing spaces) NOT included in colored segment
+    """
+    from src.notifiers.dingtalk import DingtalkNotifier
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a'*32, file_size=680200,
+        description_summary='', description_full='第一段\n第二段\n注意段',
+        download_url='https://example.com/dl', source_url='https://example.com/list',
+        published_at='2026-07-09T08:49:58',
+        source_id=0, chain=['IPS'], chain_url='https://example.com/list/1',
+        urgency='normal',
+    )
+    bodies = _format_markdown_bodies(msg, line_break='<br/>')
+    body = DingtalkNotifier._wrap_labels_with_color(bodies[0])
+    color = DingtalkNotifier.LABEL_COLOR
+    color_tag_open = '<font color="{}">'.format(color)
+    color_wrap_count = body.count(color_tag_open)
+    # All 7 labels must be wrapped
+    for label in DingtalkNotifier.KNOWN_LABELS:
+        wrapped = '<font color="{c}">{l}</font>'.format(c=color, l=label)
+        assert wrapped in body, f'label {label} not wrapped: {body!r}'
+    # Exactly 7 wraps (description block does not match)
+    assert color_wrap_count == 7, \
+        'expected 7 label wraps, got {}'.format(color_wrap_count)
+    # Description block untouched
+    for desc_line in ['第一段', '第二段', '注意段']:
+        bad = '<font color="{c}">{d}'.format(c=color, d=desc_line)
+        assert bad not in body
+    # MD5 padding stays OUTSIDE the font tag
+    assert '<font color="#c27800">MD5</font>       :' in body
+
+
 
 # =======================================================================
 # 签名 URL 测试(_sign_url:钉钉/飞书共用,差 2 参数)
