@@ -269,7 +269,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         ('**大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
         ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
-        ('**下载地址**:', f'[{msg.file_name}]({msg.download_url})' if msg.download_url else None),
+        ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     lines.append(type_line)
 
@@ -332,7 +332,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         ('**大小**:', f'`{msg.size_display}`'),
         ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
-        ('**下载地址**:', f'[{msg.file_name}]({msg.download_url})' if msg.download_url else None),
+        ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     header_lines.append(type_line)
 
@@ -420,13 +420,6 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
     if msg.restart_required:
         dep_html += '<tr><td style="padding:4px 0;width:80px;color:#666">重启</td><td>升级后需重启</td></tr>'
 
-    # Download button
-    dl_btn = ''
-    if msg.download_url and msg.file_name and show_download_btn:
-        dl_btn = f'''<tr><td colspan="2" style="padding:16px 0 0 0;text-align:center">
-            <a href="{msg.download_url}" style="display:inline-block;background:{color};color:#fff;padding:10px 24px;border-radius:6px;text-decoration:none;font-size:14px;font-weight:bold">下载升级包</a>
-        </td></tr>'''
-
     # 类型 row — chain link or fallback (same logic as markdown)
     if msg.chain:
         chain_text = ' → '.join(msg.chain)
@@ -436,6 +429,10 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
         type_cell = f'<a href="{msg.source_url}" style="color:{color};text-decoration:none">详情页，点击查看</a>'
     else:
         type_cell = msg.package_type
+
+    # 下载地址 row — 显示文本为 URL 本身,点击跳转到 URL(markdown 改造同步)
+    download_cell = (f'<a href="{msg.download_url}" style="color:{color};text-decoration:none;word-break:break-all">{msg.download_url}</a>'
+                     if msg.download_url else '')
 
     # Sender identification — yellow strip immediately under the title bar, only
     # renders when ALL three fields (name/email/phone) are non-empty. The
@@ -485,13 +482,13 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
     <table style="width:100%;font-size:14px;color:#333">
         <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
         <tr><td style="padding:4px 0;color:#666">文件</td><td>{msg.file_name or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">下载地址</td><td>{download_cell}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
         <tr><td style="padding:4px 0;color:#666">MD5</td><td>{msg.md5_hash or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
-        {dl_btn}
     </table>
 </td></tr>
 </table>
