@@ -312,83 +312,23 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
     return '\n'.join(lines)
 
 
-def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
-                            max_bytes: int = 4000, skip_empty_meta: bool = False
-                            ) -> list[str]:
-    """Format message as one or more markdown bodies, splitting at 4000-byte limit.
+def _format_markdown_body_placeholder(msg: NotificationMessage, for_rollback: bool = False) -> str:  # pragma: no cover
+    raise RuntimeError('legacy stub - replaced by base._format_markdown_body')
 
-    Returns a list of body strings. Never truncates — splits into multiple messages.
-    Each message respects the WeCom/DingTalk 4096-byte hard limit.
+
+def _format_markdown_bodies_legacy(msg: NotificationMessage, for_rollback: bool = False,
+                                   max_bytes: int = 4000, skip_empty_meta: bool = False
+                                   ) -> list[str]:  # pragma: no cover
+    """Legacy stub - real implementation has moved below. Kept as guard.
+
+    This body was a known-broken stub that returned a single element containing
+    the entire (potentially oversized) body, causing DingTalk pushes >4KB to
+    fail silently. It has been superseded by the full implementation that
+    appears below _chunk_text; this stub remains only to prevent import
+    regressions during the module reorganization.
     """
     full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta)
-    if len(full_body.encode('utf-8')) <= max_bytes:
-        return [full_body]
-
-    # Need to split. Strategy: header/metadata in part 1, description in part 2+
-    icon = '⚠️' if for_rollback else msg.urgency_label
-    total = 0  # will compute after building parts
-    parts = []
-
-    # Part 1: header + metadata
-    chain_text = ' / '.join(msg.chain) if msg.chain else ''
-    first_line = f'{chain_text} 更新' if chain_text else msg.title
-    header_lines = [
-        f'{icon} **{first_line}**',
-        '',
-    ]
-    if for_rollback:
-        header_lines.append('> ⚠️ 软件包已被撤回，请暂缓升级')
-        header_lines.append('')
-    # Chain / 发布页面 line (same logic as _format_markdown_body — 显示文本=URL)
-    if msg.chain_url:
-        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
-    elif msg.source_url:
-        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
-    else:
-        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
-
-    meta = [
-        ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
-        ('版本信息', f'`{msg.package_version}`' if msg.package_version else None),
-        ('文件大小', f'`{msg.size_display}`'),
-        ('MD5', f'`{msg.md5_hash}`' if msg.md5_hash else None),  # 不带尾随空格
-        ('发布时间', f'`{_utc_to_cst_display(msg.published_at)}`'),
-        ('下载地址', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
-    ]
-    header_lines.append(type_line)
-
-    # 字段名固定宽度(与 _format_markdown_body 对齐),保证拆分前后视觉一致
-    # MD5 字段冒号前 6 空格;发布页面/下载地址冒号后 3 空格;其他 1 空格
-    def _fmt_meta_line(label, val):
-        if label == 'MD5':
-            padded = 'MD5' + ' ' * 6
-        else:
-            padded = _pad_label(label)
-        suffix = '   ' if label in ('发布页面', '下载地址') else ' '
-        return f'{padded} :{suffix}{val or ""}'
-
-    if skip_empty_meta:
-        for label, val in meta:
-            if val is not None and str(val).strip():
-                header_lines.append(_fmt_meta_line(label, val))
-    else:
-        for label, val in meta:
-            header_lines.append(_fmt_meta_line(label, val))
-
-    extra_items = []
-    if msg.min_sys_version:
-        extra_items.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
-    if msg.restart_required:
-        extra_items.append('🔄 升级后需重启')
-    if msg.description_full:
-        extra_items.append('')
-        extra_items.append('---')
-        extra_items.append('')
-        extra_items.append(_highlight_attention_lines(msg.description_full, 'markdown'))
-    part1 = '\n'.join(header_lines + extra_items)
-    parts.append(part1)
-
-    return parts
+    return [full_body]
 
 
 def _chunk_text(text: str, max_bytes: int) -> list[str]:
@@ -414,6 +354,210 @@ def _chunk_text(text: str, max_bytes: int) -> list[str]:
         chunks.append(chunk_str)
         offset += len(chunk_str.encode('utf-8'))
     return chunks
+
+
+def _split_with_marker(text: str, max_bytes: int = 4000) -> list[str]:
+    """Split text into chunks of at most max_bytes each (UTF-8 safe), cut at line boundaries.
+    Appends '(i/N)' pagination marker to each chunk when N > 1.
+
+    Used by WeCom / DingTalk / Feishu to handle the 4KB IM hard limit. When the
+    input is already short, returns it as a single-element list.
+
+    Single-line oversized content is hard-cut at max_bytes with UTF-8 boundary
+    safety (see _chunk_text).
+    """
+    if len(text.encode('utf-8')) <= max_bytes:
+        return [text]
+
+    # First pass: split at line boundaries
+    raw_parts: list[str] = []
+    current_bytes = b''
+    for line in text.split('\n'):
+        line_bytes = line.encode('utf-8')
+        # Reserve room for '(n/m)' marker added later (~10 bytes worst case)
+        overhead = len(f'(99/99)'.encode('utf-8'))
+        if current_bytes and len(current_bytes) + len(line_bytes) + 1 + overhead > max_bytes:
+            raw_parts.append(current_bytes.decode('utf-8'))
+            current_bytes = b''
+        current_bytes += line_bytes + b'\n'
+    if current_bytes:
+        raw_parts.append(current_bytes.decode('utf-8').rstrip('\n'))
+
+    # Second pass: if any raw_part is still bigger than max_bytes, hard-cut it
+    final: list[str] = []
+    for rp in raw_parts:
+        if len(rp.encode('utf-8')) <= max_bytes:
+            final.append(rp)
+        else:
+            final.extend(_chunk_text(rp, max_bytes))
+
+    # Reserve room for the marker by trimming if needed
+    total = len(final)
+    if total <= 1:
+        return [final[0]] if final else [text[:max_bytes]]
+
+    marker_len = len(f'\n\n({total}/{total})'.encode('utf-8'))
+    budget = max(1, max_bytes - marker_len)
+    safe = []
+    for p in final:
+        encoded = p.encode('utf-8')
+        if len(encoded) > budget:
+            # Try to cut at last newline within budget
+            cut = encoded[:budget]
+            try:
+                safe.append(cut.decode('utf-8').rstrip('\n'))
+            except UnicodeDecodeError:
+                safe.append(cut.decode('utf-8', errors='ignore').rstrip('\n'))
+        else:
+            safe.append(p.rstrip('\n'))
+
+    return [f'{p}\n\n({i+1}/{total})' for i, p in enumerate(safe)]
+
+
+def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
+                            max_bytes: int = 4000, skip_empty_meta: bool = False
+                            ) -> list[str]:
+    """Format message as one or more markdown bodies, splitting at max_bytes limit.
+
+    Returns a list of body strings. Never truncates — splits into multiple
+    messages so each respects the WeCom / DingTalk 4KB hard limit.
+
+    Behavior:
+      - First chunk: header + metadata + restart flag + start of description
+      - Subsequent chunks: continued description (with '(i/N)' marker)
+    """
+    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta)
+    if len(full_body.encode('utf-8')) <= max_bytes:
+        return [full_body]
+
+    # Need to split. Strategy:
+    # 1. Build "head" = everything BEFORE description (header + meta lines)
+    # 2. Build "tail" = description block ('---\\n\\n<desc>')
+    # 3. If head already exceeds max_bytes (description is empty / tiny but metadata is huge),
+    #    just hard-split full_body.
+    # 4. Otherwise pack head in part 1, then add description chunks until budget filled.
+
+    icon = '⚠️' if for_rollback else msg.urgency_label
+    chain_text = ' / '.join(msg.chain) if msg.chain else ''
+    first_line = f'{chain_text} 更新' if chain_text else msg.title
+    header_lines = [
+        f'{icon} **{first_line}**',
+        '',
+    ]
+    if for_rollback:
+        header_lines.append('> ⚠️ 软件包已被撤回，请暂缓升级')
+        header_lines.append('')
+    if msg.chain_url:
+        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
+    elif msg.source_url:
+        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
+    else:
+        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
+
+    meta = [
+        ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
+        ('版本信息', f'`{msg.package_version}`' if msg.package_version else None),
+        ('文件大小', f'`{msg.size_display}`' if msg.file_size > 0 else None),
+        ('MD5', f'`{msg.md5_hash}`' if msg.md5_hash else None),  # 不带尾随空格
+        ('发布时间', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('下载地址', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
+    ]
+    header_lines.append(type_line)
+
+    def _fmt_meta_line(label, val):
+        if label == 'MD5':
+            padded = 'MD5' + ' ' * 6
+        else:
+            padded = _pad_label(label)
+        suffix = '   ' if label in ('发布页面', '下载地址') else ' '
+        return f'{padded} :{suffix}{val or ""}'
+
+    if skip_empty_meta:
+        for label, val in meta:
+            if val is not None and str(val).strip():
+                header_lines.append(_fmt_meta_line(label, val))
+    else:
+        for label, val in meta:
+            header_lines.append(_fmt_meta_line(label, val))
+
+    if msg.min_sys_version:
+        header_lines.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
+    if msg.restart_required:
+        header_lines.append('🔄 升级后需重启')
+
+    head = '\n'.join(header_lines)
+
+    if not msg.description_full:
+        # No description to continue — just hard-split head if even that overflows.
+        return _split_with_marker(head + '\n\n', max_bytes) if len((head + '\n\n').encode('utf-8')) > max_bytes else [full_body]
+
+    head_with_sep = head + '\n\n---\n\n'
+    head_with_sep_bytes = len(head_with_sep.encode('utf-8'))
+    desc_text = _highlight_attention_lines(msg.description_full, 'markdown')
+
+    if head_with_sep_bytes >= max_bytes:
+        # Head alone overflows. Just split the full body.
+        return _split_with_marker(full_body, max_bytes)
+
+    remaining = max_bytes - head_with_sep_bytes
+    # Split description into line-aware chunks of <= remaining bytes.
+    # A single oversized line is hard-cut using _chunk_text (UTF-8 safe).
+    desc_chunks: list[str] = []
+    cur = ''
+    for line in desc_text.split('\n'):
+        line_bytes_len = len(line.encode('utf-8'))
+        if line_bytes_len > remaining:
+            # Flush pending cur first, then hard-cut this single line.
+            if cur:
+                desc_chunks.append(cur)
+                cur = ''
+            desc_chunks.extend(_chunk_text(line, remaining))
+            continue
+        candidate = cur + ('\n' if cur else '') + line
+        if len(candidate.encode('utf-8')) > remaining:
+            if cur:
+                desc_chunks.append(cur)
+            cur = line
+        else:
+            cur = candidate
+    if cur:
+        desc_chunks.append(cur)
+
+    if len(desc_chunks) <= 1:
+        # Whole description fits in part 1
+        return [_split_with_marker(head_with_sep + desc_text, max_bytes)[0]] if (head_with_sep + desc_text).encode().__len__() > max_bytes else [(head_with_sep + desc_text).rstrip('\n')]
+
+    # Part 1 = head + first desc chunk (no marker yet; total unknown at this point)
+    parts = [(head_with_sep + desc_chunks[0]).rstrip('\n')]
+    # Remaining description chunks go in subsequent parts (just the description block).
+    # Each chunk goes with its own (i/N) marker AFTER all parts built.
+    for c in desc_chunks[1:]:
+        parts.append(c.rstrip('\n'))
+
+    total = len(parts)
+    if total == 1:
+        return parts
+    # Append markers and ensure each part fits max_bytes with marker tail.
+    marker_len = len(f'\n\n({total}/{total})'.encode('utf-8'))
+    out = []
+    for i, p in enumerate(parts):
+        body = p
+        if len(body.encode('utf-8')) + marker_len <= max_bytes:
+            body = body + f'\n\n({i+1}/{total})'
+        else:
+            # Trim to fit marker
+            encoded = body.encode('utf-8')
+            budget = max(1, max_bytes - marker_len)
+            if budget >= len(encoded):
+                body = body + f'\n\n({i+1}/{total})'
+            else:
+                trimmed = encoded[:budget]
+                try:
+                    body = trimmed.decode('utf-8').rstrip('\n') + f'\n\n({i+1}/{total})'
+                except UnicodeDecodeError:
+                    body = trimmed.decode('utf-8', errors='ignore').rstrip('\n') + f'\n\n({i+1}/{total})'
+        out.append(body)
+    return out
 
 
 def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
