@@ -77,15 +77,13 @@ def _utc_to_cst_display(utc_str: str) -> str:
 
 # 字段名对齐:所有 label 不加粗,用半角空格 pad 到固定字符数,使冒号对齐
 # 格式:'发布页面 :   xxx'(label 后 1 空格 + 冒号 + 3 空格 + 值)
-_LABEL_PAD_WIDTH = 8  # label 半角字符总数(不含 '**' 标记)
+_LABEL_PAD_WIDTH = 4  # label 半角字符总数(不含 '**' 标记)
 
 
 def _pad_label(label: str) -> str:
     """label 不含 '**' 标记,在末尾追加半角空格使 label 达到固定字符数。
 
-    调用处负责在返回的 label 后追加 ' :   ' (1空 + : + 3空)再接值。
-    例:_pad_label('发布页面')='发布页面    '(4 中文 + 4 半角空 = 8 字符)
-       _pad_label('MD5 ')='MD5     '(MD5+空格 = 5 + 3 半角空 = 8 字符)
+    调用处负责在返回的 label 后追加 ' : ' (1空 + : + 1空)再接值。
     """
     pad_count = max(0, _LABEL_PAD_WIDTH - len(label))
     return label + ' ' * pad_count
@@ -257,7 +255,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
                          description_full but have no product/version/pkg fields.
     """
     icon = '⚠️' if for_rollback else msg.urgency_label
-    chain_text = ' → '.join(msg.chain) if msg.chain else ''
+    chain_text = ' / '.join(msg.chain) if msg.chain else ''
     # 第 1 行:有 chain 时显示完整链 + 更新,无 chain 时 fallback 到原 title
     first_line = f'{chain_text} 更新' if chain_text else msg.title
     lines = [
@@ -271,11 +269,11 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
 
     # Chain / 发布页面 line — 显示文本=URL(与"下载地址"对齐:label 指示语义,链接文本就是 URL 本身)
     if msg.chain_url:
-        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("发布页面")} : [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("发布页面")} : [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
+        type_line = f'{_pad_label("发布页面")} : {msg.package_type}'
 
     meta = [
         ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
@@ -291,7 +289,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
     for label, val in meta:
         padded_label = _pad_label(label)
         if val is not None and str(val).strip():
-            lines.append(f'{padded_label} :   {val}')
+            lines.append(f'{padded_label} : {val}')
         elif not skip_empty_meta:
             lines.append(f'{padded_label} :')
 
@@ -325,7 +323,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     parts = []
 
     # Part 1: header + metadata
-    chain_text = ' → '.join(msg.chain) if msg.chain else ''
+    chain_text = ' / '.join(msg.chain) if msg.chain else ''
     first_line = f'{chain_text} 更新' if chain_text else msg.title
     header_lines = [
         f'{icon} **{first_line}**',
@@ -336,11 +334,11 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         header_lines.append('')
     # Chain / 发布页面 line (same logic as _format_markdown_body — 显示文本=URL)
     if msg.chain_url:
-        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("发布页面")} : [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("发布页面")} : [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
+        type_line = f'{_pad_label("发布页面")} : {msg.package_type}'
 
     meta = [
         ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
@@ -356,10 +354,10 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if skip_empty_meta:
         for label, val in meta:
             if val is not None and str(val).strip():
-                header_lines.append(f'{_pad_label(label)} :   {val}')
+                header_lines.append(f'{_pad_label(label)} : {val}')
     else:
         for label, val in meta:
-            header_lines.append(f'{_pad_label(label)} :   {val or ""}')
+            header_lines.append(f'{_pad_label(label)} : {val or ""}')
 
     extra_items = []
     if msg.min_sys_version:
@@ -486,7 +484,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
         content_border = 'border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px'
 
     # HTML 标题栏:与 markdown 渠道对齐 — 有 chain 时用完整链 + 更新,无 chain 时 fallback title
-    chain_text = ' → '.join(msg.chain) if msg.chain else ''
+    chain_text = ' / '.join(msg.chain) if msg.chain else ''
     html_title_text = f'{chain_text} 更新' if chain_text else msg.title
     return f'''<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
