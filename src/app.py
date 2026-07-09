@@ -75,6 +75,14 @@ def create_app(config_path=None):
         CORS(app)
         app.logger.warning('⚠️  CORS_ORIGINS not set — allowing all origins. Set CORS_ORIGINS for production.')
 
+    # ── gzip response compression ──────────────────────────────────
+    # Activates Content-Encoding: gzip on JSON/text responses >= 500 bytes.
+    # The /api/diff/fetch endpoint returns ~3 MB raw JSON for big rule pages;
+    # gzip shrinks that to ~150 KB. Caveat: rules out bytes > 1024 are exempt
+    # (the body is already compressed) — keep that out of the cache path.
+    from flask_compress import Compress
+    Compress(app)
+
     # ── Secrets validation ───────────────────────────────────────────
     _secret_key = os.getenv('MONITOR_SECRET_KEY', '')
     _jwt_secret = os.getenv('MONITOR_JWT_SECRET', '')

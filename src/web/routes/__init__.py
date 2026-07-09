@@ -15,6 +15,7 @@ def register_routes(app: Flask):
         bp_options, bp_latest, bp_snap
     )
     from src.web.routes.system_routes import bp as bp_system
+    from src.web.routes.diff_routes import bp_diff
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -29,6 +30,7 @@ def register_routes(app: Flask):
     app.register_blueprint(bp_latest)
     app.register_blueprint(bp_snap)
     app.register_blueprint(bp_system)
+    app.register_blueprint(bp_diff)
 
     # Serve SPA index
     templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')

@@ -219,6 +219,52 @@ tr[data-sid]{cursor:pointer}
 @keyframes chainConflict{
  0%{background:#fee2e2}50%{background:#fecaca}100%{background:#fee2e2}
 }
+
+/* ── Tools / Rule Diff ───────────────────────────────────────── */
+.tools-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.tool-card{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:18px;cursor:pointer;transition:.15s;display:flex;flex-direction:column;gap:10px}
+.tool-card:hover{border-color:var(--primary);box-shadow:0 4px 12px rgba(67,97,238,.12);transform:translateY(-1px)}
+.tool-card .tool-ico{font-size:28px;line-height:1}
+.tool-card .tool-title{font-size:15px;font-weight:600;color:var(--text)}
+.tool-card .tool-desc{font-size:12px;color:var(--muted);line-height:1.5}
+.tool-card .tool-tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;background:#eef2ff;color:#4361ee;width:fit-content}
+
+.rd-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.rd-toolbar input[type=text]{flex:1;min-width:280px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px}
+.rd-toolbar button{padding:8px 16px;border:none;border-radius:6px;background:var(--primary);color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+.rd-toolbar button:hover{background:#3550d4}
+.rd-toolbar button:disabled{background:#9ca3af;cursor:not-allowed}
+.rd-toolbar .rd-status{font-size:12px;color:var(--muted)}
+
+.rd-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border-radius:10px;overflow:hidden}
+.rd-table th{background:#f8fafc;padding:10px 12px;text-align:left;border-bottom:1px solid var(--border);font-weight:600;color:var(--text);position:sticky;top:0;z-index:1}
+.rd-table td{padding:9px 12px;border-bottom:1px solid #f0f2f5;vertical-align:middle}
+.rd-table tr:hover td{background:#f8fafc}
+.rd-table .rd-cve{color:#1d4ed8;font-family:monospace;font-size:12px}
+.rd-pkg-selected{background:#eef2ff !important;font-weight:500}
+.rd-pkg-selected td{border-left:3px solid var(--primary)}
+.rd-table-container{max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:10px;margin-bottom:14px}
+
+.rd-result-new{color:#0ca678;font-weight:600;background:#ecfdf5;padding:3px 10px;border-radius:4px;display:inline-block;font-size:12px}
+.rd-result-upd{color:#4361ee;font-weight:600;background:#eef2ff;padding:3px 10px;border-radius:4px;display:inline-block;font-size:12px}
+.rd-versions{font-size:11px;color:var(--muted);font-family:monospace}
+.rd-summary-bar{display:flex;gap:14px;flex-wrap:wrap;padding:12px 16px;background:#f8fafc;border-radius:8px;margin-bottom:14px;font-size:13px}
+.rd-summary-item{display:flex;flex-direction:column;gap:2px}
+.rd-summary-item .label{font-size:11px;color:var(--muted)}
+.rd-summary-item .val{font-size:16px;font-weight:600;color:var(--text)}
+
+.rd-toast{position:fixed;top:80px;right:24px;padding:12px 18px;border-radius:8px;background:#fff;border:1px solid var(--border);box-shadow:0 4px 12px rgba(0,0,0,.1);z-index:9999;display:none;font-size:13px;max-width:380px}
+.rd-toast.error{border-color:var(--danger);color:var(--danger);background:#fef2f2}
+.rd-toast.success{border-color:var(--success);color:var(--success);background:#ecfdf5}
+.rd-toast.info{border-color:var(--primary);color:var(--primary);background:#eef2ff}
+
+.rd-version-chip{display:inline-block;padding:2px 8px;margin:0 2px;border-radius:4px;background:#eef2ff;color:var(--primary);font-size:12px;cursor:pointer;transition:.12s;border:1px solid transparent}
+.rd-version-chip:hover{background:#dbeafe;border-color:var(--primary)}
+.rd-version-chip code{font-family:inherit;background:none;padding:0;color:inherit}
+.rd-version-latest{background:#dcfce7;color:#0ca678;font-weight:500}
+.rd-version-latest:hover{background:#bbf7d0;border-color:#0ca678}
+.rd-version-inline{padding:1px 6px;font-size:11px;background:#f1f5f9;color:var(--text)}
+.rd-version-inline:hover{background:#e0e7ff;color:var(--primary)}
 </style>
 <body>
 
@@ -235,6 +281,7 @@ tr[data-sid]{cursor:pointer}
     <a href="#" data-page="settings">系统配置</a>
     <a href="#" data-page="products">产品管理</a>
     <a href="#" data-page="logs">系统日志</a>
+    <a href="#" data-page="tools">🛠️ 其他工具</a>
   </nav>
   <div class="user"><span id="uname"></span><button onclick="showPwdModal()">改密</button><button onclick="logout()">退出</button></div>
 </header>
@@ -342,7 +389,7 @@ function logout(){
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
-  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs};
+  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,tools:toolsPage};
   if(pages[n])pages[n]();
 }
 
@@ -6027,6 +6074,552 @@ async function batchAction(action){
 // hook checkbox change to update UI
 document.addEventListener('change',e=>{if(e.target.classList.contains('prod-cb'))_updateBatchUI();});
 _initDiscObserver();
+</script>
+
+<!-- ─────────────────────────────────────────────────────────────
+  其他工具 (tools page) — 卡片列表 + 规则库 Diff 子页
+  ───────────────────────────────────────────────────────────── -->
+<div id="rdToast" class="rd-toast"></div>
+<script>
+// ── Tools page (顶级菜单「🛠️ 其他工具」的入口) ──
+async function toolsPage(){
+  const app=document.getElementById('app');
+  app.innerHTML=`
+    <div class="card">
+      <div class="card-hd">🛠️ 其他工具</div>
+      <div class="card-bd">
+        <div class="tools-grid">
+          <div class="tool-card" onclick="toolDiffRuleOpen()">
+            <div class="tool-ico">🔍</div>
+            <div class="tool-title">IDPS 规则库 Diff</div>
+            <div class="tool-desc">输入 vendor portal 规则库链接 (限 IPS / IDS 产品), 实时拉取所有升级包, 选择任意 2 个版本对比新增 / 修改 / 删除的规则, 支持 CSV / xlsx 导出。</div>
+            <span class="tool-tag">IDPS · 规则库</span>
+          </div>
+          <div class="tool-card" onclick="toolDiffWafOpen()">
+            <div class="tool-ico">🛡️</div>
+            <div class="tool-title">WAF 规则库 Diff</div>
+            <div class="tool-desc">输入 vendor portal 规则库链接 (限 WAF / HWAF 产品), 实时拉取所有升级包, 选择任意 2 个版本对比新增 / 修改 / 删除的规则, 支持 CSV / xlsx 导出。</div>
+            <span class="tool-tag">WAF · 规则库</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Rule Diff 子页 ──
+// 共用 IDPS / WAF 两套入口;后端按 _rd.sourceKind 决定解析器
+//   sourceKind='ips' → parse_rules (攻击[id]: 名称)
+//   sourceKind='waf' → parse_rules_waf (一、新增规则 / 二、修改规则 / 三、删除规则)
+const _rd={
+  packages: [],
+  url: '',
+  sourceKind: 'ips',   // 子页打开时由 toolDiffRuleOpen / toolDiffWafOpen 设定
+  selected: [],        // package_version 数组, 最多 2 个
+  diffResult: null,
+  filterVersion: null, // 当前过滤的版本号 (null = 不过滤)
+};
+
+// 根据 URL 嗅探 sourceKind (rdUrlValidate / rdCompare 容错用)
+// 后端 /api/diff/fetch 已返回 source_kind,优先用后端的
+function _rdSniffKind(url){
+  if (!url) return 'ips';
+  if (url.indexOf('/listWafV') >= 0 && url.indexOf('Detail') >= 0) return 'waf';
+  return 'ips';
+}
+
+const _rdKindLabel = { ips: 'IDPS', waf: 'WAF' };
+
+async function toolDiffRuleOpen(){
+  _rd.sourceKind = 'ips';
+  return _toolDiffOpenImpl('🔍 IDPS 规则库 Diff',
+    'https://update.nsfocus.com/update/listNewipsDetail/v/rule5.6.11_v2');
+}
+
+async function toolDiffWafOpen(){
+  _rd.sourceKind = 'waf';
+  return _toolDiffOpenImpl('🛡️ WAF 规则库 Diff',
+    'https://update.nsfocus.com/update/listWafV69Detail/v/rule');
+}
+
+async function _toolDiffOpenImpl(title, placeholder){
+  const app=document.getElementById('app');
+  app.innerHTML=`
+    <div class="card">
+      <div class="card-hd">
+        ${title}
+        <button class="btn btn-outline btn-sm" onclick="toolsPage()" style="margin-left:auto">← 返回工具列表</button>
+      </div>
+      <div class="card-bd">
+        <div class="rd-toolbar">
+          <input type="text" id="rdUrl" placeholder="${placeholder}">
+          <button class="btn btn-primary" id="rdFetchBtn" onclick="rdFetch(false)">🚀 提取规则信息</button>
+          <button class="btn btn-outline btn-sm" id="rdForceBtn" onclick="rdFetch(true)" title="跳过本地缓存, 重新从 vendor portal 拉取">🔄 强制刷新</button>
+          <span class="rd-status" id="rdStatus"></span>
+        </div>
+        <div id="rdUrlHint" style="display:none;font-size:12px;margin:-8px 0 14px;padding:0 4px;color:var(--muted)"></div>
+
+        <div id="rdStep1">
+          <div id="rdStep1Header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div style="font-size:13px;font-weight:600;color:var(--text)">
+              ① 选择 2 个版本(只能选 2 个, 第 3 次勾选会自动取消最早选的)
+            </div>
+            <button class="btn btn-outline btn-sm" id="rdReselectBtn" style="display:none" onclick="rdReselect()">✏️ 修改选择</button>
+          </div>
+          <div class="rd-table-container" id="rdPkgTableContainer">
+            <table class="rd-table" id="rdPkgTable">
+              <thead><tr>
+                <th style="width:36px"></th><th>版本号</th><th>文件名</th><th>发布时间 (CST)</th><th>大小</th><th>MD5</th>
+              </tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div id="rdSelectedBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:18px">
+            <span id="rdSelectedText" style="font-size:13px;color:var(--text);flex:1"></span>
+            <button class="btn btn-primary btn-sm" id="rdCompareBtn" onclick="rdCompare()">🔄 生成对比结果</button>
+          </div>
+        </div>
+
+        <div id="rdStep2" style="display:none">
+          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">
+            ② 对比结果
+          </div>
+          <div id="rdSummary"></div>
+          <div id="rdFilterBar" style="display:none;margin-bottom:14px;font-size:12px;color:var(--muted)">
+            当前过滤: <code id="rdFilterLabel" style="background:#eef2ff;padding:2px 6px;border-radius:4px;color:var(--primary)"></code>
+            <button class="btn btn-outline btn-xs" style="margin-left:8px" onclick="rdClearFilter()">清除过滤</button>
+          </div>
+          <div id="rdResultGroups"></div>
+          <div style="display:flex;gap:8px;align-items:center;margin-top:14px">
+            <button class="btn btn-primary" onclick="rdExport('xlsx')">📥 导出 xlsx</button>
+            <button class="btn btn-success" onclick="rdExport('csv')">📥 导出 CSV</button>
+            <button class="btn btn-outline" onclick="rdExport('csv', true)">📋 复制 CSV 到剪贴板</button>
+            <span class="rd-status" id="rdExportStatus"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+  // 恢复上次输入的 URL + 实时校验
+  // 按 _rd.sourceKind 分别存,避免 IPS 和 WAF 互相串值
+  const last = localStorage.getItem('rd_last_url_' + _rd.sourceKind);
+  if (last) {
+    document.getElementById('rdUrl').value = last;
+    // 延迟一帧触发 input 事件以显示 hint
+    setTimeout(() => document.getElementById('rdUrl').dispatchEvent(new Event('input')), 0);
+  }
+  document.getElementById('rdUrl').addEventListener('input', rdUrlValidate);
+}
+
+function rdToast(msg, type='info', timeout=4000){
+  const t = document.getElementById('rdToast');
+  if (!t) { alert(msg); return; }
+  t.textContent = msg;
+  t.className = 'rd-toast ' + type;
+  t.style.display = 'block';
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>{ t.style.display='none'; }, timeout);
+}
+
+async function rdFetch(force){
+  force = !!force;
+  const url = document.getElementById('rdUrl').value.trim();
+  if (!url) { rdToast('请输入 vendor portal 链接', 'error'); return; }
+  localStorage.setItem('rd_last_url_' + _rd.sourceKind, url);
+
+  const btn = document.getElementById('rdFetchBtn');
+  const fbtn = document.getElementById('rdForceBtn');
+  const status = document.getElementById('rdStatus');
+  btn.disabled = true; fbtn.disabled = true;
+  btn.textContent = '⏳ 提取中...';
+  status.textContent = '';
+  _rd.packages = []; _rd.selected = []; _rd.diffResult = null; _rd.filterVersion = null;
+  document.getElementById('rdStep1').style.display = 'none';
+  document.getElementById('rdStep2').style.display = 'none';
+
+  const t0 = Date.now();
+  try {
+    const qs = '?url=' + encodeURIComponent(url) + (force ? '&force=1' : '');
+    const r = await fetch(API + '/diff/fetch' + qs, { headers: { 'Authorization': 'Bearer ' + T }});
+    const j = await r.json();
+    if (j.code !== 0) {
+      rdToast('提取失败: ' + (j.message || ('HTTP ' + r.status)), 'error', 6000);
+      status.textContent = '';
+      return;
+    }
+    _rd.packages = j.data.packages || [];
+    _rd.url = j.data.url;
+    // 后端 source_kind 是权威值(基于 URL 白名单匹配);优先用它覆盖 _rd.sourceKind
+    // 这样即使子页打开时设了 ips 但用户粘了 WAF 链接,后续 compare 也会走 waf parser
+    if (j.data.source_kind === 'waf' || j.data.source_kind === 'ips') {
+      _rd.sourceKind = j.data.source_kind;
+    }
+    const cacheTag = j.data.cache === 'hit'
+      ? `<span style="color:var(--success);font-weight:500">📦 来自缓存</span> (${j.data.fetched_at || ''} CST, ${((Date.now()-t0)/1000).toFixed(1)}s)`
+      : `<span style="color:var(--primary);font-weight:500">🌐 新拉取</span> (${((Date.now()-t0)/1000).toFixed(1)}s)`;
+    status.innerHTML = `✓ 共 ${_rd.packages.length} 个升级包 ${cacheTag}`;
+    rdRenderPkgTable();
+    document.getElementById('rdStep1').style.display = 'block';
+  } catch (e) {
+    rdToast('网络错误: ' + e.message, 'error', 6000);
+  } finally {
+    btn.disabled = false; fbtn.disabled = false;
+    btn.textContent = '🚀 提取规则信息';
+  }
+}
+
+// 实时校验 URL 是否在 IDPS / WAF 白名单,给用户友好提示(不阻塞输入)
+// 子页打开时根据 _rd.sourceKind 决定默认接受哪种 URL:
+//   ips → listNewipsDetail/(IPS/IDS/IDS-ICS)
+//   waf → listWafV...Detail/(WAF/HWAF)
+// 也接受用户切换 URL(混合嗅探):只要后端 _validate_diff_url 能识别就放行
+async function rdUrlValidate(){
+  const url = document.getElementById('rdUrl').value.trim();
+  const hint = document.getElementById('rdUrlHint');
+  if (!url) { hint.style.display = 'none'; return; }
+
+  // 后端只接受 update.nsfocus.com 域名 + 两种已知 detail 路径
+  const isVendorDomain = url.startsWith('https://update.nsfocus.com/');
+  const isIpsPath = url.indexOf('/listNewipsDetail') >= 0;
+  const isWafPath = url.indexOf('/listWafV') >= 0 && url.indexOf('Detail') >= 0;
+
+  if (!isVendorDomain || (!isIpsPath && !isWafPath)) {
+    hint.style.display = 'block';
+    hint.innerHTML = '<span style="color:var(--danger)">⚠️ 仅支持 update.nsfocus.com 域名的 listNewipsDetail/ (IPS / IDS) 或 listWafV...Detail/ (WAF) 详情页</span>';
+    return;
+  }
+
+  // 嗅探用户实际粘的 URL 类型(可能跟 _rd.sourceKind 不一致)
+  const sniffKind = isWafPath ? 'waf' : 'ips';
+  const mismatch = sniffKind !== _rd.sourceKind;
+  const mismatchTip = mismatch
+    ? `<span style="color:var(--muted)"> · 当前是 ${_rdKindLabel[sniffKind]} 链接, 后端会按 ${_rdKindLabel[sniffKind]} 解析</span>`
+    : '';
+
+  // 看缓存里有没有现成的 cache-status 可查
+  hint.style.display = 'block';
+  hint.innerHTML = '<span style="color:var(--muted)">🔍 校验中...</span>';
+  try {
+    const r = await fetch(API + '/diff/cache-status?url=' + encodeURIComponent(url), { headers: { 'Authorization': 'Bearer ' + T }});
+    const j = await r.json();
+    if (j.code === 0 && j.data && j.data.exists) {
+      const age = j.data.age_seconds || 0;
+      const ageStr = age < 60 ? `${age}秒前` : age < 3600 ? `${Math.floor(age/60)}分钟前` : `${Math.floor(age/3600)}小时前`;
+      hint.innerHTML = `<span style="color:var(--success)">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>${mismatchTip}`;
+    } else {
+      hint.innerHTML = `<span style="color:var(--muted)">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>${mismatchTip}`;
+    }
+  } catch (e) {
+    hint.style.display = 'none';
+  }
+}
+
+function rdRenderPkgTable(){
+  const tbody = document.querySelector('#rdPkgTable tbody');
+  if (!_rd.packages.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">无数据</td></tr>';
+    return;
+  }
+  // 升序展示(老的在上, 新的在下)
+  tbody.innerHTML = _rd.packages.map(p => {
+    const isSel = _rd.selected.includes(p.package_version);
+    const pubCST = p.published_at ? p.published_at.replace(' ', ' ').slice(0, 19) : '—';
+    return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${p.package_version}">
+      <td><input type="checkbox" class="rd-pkg-cb" data-ver="${p.package_version}" ${isSel ? 'checked' : ''} onchange="rdToggleSel('${p.package_version}')"></td>
+      <td style="font-family:monospace">${p.package_version}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.file_name}">${p.file_name}</td>
+      <td style="font-size:12px">${pubCST}</td>
+      <td style="font-size:12px">${p.file_size_raw || '—'}</td>
+      <td style="font-size:11px;font-family:monospace;color:var(--muted)">${(p.md5_hash||'').slice(0, 10)}…</td>
+    </tr>`;
+  }).join('');
+}
+
+function rdToggleSel(ver){
+  const i = _rd.selected.indexOf(ver);
+  if (i >= 0) {
+    _rd.selected.splice(i, 1);
+  } else {
+    if (_rd.selected.length >= 2) {
+      // 自动取消最早选的 (决策 6a)
+      _rd.selected.shift();
+    }
+    _rd.selected.push(ver);
+  }
+  // 2 个版本选满后,收起 Step1 表格 + 显示 selected bar
+  const table = document.getElementById('rdPkgTableContainer');
+  const bar = document.getElementById('rdSelectedBar');
+  const reselectBtn = document.getElementById('rdReselectBtn');
+  if (_rd.selected.length >= 2) {
+    table.style.display = 'none';
+    bar.style.display = 'flex';
+    reselectBtn.style.display = 'inline-flex';
+    document.getElementById('rdSelectedText').innerHTML =
+      `已选: <b style="font-family:monospace">${_rd.selected[0]}</b>  →  <b style="font-family:monospace">${_rd.selected[1]}</b>`;
+  } else {
+    rdRenderPkgTable();  // 展开状态需要刷新表格来更新选中样式
+    table.style.display = 'block';
+    bar.style.display = 'none';
+    reselectBtn.style.display = 'none';
+    document.getElementById('rdSelectedText').textContent =
+      _rd.selected.length === 0 ? '未选择' : `已选: ${_rd.selected[0]} (还需选 1 个)`;
+  }
+}
+
+function rdReselect(){
+  // 重新展开表格 + 清空已选 + 隐藏 Step2
+  _rd.selected = [];
+  _rd.diffResult = null;
+  document.getElementById('rdStep2').style.display = 'none';
+  document.getElementById('rdPkgTableContainer').style.display = 'block';
+  document.getElementById('rdSelectedBar').style.display = 'none';
+  document.getElementById('rdReselectBtn').style.display = 'none';
+  rdRenderPkgTable();
+  rdClearFilter();
+}
+
+async function rdCompare(){
+  if (_rd.selected.length !== 2) return;
+  const btn = document.getElementById('rdCompareBtn');
+  btn.disabled = true; btn.textContent = '⏳ 对比中...';
+  document.getElementById('rdStep2').style.display = 'none';
+  try {
+    const r = await fetch(API + '/diff/compare', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from_version: _rd.selected[0],
+        to_version:   _rd.selected[1],
+        packages:     _rd.packages,
+        source_kind:  _rd.sourceKind,
+      }),
+    });
+    const j = await r.json();
+    if (j.code !== 0) { rdToast('对比失败: ' + (j.message || r.status), 'error', 6000); return; }
+    _rd.diffResult = j.data;
+    rdRenderResult();
+    document.getElementById('rdStep2').style.display = 'block';
+  } catch (e) {
+    rdToast('网络错误: ' + e.message, 'error', 6000);
+  } finally {
+    btn.disabled = false; btn.textContent = '🔄 生成对比结果';
+  }
+}
+
+function rdRenderResult(){
+  const r = _rd.diffResult;
+  if (!r) return;
+  const stats = r.stats || {};
+  const intermediates = stats.intermediate_versions || [];
+  const fromV = r.from_version, toV = r.to_version;
+  const clickableVersions = [...intermediates, toV];
+
+  // 摘要: 5 项 (FROM/TO/中间数/净新增/净更新/净删除) + 可点击版本区域
+  document.getElementById('rdSummary').innerHTML = `
+    <div class="rd-summary-bar">
+      <div class="rd-summary-item"><span class="label">FROM 版本</span><span class="val">${fromV}</span></div>
+      <div class="rd-summary-item"><span class="label">TO 版本</span><span class="val">${toV}</span></div>
+      <div class="rd-summary-item"><span class="label">中间版本数</span><span class="val">${intermediates.length}</span></div>
+      <div class="rd-summary-item" style="color:#0ca678"><span class="label">新增</span><span class="val">${(r.pure_new||[]).length}</span></div>
+      <div class="rd-summary-item" style="color:#4361ee"><span class="label">修改</span><span class="val">${(r.pure_updated||[]).length}</span></div>
+      <div class="rd-summary-item" style="color:#e5484d"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
+    </div>
+    ${clickableVersions.length > 0
+      ? `<div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+          📍 点击版本过滤结果:
+          ${intermediates.map(v => `<a href="javascript:void(0)" class="rd-version-chip" data-ver="${v}" onclick="rdApplyFilter('${v}')"><code>${v}</code></a>`).join(' ')}
+          <a href="javascript:void(0)" class="rd-version-chip rd-version-latest" data-ver="${toV}" onclick="rdApplyFilter('${toV}')"><code>最新 ${toV}</code></a>
+        </div>`
+      : ''}
+    ${!stats.from_has_rule_blocks
+      ? `<div class="info-bar" style="background:#fef3c7;border-color:#fde68a;color:#92400e;margin-bottom:14px">⚠️ FROM 版本 (${fromV}) 描述中未找到「新增规则/更新规则」清单, 可能是较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
+      : ''}
+    ${!stats.to_has_rule_blocks
+      ? `<div class="info-bar" style="background:#fef3c7;border-color:#fde68a;color:#92400e;margin-bottom:14px">⚠️ TO 版本 (${toV}) 描述中未找到「新增规则/更新规则」清单, 较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
+      : ''}
+  `;
+  rdRenderGroups();
+}
+
+// 辅助: 把 "2.0.0.45209" 拆成 [2, 0, 0, 45209] 用于排序
+function _rdVerParts(v){ return (v||'').split('.').map(s => /^\d+$/.test(s) ? parseInt(s, 10) : s); }
+function _rdVerCmp(a, b){
+  const pa = _rdVerParts(a), pb = _rdVerParts(b);
+  const n = Math.max(pa.length, pb.length);
+  for (let i = 0; i < n; i++) {
+    const x = pa[i] !== undefined ? pa[i] : 0;
+    const y = pb[i] !== undefined ? pb[i] : 0;
+    if (typeof x === 'number' && typeof y === 'number') { if (x !== y) return x - y; }
+    else { const s = String(x).localeCompare(String(y)); if (s !== 0) return s; }
+  }
+  return 0;
+}
+// 降序
+function _rdVerCmpDesc(a, b){ return _rdVerCmp(b, a); }
+
+function rdRenderGroups(){
+  const r = _rd.diffResult;
+  if (!r) return;
+  const filterVer = _rd.filterVersion;  // null 或 "2.0.0.45151" 之类
+  const container = document.getElementById('rdResultGroups');
+  const filterBar = document.getElementById('rdFilterBar');
+  if (filterVer) {
+    filterBar.style.display = 'block';
+    document.getElementById('rdFilterLabel').textContent = filterVer;
+  } else {
+    filterBar.style.display = 'none';
+  }
+
+  // 1) 建立所有出现过的版本号 → 全局 rank (用于排序 + 过滤)
+  //    rank 按版本号升序: rank 越大 = 版本越新
+  const allVersions = [...new Set([
+    ...(r.pure_new || []).map(x => x.first_added_in),
+    ...(r.pure_updated || []).flatMap(x => x.updated_in_versions || []),
+    r.from_version, r.to_version,
+  ].filter(Boolean))].sort(_rdVerCmp);
+  const rankOf = v => allVersions.indexOf(v);
+
+  // 2) 过滤 + 排序
+  //    新增组: 按 first_added_in 降序 (最新版本在最上)
+  const newItems = (r.pure_new || []).filter(x =>
+    !filterVer || x.first_added_in === filterVer
+  );
+  newItems.sort((a, b) => rankOf(b.first_added_in) - rankOf(a.first_added_in));
+
+  //    更新组: 组内按"该规则被更新的最高版本"降序,同版本按 id 升序
+  const updItems = (r.pure_updated || []).filter(x =>
+    !filterVer || (x.updated_in_versions || []).includes(filterVer)
+  );
+  updItems.sort((a, b) => {
+    const aMax = Math.max(...(a.updated_in_versions || []).map(v => rankOf(v)));
+    const bMax = Math.max(...(b.updated_in_versions || []).map(v => rankOf(v)));
+    if (aMax !== bMax) return bMax - aMax;
+    return a.id - b.id;
+  });
+
+  //    删除组: 不依赖版本号,过滤时如果选了具体版本 = 隐藏(因为"删除"是相对 from 的整体观察)
+  //    按规则号升序展示
+  const delItems = (filterVer ? [] : (r.pure_deleted || [])).slice();
+  delItems.sort((a, b) => a.id - b.id);
+
+  // 3) 渲染 3 个分组
+  const renderGroup = (title, icon, color, count, items, typeKey) => {
+    const emptyNote = filterVer ? `在 <code>${filterVer}</code> 中无${typeKey === 'new' ? '新增' : typeKey === 'updated' ? '更新' : '删除'}规则` : null;
+    if (items.length === 0 && emptyNote) {
+      return `<div class="rd-group" style="margin-bottom:12px;color:var(--muted);font-size:13px">${icon} ${title}: ${emptyNote}</div>`;
+    }
+    if (items.length === 0) return '';  // 未过滤时该组 0 条,不渲染标题
+    const headers = {
+      new:     ['规则号', '规则名称', '首次新增于'],
+      updated: ['规则号', '规则名称', '更新于'],
+      deleted: ['规则号', '规则名称', 'FROM 中归属'],
+    }[typeKey];
+    const widths = {
+      new:     '140px',
+      updated: '200px',
+      deleted: '100px',
+    }[typeKey];
+    return `
+      <div class="rd-group" style="margin-bottom:18px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:${color};display:flex;align-items:center;gap:8px">
+          ${icon} ${title}
+          <span style="font-size:11px;font-weight:normal;color:var(--muted)">(${items.length} 条${filterVer ? ` · 过滤自 ${count} 条` : ''})</span>
+        </div>
+        <div class="rd-table-container" style="max-height:none">
+          <table class="rd-table">
+            <thead><tr>
+              <th style="width:90px">${headers[0]}</th>
+              <th>${headers[1]}</th>
+              <th style="width:${widths}">${headers[2]}</th>
+            </tr></thead>
+            <tbody>${items.map(x => {
+              if (typeKey === 'new') {
+                return `<tr>
+                  <td><code class="rd-cve">[${x.id}]</code></td>
+                  <td>${escHtml(x.name)}</td>
+                  <td><a href="javascript:void(0)" class="rd-version-chip" onclick="rdApplyFilter('${x.first_added_in}')"><code>${x.first_added_in || ''}</code></a></td>
+                </tr>`;
+              } else if (typeKey === 'updated') {
+                const versions = (x.updated_in_versions || []).slice().sort(_rdVerCmpDesc);
+                return `<tr>
+                  <td><code class="rd-cve">[${x.id}]</code></td>
+                  <td>${escHtml(x.name)}</td>
+                  <td class="rd-versions">${versions.map(v => `<a href="javascript:void(0)" class="rd-version-chip rd-version-inline" onclick="rdApplyFilter('${v}')"><code>${v}</code></a>`).join(' ')}</td>
+                </tr>`;
+              } else {
+                // deleted
+                return `<tr>
+                  <td><code class="rd-cve">[${x.id}]</code></td>
+                  <td>${escHtml(x.name)}</td>
+                  <td style="font-size:12px;color:var(--muted)">${fromVer || ''}</td>
+                </tr>`;
+              }
+            }).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  };
+
+  const fromVer = r.from_version;
+  container.innerHTML =
+    renderGroup('新增规则', '🟢', '#0ca678', (r.pure_new || []).length, newItems, 'new') +
+    renderGroup('修改规则', '🔵', '#4361ee', (r.pure_updated || []).length, updItems, 'updated') +
+    renderGroup('删除规则', '🔴', '#e5484d', (r.pure_deleted || []).length, delItems, 'deleted') ||
+    '<div style="text-align:center;padding:30px;color:var(--muted)">无规则数据</div>';
+}
+
+function rdApplyFilter(ver){
+  _rd.filterVersion = ver;
+  rdRenderGroups();
+  // 滚动到结果区域
+  document.getElementById('rdStep2').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+function rdClearFilter(){
+  _rd.filterVersion = null;
+  rdRenderGroups();
+}
+
+function escHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function rdExport(fmt, copy=false){
+  if (!_rd.diffResult) return;
+  const from = _rd.diffResult.from_version, to = _rd.diffResult.to_version;
+  const filename = `rule_diff_${from}_to_${to}`.replace(/\./g, '_');
+  if (copy) {
+    // 直接生成 CSV 文本给剪贴板
+    const r = await fetch(API + '/diff/export', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diff_result: _rd.diffResult, format: 'csv', filename }),
+    });
+    const txt = await r.text();
+    try {
+      await navigator.clipboard.writeText(txt);
+      rdToast('已复制 CSV 到剪贴板 (含 BOM, Excel 直接粘贴可识别)', 'success', 3000);
+    } catch (e) {
+      rdToast('复制失败: ' + e.message + ' — 请改用「导出 CSV」下载', 'error');
+    }
+    return;
+  }
+  // 走 download 流程
+  const r = await fetch(API + '/diff/export', {
+    method: 'POST',
+    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ diff_result: _rd.diffResult, format: fmt, filename }),
+  });
+  if (!r.ok) { rdToast('导出失败: HTTP ' + r.status, 'error'); return; }
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename + '.' + fmt;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(a.href);
+  rdToast(`已下载 ${filename}.${fmt}`, 'success', 2500);
+}
 </script>
 </body>
 </html>
