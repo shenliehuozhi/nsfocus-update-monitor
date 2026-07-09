@@ -1493,8 +1493,7 @@ def _run_db_cleanup():
     仅清理，不抛异常，由 scheduler 启动和定时任务调用。
 
     每次执行结束（或异常）后通过 emit_cleanup_summary 发送一条系统事件，
-    在 system_event_log 留痕 + 按系统事件配置通知渠道。
-    """
+    在 system_event_log 留痕 + 按系统事件配置通知渠道。"""
     from src.models.database import execute, query, get_db
     from src.models.audit import cleanup_old
     from src.models.subscription import clear_history
