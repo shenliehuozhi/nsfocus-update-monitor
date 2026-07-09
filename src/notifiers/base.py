@@ -269,27 +269,34 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
 
     # Chain / 发布页面 line — 显示文本=URL(与"下载地址"对齐:label 指示语义,链接文本就是 URL 本身)
     if msg.chain_url:
-        type_line = f'{_pad_label("发布页面")} : [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'{_pad_label("发布页面")} : [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'{_pad_label("发布页面")} : {msg.package_type}'
+        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
 
     meta = [
         ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
         ('版本信息', f'`{msg.package_version}`' if msg.package_version else None),
         ('文件大小', f'`{msg.size_display}`' if msg.file_size > 0 else None),
-        ('MD5 ', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('MD5', f'`{msg.md5_hash}`' if msg.md5_hash else None),  # 不带尾随空格
         ('发布时间', f'`{_utc_to_cst_display(msg.published_at)}`'),
         ('下载地址', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     lines.append(type_line)
 
     # 字段名固定宽度(不含 '**' 标记),使冒号对齐
+    # MD5 字段冒号前 7 空格(label 'MD5' 3 字符 + 7 半角空 = 10 字符)
+    # 其他字段冒号前 1 空格(label 已 pad 到 4 字符)
     for label, val in meta:
-        padded_label = _pad_label(label)
+        if label == 'MD5':
+            padded_label = 'MD5' + ' ' * 7   # 7 空格(用户指定)
+        else:
+            padded_label = _pad_label(label)  # 4 字符宽
         if val is not None and str(val).strip():
-            lines.append(f'{padded_label} : {val}')
+            # 发布页面/下载地址冒号后 3 空格;其他 1 空格
+            suffix = '   ' if label in ('发布页面', '下载地址') else ' '
+            lines.append(f'{padded_label} :{suffix}{val}')
         elif not skip_empty_meta:
             lines.append(f'{padded_label} :')
 
@@ -334,30 +341,39 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         header_lines.append('')
     # Chain / 发布页面 line (same logic as _format_markdown_body — 显示文本=URL)
     if msg.chain_url:
-        type_line = f'{_pad_label("发布页面")} : [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'{_pad_label("发布页面")} : [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'{_pad_label("发布页面")} : {msg.package_type}'
+        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
 
     meta = [
         ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
         ('版本信息', f'`{msg.package_version}`' if msg.package_version else None),
         ('文件大小', f'`{msg.size_display}`'),
-        ('MD5 ', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('MD5', f'`{msg.md5_hash}`' if msg.md5_hash else None),  # 不带尾随空格
         ('发布时间', f'`{_utc_to_cst_display(msg.published_at)}`'),
         ('下载地址', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     header_lines.append(type_line)
 
     # 字段名固定宽度(与 _format_markdown_body 对齐),保证拆分前后视觉一致
+    # MD5 字段冒号前 7 空格;发布页面/下载地址冒号后 3 空格;其他 1 空格
+    def _fmt_meta_line(label, val):
+        if label == 'MD5':
+            padded = 'MD5' + ' ' * 7
+        else:
+            padded = _pad_label(label)
+        suffix = '   ' if label in ('发布页面', '下载地址') else ' '
+        return f'{padded} :{suffix}{val or ""}'
+
     if skip_empty_meta:
         for label, val in meta:
             if val is not None and str(val).strip():
-                header_lines.append(f'{_pad_label(label)} : {val}')
+                header_lines.append(_fmt_meta_line(label, val))
     else:
         for label, val in meta:
-            header_lines.append(f'{_pad_label(label)} : {val or ""}')
+            header_lines.append(_fmt_meta_line(label, val))
 
     extra_items = []
     if msg.min_sys_version:
