@@ -281,7 +281,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
         ('**版本信息**:', f'`{msg.package_version}`' if msg.package_version else None),
         ('**文件大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
-        ('**MD5-HASH**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**MD5 **:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
         ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
@@ -348,7 +348,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
         ('**版本信息**:', f'`{msg.package_version}`' if msg.package_version else None),
         ('**文件大小**:', f'`{msg.size_display}`'),
-        ('**MD5-HASH**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**MD5 **:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
         ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
@@ -512,7 +512,7 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
         <tr><td style="padding:4px 0;color:#666">下载地址</td><td>{download_cell}</td></tr>
         <tr><td style="padding:4px 0;color:#666">版本信息</td><td>{msg.package_version or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">文件大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5-HASH</td><td>{msg.md5_hash or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5 </td><td>{msg.md5_hash or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
