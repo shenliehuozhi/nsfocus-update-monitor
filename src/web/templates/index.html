@@ -2926,7 +2926,8 @@ function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=
 async function channels(){
   const r=await api('/channels');chList=r.data||[];
   const typeMap={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
-let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}const testLogBtn=c.type==='email'?`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escHtml(c.name)}')">📋 日志</button>`:'';return `<tr><td>${c.name}${extra}</td><td>${typeLabel}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-success" onclick="testCh(${c.id})">测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
+  const typeCNMap={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
+let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}const testLogBtn=c.type==='email'?`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escHtml(c.name)}')">📋 日志</button>`:'';return `<tr><td>${c.name}${extra}</td><td>${typeLabel}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-success" onclick="testCh(${c.id},'${c.type}')">测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openChModal()">+ 添加渠道</button><table class="mt16"><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
 function chTypeCh(){
   const t=document.getElementById('cht').value,d=document.getElementById('chcfg');
@@ -3161,10 +3162,13 @@ async function saveCh(){
   if(r.code===0){toast(editingChId?'已更新':'已添加');editingChId=0;document.getElementById('chModalWrap')?.remove();channels();}
   else toast(r.message,'error')
 }
-async function testCh(id){
+async function testCh(id, type){
   const r=await api('/channels/'+id+'/test',{method:'POST'});
   if(r.data?.success){
-    toast('✅ 邮件发送成功','success');
+    // type 优先用调用时传入的(channel list 行内调);否则回退到 modal #cht
+    const map={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
+    const effectiveType=type||document.getElementById('cht')?.value||'';
+    toast('✅ '+(map[effectiveType]||'渠道')+' 测试发送成功','success');
   } else {
     const err=r.data?.error||'失败';
     toast('❌ '+err,'error',8000);

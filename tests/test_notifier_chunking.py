@@ -147,6 +147,56 @@ def test_feishu_marker_in_all_parts():
         assert f'({i+1}/{n})' in joined, f'part {i+1}/{n} missing marker: {joined[:80]!r}'
 
 
+def test_dingtalk_line_break_uses_br():
+    """DingTalk markdown client does NOT render '\n' as newline — must use '<br/>'.
+
+    This test verifies that _format_markdown_bodies(..., line_break='<br/>') produces
+    output where every newline is replaced with the HTML tag.
+    """
+    msg = NotificationMessage(
+        title='t', product_name='X', version_branch='V1.0', package_type='test',
+        file_name='test.bin', package_version='v1', md5_hash='a' * 32,
+        description_summary='', description_full='',
+        file_size=0, download_url='', source_url='', published_at='',
+        source_id=0, chain=['test'], chain_url='',
+    )
+    bodies = _format_markdown_bodies(msg, line_break='<br/>')
+    body = bodies[0]
+    assert '\n' not in body, f'DingTalk body should have no \\n, got: {body!r}'
+    assert body.count('<br/>') >= 5, f'DingTalk body should have multiple <br/>, got {body}'
+
+
+def test_default_line_break_preserves_newline():
+    """Default line_break='\\n' (WeCom/Fengdie markdown rendering) must not regress."""
+    msg = NotificationMessage(
+        title='t', product_name='X', version_branch='V1.0', package_type='test',
+        file_name='test.bin', package_version='v1', md5_hash='a' * 32,
+        description_summary='', description_full='',
+        file_size=0, download_url='', source_url='', published_at='',
+        source_id=0, chain=['test'], chain_url='',
+    )
+    bodies = _format_markdown_bodies(msg)  # default line_break='\n'
+    body = bodies[0]
+    assert '\n' in body, f'default line_break should preserve \\n, got: {body!r}'
+
+
+def test_dingtalk_long_desc_with_br_stays_under_4k():
+    """DingTalk sends bloated by <br/> (5 bytes vs 1 byte \\n) — verify chunks still fit."""
+    msg = NotificationMessage(
+        title='测试长描述', product_name='测试产品 X', version_branch='V4.5R',
+        package_type='系统升级包', file_name='long.bin', package_version='v1',
+        md5_hash='a' * 32, file_size=696520000,
+        description_full=('这是一行比较长的中文描述,内容很多,描述产品功能变更。\n' * 50),
+        download_url='https://example.com/dl', source_url='https://example.com/list',
+        published_at='2026-07-09T00:49:58Z',
+        source_id=0, chain=['测试产品 X', 'V4.5R'], chain_url='https://example.com/list/1',
+    )
+    bodies = _format_markdown_bodies(msg, max_bytes=4000, line_break='<br/>')
+    assert all(len(b.encode('utf-8')) <= 4000 for b in bodies), \
+        f'overflow: {[len(b.encode("utf-8")) for b in bodies]}'
+
+
+
 # =======================================================================
 # 签名 URL 测试(_sign_url:钉钉/飞书共用,差 2 参数)
 # =======================================================================

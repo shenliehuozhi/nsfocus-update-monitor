@@ -246,13 +246,16 @@ class BaseNotifier(ABC):
 
 
 def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
-                          skip_empty_meta: bool = False) -> str:
+                          skip_empty_meta: bool = False, line_break: str = '\n') -> str:
     """Format a NotificationMessage as markdown for IM channels (single message).
 
     Args:
         skip_empty_meta: if True, omit metadata lines whose value is empty/whitespace.
                          Use for system-event messages that carry meaningful body in
                          description_full but have no product/version/pkg fields.
+        line_break: string used to separate lines within the output. Default '\\n'
+            (WeCom markdown). DingTalk markdown client does not render '\\n' as a
+            newline — pass '<br/>' instead.
     """
     icon = '⚠️' if for_rollback else msg.urgency_label
     chain_text = ' / '.join(msg.chain) if msg.chain else ''
@@ -309,7 +312,7 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         lines.append('')
         lines.append(_highlight_attention_lines(msg.description_full, 'markdown'))
 
-    return '\n'.join(lines)
+    return line_break.join(lines)
 
 
 def _format_markdown_body_placeholder(msg: NotificationMessage, for_rollback: bool = False) -> str:  # pragma: no cover
@@ -327,7 +330,7 @@ def _format_markdown_bodies_legacy(msg: NotificationMessage, for_rollback: bool 
     appears below _chunk_text; this stub remains only to prevent import
     regressions during the module reorganization.
     """
-    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta)
+    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta, line_break=line_break)
     return [full_body]
 
 
@@ -474,7 +477,8 @@ def _split_with_marker(text: str, max_bytes: int = 4000) -> list[str]:
 
 
 def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
-                            max_bytes: int = 4000, skip_empty_meta: bool = False
+                            max_bytes: int = 4000, skip_empty_meta: bool = False,
+                            line_break: str = '\n'
                             ) -> list[str]:
     """Format message as one or more markdown bodies, splitting at max_bytes limit.
 
@@ -484,8 +488,13 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     Behavior:
       - First chunk: header + metadata + restart flag + start of description
       - Subsequent chunks: continued description (with '(i/N)' marker)
+
+    Args:
+        line_break: string used to separate lines within each part. Default '\\n'
+            (WeCom markdown). DingTalk markdown client does not render '\\n' as a
+            newline — use '<br/>' instead.
     """
-    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta)
+    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta, line_break=line_break)
     if len(full_body.encode('utf-8')) <= max_bytes:
         return [full_body]
 
@@ -544,13 +553,15 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if msg.restart_required:
         header_lines.append('🔄 升级后需重启')
 
-    head = '\n'.join(header_lines)
+    head = line_break.join(header_lines)
 
     if not msg.description_full:
         # No description to continue — just hard-split head if even that overflows.
-        return _split_with_marker(head + '\n\n', max_bytes) if len((head + '\n\n').encode('utf-8')) > max_bytes else [full_body]
+        sep_str = line_break * 2
+        return _split_with_marker(head + sep_str, max_bytes) if len((head + sep_str).encode('utf-8')) > max_bytes else [full_body]
 
-    head_with_sep = head + '\n\n---\n\n'
+    sep_str = line_break * 2
+    head_with_sep = head + sep_str + '---' + sep_str
     head_with_sep_bytes = len(head_with_sep.encode('utf-8'))
     desc_text = _highlight_attention_lines(msg.description_full, 'markdown')
 
@@ -561,6 +572,9 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     remaining = max_bytes - head_with_sep_bytes
     # Split description into line-aware chunks of <= remaining bytes.
     # A single oversized line is hard-cut using _chunk_text (UTF-8 safe).
+    # NOTE: we still split description by '\n' (real newlines in source text)
+    # because users want their description paragraphs preserved verbatim across
+    # the split — only the inter-line break separator (line_break) varies by platform.
     desc_chunks: list[str] = []
     cur = ''
     for line in desc_text.split('\n'):
@@ -584,7 +598,10 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
 
     if len(desc_chunks) <= 1:
         # Whole description fits in part 1
-        return [_split_with_marker(head_with_sep + desc_text, max_bytes)[0]] if (head_with_sep + desc_text).encode().__len__() > max_bytes else [(head_with_sep + desc_text).rstrip('\n')]
+        joined = head_with_sep + desc_text
+        if len(joined.encode('utf-8')) > max_bytes:
+            return [_split_with_marker(joined, max_bytes)[0]]
+        return [joined.rstrip('\n')]
 
     # Part 1 = head + first desc chunk (no marker yet; total unknown at this point)
     parts = [(head_with_sep + desc_chunks[0]).rstrip('\n')]
@@ -596,25 +613,27 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     total = len(parts)
     if total == 1:
         return parts
-    # Append markers and ensure each part fits max_bytes with marker tail.
-    marker_len = len(f'\n\n({total}/{total})'.encode('utf-8'))
+    # Append markers using line_break as separator.
+    marker_template = sep_str + f'({{i}}/{{t}})'
+    marker_len = len(marker_template.format(i='0', t='00').encode('utf-8'))
     out = []
     for i, p in enumerate(parts):
         body = p
+        marker = marker_template.format(i=i + 1, t=total)
         if len(body.encode('utf-8')) + marker_len <= max_bytes:
-            body = body + f'\n\n({i+1}/{total})'
+            body = body + marker
         else:
             # Trim to fit marker
             encoded = body.encode('utf-8')
             budget = max(1, max_bytes - marker_len)
             if budget >= len(encoded):
-                body = body + f'\n\n({i+1}/{total})'
+                body = body + marker
             else:
                 trimmed = encoded[:budget]
                 try:
-                    body = trimmed.decode('utf-8').rstrip('\n') + f'\n\n({i+1}/{total})'
+                    body = trimmed.decode('utf-8').rstrip('\n') + marker
                 except UnicodeDecodeError:
-                    body = trimmed.decode('utf-8', errors='ignore').rstrip('\n') + f'\n\n({i+1}/{total})'
+                    body = trimmed.decode('utf-8', errors='ignore').rstrip('\n') + marker
         out.append(body)
     return out
 

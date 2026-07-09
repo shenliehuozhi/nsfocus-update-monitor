@@ -19,7 +19,8 @@ class DingtalkNotifier(BaseNotifier):
         # 仅当后台启用了「加签」且本项目填了 secret 时,才能成功推送。
         # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 毫秒 + base64 url-quote。
         url = _sign_url(webhook_url, secret, timestamp_unit='ms', url_quote=True)
-        bodies = _format_markdown_bodies(message, message.is_rollback)
+        # 钉钉 markdown 客户端不识别 '\n' 作为换行,使用 '<br/>' 强制换行
+        bodies = _format_markdown_bodies(message, message.is_rollback, line_break='<br/>')
         name = config.get('name', '')
         title = f'{"⚠️ 撤回" if message.is_rollback else "🔔 升级通知"} {message.product_name} {message.package_version}'
 
