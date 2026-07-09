@@ -1,29 +1,13 @@
 """钉钉机器人通知器."""
 
 import json
-import time
-import hmac
-import hashlib
-import base64
 import requests
-from urllib.parse import quote_plus
 
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_bodies
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_bodies, _sign_url
 
 
 class DingtalkNotifier(BaseNotifier):
     channel_type = 'dingtalk'
-
-    def _sign_url(self, webhook_url: str, secret: str) -> str:
-        timestamp = str(round(time.time() * 1000))
-        string_to_sign = f'{timestamp}\n{secret}'
-        hmac_code = hmac.new(
-            secret.encode('utf-8'),
-            string_to_sign.encode('utf-8'),
-            digestmod=hashlib.sha256
-        ).digest()
-        sign = quote_plus(base64.b64encode(hmac_code).decode('utf-8'))
-        return f'{webhook_url}&timestamp={timestamp}&sign={sign}'
 
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
@@ -31,7 +15,10 @@ class DingtalkNotifier(BaseNotifier):
         if not webhook_url:
             return DeliveryResult(False, 'dingtalk', '', 'Missing webhook_url')
 
-        url = self._sign_url(webhook_url, secret) if secret else webhook_url
+        # 钉钉机器人后台 3 选 1 安全设置:加签 / 自定义关键词 / IP 白名单
+        # 仅当后台启用了「加签」且本项目填了 secret 时,才能成功推送。
+        # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 毫秒 + base64 url-quote。
+        url = _sign_url(webhook_url, secret, timestamp_unit='ms', url_quote=True)
         bodies = _format_markdown_bodies(message, message.is_rollback)
         name = config.get('name', '')
         title = f'{"⚠️ 撤回" if message.is_rollback else "🔔 升级通知"} {message.product_name} {message.package_version}'

@@ -3,7 +3,7 @@
 import json
 import requests
 
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _sign_url
 
 
 class FeishuNotifier(BaseNotifier):
@@ -11,8 +11,14 @@ class FeishuNotifier(BaseNotifier):
 
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
+        secret = config.get('secret', '')
         if not webhook_url:
             return DeliveryResult(False, 'feishu', '', 'Missing webhook_url')
+
+        # 飞书机器人后台 3 选 1 安全设置:签名校验 / 自定义关键词 / IP 白名单
+        # 仅当后台启用了「签名校验」且本项目填了 secret 时,才能成功推送。
+        # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 秒 + base64 raw (不 quote)。
+        url = _sign_url(webhook_url, secret, timestamp_unit='s', url_quote=False)
 
         # 飞书使用富文本 (post) 格式 — 一次可能返回多个 payload(长描述分多条)
         payloads = self._build_post(message)
@@ -28,7 +34,7 @@ class FeishuNotifier(BaseNotifier):
                 }
             }
             try:
-                resp = requests.post(webhook_url, json=payload, timeout=10)
+                resp = requests.post(url, json=payload, timeout=10)
                 result = resp.json()
                 if result.get('code') == 0 or result.get('StatusCode') == 0:
                     continue
@@ -43,8 +49,12 @@ class FeishuNotifier(BaseNotifier):
     def send_confirmation(self, message: NotificationMessage,
                           results: list[DeliveryResult], config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
+        secret = config.get('secret', '')
         if not webhook_url:
             return DeliveryResult(False, 'feishu', '', '')
+
+        # 确认消息也按签名体系发(否则后台签名校验启用时本条会失败)
+        url = _sign_url(webhook_url, secret, timestamp_unit='s', url_quote=False)
 
         status_text = f'✅ 推送完成: {message.product_name} {message.package_version}\n'
         for r in results:
@@ -56,7 +66,7 @@ class FeishuNotifier(BaseNotifier):
             'content': {'text': status_text}
         }
         try:
-            requests.post(webhook_url, json=payload, timeout=10)
+            requests.post(url, json=payload, timeout=10)
         except Exception:
             pass
         return DeliveryResult(True, 'feishu', config.get('name', ''))

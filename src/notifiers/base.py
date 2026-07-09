@@ -356,6 +356,65 @@ def _chunk_text(text: str, max_bytes: int) -> list[str]:
     return chunks
 
 
+def _sign_url(webhook_url: str, secret: str, *, timestamp_unit: str = 'ms',
+              url_quote: bool = True) -> str:
+    """Add HMAC-SHA256 sign parameters to a bot webhook URL.
+
+    Used by DingTalk / Feishu (and any future platform that adopts HMAC-SHA256
+    sign scheme). WeCom does not use sign — see WecomNotifier for the
+    documented "secret is a reserved field" rationale.
+
+    Algorithm (shared by DingTalk / Feishu / WeChatWork):
+      1. timestamp = current epoch (seconds OR milliseconds)
+      2. string_to_sign = f"{timestamp}\\n{secret}"
+      3. hmac_code = HMAC-SHA256(secret, string_to_sign)  # secret as the key
+      4. sign = base64(hmac_code), optionally URL-quoted (DingTalk yes, Feishu no)
+      5. URL append: &timestamp=<ts>&sign=<sign>
+
+    Args:
+        webhook_url: original webhook URL (may already have query params).
+        secret: the shared signing secret the user got from the bot config UI.
+        timestamp_unit: 'ms' for DingTalk (milliseconds) or 's' for Feishu /
+            WeChatWork (seconds). Unknown values fall back to 'ms'.
+        url_quote: True → quote_plus the base64 (DingTalk), False → raw base64 (Feishu).
+
+    Returns:
+        webhook_url with &timestamp=...&sign=... appended.
+
+    Reference:
+      - 钉钉自定义机器人加签: https://open.dingtalk.com/document/orgapp/custom-robot-access
+      - 飞书自定义机器人签名校验: https://open.feishu.cn/document/client-docs/bot-v3/add-custom-bot
+    """
+    import base64
+    import hashlib
+    import hmac
+    import time
+    from urllib.parse import quote_plus
+
+    if timestamp_unit == 's':
+        timestamp = str(int(time.time()))
+    else:
+        timestamp = str(round(time.time() * 1000))
+
+    if not secret:
+        # No secret → don't append sign params. Callers can still pass a secret
+        # to enable signing. (Empty secret means "no signing configured for
+        # this channel" — common while user is migrating their bot config.)
+        return webhook_url
+
+    string_to_sign = f'{timestamp}\n{secret}'
+    hmac_code = hmac.new(
+        secret.encode('utf-8'),
+        string_to_sign.encode('utf-8'),
+        digestmod=hashlib.sha256
+    ).digest()
+    encoded = base64.b64encode(hmac_code).decode('utf-8')
+    sign = quote_plus(encoded) if url_quote else encoded
+
+    sep = '&' if ('?' in webhook_url) else '?'
+    return f'{webhook_url}{sep}timestamp={timestamp}&sign={sign}'
+
+
 def _split_with_marker(text: str, max_bytes: int = 4000) -> list[str]:
     """Split text into chunks of at most max_bytes each (UTF-8 safe), cut at line boundaries.
     Appends '(i/N)' pagination marker to each chunk when N > 1.
