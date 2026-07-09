@@ -2973,7 +2973,24 @@ function chTypeCh(){
       <div class="form-group"><label>每小时上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div>
       <div class="form-group"><label>每天上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div>
     </div>
-  `:`<div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div><div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>`;
+  ` : t==='dingtalk' ? `
+    <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
+    <div class="form-group"><label>Secret (加签密钥)</label><input id="cs" placeholder="SEC..."></div>
+    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 钉钉机器人后台的安全设置 3 选 1,建议选「加签」</p>
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
+      操作步骤:
+      钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义 →
+      <strong>安全设置勾选「加签」</strong>(勾上后会显示一段密钥串)→
+      把这段密钥<strong>完整复制到上方 Secret 输入框</strong>。
+    </p>
+    <p class="cfg-hint" style="margin-top:-4px;color:#c27800">
+      ⚠️ 后台若未设置「IP 白名单」,<strong>Secret 必须填写</strong>;留空会导致推送被钉钉服务端拒收(errcode 300024 / 310000)。
+    </p>
+  ` : `
+    <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div>
+    <div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">企业微信机器人为可选,后台有密钥就填,没有就留空。</p>
+  `;
   // Reset template selection when channel type changes
   if(t==='email'){document.getElementById('chtmpl').value='custom';onEmailTmplChange();}
 }
