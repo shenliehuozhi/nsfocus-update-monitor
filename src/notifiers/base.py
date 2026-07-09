@@ -183,7 +183,7 @@ class NotificationMessage:
         dl_url = f'{download_base}{snap.get("download_id", "")}' if snap.get('download_id') else ''
 
         msg = cls(
-            title=f'{snap.get("product_name", "")} {snap.get("package_type", "")}更新',
+            title=f'{snap.get("product_name", "")} {snap.get("package_type", "")}',
             product_name=snap.get('product_name', ''),
             version_branch=snap.get('version_branch', ''),
             package_type=snap.get('package_type', ''),
@@ -241,9 +241,11 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
                          description_full but have no product/version/pkg fields.
     """
     icon = '⚠️' if for_rollback else msg.urgency_label
-
+    chain_text = ' → '.join(msg.chain) if msg.chain else ''
+    # 第 1 行:有 chain 时显示完整链 + 更新,无 chain 时 fallback 到原 title
+    first_line = f'{chain_text} 更新' if chain_text else msg.title
     lines = [
-        f'{icon} **{msg.title}**',
+        f'{icon} **{first_line}**',
         '',
     ]
 
@@ -251,17 +253,13 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         lines.append(f'> ⚠️ 软件包已被撤回，请暂缓升级')
         lines.append('')
 
-    # Chain / 类型 line — clickable if chain_url available, fallback text otherwise
-    if msg.chain:
-        chain_text = ' → '.join(msg.chain)
-        if msg.chain_url:
-            type_line = f'**类型**: [{chain_text}]({msg.chain_url})'
-        else:
-            type_line = f'**类型**: {chain_text}'
+    # Chain / 发布页面 line — 显示文本=URL(与"下载地址"对齐:label 指示语义,链接文本就是 URL 本身)
+    if msg.chain_url:
+        type_line = f'**发布页面**: [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
+        type_line = f'**发布页面**: [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'**类型**: {msg.package_type}'
+        type_line = f'**发布页面**: {msg.package_type}'
 
     meta = [
         ('**文件**:', f'`{msg.file_name}`' if msg.file_name else None),
@@ -309,22 +307,22 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     parts = []
 
     # Part 1: header + metadata
+    chain_text = ' → '.join(msg.chain) if msg.chain else ''
+    first_line = f'{chain_text} 更新' if chain_text else msg.title
     header_lines = [
-        f'{icon} **{msg.title}**',
+        f'{icon} **{first_line}**',
         '',
     ]
     if for_rollback:
         header_lines.append('> ⚠️ 软件包已被撤回，请暂缓升级')
         header_lines.append('')
-    # Chain / 类型 line (same logic as _format_markdown_body)
-    if msg.chain:
-        chain_text = ' → '.join(msg.chain)
-        type_line = (f'**类型**: [{chain_text}]({msg.chain_url})'
-                     if msg.chain_url else f'**类型**: {chain_text}')
+    # Chain / 发布页面 line (same logic as _format_markdown_body — 显示文本=URL)
+    if msg.chain_url:
+        type_line = f'**发布页面**: [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'**类型**: [详情页，点击查看]({msg.source_url})'
+        type_line = f'**发布页面**: [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'**类型**: {msg.package_type}'
+        type_line = f'**发布页面**: {msg.package_type}'
 
     meta = [
         ('**文件**:', f'`{msg.file_name}`' if msg.file_name else None),
@@ -420,13 +418,11 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
     if msg.restart_required:
         dep_html += '<tr><td style="padding:4px 0;width:80px;color:#666">重启</td><td>升级后需重启</td></tr>'
 
-    # 类型 row — chain link or fallback (same logic as markdown)
-    if msg.chain:
-        chain_text = ' → '.join(msg.chain)
-        type_cell = (f'<a href="{msg.chain_url}" style="color:{color};text-decoration:none">{chain_text}</a>'
-                     if msg.chain_url else chain_text)
+    # 发布页面 row — 与 markdown 渠道对齐:label 改"发布页面",显示文本=URL
+    if msg.chain_url:
+        type_cell = f'<a href="{msg.chain_url}" style="color:{color};text-decoration:none;word-break:break-all">{msg.chain_url}</a>'
     elif msg.source_url:
-        type_cell = f'<a href="{msg.source_url}" style="color:{color};text-decoration:none">详情页，点击查看</a>'
+        type_cell = f'<a href="{msg.source_url}" style="color:{color};text-decoration:none;word-break:break-all">{msg.source_url}</a>'
     else:
         type_cell = msg.package_type
 
@@ -469,18 +465,21 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
         # No strip → content area directly under title, give it rounded bottom
         content_border = 'border:1px solid #e0e0e0;border-top:none;border-radius:0 0 8px 8px'
 
+    # HTML 标题栏:与 markdown 渠道对齐 — 有 chain 时用完整链 + 更新,无 chain 时 fallback title
+    chain_text = ' → '.join(msg.chain) if msg.chain else ''
+    html_title_text = f'{chain_text} 更新' if chain_text else msg.title
     return f'''<!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
 <body style="font-family:Arial,sans-serif;max-width:640px;margin:0 auto">
 <table style="width:100%;border-collapse:collapse">
 <tr><td style="background:{color};padding:16px;border-radius:8px 8px 0 0;{title_border}">
-    <h2 style="color:#fff;margin:0">{icon} {msg.title}</h2>
+    <h2 style="color:#fff;margin:0">{icon} {html_title_text}</h2>
 </td></tr>
 {sender_strip_html}
 <tr><td style="padding:16px;{content_border}">
     {rollback_banner}
     <table style="width:100%;font-size:14px;color:#333">
-        <tr><td style="padding:4px 0;width:80px;color:#666">类型</td><td>{type_cell}</td></tr>
+        <tr><td style="padding:4px 0;width:80px;color:#666">发布页面</td><td>{type_cell}</td></tr>
         <tr><td style="padding:4px 0;color:#666">文件</td><td>{msg.file_name or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">下载地址</td><td>{download_cell}</td></tr>
         <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version or ''}</td></tr>
