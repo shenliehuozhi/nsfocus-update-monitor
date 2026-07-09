@@ -258,6 +258,53 @@ def test_dingtalk_title_color_rollback_overrides_urgency():
     assert '<font color="#ff4d4f">' in body, f'rollback override urgency: {body[:100]!r}'
 
 
+def test_feishu_each_line_is_own_paragraph():
+    """飞书 post: each line of description must become its OWN paragraph,
+    not bundled into one with literal '\\n' (which some Feishu clients collapse
+    to whitespace, causing description rows to merge into one line)."""
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='第一行\n第二行\n第三行',
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=['IPS'], chain_url='https://example.com/list/1',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    # Find description paragraphs (📋 prefix)
+    desc_paras = []
+    for p in payloads:
+        for para in p['content']:
+            text = ''.join(t.get('text', '') for t in para)
+            if text.startswith('📋'):
+                desc_paras.append(text)
+    # Three lines → three paragraphs
+    assert len(desc_paras) >= 3, f'expected 3 desc paragraphs, got {len(desc_paras)}: {desc_paras}'
+    # No paragraph contains literal \n (else it'd collapse in client)
+    for text in desc_paras:
+        assert '\n' not in text, f'paragraph contains \\n (client may collapse): {text!r}'
+
+
+def test_feishu_many_lines_one_payload():
+    """飞书 many lines: prefer 1 payload with many paragraphs over 50 separate payloads."""
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='\n'.join(['这是一行描述'] * 50),
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=['IPS'], chain_url='https://example.com/list/1',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    # 50 short lines (~10 bytes each + 📋 prefix ≈ 50B) → 50 * 50 = 2500B < 30KB → 1 payload
+    assert len(payloads) <= 2, \
+        f'50 short lines should bundle into 1-2 payloads, got {len(payloads)}'
+    # All 📋 paragraphs should each be a single line (no embedded \n)
+    for p in payloads:
+        for para in p['content']:
+            text = ''.join(t.get('text', '') for t in para)
+            if text.startswith('📋'):
+                assert '\n' not in text
+
+
 
 # =======================================================================
 # 签名 URL 测试(_sign_url:钉钉/飞书共用,差 2 参数)

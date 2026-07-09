@@ -120,52 +120,83 @@ class FeishuNotifier(BaseNotifier):
         PARAGRAPH_BUDGET = 3800        # below 4KB tag-text hard limit
         PAYLOAD_BUDGET = 28000         # below 30KB total payload safety margin
 
-        # Build one chunk of description, splitting at paragraph budget.
-        def _desc_chunks(text: str) -> list[str]:
-            out = []
-            cur = ''
-            for line in text.split('\n'):
-                cand = cur + ('\n' if cur else '') + line
-                if len(cand.encode('utf-8')) > PARAGRAPH_BUDGET:
-                    if cur:
-                        out.append(cur)
-                    # If single line itself exceeds budget, hard-cut at last newline.
-                    if len(line.encode('utf-8')) > PARAGRAPH_BUDGET:
-                        # Hard split, biased to keep whole lines.
-                        encoded = line.encode('utf-8')
-                        offset = 0
-                        while offset < len(encoded):
-                            piece = encoded[offset:offset + PARAGRAPH_BUDGET]
-                            try:
-                                out.append(piece.decode('utf-8'))
-                            except UnicodeDecodeError:
-                                # back off to last clean boundary
-                                for trim in range(1, 4):
-                                    try:
-                                        out.append(encoded[offset:offset + PARAGRAPH_BUDGET - trim].decode('utf-8'))
-                                        break
-                                    except UnicodeDecodeError:
-                                        continue
-                                else:
-                                    out.append(piece.decode('utf-8', errors='ignore'))
-                            offset += PARAGRAPH_BUDGET
-                    else:
-                        cur = line
-                else:
-                    cur = cand
-            if cur:
-                out.append(cur)
-            return out
+        # Each LINE from desc_text becomes its own paragraph in the resulting post
+        # payload (one paragraph = one display line on Feishu IM client). 飞书客户端
+        # 按 paragraph 自动换行, 不依赖 '\n' 渲染 — 跟钉钉 markdown 不同。
+        #
+        # 但飞书 API 对一条 message 的总 payload 限制 ~30KB,且每段 paragraph 上限
+        # 4KB。一个超长 desc 不能"每行一段 payload",所以:
+        # - 返回 list[list[str]]:外层是 chunks,内层每个 chunk 是几个 paragraphs
+        # - 当 chunk 总字节 > 30KB 时再拆分多 payload 并加 (i/N) marker
+        def _desc_paragraphs(text: str) -> list[list[str]]:
+            """Split text into chunks of paragraphs (list of paragraphs per chunk)."""
+            current_chunk: list[str] = []
+            current_bytes = 0
 
-        chunks = _desc_chunks(_highlight_attention_lines(desc, 'markdown'))
+            def flush() -> list[str]:
+                nonlocal current_chunk, current_bytes
+                if current_chunk:
+                    result = current_chunk
+                    current_chunk = []
+                    current_bytes = 0
+                    return result
+                return []
+
+            chunks: list[list[str]] = []
+            for line in text.split('\n'):
+                if not line:
+                    continue
+                line_bytes_len = len(line.encode('utf-8'))
+                # Hard-cut oversize single line.
+                if line_bytes_len > PARAGRAPH_BUDGET:
+                    # First flush current chunk before oversized lines.
+                    flushed = flush()
+                    if flushed:
+                        chunks.append(flushed)
+                    encoded = line.encode('utf-8')
+                    offset = 0
+                    while offset < len(encoded):
+                        piece = encoded[offset:offset + PARAGRAPH_BUDGET]
+                        try:
+                            piece_str = piece.decode('utf-8')
+                        except UnicodeDecodeError:
+                            for trim in range(1, 4):
+                                try:
+                                    piece_str = encoded[offset:offset + PARAGRAPH_BUDGET - trim].decode('utf-8')
+                                    break
+                                except UnicodeDecodeError:
+                                    continue
+                            else:
+                                piece_str = piece.decode('utf-8', errors='ignore')
+                        # Each hard-cut piece = its own chunk (rare path).
+                        chunks.append([piece_str])
+                        offset += PARAGRAPH_BUDGET
+                    continue
+                # Per-paragraph accumulation. Track chunk size so we don't blow
+                # the 30KB total payload budget too easily.
+                if current_bytes and current_bytes + line_bytes_len > PAYLOAD_BUDGET:
+                    chunks.append(flush())
+                current_chunk.append(line)
+                current_bytes += line_bytes_len
+            tail = flush()
+            if tail:
+                chunks.append(tail)
+            return chunks
+
+        chunks = _desc_paragraphs(_highlight_attention_lines(desc, 'markdown'))
         if not chunks:
             return [{'title': title_base, 'content': head_paras}]
 
-        # First chunk goes into payload 1 with head_paras; subsequent chunks go into payload 2+.
+        # First chunk's paragraphs go into payload 1 with head_paras;
+        # subsequent chunks go into payload 2+. Each paragraph = one line on
+        # Feishu client (no '\n' rendering dependency).
         payload_chunks: list[list[list[dict]]] = []
-        payload_chunks.append(head_paras + [[{'tag': 'text', 'text': f'📋 {chunks[0]}'}]])
+        first = chunks[0]
+        first_paras = [[{'tag': 'text', 'text': f'📋 {line}'}] for line in first]
+        payload_chunks.append(head_paras + first_paras)
         for c in chunks[1:]:
-            payload_chunks.append([[{'tag': 'text', 'text': f'📋 (续) {c}'}]])
+            paras = [[{'tag': 'text', 'text': f'📋 (续) {line}'}] for line in c]
+            payload_chunks.append(paras)
 
         # Compute total payloads once. Append (i/N) marker to payloads > 1.
         results = []
@@ -177,12 +208,16 @@ class FeishuNotifier(BaseNotifier):
 
         # Safety: if first payload still > PAYLOAD_BUDGET, fall back to further slicing.
         if _serialize(results[0]['title'], results[0]['content']) > PAYLOAD_BUDGET:
-            # Reduce per-chunk size and rebuild.
-            PARAGRAPH_BUDGET = 1800
-            chunks = _desc_chunks(_highlight_attention_lines(desc, 'markdown'))
-            payload_chunks = [head_paras + [[{'tag': 'text', 'text': f'📋 {chunks[0]}'}]]]
+            # Reduce per-chunk size and rebuild (re-trigger the per-line accumulation
+            # with smaller PAYLOAD_BUDGET ceiling).
+            PAYLOAD_BUDGET = 14000
+            chunks = _desc_paragraphs(_highlight_attention_lines(desc, 'markdown'))
+            first = chunks[0]
+            first_paras = [[{'tag': 'text', 'text': f'📋 {line}'}] for line in first]
+            payload_chunks = [head_paras + first_paras]
             for c in chunks[1:]:
-                payload_chunks.append([[{'tag': 'text', 'text': f'📋 (续) {c}'}]])
+                paras = [[{'tag': 'text', 'text': f'📋 (续) {line}'}] for line in c]
+                payload_chunks.append(paras)
             results = []
             n = len(payload_chunks)
             for i, paras in enumerate(payload_chunks):
