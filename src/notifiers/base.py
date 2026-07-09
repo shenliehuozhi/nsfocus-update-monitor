@@ -310,7 +310,11 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         lines.append('')
         lines.append('---')
         lines.append('')
-        lines.append(_highlight_attention_lines(msg.description_full, 'markdown'))
+        # 将描述按 \n 拆为多行,逐行 append,这样 line_break 真正统一控制换行
+        # (钉钉 line_break='<br/>' 时,desc 行间也是 <br/>)
+        # _highlight_attention_lines 在每行上加粗/高亮,行内 \n 已经处理完
+        desc = _highlight_attention_lines(msg.description_full, 'markdown')
+        lines.extend(desc.split('\n'))
 
     return line_break.join(lines)
 

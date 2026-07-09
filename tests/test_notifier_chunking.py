@@ -196,6 +196,68 @@ def test_dingtalk_long_desc_with_br_stays_under_4k():
         f'overflow: {[len(b.encode("utf-8")) for b in bodies]}'
 
 
+def test_dingtalk_description_internal_newlines_become_br():
+    """DingTalk: newlines INSIDE description text (between paragraphs) must become <br/>."""
+    msg = NotificationMessage(
+        title='t', product_name='X', version_branch='V1.0', package_type='test',
+        file_name='test.bin', package_version='v1', md5_hash='a' * 32,
+        description_summary='', description_full='第一行\n第二行\n第三行',
+        file_size=100, download_url='', source_url='', published_at='',
+        source_id=0, chain=['X'], chain_url='https://example.com/list/1',
+    )
+    bodies = _format_markdown_bodies(msg, line_break='<br/>')
+    body = bodies[0]
+    assert '\n' not in body, f'DingTalk body should have no \\n (incl. inside desc), got: {body!r}'
+    # description lines separated by <br/>
+    assert '第一行<br/>第二行<br/>第三行' in body
+
+
+def test_dingtalk_title_color_normal():
+    from src.notifiers.dingtalk import DingtalkNotifier
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a' * 32, file_size=100,
+        description_summary='', description_full='',
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=['IPS'], chain_url='https://example.com/list/1',
+        urgency='normal',
+    )
+    bodies = _format_markdown_bodies(msg, line_break='<br/>')
+    body = DingtalkNotifier._wrap_title_with_color(bodies[0], msg)
+    assert '<font color="#1689ed">' in body, f'normal should use blue: {body[:100]!r}'
+
+
+def test_dingtalk_title_color_critical():
+    from src.notifiers.dingtalk import DingtalkNotifier
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a' * 32, file_size=100,
+        description_summary='', description_full='',
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=['IPS'], chain_url='https://example.com/list/1',
+        urgency='critical',
+    )
+    bodies = _format_markdown_bodies(msg, line_break='<br/>')
+    body = DingtalkNotifier._wrap_title_with_color(bodies[0], msg)
+    assert '<font color="#f5454a">' in body, f'critical should use red: {body[:100]!r}'
+
+
+def test_dingtalk_title_color_rollback_overrides_urgency():
+    from src.notifiers.dingtalk import DingtalkNotifier
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a' * 32, file_size=100,
+        description_summary='', description_full='',
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=['IPS'], chain_url='https://example.com/list/1',
+        urgency='normal',
+        is_rollback=True,
+    )
+    bodies = _format_markdown_bodies(msg, msg.is_rollback, line_break='<br/>')
+    body = DingtalkNotifier._wrap_title_with_color(bodies[0], msg)
+    assert '<font color="#ff4d4f">' in body, f'rollback override urgency: {body[:100]!r}'
+
+
 
 # =======================================================================
 # 签名 URL 测试(_sign_url:钉钉/飞书共用,差 2 参数)
