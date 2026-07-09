@@ -79,33 +79,85 @@ class FeishuNotifier(BaseNotifier):
         sequentially in `send()` to bypass the 4KB paragraph + 30KB
         payload hard limits.
 
-        Strategy:
-          1. Build the standard payload once (base paragraphs + product info).
-          2. Serialize and measure bytes.
-          3. If the JSON exceeds 30000 bytes OR any single paragraph text
-             exceeds 3800 bytes (defensive margin against 4KB feishu tag
-             limit), split the description paragraph into multiple smaller
-             paragraphs and route them into a subsequent payload with a
-             "(2/N)" / "(i/N)" marker paragraph.
+        Field layout matches DingTalk / WeCom markdown for cross-channel
+        consistency (7 fields):
+          发布页面 / 文件名称 / 版本信息 / 文件大小 / MD5 / 发布时间 / 下载地址
+        Labels are styled with ['bold', 'orange'] to mirror the
+        <font color="#c27800"> labeling DingTalk applies.
         """
         from src.notifiers.base import _highlight_attention_lines
 
         title_base = f'{"⚠️ 撤回" if msg.is_rollback else "🔔"} {msg.product_name} {msg.package_version}'
 
-        head_paras = []
+        # Field layout matches DingTalk / WeCom markdown 7 fields. Labels are
+        # styled ['bold', 'orange'] (飞书原生支持). Values stay default black.
+        # Each "labeled row" is a single paragraph (飞书 IM 客户端按 paragraph
+        # 自动换行, 不依赖 '\n' 渲染)。
+        def _label_p(label: str) -> list:
+            """Bold orange label paragraph (飞书原生 style)。"""
+            return [{'tag': 'text', 'text': label, 'style': ['bold', 'orange']}]
+
+        def _field_p(label: str, value_paragraphs: list) -> list:
+            """Build a paragraph with bold orange label + default-styled value.
+
+            value_paragraphs: list of tag-dicts (e.g. plain text or `a` link).
+            Concatenated into one paragraph sharing the same line in feishu.
+            """
+            return _label_p(label) + value_paragraphs
+
+        head_paras: list[list[dict]] = []
         if msg.is_rollback:
-            head_paras.append([{'tag': 'text', 'text': '⚠️ 此软件包已被撤回，请暂缓升级'}])
-        head_paras += [
-            [{'tag': 'text', 'text': f'产品: {msg.product_name}'}],
-            [{'tag': 'text', 'text': f'版本: {msg.version_branch}'}],
-            [{'tag': 'text', 'text': f'类型: {msg.package_type}'}],
-            [{'tag': 'text', 'text': f'文件: {msg.file_name}'}],
-            [{'tag': 'text', 'text': f'大小: {msg.size_display}'}],
-        ]
+            head_paras.append([{'tag': 'text', 'text': '⚠️ 此软件包已被撤回,请暂缓升级'}])
+
+        # 发布页面(发布页面 URL)
+        if msg.chain_url:
+            type_text = msg.chain_url
+            url_text = msg.chain_url
+        elif msg.source_url:
+            type_text = msg.source_url
+            url_text = msg.source_url
+        else:
+            type_text = msg.package_type or ''
+            url_text = ''
+        if url_text:
+            head_paras.append(_field_p(
+                '发布页面',
+                [{'tag': 'text', 'text': ' :   '},
+                 {'tag': 'a', 'text': url_text, 'href': url_text}],
+            ))
+        elif type_text:
+            head_paras.append(_field_p('发布页面', [{'tag': 'text', 'text': f' :   {type_text}'}]))
+
+        # 文件名称
+        if msg.file_name:
+            head_paras.append(_field_p('文件名称', [{'tag': 'text', 'text': f' : `{msg.file_name}`'}]))
+
+        # 版本信息
+        if msg.package_version:
+            head_paras.append(_field_p('版本信息', [{'tag': 'text', 'text': f' : `{msg.package_version}`'}]))
+
+        # 文件大小
+        if msg.file_size > 0:
+            head_paras.append(_field_p('文件大小', [{'tag': 'text', 'text': f' : `{msg.size_display}`'}]))
+
+        # MD5
+        if msg.md5_hash:
+            head_paras.append(_field_p('MD5', [{'tag': 'text', 'text': f' : `{msg.md5_hash}`'}]))
+
+        # 发布时间
+        from src.notifiers.base import _utc_to_cst_display
+        ts_str = _utc_to_cst_display(msg.published_at) if msg.published_at else ''
+        if ts_str:
+            head_paras.append(_field_p('发布时间', [{'tag': 'text', 'text': f' : `{ts_str}`'}]))
+
         if msg.min_sys_version:
             head_paras.append([{'tag': 'text', 'text': f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}'}])
         if msg.download_url:
-            head_paras.append([{'tag': 'text', 'text': ''}, {'tag': 'a', 'text': '📥 下载升级包', 'href': msg.download_url}])
+            head_paras.append(_field_p(
+                '下载地址',
+                [{'tag': 'text', 'text': ' :   '},
+                 {'tag': 'a', 'text': msg.download_url, 'href': msg.download_url}],
+            ))
 
         def _serialize(title: str, paras: list) -> int:
             payload = {'title': title, 'content': paras}

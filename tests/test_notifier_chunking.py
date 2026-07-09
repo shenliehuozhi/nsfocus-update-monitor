@@ -345,6 +345,74 @@ def test_dingtalk_meta_labels_colored():
     assert '<font color="#c27800">MD5</font>       :' in body
 
 
+def test_feishu_seven_field_layout_matches_dingtalk():
+    """Feishu post payload should have 7 fields matching DingTalk/WeCom layout:
+
+      发布页面 / 文件名称 / 版本信息 / 文件大小 / MD5 / 发布时间 / 下载地址
+
+    Each label paragraph uses ['bold', 'orange'] style so the label visually
+    stands out (analogous to DingTalk's <font color="#c27800"> label).
+    """
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips_rule.bin', package_version='v1', md5_hash='a'*32,
+        file_size=696520000,
+        description_summary='', description_full='',
+        urgency='normal',
+        download_url='https://example.com/dl',
+        source_url='https://example.com/list',
+        published_at='2026-07-09T00:49:58',
+        source_id=0, chain=['IPS'],
+        chain_url='https://example.com/list/1',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    p = payloads[0]
+    # Extract label text from each paragraph; build list of (label, has_orange_style) tuples
+    labels_found = []
+    for para in p['content']:
+        for tag in para:
+            if tag.get('tag') != 'text':
+                continue
+            text = tag.get('text', '')
+            style = tag.get('style') or []
+            # Heuristic: this text is a label if it exactly matches one of the 7 known labels
+            if text in {'发布页面', '文件名称', '版本信息', '文件大小', 'MD5', '发布时间', '下载地址'}:
+                labels_found.append((text, 'orange' in style and 'bold' in style))
+
+    expected_labels = {'发布页面', '文件名称', '版本信息', '文件大小', 'MD5', '发布时间', '下载地址'}
+    found_label_names = {name for name, _ in labels_found}
+    assert expected_labels.issubset(found_label_names), \
+        'feishu missing labels: got={}, expected={}'.format(sorted(found_label_names), sorted(expected_labels))
+    # Each label has ['bold', 'orange'] style
+    for name, styled in labels_found:
+        if name in expected_labels:
+            assert styled, 'label {!r} missing bold+orange style'.format(name)
+
+
+def test_feishu_download_uses_link_tag():
+    """Feishu '下载地址' field uses <a> tag (link) — same as DingTalk markdown [URL](URL)."""
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='',
+        urgency='normal',
+        download_url='https://example.com/dl',
+        source_url='', published_at='',
+        source_id=0, chain=['IPS'], chain_url='',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    found_anchor = False
+    for para in payloads[0]['content']:
+        for tag in para:
+            if tag.get('tag') == 'a':
+                # Should contain a link to download_url
+                found_anchor = 'example.com/dl' in tag.get('href', '')
+    assert found_anchor, f'no <a href=download_url> tag in feishu payload: {payloads[0]!r}'
+
+
+
+
+
 
 # =======================================================================
 # 签名 URL 测试(_sign_url:钉钉/飞书共用,差 2 参数)
