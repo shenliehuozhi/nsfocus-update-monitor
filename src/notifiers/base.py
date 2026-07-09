@@ -75,6 +75,24 @@ def _utc_to_cst_display(utc_str: str) -> str:
         return utc_str
 
 
+# 字段名视觉宽固定(中文 1 字=2 视觉宽,ASCII 1 字符=1 视觉宽)
+# 用于 markdown 渠道让'字段名:'对齐,客户端等宽字体下效果最好
+_LABEL_VISUAL_WIDTH = 8
+
+
+def _pad_label(label: str) -> str:
+    """在 label 末尾追加全角空格,使视觉宽度对齐到 4 中文字(8 视觉宽)。
+
+    `**` 加粗标记不计视觉宽(客户端渲染后消失)。
+    例:'MD5-HASH'(8 视觉)→ 不 pad
+       '文件名称'(8 视觉)→ 不 pad
+    """
+    plain = label.replace('**', '')
+    vw = sum(2 if ord(c) > 127 else 1 for c in plain)
+    pad_count = max(0, (_LABEL_VISUAL_WIDTH - vw + 1) // 2)
+    return label + '　' * pad_count
+
+
 def _build_chain(msg: 'NotificationMessage', db_path: str | None = None) -> tuple[list[str], str]:
     """Look up the chain for a notification message by matching source_url → relative path → paths chain.
 
@@ -262,20 +280,24 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
         type_line = f'**发布页面**: {msg.package_type}'
 
     meta = [
-        ('**文件**:', f'`{msg.file_name}`' if msg.file_name else None),
-        ('**包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
-        ('**大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
-        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
+        ('**版本信息**:', f'`{msg.package_version}`' if msg.package_version else None),
+        ('**文件大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
+        ('**MD5-HASH**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
         ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     lines.append(type_line)
 
+    # 字段名固定宽度(视觉宽 8 = 4 中文字),使冒号对齐
+    # label 形如 '**文件名称**:',pad 加在冒号前使所有冒号位置一致
     for label, val in meta:
+        name_part, _, _ = label.rpartition(':')
+        padded_label = _pad_label(name_part) + ':'
         if val is not None and str(val).strip():
-            lines.append(f'{label} {val}')
+            lines.append(f'{padded_label} {val}')
         elif not skip_empty_meta:
-            lines.append(f'{label}')
+            lines.append(f'{padded_label}')
 
     if msg.restart_required:
         lines.append('🔄 升级后需重启')
@@ -325,21 +347,29 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         type_line = f'**发布页面**: {msg.package_type}'
 
     meta = [
-        ('**文件**:', f'`{msg.file_name}`' if msg.file_name else None),
-        ('**包版本**:', f'`{msg.package_version}`' if msg.package_version else None),
-        ('**大小**:', f'`{msg.size_display}`'),
-        ('**MD5**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
+        ('**版本信息**:', f'`{msg.package_version}`' if msg.package_version else None),
+        ('**文件大小**:', f'`{msg.size_display}`'),
+        ('**MD5-HASH**:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
         ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
         ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     header_lines.append(type_line)
 
+    # 字段名固定宽度(与 _format_markdown_body 对齐),保证拆分前后视觉一致
     if skip_empty_meta:
         for label, val in meta:
             if val is not None and str(val).strip():
-                header_lines.append(f'{label}: {val}')
+                # label 末尾已含 ':' ,pad 全角空格到 ':' 前(冒号位置统一)
+                # label 形如 '**文件**:',把 ':' 拆出来,pad 加在冒号前
+                name_part, _, _ = label.rpartition(':')
+                padded = _pad_label(name_part) + ':'
+                header_lines.append(f'{padded} {val}')
     else:
-        header_lines.extend(f'{label} {val or ""}' for label, val in meta)
+        for label, val in meta:
+            name_part, _, _ = label.rpartition(':')
+            padded = _pad_label(name_part) + ':'
+            header_lines.append(f'{padded} {val or ""}')
 
     extra_items = []
     if msg.min_sys_version:
@@ -480,11 +510,11 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
     {rollback_banner}
     <table style="width:100%;font-size:14px;color:#333">
         <tr><td style="padding:4px 0;width:80px;color:#666">发布页面</td><td>{type_cell}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">文件</td><td>{msg.file_name or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件名称</td><td>{msg.file_name or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">下载地址</td><td>{download_cell}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">包版本</td><td>{msg.package_version or ''}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">大小</td><td>{msg.size_display}</td></tr>
-        <tr><td style="padding:4px 0;color:#666">MD5</td><td>{msg.md5_hash or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">版本信息</td><td>{msg.package_version or ''}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">文件大小</td><td>{msg.size_display}</td></tr>
+        <tr><td style="padding:4px 0;color:#666">MD5-HASH</td><td>{msg.md5_hash or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
         {desc_html}
