@@ -2989,7 +2989,7 @@ function chTypeCh(){
   ` : `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div>
     <div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>
-    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">企业微信机器人为可选,后台有密钥就填,没有就留空。</p>
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">企业微信机器人为可选,后台有密钥就填,没有就留空。当前<strong>不要配置 Secret</strong>(字段为预留位,本项目<strong>未实现</strong>企业微信机器人加签验签;企业微信机器人相比钉钉暂无强制安全设置,无需此密钥)。</p>
   `;
   // Reset template selection when channel type changes
   if(t==='email'){document.getElementById('chtmpl').value='custom';onEmailTmplChange();}

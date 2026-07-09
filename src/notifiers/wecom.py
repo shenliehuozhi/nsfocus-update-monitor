@@ -16,6 +16,13 @@ class WecomNotifier(BaseNotifier):
 
         name = config.get('name', '')
 
+        # NOTE: WeCom Bot config.secret 字段当前未使用。
+        # 企业微信机器人(群机器人 webhook)目前没有像钉钉那样强制启用加签的安全设置,
+        # 用 webhook URL 上的 key 即可。本项目不实现 WeCom 加签验签,secret 仅作为
+        # 预留字段存在以便未来对齐多平台。
+        # 其他 channel_type(dingtalk)的 send() 会读 config['secret'] 并用于 HMAC-SHA256 加签。
+        _ = config.get('secret', '')  # noqa: F841 — 显式读取以表明 secret 字段无副作用
+
         # 产品通知（有 product_name）走完整格式，包含元数据行
         # 系统事件通知（product_name 为空）直接发 description_full 纯文本
         if message.product_name:
