@@ -75,22 +75,20 @@ def _utc_to_cst_display(utc_str: str) -> str:
         return utc_str
 
 
-# 字段名视觉宽固定(中文 1 字=2 视觉宽,ASCII 1 字符=1 视觉宽)
-# 用于 markdown 渠道让'字段名:'对齐,客户端等宽字体下效果最好
-_LABEL_VISUAL_WIDTH = 8
+# 字段名对齐:所有 label (含 '**') pad 半角空格到固定字符数,冒号从同列开始
+# 中文 label 不加全角空格 — markdown 渲染时全角空格视觉宽 ≈ 1 ASCII 字符位,
+# 用半角空格最可控,只要字符数一致冒号位置就对齐
+_LABEL_PAD_WIDTH = 12  # label 半角字符总数(含 '**' 标记)
 
 
 def _pad_label(label: str) -> str:
-    """在 label 末尾追加全角空格,使视觉宽度对齐到 4 中文字(8 视觉宽)。
+    """在 label 末尾追加半角空格,使 label (含 '**') 达到固定半角字符数。
 
-    `**` 加粗标记不计视觉宽(客户端渲染后消失)。
-    例:'MD5-HASH'(8 视觉)→ 不 pad
-       '文件名称'(8 视觉)→ 不 pad
+    markdown 渲染后 '**' 不占视觉位,但我们 pad 时按半角字符数算,
+    这样不同 label 的冒号位置一定在同一列。
     """
-    plain = label.replace('**', '')
-    vw = sum(2 if ord(c) > 127 else 1 for c in plain)
-    pad_count = max(0, (_LABEL_VISUAL_WIDTH - vw + 1) // 2)
-    return label + '　' * pad_count
+    pad_count = max(0, _LABEL_PAD_WIDTH - len(label))
+    return label + ' ' * pad_count
 
 
 def _build_chain(msg: 'NotificationMessage', db_path: str | None = None) -> tuple[list[str], str]:
@@ -273,11 +271,11 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
 
     # Chain / 发布页面 line — 显示文本=URL(与"下载地址"对齐:label 指示语义,链接文本就是 URL 本身)
     if msg.chain_url:
-        type_line = f'**发布页面**: [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("**发布页面**")}: [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'**发布页面**: [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("**发布页面**")}: [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'**发布页面**: {msg.package_type}'
+        type_line = f'{_pad_label("**发布页面**")}: {msg.package_type}'
 
     meta = [
         ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
@@ -340,11 +338,11 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         header_lines.append('')
     # Chain / 发布页面 line (same logic as _format_markdown_body — 显示文本=URL)
     if msg.chain_url:
-        type_line = f'**发布页面**: [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("**发布页面**")}: [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'**发布页面**: [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("**发布页面**")}: [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'**发布页面**: {msg.package_type}'
+        type_line = f'{_pad_label("**发布页面**")}: {msg.package_type}'
 
     meta = [
         ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
