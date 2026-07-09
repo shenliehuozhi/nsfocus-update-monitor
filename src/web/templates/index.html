@@ -2976,29 +2976,43 @@ function chTypeCh(){
     </div>
   ` : t==='dingtalk' ? `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
-    <div class="form-group"><label>Secret (加签密钥)</label><input id="cs" placeholder="SEC..."></div>
-    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 钉钉机器人后台的安全设置 3 选 1,建议选「加签」</p>
+    <div class="form-group"><label>Secret (加签密钥 - 可选)</label><input id="cs" placeholder="留空则不修改;后台启用加签时必填"></div>
+    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 钉钉机器人后台的安全设置 <strong>3 选 1,推荐选「加签」</strong></p>
     <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
-      操作步骤:
+      钉钉的 Secret 是<strong>可选字段</strong>:
+      <br>· 后台 <strong>未勾选「加签」</strong> → Secret 留空也可以推送(走裸 webhook)
+      <br>· 后台 <strong>勾选了「加签」</strong> → Secret 必须填写,否则推送被服务端拒收(errcode 300024 / 310000)
+    </p>
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
+      操作步骤(选加签时):
       钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义 →
       <strong>安全设置勾选「加签」</strong>(勾上后会显示一段密钥串)→
       把这段密钥<strong>完整复制到上方 Secret 输入框</strong>。
     </p>
-    <p class="cfg-hint" style="margin-top:-4px;color:#c27800">
-      ⚠️ 后台若未设置「IP 白名单」,<strong>Secret 必须填写</strong>;留空会导致推送被钉钉服务端拒收(errcode 300024 / 310000)。
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
+      💡 <strong>Secret 留空的 fallback 风险</strong>:若后台未启用加签,推送仍会成功,
+      但 webhook URL 本身没加密保护 — 任何拿到 URL 的人都能冒充机器人推送。建议至少启用
+      「加签」或「IP 白名单」中的一种。
     </p>
   ` : t==='feishu' ? `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"></div>
-    <div class="form-group"><label>Secret (签名密钥)</label><input id="cs" placeholder="..."></div>
-    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 飞书机器人后台的安全设置 3 选 1,建议选「签名校验」</p>
+    <div class="form-group"><label>Secret (签名校验密钥 - 可选)</label><input id="cs" placeholder="留空则不修改;后台启用签名校验时必填"></div>
+    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 飞书机器人后台的安全设置 <strong>3 选 1,推荐选「签名校验」</strong></p>
     <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
-      操作步骤:
+      飞书的 Secret 是<strong>可选字段</strong>:
+      <br>· 后台 <strong>未勾选「签名校验」</strong> → Secret 留空也可以推送(走裸 webhook)
+      <br>· 后台 <strong>勾选了「签名校验」</strong> → Secret 必须填写,否则推送被服务端拒收(errcode 230xxx)
+    </p>
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
+      操作步骤(选签名校验时):
       飞书群 → 群设置 → 群机器人 → 添加机器人 → 自定义机器人 →
       <strong>安全设置勾选「签名校验」</strong>(勾上后会显示一段密钥串)→
       把这段密钥<strong>完整复制到上方 Secret 输入框</strong>。
     </p>
-    <p class="cfg-hint" style="margin-top:-4px;color:#c27800">
-      ⚠️ 后台若未设置「IP 白名单」,<strong>Secret 必须填写</strong>;留空会导致推送被飞书服务端拒收(errcode 230xxx)。
+    <p class="cfg-hint" style="margin-top:-4px;color:#6b7d95">
+      💡 <strong>Secret 留空的 fallback 风险</strong>:若后台未启用签名校验,推送仍会成功,
+      但 webhook URL 本身没加密保护 — 任何拿到 URL 的人都能冒充机器人推送。建议至少启用
+      「签名校验」或「IP 白名单」中的一种。
     </p>
   ` : `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div>
