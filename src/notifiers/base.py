@@ -75,17 +75,17 @@ def _utc_to_cst_display(utc_str: str) -> str:
         return utc_str
 
 
-# 字段名对齐:所有 label (含 '**') pad 半角空格到固定字符数,冒号从同列开始
-# 中文 label 不加全角空格 — markdown 渲染时全角空格视觉宽 ≈ 1 ASCII 字符位,
-# 用半角空格最可控,只要字符数一致冒号位置就对齐
-_LABEL_PAD_WIDTH = 12  # label 半角字符总数(含 '**' 标记)
+# 字段名对齐:所有 label 不加粗,用半角空格 pad 到固定字符数,使冒号对齐
+# 格式:'发布页面 :   xxx'(label 后 1 空格 + 冒号 + 3 空格 + 值)
+_LABEL_PAD_WIDTH = 8  # label 半角字符总数(不含 '**' 标记)
 
 
 def _pad_label(label: str) -> str:
-    """在 label 末尾追加半角空格,使 label (含 '**') 达到固定半角字符数。
+    """label 不含 '**' 标记,在末尾追加半角空格使 label 达到固定字符数。
 
-    markdown 渲染后 '**' 不占视觉位,但我们 pad 时按半角字符数算,
-    这样不同 label 的冒号位置一定在同一列。
+    调用处负责在返回的 label 后追加 ' :   ' (1空 + : + 3空)再接值。
+    例:_pad_label('发布页面')='发布页面    '(4 中文 + 4 半角空 = 8 字符)
+       _pad_label('MD5 ')='MD5     '(MD5+空格 = 5 + 3 半角空 = 8 字符)
     """
     pad_count = max(0, _LABEL_PAD_WIDTH - len(label))
     return label + ' ' * pad_count
@@ -271,31 +271,29 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
 
     # Chain / 发布页面 line — 显示文本=URL(与"下载地址"对齐:label 指示语义,链接文本就是 URL 本身)
     if msg.chain_url:
-        type_line = f'{_pad_label("**发布页面**")}: [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'{_pad_label("**发布页面**")}: [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'{_pad_label("**发布页面**")}: {msg.package_type}'
+        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
 
     meta = [
-        ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
-        ('**版本信息**:', f'`{msg.package_version}`' if msg.package_version else None),
-        ('**文件大小**:', f'`{msg.size_display}`' if msg.file_size > 0 else None),
-        ('**MD5 **:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
-        ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
-        ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
+        ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
+        ('版本信息', f'`{msg.package_version}`' if msg.package_version else None),
+        ('文件大小', f'`{msg.size_display}`' if msg.file_size > 0 else None),
+        ('MD5 ', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('发布时间', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('下载地址', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     lines.append(type_line)
 
-    # 字段名固定宽度(视觉宽 8 = 4 中文字),使冒号对齐
-    # label 形如 '**文件名称**:',pad 加在冒号前使所有冒号位置一致
+    # 字段名固定宽度(不含 '**' 标记),使冒号对齐
     for label, val in meta:
-        name_part, _, _ = label.rpartition(':')
-        padded_label = _pad_label(name_part) + ':'
+        padded_label = _pad_label(label)
         if val is not None and str(val).strip():
-            lines.append(f'{padded_label} {val}')
+            lines.append(f'{padded_label} :   {val}')
         elif not skip_empty_meta:
-            lines.append(f'{padded_label}')
+            lines.append(f'{padded_label} :')
 
     if msg.restart_required:
         lines.append('🔄 升级后需重启')
@@ -338,19 +336,19 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
         header_lines.append('')
     # Chain / 发布页面 line (same logic as _format_markdown_body — 显示文本=URL)
     if msg.chain_url:
-        type_line = f'{_pad_label("**发布页面**")}: [{msg.chain_url}]({msg.chain_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.chain_url}]({msg.chain_url})'
     elif msg.source_url:
-        type_line = f'{_pad_label("**发布页面**")}: [{msg.source_url}]({msg.source_url})'
+        type_line = f'{_pad_label("发布页面")} :   [{msg.source_url}]({msg.source_url})'
     else:
-        type_line = f'{_pad_label("**发布页面**")}: {msg.package_type}'
+        type_line = f'{_pad_label("发布页面")} :   {msg.package_type}'
 
     meta = [
-        ('**文件名称**:', f'`{msg.file_name}`' if msg.file_name else None),
-        ('**版本信息**:', f'`{msg.package_version}`' if msg.package_version else None),
-        ('**文件大小**:', f'`{msg.size_display}`'),
-        ('**MD5 **:', f'`{msg.md5_hash}`' if msg.md5_hash else None),
-        ('**发布时间**:', f'`{_utc_to_cst_display(msg.published_at)}`'),
-        ('**下载地址**:', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
+        ('文件名称', f'`{msg.file_name}`' if msg.file_name else None),
+        ('版本信息', f'`{msg.package_version}`' if msg.package_version else None),
+        ('文件大小', f'`{msg.size_display}`'),
+        ('MD5 ', f'`{msg.md5_hash}`' if msg.md5_hash else None),
+        ('发布时间', f'`{_utc_to_cst_display(msg.published_at)}`'),
+        ('下载地址', f'[{msg.download_url}]({msg.download_url})' if msg.download_url else None),
     ]
     header_lines.append(type_line)
 
@@ -358,16 +356,10 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if skip_empty_meta:
         for label, val in meta:
             if val is not None and str(val).strip():
-                # label 末尾已含 ':' ,pad 全角空格到 ':' 前(冒号位置统一)
-                # label 形如 '**文件**:',把 ':' 拆出来,pad 加在冒号前
-                name_part, _, _ = label.rpartition(':')
-                padded = _pad_label(name_part) + ':'
-                header_lines.append(f'{padded} {val}')
+                header_lines.append(f'{_pad_label(label)} :   {val}')
     else:
         for label, val in meta:
-            name_part, _, _ = label.rpartition(':')
-            padded = _pad_label(name_part) + ':'
-            header_lines.append(f'{padded} {val or ""}')
+            header_lines.append(f'{_pad_label(label)} :   {val or ""}')
 
     extra_items = []
     if msg.min_sys_version:
