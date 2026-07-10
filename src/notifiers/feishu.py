@@ -107,10 +107,15 @@ class FeishuNotifier(BaseNotifier):
         """
         from src.notifiers.base import _highlight_attention_lines
 
-        # 跟钉钉/企微 markdown 一致:有 chain 时用完整链 (e.g. "网络安全 / 抗拒绝服务 / ADS / V4.5R"),
-        # 无 chain 时 fallback 到 "product_name package_version" (e.g. "ADS V4.5R")
+        # 跟钉钉/企微 markdown 一致:有 chain 时用完整链 + "更新" 后缀 (e.g.
+        # "网络安全 / 抗拒绝服务 / ADS / V4.5R 更新")。无 chain 时 fallback 到
+        # "product_name package_version" (e.g. "ADS V4.5R")。rollback 状态只靠
+        # emoji 区分(⚠️ 撤回),不额外加 "撤回" 后缀 — 跟钉钉/企微完全一致
         chain_text = ' / '.join(msg.chain) if msg.chain else ''
-        title_subject = chain_text if chain_text else f'{msg.product_name} {msg.package_version}'
+        if chain_text:
+            title_subject = f'{chain_text} 更新'
+        else:
+            title_subject = f'{msg.product_name} {msg.package_version}'
         title_base = f'{"⚠️ 撤回" if msg.is_rollback else "🔔"} {title_subject}'
 
         # Field layout matches DingTalk / WeCom markdown 7 fields. Each labeled

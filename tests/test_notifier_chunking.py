@@ -668,9 +668,9 @@ def test_feishu_title_uses_chain_when_available():
     )
     payloads = FeishuNotifier()._build_post(msg)
     title = payloads[0]['title']
-    # 跟钉钉链拼接保持一致 (钉钉是 "chain_text 更新",飞书少了"更新"后缀但链完整)
-    assert '网络安全 / 抗拒绝服务 / ADS / V4.5R90F04' in title, \
-        f'feishu title should embed full chain: {title!r}'
+    # 跟钉钉/企微一致:有 chain 时末尾带 "更新"
+    assert '网络安全 / 抗拒绝服务 / ADS / V4.5R90F04 更新' in title, \
+        f'feishu title should embed full chain + 更新: {title!r}'
     assert title.startswith('🔔 '), f'feishu title should have emoji icon: {title!r}'
 
     # 无 chain → fallback 到 product_name + package_version
@@ -686,7 +686,7 @@ def test_feishu_title_uses_chain_when_available():
     assert title2 == '🔔 ADS V4.5R90F04', \
         f'feishu title fallback should be product+version: {title2!r}'
 
-    # rollback 也要 chain 拼
+    # rollback 也跟钉钉/企微一致:用 chain + "更新" 后缀,只靠 ⚠️ emoji 区分状态
     msg3 = NotificationMessage(
         title='fallback title', product_name='ADS', version_branch='V4.5R', package_type='pkg',
         file_name='x.bin', package_version='V4.5R90F04', md5_hash='a'*32, file_size=100,
@@ -700,7 +700,12 @@ def test_feishu_title_uses_chain_when_available():
     payloads3 = FeishuNotifier()._build_post(msg3)
     title3 = payloads3[0]['title']
     assert title3.startswith('⚠️ 撤回 '), f'is_rollback title should start with warning: {title3!r}'
-    assert '网络安全 / 抗拒绝服务 / ADS / V4.5R90F04' in title3
+    # rollback 跟普通一样用 "更新" 后缀,3 渠道完全一致
+    assert '网络安全 / 抗拒绝服务 / ADS / V4.5R90F04 更新' in title3, \
+        f'is_rollback should also use 更新 suffix (3-channel consistent): {title3!r}'
+
+
+
 
 
 
