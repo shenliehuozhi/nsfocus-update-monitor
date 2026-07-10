@@ -107,7 +107,11 @@ class FeishuNotifier(BaseNotifier):
         """
         from src.notifiers.base import _highlight_attention_lines
 
-        title_base = f'{"⚠️ 撤回" if msg.is_rollback else "🔔"} {msg.product_name} {msg.package_version}'
+        # 跟钉钉/企微 markdown 一致:有 chain 时用完整链 (e.g. "网络安全 / 抗拒绝服务 / ADS / V4.5R"),
+        # 无 chain 时 fallback 到 "product_name package_version" (e.g. "ADS V4.5R")
+        chain_text = ' / '.join(msg.chain) if msg.chain else ''
+        title_subject = chain_text if chain_text else f'{msg.product_name} {msg.package_version}'
+        title_base = f'{"⚠️ 撤回" if msg.is_rollback else "🔔"} {title_subject}'
 
         # Field layout matches DingTalk / WeCom markdown 7 fields. Each labeled
         # row is a single paragraph (飞书 IM 客户端按 paragraph 自动换行)。

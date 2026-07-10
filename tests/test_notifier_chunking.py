@@ -651,6 +651,58 @@ def test_channel_test_log_path_per_channel_type(monkeypatch, tmp_path):
             os.unlink(p)
 
 
+def test_feishu_title_uses_chain_when_available():
+    """飞书 post title 跟钉钉/企微一致:有 chain 时用完整链拼接,
+    无 chain 时 fallback 到 product_name + package_version。
+
+    修复历史不一致(钉钉/企微用 chain 拼,飞书之前硬编码只显示 product_name+version)。
+    """
+    msg = NotificationMessage(
+        title='fallback title', product_name='ADS', version_branch='V4.5R', package_type='pkg',
+        file_name='x.bin', package_version='V4.5R90F04', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='', urgency='normal',
+        download_url='https://x.com/d', source_url='https://x.com/s', published_at='',
+        source_id=0,
+        chain=['网络安全', '抗拒绝服务', 'ADS', 'V4.5R90F04'],
+        chain_url='https://x.com/list/1',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    title = payloads[0]['title']
+    # 跟钉钉链拼接保持一致 (钉钉是 "chain_text 更新",飞书少了"更新"后缀但链完整)
+    assert '网络安全 / 抗拒绝服务 / ADS / V4.5R90F04' in title, \
+        f'feishu title should embed full chain: {title!r}'
+    assert title.startswith('🔔 '), f'feishu title should have emoji icon: {title!r}'
+
+    # 无 chain → fallback 到 product_name + package_version
+    msg2 = NotificationMessage(
+        title='fallback title', product_name='ADS', version_branch='V4.5R', package_type='pkg',
+        file_name='x.bin', package_version='V4.5R90F04', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='', urgency='normal',
+        download_url='https://x.com/d', source_url='https://x.com/s', published_at='',
+        source_id=0, chain=[], chain_url='https://x.com/list/1',
+    )
+    payloads2 = FeishuNotifier()._build_post(msg2)
+    title2 = payloads2[0]['title']
+    assert title2 == '🔔 ADS V4.5R90F04', \
+        f'feishu title fallback should be product+version: {title2!r}'
+
+    # rollback 也要 chain 拼
+    msg3 = NotificationMessage(
+        title='fallback title', product_name='ADS', version_branch='V4.5R', package_type='pkg',
+        file_name='x.bin', package_version='V4.5R90F04', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='', urgency='normal',
+        download_url='https://x.com/d', source_url='https://x.com/s', published_at='',
+        source_id=0,
+        chain=['网络安全', '抗拒绝服务', 'ADS', 'V4.5R90F04'],
+        chain_url='https://x.com/list/1',
+        is_rollback=True,
+    )
+    payloads3 = FeishuNotifier()._build_post(msg3)
+    title3 = payloads3[0]['title']
+    assert title3.startswith('⚠️ 撤回 '), f'is_rollback title should start with warning: {title3!r}'
+    assert '网络安全 / 抗拒绝服务 / ADS / V4.5R90F04' in title3
+
+
 
 
 
