@@ -69,10 +69,26 @@ def list_all() -> list:
 
 
 def delete(customer_id: int) -> None:
-    from src.models.database import execute
-    execute("DELETE FROM rule_channels WHERE customer_id = ?", (customer_id,))
-    execute("UPDATE subscription_rules SET customer_id = NULL WHERE customer_id = ?", (customer_id,))
-    execute("UPDATE delivery_log SET customer_id = NULL WHERE customer_id = ?", (customer_id,))
+    """删除客户。检查订阅规则和规则-渠道绑定是否引用,引用则拒绝 ValueError。
+
+    delivery_log 是只读审计流水,不被检查/修改 — 历史就是历史,删客户不该破坏审计证据。
+    前端展示靠 channel_name 拼接客户名 (见 nsfocus-monitor-channel-name-pattern skill)。
+    """
+    from src.models.database import query, execute
+    # 检查 subscription_rules 引用
+    ref_rules = query("SELECT id, name FROM subscription_rules WHERE customer_id = ?", (customer_id,))
+    if ref_rules:
+        names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rules)
+        raise ValueError(f'客户(ID={customer_id})被 {len(ref_rules)} 条订阅规则引用: {names}。请先删除或解绑这些规则')
+    # 检查 rule_channels 引用 (渠道绑定里的客户)
+    ref_rc = query(
+        "SELECT sr.id, sr.name FROM subscription_rules sr "
+        "INNER JOIN rule_channels rc ON sr.id = rc.rule_id "
+        "WHERE rc.customer_id = ?", (customer_id,))
+    if ref_rc:
+        names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rc)
+        raise ValueError(f'客户(ID={customer_id})被 {len(ref_rc)} 条渠道绑定引用: {names}。请先清理')
+    # 通过检查 → 删除 (delivery_log 不动)
     execute("DELETE FROM customers WHERE id = ?", (customer_id,))
 
 

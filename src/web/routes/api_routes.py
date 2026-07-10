@@ -477,6 +477,14 @@ def resend_targeted(sid: int):
     if not channel.get('is_active'):
         return jsonify({'code': 40001, 'message': f'渠道已停用({channel.get("name", channel_id)}),无法推送'}), 400
 
+    # 客户校验: customer_id 有值时,customers 表必须存在
+    # 场景: customer.py:delete 不再 UPDATE delivery_log,所以 customer_id 可能指向已删客户
+    # 这种孤儿状态重推要拒 (收件人无意义,前端 channel_name 拼接的客户名是历史快照)
+    if customer_id:
+        from src.models.customer import get_by_id as _get_cust
+        if not _get_cust(customer_id):
+            return jsonify({'code': 40400, 'message': f'客户不存在(ID={customer_id}),可能已被删除'}), 404
+
     # ── 构建 relay_config（复用手动推送的配置）──
     # 先复制渠道配置
     relay_config = dict(channel['config'])
