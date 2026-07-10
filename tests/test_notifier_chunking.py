@@ -350,8 +350,10 @@ def test_feishu_seven_field_layout_matches_dingtalk():
 
       发布页面 / 文件名称 / 版本信息 / 文件大小 / MD5 / 发布时间 / 下载地址
 
-    Each label paragraph uses ['bold', 'orange'] style so the label visually
-    stands out (analogous to DingTalk's <font color="#c27800"> label).
+    重要限制: 飞书机器人 webhook 不支持 text tag inline style 字段
+    (实测 code=19002 "unknown content value")。所以飞书 label 退化为
+    纯文本 — 跟钉钉 <font color> 不同。视觉对齐靠 label + 冒号 + value
+    (同企业微信 markdown)。
     """
     msg = NotificationMessage(
         title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
@@ -367,26 +369,31 @@ def test_feishu_seven_field_layout_matches_dingtalk():
     )
     payloads = FeishuNotifier()._build_post(msg)
     p = payloads[0]
-    # Extract label text from each paragraph; build list of (label, has_orange_style) tuples
-    labels_found = []
+    # Label text appears as leading text tag content + space + value content.
+    # Verify each of the 7 label names has a paragraph where the first
+    # text tag has exactly "<label> " (label + single space).
+    expected_labels = {'发布页面', '文件名称', '版本信息', '文件大小', 'MD5', '发布时间', '下载地址'}
+    labels_found = set()
+    for para in p['content']:
+        if not para:
+            continue
+        first = para[0]
+        if first.get('tag') != 'text':
+            continue
+        text = first.get('text', '')
+        # text format: "<label> " (label followed by single space then value)
+        for label in expected_labels:
+            if text == f'{label} ' or text == f'{label}':
+                labels_found.add(label)
+                break
+    assert expected_labels.issubset(labels_found), \
+        'feishu missing labels: got={}, expected={}'.format(
+            sorted(labels_found), sorted(expected_labels))
+    # Sanity: no style field anywhere (would 19002 the call)
     for para in p['content']:
         for tag in para:
-            if tag.get('tag') != 'text':
-                continue
-            text = tag.get('text', '')
-            style = tag.get('style') or []
-            # Heuristic: this text is a label if it exactly matches one of the 7 known labels
-            if text in {'发布页面', '文件名称', '版本信息', '文件大小', 'MD5', '发布时间', '下载地址'}:
-                labels_found.append((text, 'orange' in style and 'bold' in style))
-
-    expected_labels = {'发布页面', '文件名称', '版本信息', '文件大小', 'MD5', '发布时间', '下载地址'}
-    found_label_names = {name for name, _ in labels_found}
-    assert expected_labels.issubset(found_label_names), \
-        'feishu missing labels: got={}, expected={}'.format(sorted(found_label_names), sorted(expected_labels))
-    # Each label has ['bold', 'orange'] style
-    for name, styled in labels_found:
-        if name in expected_labels:
-            assert styled, 'label {!r} missing bold+orange style'.format(name)
+            assert 'style' not in tag, \
+                'feishu text tag should not carry style (would 19002): {}'.format(tag)
 
 
 def test_feishu_download_uses_link_tag():
@@ -408,6 +415,67 @@ def test_feishu_download_uses_link_tag():
                 # Should contain a link to download_url
                 found_anchor = 'example.com/dl' in tag.get('href', '')
     assert found_anchor, f'no <a href=download_url> tag in feishu payload: {payloads[0]!r}'
+
+
+def test_feishu_no_style_field_real_server_check():
+    """飞书机器人 webhook 服务端实测:payload 含 style 字段会触发 19002。
+
+    离线 fast check: 验证 _build_post 输出永远不含 style。
+    """
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='规则包',
+        file_name='ips.bin', package_version='v1', md5_hash='a'*32, file_size=100,
+        description_summary='', description_full='', urgency='normal',
+        download_url='https://example.com/dl', source_url='', published_at='',
+        source_id=0, chain=['IPS'], chain_url='',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    for p in payloads:
+        for para in p['content']:
+            for tag in para:
+                assert 'style' not in tag, \
+                    'feishu tag should NOT carry style (real server returns 19002): {}'.format(tag)
+
+
+def test_feishu_strips_backticks_from_value_text():
+    """飞书 IM 客户端不渲染 markdown 反引号 — 字段值中的 `` ` `` 字面显示会让
+    通知看起来 "markdown 没渲染干净"。_build_post 必须把 value text tag 里的
+    反引号剥掉(钉钉/企微不受影响——它们走的是 markdown body 另一条路径)。
+    """
+    msg = NotificationMessage(
+        title='t', product_name='IPS', version_branch='V4.5R', package_type='补丁包',
+        file_name='eoi.unify.avpatch.6.0.0.701.av',
+        package_version='6.0.0.701',
+        md5_hash='d6b4d082e0cc9aa0bdf96673b3892e3d',
+        file_size=35_030_000,
+        description_full='', urgency='normal',
+        download_url='https://example.com/dl',
+        source_url='https://example.com/list',
+        published_at='2026-07-09T19:03:03',
+        source_id=0, chain=['IPS'],
+        chain_url='https://example.com/list',
+    )
+    payloads = FeishuNotifier()._build_post(msg)
+    # Iterate every text tag in payload 0; assert no backtick characters.
+    for p in payloads:
+        for para in p['content']:
+            for tag in para:
+                if tag.get('tag') == 'text':
+                    assert '`' not in tag.get('text', ''), \
+                        'feishu text tag still has backtick: {!r}'.format(tag.get('text', ''))
+    # Sanity: at least one field actually rendered the value (no regression to empty)
+    rendered = []
+    for para in payloads[0]['content']:
+        for tag in para:
+            if tag.get('tag') == 'text':
+                rendered.append(tag.get('text', ''))
+    full = ' | '.join(rendered)
+    assert 'eoi.unify.avpatch.6.0.0.701.av' in full
+    assert '6.0.0.701' in full
+    assert '33.41M' in full or '35.03M' in full  # size_display formatting
+
+
+
 
 
 

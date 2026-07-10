@@ -89,23 +89,38 @@ class FeishuNotifier(BaseNotifier):
 
         title_base = f'{"⚠️ 撤回" if msg.is_rollback else "🔔"} {msg.product_name} {msg.package_version}'
 
-        # Field layout matches DingTalk / WeCom markdown 7 fields. Labels are
-        # styled ['bold', 'orange'] (飞书原生支持). Values stay default black.
-        # Each "labeled row" is a single paragraph (飞书 IM 客户端按 paragraph
-        # 自动换行, 不依赖 '\n' 渲染)。
-        def _label_p(label: str) -> list:
-            """Bold orange label paragraph (飞书原生 style)。"""
-            return [{'tag': 'text', 'text': label, 'style': ['bold', 'orange']}]
-
-        def _field_p(label: str, value_paragraphs: list) -> list:
-            """Build a paragraph with bold orange label + default-styled value.
-
-            value_paragraphs: list of tag-dicts (e.g. plain text or `a` link).
-            Concatenated into one paragraph sharing the same line in feishu.
-            """
-            return _label_p(label) + value_paragraphs
-
+        # Field layout matches DingTalk / WeCom markdown 7 fields. Each labeled
+        # row is a single paragraph (飞书 IM 客户端按 paragraph 自动换行)。
+        #
+        # 重要限制: 飞书机器人 webhook 不支持 text tag 的 inline style 字段
+        # (实测返回 19002 "unknown content value")。所以飞书 label 无法做颜色/
+        # 加粗样式 — 跟钉钉 <font color> 不同。退化为纯文本 label + plain value,
+        # 视觉对齐靠字段名 + 冒号(同企业微信 markdown)。
+        #
+        # 飞书 IM 客户端也不渲染 markdown 反引号 (\`xxx\` 会显示字面量), 所以
+        # value text tag 里的反引号要 strip 掉 — 飞书阅读体验一致, 钉钉 / 企微
+        # 不受影响 (它们读 base._format_markdown_body 走另一条路)。
         head_paras: list[list[dict]] = []
+
+        def field_p(label: str, value_tags: list) -> list:
+            """Build a paragraph: plain text label + value_tags (text / a).
+
+            飞书机器人 webhook 不支持 text tag 的 inline style 字段 — 所以
+            label 退化为纯文本(无法做颜色 / 加粗)。视觉对齐靠 label + 冒号
+            + value 模仿钉钉 markdown 风格。
+            同时剥掉 value text tag 里的反引号(飞书不渲染 markdown
+            反引号, 显示字面字符会显得「没有渲染干净」)。
+            """
+            stripped = []
+            for t in value_tags:
+                if t.get('tag') == 'text':
+                    new_t = dict(t)
+                    new_t['text'] = t['text'].replace('`', '')
+                    stripped.append(new_t)
+                else:
+                    stripped.append(t)
+            return [{'tag': 'text', 'text': f'{label} '}] + stripped
+
         if msg.is_rollback:
             head_paras.append([{'tag': 'text', 'text': '⚠️ 此软件包已被撤回,请暂缓升级'}])
 
@@ -120,42 +135,42 @@ class FeishuNotifier(BaseNotifier):
             type_text = msg.package_type or ''
             url_text = ''
         if url_text:
-            head_paras.append(_field_p(
+            head_paras.append(field_p(
                 '发布页面',
-                [{'tag': 'text', 'text': ' :   '},
+                [{'tag': 'text', 'text': ':   '},
                  {'tag': 'a', 'text': url_text, 'href': url_text}],
             ))
         elif type_text:
-            head_paras.append(_field_p('发布页面', [{'tag': 'text', 'text': f' :   {type_text}'}]))
+            head_paras.append(field_p('发布页面', [{'tag': 'text', 'text': f':   {type_text}'}]))
 
         # 文件名称
         if msg.file_name:
-            head_paras.append(_field_p('文件名称', [{'tag': 'text', 'text': f' : `{msg.file_name}`'}]))
+            head_paras.append(field_p('文件名称', [{'tag': 'text', 'text': f': `{msg.file_name}`'}]))
 
         # 版本信息
         if msg.package_version:
-            head_paras.append(_field_p('版本信息', [{'tag': 'text', 'text': f' : `{msg.package_version}`'}]))
+            head_paras.append(field_p('版本信息', [{'tag': 'text', 'text': f': `{msg.package_version}`'}]))
 
         # 文件大小
         if msg.file_size > 0:
-            head_paras.append(_field_p('文件大小', [{'tag': 'text', 'text': f' : `{msg.size_display}`'}]))
+            head_paras.append(field_p('文件大小', [{'tag': 'text', 'text': f': `{msg.size_display}`'}]))
 
         # MD5
         if msg.md5_hash:
-            head_paras.append(_field_p('MD5', [{'tag': 'text', 'text': f' : `{msg.md5_hash}`'}]))
+            head_paras.append(field_p('MD5', [{'tag': 'text', 'text': f': `{msg.md5_hash}`'}]))
 
         # 发布时间
         from src.notifiers.base import _utc_to_cst_display
         ts_str = _utc_to_cst_display(msg.published_at) if msg.published_at else ''
         if ts_str:
-            head_paras.append(_field_p('发布时间', [{'tag': 'text', 'text': f' : `{ts_str}`'}]))
+            head_paras.append(field_p('发布时间', [{'tag': 'text', 'text': f': `{ts_str}`'}]))
 
         if msg.min_sys_version:
             head_paras.append([{'tag': 'text', 'text': f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}'}])
         if msg.download_url:
-            head_paras.append(_field_p(
+            head_paras.append(field_p(
                 '下载地址',
-                [{'tag': 'text', 'text': ' :   '},
+                [{'tag': 'text', 'text': ':   '},
                  {'tag': 'a', 'text': msg.download_url, 'href': msg.download_url}],
             ))
 
