@@ -481,47 +481,33 @@ def resend_targeted(sid: int):
     # 先复制渠道配置
     relay_config = dict(channel['config'])
 
-    customer_name = ''
-    # 从客户档案获取邮箱和附件大小
+    # ── 确定收件人 (按历史 recipient,不再查 customers/rule) ──
+    # 用户原话: "重推不就是历史推送重推吗,本来就是根据之前推送的收件人去推送"
+    # 历史 recipient 写在 delivery_log.recipient,发送时直接拿这个当 to_list
+    # 不再走 customers.email / rule.customer_emails / smtp_user fallback 那套
+    from src.models.database import query as _q
+    old_log = _q(
+        "SELECT recipient, customer_id, sender FROM delivery_log "
+        "WHERE snapshot_id = ? AND channel_id = ? "
+        "ORDER BY id DESC LIMIT 1",
+        (sid, channel_id)
+    )
+    if old_log and old_log[0].get('recipient'):
+        # 历史 recipient 是逗号拼接的邮箱串,按邮箱 split
+        relay_config['to_list'] = [e.strip() for e in old_log[0]['recipient'].split(',') if e.strip()]
+    # else: 机器人渠道 recipient 本来就是空,或 channel_id=NULL 的孤儿 log → 不设 to_list,让 notifier 自己处理
+    # email 渠道兜底:无收件人时 notifier 内部会用 smtp_user (email.py:91),不再前端额外处理
+
+    # 附件大小限制: 仅读 customers.attachment_max_mb (重推语义:邮箱/收件人用历史,但附件大小是发送配置)
+    # 客户已删 → 拿不到 → 不设 (用渠道默认)
     if customer_id:
         try:
-            from src.models.customer import get_by_id as get_cust
-            cust = get_cust(customer_id)
-            if cust:
-                customer_name = cust.get('name', '')
-                cust_email = cust.get('email', '').strip()
-                if cust_email:
-                    relay_config['to_list'] = [cust_email]
-                cust_attach_mb = cust.get('attachment_max_mb', 0)
-                if cust_attach_mb > 0:
-                    relay_config['attachment_max_mb'] = str(cust_attach_mb)
+            from src.models.customer import get_by_id as _get_cust
+            _cust = _get_cust(customer_id)
+            if _cust and _cust.get('attachment_max_mb', 0) > 0:
+                relay_config['attachment_max_mb'] = str(_cust['attachment_max_mb'])
         except Exception:
             pass
-
-    # 如果客户没有邮箱，尝试从订阅规则获取
-    if not relay_config.get('to_list'):
-        try:
-            from src.models.subscription import get_rule
-            # 获取关联的规则
-            from src.models.database import query
-            rows = query(
-                "SELECT rule_id FROM delivery_log WHERE snapshot_id = ? AND channel_id = ? LIMIT 1",
-                (sid, channel_id)
-            )
-            if rows:
-                rule = get_rule(rows[0]['rule_id'])
-                if rule and rule.get('customer_emails'):
-                    relay_config['rule_emails'] = rule['customer_emails']
-        except Exception:
-            pass
-
-    # 如果还是没有收件人，使用 SMTP 用户作为 fallback
-    if not relay_config.get('to_list') and not relay_config.get('rule_emails'):
-        smtp_user = channel['config'].get('smtp_user', '')
-        if smtp_user:
-            relay_config['to_list'] = [smtp_user]
-            import logging
-            logging.getLogger('api').warning(f'[resend] 无收件人，使用 smtp_user({smtp_user}) 作为 fallback')
 
     # 注入渠道和客户 ID（用于限流和日志）
     relay_config['_channel_id'] = channel_id
@@ -536,9 +522,9 @@ def resend_targeted(sid: int):
     relay_config['_global_daily_limit'] = limits['global_daily']
 
     # ── 构造消息 ──
+    # 标题前缀标记「重推至客户」: 旧版从 customers 表查 name,新版不查 customers (按用户要求纯走历史 recipient)
+    # channel_name 已自动拼接客户名,推送历史展示够用;这里不再加 title 前缀
     message = NotificationMessage.from_snapshot(snap)
-    if customer_name:
-        message.title = f'[重推至{customer_name}] {message.title}'
 
     # ── 发送 ──
     from src.notifiers.router import NOTIFIERS
@@ -549,14 +535,8 @@ def resend_targeted(sid: int):
     # 使用 relay_config 发送（包含收件人信息）
     result = notifier.send(message, relay_config)
 
-    # 还原 email 渠道实际发送时的收件人列表（to_list + rule_emails 去重合并）
-    # 与 src/notifiers/email.py:111-115 保持一致;否则 delivery_log.recipient 字段空,
-    # 推送历史视图只能 fallback 到 channel_name,误导用户
+    # 还原 email 渠道实际发送时的收件人列表 (只用历史 to_list,不再合并 rule_emails)
     final_to_list = list(relay_config.get('to_list') or [])
-    rule_emails_final = (relay_config.get('rule_emails') or '').strip()
-    if rule_emails_final:
-        extras = [e.strip() for e in rule_emails_final.split(',') if e.strip()]
-        final_to_list = list(dict.fromkeys(final_to_list + extras))
     recipient = ','.join(final_to_list)
 
     # 写入投递日志（customer_id 已经正确传入，不需要改）
