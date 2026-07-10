@@ -210,6 +210,11 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
 
         # Build channel config with rule-level overrides
         ch_config = dict(channel['config'])
+        # NOTE: template 是订阅规则级别配置(每个 rule 可独立选通知模板)。
+        # 通过 ch_config['_template'] 注入到 notifier.send()。默认 'full'(行为不变)。
+        # 兼容矩阵详见 base.py:TEMPLATE_NAMES 周围注释。
+        template = rule.get('template', '') or 'full'
+        ch_config['_template'] = template
         if channel['type'] == 'email':
             if rule.get('customer_emails'):
                 ch_config['rule_emails'] = rule['customer_emails']

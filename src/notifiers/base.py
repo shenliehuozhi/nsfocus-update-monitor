@@ -480,35 +480,14 @@ def _split_with_marker(text: str, max_bytes: int = 4000) -> list[str]:
     return [f'{p}\n\n({i+1}/{total})' for i, p in enumerate(safe)]
 
 
-def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
-                            max_bytes: int = 4000, skip_empty_meta: bool = False,
-                            line_break: str = '\n'
-                            ) -> list[str]:
-    """Format message as one or more markdown bodies, splitting at max_bytes limit.
+def _build_markdown_head_lines(msg: NotificationMessage, for_rollback: bool = False,
+                               skip_empty_meta: bool = False) -> list[str]:
+    """Build the head block lines (icon + title + meta) for markdown bodies.
 
-    Returns a list of body strings. Never truncates — splits into multiple
-    messages so each respects the WeCom / DingTalk 4KB hard limit.
-
-    Behavior:
-      - First chunk: header + metadata + restart flag + start of description
-      - Subsequent chunks: continued description (with '(i/N)' marker)
-
-    Args:
-        line_break: string used to separate lines within each part. Default '\\n'
-            (WeCom markdown). DingTalk markdown client does not render '\\n' as a
-            newline — use '<br/>' instead.
+    Returns a list[str] of header lines (NOT joined). Shared by
+    `_format_markdown_bodies` (template A) and the new B/C/D templates so they
+    stay structurally identical for head meta (发布页面/文件名称/版本信息...).
     """
-    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta, line_break=line_break)
-    if len(full_body.encode('utf-8')) <= max_bytes:
-        return [full_body]
-
-    # Need to split. Strategy:
-    # 1. Build "head" = everything BEFORE description (header + meta lines)
-    # 2. Build "tail" = description block ('---\\n\\n<desc>')
-    # 3. If head already exceeds max_bytes (description is empty / tiny but metadata is huge),
-    #    just hard-split full_body.
-    # 4. Otherwise pack head in part 1, then add description chunks until budget filled.
-
     icon = '⚠️' if for_rollback else msg.urgency_label
     chain_text = ' / '.join(msg.chain) if msg.chain else ''
     first_line = f'{chain_text} 更新' if chain_text else msg.title
@@ -557,6 +536,39 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     if msg.restart_required:
         header_lines.append('🔄 升级后需重启')
 
+    return header_lines
+
+
+def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False,
+                            max_bytes: int = 4000, skip_empty_meta: bool = False,
+                            line_break: str = '\n'
+                            ) -> list[str]:
+    """Format message as one or more markdown bodies, splitting at max_bytes limit.
+
+    Returns a list of body strings. Never truncates — splits into multiple
+    messages so each respects the WeCom / DingTalk 4KB hard limit.
+
+    Behavior:
+      - First chunk: header + metadata + restart flag + start of description
+      - Subsequent chunks: continued description (with '(i/N)' marker)
+
+    Args:
+        line_break: string used to separate lines within each part. Default '\\n'
+            (WeCom markdown). DingTalk markdown client does not render '\\n' as a
+            newline — use '<br/>' instead.
+    """
+    full_body = _format_markdown_body(msg, for_rollback, skip_empty_meta=skip_empty_meta, line_break=line_break)
+    if len(full_body.encode('utf-8')) <= max_bytes:
+        return [full_body]
+
+    # Need to split. Strategy:
+    # 1. Build "head" = everything BEFORE description (header + meta lines)
+    # 2. Build "tail" = description block ('---\\n\\n<desc>')
+    # 3. If head already exceeds max_bytes (description is empty / tiny but metadata is huge),
+    #    just hard-split full_body.
+    # 4. Otherwise pack head in part 1, then add description chunks until budget filled.
+
+    header_lines = _build_markdown_head_lines(msg, for_rollback, skip_empty_meta=skip_empty_meta)
     head = line_break.join(header_lines)
 
     if not msg.description_full:
@@ -581,6 +593,9 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
     # the split — only the inter-line break separator (line_break) varies by platform.
     desc_chunks: list[str] = []
     cur = ''
+    # ⚠️ bug fix (2026-07-10):desc 行间不能再用 '\n' 拼回 — 这会让钉钉 marked.js
+    # 把 desc 内部换行折叠成空格(§32.4 陷阱 1+3)。让 line_break 接管行间分隔。
+    sep_inner = line_break
     for line in desc_text.split('\n'):
         line_bytes_len = len(line.encode('utf-8'))
         if line_bytes_len > remaining:
@@ -590,7 +605,7 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
                 cur = ''
             desc_chunks.extend(_chunk_text(line, remaining))
             continue
-        candidate = cur + ('\n' if cur else '') + line
+        candidate = cur + (sep_inner if cur else '') + line
         if len(candidate.encode('utf-8')) > remaining:
             if cur:
                 desc_chunks.append(cur)
@@ -602,10 +617,12 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
 
     if len(desc_chunks) <= 1:
         # Whole description fits in part 1
-        joined = head_with_sep + desc_text
+        # ⚠️ bug fix (2026-07-10):同样把 desc 内部 \n 替换为 line_break,确保钉钉 / 飞书渲染换行。
+        desc_text_normalized = desc_text.replace('\n', line_break)
+        joined = head_with_sep + desc_text_normalized
         if len(joined.encode('utf-8')) > max_bytes:
             return [_split_with_marker(joined, max_bytes)[0]]
-        return [joined.rstrip('\n')]
+        return [joined.rstrip('\n')]  # rstrip 真实 \n,在 multi-part 末段后可能残留
 
     # Part 1 = head + first desc chunk (no marker yet; total unknown at this point)
     parts = [(head_with_sep + desc_chunks[0]).rstrip('\n')]
@@ -640,6 +657,226 @@ def _format_markdown_bodies(msg: NotificationMessage, for_rollback: bool = False
                     body = trimmed.decode('utf-8', errors='ignore').rstrip('\n') + marker
         out.append(body)
     return out
+
+
+# ─── Template B / C / D (通知模板 B/C/D,2026-07-10) ────────────────────────
+# subscription_rules.template ∈ {full / strip / brief / feishu_full}
+# full / strip / brief 可用渠道:钉钉 / 飞书 / wecom
+# feishu_full 仅飞书可用
+# 4 个枚举值与 schema 已有列对齐,UI 在订阅规则 create/edit 表单暴露下拉
+
+
+def _has_chinese(s: str) -> bool:
+    """Whether string contains any CJK Unified Ideograph (汉字) char."""
+    return any('\u4e00' <= c <= '\u9fff' for c in s)
+
+
+def _is_pure_english_line(line: str) -> bool:
+    """A line counts as 'pure English' only if it has text but no Chinese char.
+
+    Empty/whitespace lines don't count on either side — they're treated as
+    inter-segment separators.
+    """
+    if not line.strip():
+        return False
+    return not _has_chinese(line)
+
+
+def strip_english_lines(lines: list[str], min_run: int = 2) -> list[str]:
+    """Remove continuous runs of ≥ min_run pure-English lines (and blank lines
+    between them) from a list of lines. Mixed lines (CN + EN) are kept verbatim.
+
+    Decision rule: a run is 'English' only if it's pure-ASCII line(s) and the
+    run length is ≥ min_run. A standalone English line (e.g. version number,
+    single-word term) is preserved.
+
+    Args:
+        lines: input lines, no trailing newline.
+        min_run: minimum run length to qualify as an English segment.
+
+    Returns:
+        New list with English segments removed.
+    """
+    out: list[str] = []
+    i = 0
+    while i < len(lines):
+        if _is_pure_english_line(lines[i]):
+            j = i
+            while j < len(lines) and (not lines[j].strip() or _is_pure_english_line(lines[j])):
+                j += 1
+            if j - i >= min_run:
+                # 真英文段:整段跳过(包括段内空白)
+                i = j
+                continue
+            else:
+                # 单行孤英文(版本号 / 术语):保留
+                out.append(lines[i])
+                i += 1
+        else:
+            out.append(lines[i])
+            i += 1
+    return out
+
+
+def attention_segment(lines: list[str]) -> list[str]:
+    """Extract the '注意事项 / Announcements' trailing segment.
+
+    Returns the substring starting at the first line whose text contains
+    '注意' (the keyword for the nsfocus '注意事项' / 'Announcements:' block),
+    through the end of the list. If no line contains the keyword, returns [].
+    """
+    for idx, line in enumerate(lines):
+        if '注意' in line:
+            return lines[idx:]
+    return []
+
+
+def _join_head_with_desc(head_lines: list[str], desc_text: str,
+                          line_break: str = '\n') -> str:
+    """Join head lines and description with the standard `---` separator.
+
+    Description 内部的 `\n` 也替换为 line_break,确保钉钉 / 飞书渲染换行
+    (见 §32.4 陷阱 1+3,本 PR 修)。否则 marked.js 会把 `\n` 折叠成空格,
+    导致 desc 整段挤一行。
+    """
+    sep_str = line_break * 2
+    desc_normalized = desc_text.replace('\n', line_break)
+    return (line_break.join(head_lines) + sep_str + '---' + sep_str + desc_normalized).rstrip('\n')
+
+
+def _format_template_strip(msg: NotificationMessage, *,
+                            max_bytes: int = 4000,
+                            line_break: str = '\n') -> list[str]:
+    """Template B (template='strip'): 4-staged fallback chain.
+
+      Stage 0 (lazy)  : head + full description              — keep if ≤ 4K
+      Stage 1 (strip) : head + strip_english(desc)          — if still > 4K
+      Stage 2 (extreme): head + attention_segment only      — if still > 4K
+      Stage 3 (brief) : head + '详情见 {source_url}' line   — last-resort fallback
+
+    The selected body is then passed through `_split_with_marker` to enforce
+    the 4KB hard limit when even the smallest variant overflows (preserves
+    multi-part send with (i/N) marker — same UX as template A).
+
+    Currently used by: 钉钉 / 飞书 / wecom when subscription.template='strip'.
+    """
+    head_lines = _build_markdown_head_lines(msg)
+    head_str = line_break.join(head_lines)
+    full_desc = msg.description_full or ''
+
+    # Stage 0 — 不动 desc,整段试
+    body0 = _join_head_with_desc(head_lines, full_desc, line_break)
+    if len(body0.encode('utf-8')) <= max_bytes:
+        return [body0]
+
+    # Stage 1 — strip 整段英文
+    desc_lines = full_desc.split('\n')
+    stripped_lines = strip_english_lines(desc_lines, min_run=2)
+    desc1 = _highlight_attention_lines(line_break.join(stripped_lines), 'markdown')
+    body1 = _join_head_with_desc(head_lines, desc1, line_break)
+    if len(body1.encode('utf-8')) <= max_bytes:
+        return [body1]
+
+    # Stage 2 — 仅注意事项段
+    att_lines = attention_segment(stripped_lines)
+    desc2 = _highlight_attention_lines(line_break.join(att_lines), 'markdown') if att_lines else ''
+    body2 = _join_head_with_desc(head_lines, desc2, line_break)
+    if len(body2.encode('utf-8')) <= max_bytes:
+        return [body2]
+
+    # Stage 3 — brief 兜底(head + source_url 一行)
+    return _format_template_brief(msg, line_break=line_break, max_bytes=max_bytes)
+
+
+def _format_template_brief(msg: NotificationMessage, *,
+                            line_break: str = '\n',
+                            max_bytes: int = 4000) -> list[str]:
+    """Template C (template='brief'): head + '详情见 {source_url}' line, no desc.
+
+    Used by: 钉钉 / 飞书 / wecom when subscription.template='brief'.
+    Falls back to multi-part split (via _split_with_marker) if head itself
+    exceeds 4KB (very unlikely in practice).
+    """
+    head_lines = _build_markdown_head_lines(msg)
+    hint_url = msg.chain_url or msg.source_url or ''
+    if hint_url:
+        head_lines.append('')
+        head_lines.append(f'> 详情见 [{hint_url}]({hint_url})')
+    body = line_break.join(head_lines).rstrip('\n')
+    if len(body.encode('utf-8')) <= max_bytes:
+        return [body]
+    return _split_with_marker(body, max_bytes)
+
+
+def _format_template_feishu_full(msg: NotificationMessage, *,
+                                  line_break: str = '\n',
+                                  max_bytes: int = 30000) -> list[str]:
+    """Template D (template='feishu_full'): head + full description, single chunk.
+
+    Feishu supports larger payloads (~30KB+), so we don't split into multiple
+    parts. Used by: 飞书 when subscription.template='feishu_full' (default).
+    max_bytes default raised to 30000 (vs 4000 in `_split_with_marker`) — this
+    matches §32.1's documented feishu soft ceiling.
+    """
+    head_lines = _build_markdown_head_lines(msg)
+    full_desc = _highlight_attention_lines(msg.description_full or '', 'markdown')
+    body = _join_head_with_desc(head_lines, full_desc, line_break)
+    if len(body.encode('utf-8')) <= max_bytes:
+        return [body]
+    # Even feishu has limits. Split with a conservative chunk size, no (i/N).
+    return _split_with_marker(body, max_bytes)
+
+
+# Templates known to the system. Channel-side guard validates (rule.template,
+# channel.type) compatibility at delivery time.
+TEMPLATE_NAMES: dict[str, str] = {
+    'full':         '模板 A · 完整(切多段)',
+    'strip':        '模板 B · 智能裁剪(strip 英文段)',
+    'brief':        '模板 C · 极简(只 head + 链接)',
+    'feishu_full':  '模板 D · 飞书全量(单段,飞书专属)',
+}
+
+
+def format_template_bodies(template: str, msg: NotificationMessage, *,
+                            for_rollback: bool = False,
+                            max_bytes: int = 4000,
+                            skip_empty_meta: bool = False,
+                            line_break: str = '\n') -> list[str]:
+    """Top-level template dispatcher used by notifier implementations.
+
+    Args:
+        template: one of 'full' / 'strip' / 'brief' / 'feishu_full'.
+        msg: the NotificationMessage to render.
+        for_rollback / skip_empty_meta / line_break: forwarded to template A.
+        max_bytes: per-part UTF-8 byte budget. Default 4000 (typical IM 4KB limit).
+            Template D bumps this internally to 30000 because Feishu is more lenient.
+
+    Returns a list of body strings (1+). When the body already fits in budget,
+    the list has exactly one element. When the body must be split, the list has
+    N elements each ≤ max_bytes.
+    """
+    if template == 'full':
+        return _format_markdown_bodies(
+            msg, for_rollback=for_rollback, max_bytes=max_bytes,
+            skip_empty_meta=skip_empty_meta, line_break=line_break,
+        )
+    if template == 'strip':
+        return _format_template_strip(
+            msg, max_bytes=max_bytes, line_break=line_break,
+        )
+    if template == 'brief':
+        return _format_template_brief(
+            msg, line_break=line_break, max_bytes=max_bytes,
+        )
+    if template == 'feishu_full':
+        return _format_template_feishu_full(
+            msg, line_break=line_break,
+        )
+    # Unknown template — defensive fallback to A so we never silently drop.
+    return _format_markdown_bodies(
+        msg, for_rollback=for_rollback, max_bytes=max_bytes,
+        skip_empty_meta=skip_empty_meta, line_break=line_break,
+    )
 
 
 def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,

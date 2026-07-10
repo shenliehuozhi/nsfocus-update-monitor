@@ -7,7 +7,7 @@ import requests
 
 from src.core.logger import get_logger
 from src.notifiers._log import get_log_writer
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_bodies, _sign_url
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, format_template_bodies, _sign_url
 
 
 logger = get_logger('dingtalk')
@@ -123,7 +123,10 @@ class DingtalkNotifier(BaseNotifier):
         # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 毫秒 + base64 url-quote。
         url = _sign_url(webhook_url, secret, timestamp_unit='ms', url_quote=True)
         log.info(f'  signed URL tail: ...{url[-60:]}')
-        bodies = _format_markdown_bodies(message, message.is_rollback, line_break='<br/>')
+        template = config.get('_template', 'full')
+        bodies = format_template_bodies(template, message,
+                                        for_rollback=message.is_rollback,
+                                        line_break='<br/>')
         # 给 title 一行加 <font color> + 给每个 meta 行 label 染橙色
         bodies = [self._wrap_labels_with_color(self._wrap_title_with_color(b, message))
                   for b in bodies]

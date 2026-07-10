@@ -5,7 +5,10 @@ import requests
 
 from src.core.logger import get_logger
 from src.notifiers._log import get_log_writer
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_body
+from src.notifiers.base import (
+    BaseNotifier, NotificationMessage, DeliveryResult,
+    _format_markdown_body, format_template_bodies,
+)
 
 
 logger = get_logger('wecom')
@@ -37,20 +40,28 @@ class WecomNotifier(BaseNotifier):
         # 产品通知（有 product_name）走完整格式，包含元数据行
         # 系统事件通知（product_name 为空）直接发 description_full 纯文本
         if message.product_name:
-            content = _format_markdown_body(message, for_rollback=message.is_rollback)
+            template = config.get('_template', 'full')
+            if template == 'full':
+                # wecom 私有切分路径,行为不变(wecom.send 内部仍走 _format_markdown_body + _split_bodies)
+                content = _format_markdown_body(message, for_rollback=message.is_rollback)
+                MAX_BYTES = 4000
+                if len(content.encode('utf-8')) <= MAX_BYTES:
+                    bodies = [content]
+                else:
+                    bodies = self._split_bodies(content, MAX_BYTES)
+            else:
+                # 模板 B/C:走 base 的 strip/brief 实现,适配 wecom markdown line_break=\n
+                bodies = format_template_bodies(template, message, line_break='\n')
         else:
             content = message.description_full or ''
             if not content:
                 log.error('消息体为空 (product_name 缺 + description_full 缺)')
                 return DeliveryResult(False, 'wecom', name, 'Empty message body')
+            bodies = [content]   # 系统通知非切分:直接当 1 part 发
 
-        # 按 4096 字节硬限分割（WeCom 单条 markdown 上限）
-        MAX_BYTES = 4000
-        encoded = content.encode('utf-8')
-        if len(encoded) <= MAX_BYTES:
-            bodies = [content]
-        else:
-            bodies = self._split_bodies(content, MAX_BYTES)
+        # 注意:前面 if message.product_name: 已经产出 bodies。
+        # 非 product 路径(content = description_full)走 else 分支后,此处不再重复切分。
+
         log.info(f'  parts={len(bodies)}, sizes={[len(b.encode("utf-8")) for b in bodies]}B')
 
         for i, body in enumerate(bodies):
