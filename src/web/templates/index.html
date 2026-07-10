@@ -3201,13 +3201,14 @@ async function showTestLog(id, name){
   const existing=document.getElementById('testLogModal');if(existing)existing.remove();
   const r=await api('/channels/'+id+'/test-log');
   const content=r.code===0 ? r.data.content : `(${r.message||'尚未运行测试'})`;
+  const logPath=r.code===0 ? r.data.path : `/tmp/email_test_${id}.log`;
   const m=document.createElement('div');
   m.id='testLogModal';
   m.className='confirm-modal active';
   m.innerHTML=`<div class="confirm-box" style="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
     <div class="confirm-icon">📋</div>
     <div class="confirm-title">测试日志 - ${escHtml(name)}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">文件: /tmp/email_test_${id}.log | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(logPath)} | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
     <pre style="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
     <div class="confirm-btns" style="margin-top:14px">
       <button class="confirm-btn-cancel" onclick="document.getElementById('testLogModal').remove()">关闭</button>

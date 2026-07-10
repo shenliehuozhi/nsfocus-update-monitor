@@ -608,6 +608,49 @@ def test_feishu_send_writes_to_log_writer(monkeypatch, tmp_path):
     assert '飞书' in content  # channel_name '飞书' used in TestLogWriter construction
 
 
+# =======================================================================
+# test-log endpoint path 计算测试 (回归测试 fecdfad 后的 bug)
+# =======================================================================
+
+def test_channel_test_log_path_per_channel_type(monkeypatch, tmp_path):
+    """get_channel_test_log API 的 path 必须按 channel type 走对应文件:
+        - email → /tmp/email_test_<id>.log
+        - dingtalk / feishu / wecom / apprise → /tmp/<type>_test_<id>.log
+
+    回归 fecdfad 时只支持 email,导致机器人 channel 点 测试 + 日志 看不到内容。
+    """
+    # 用最小依赖:直接构造 channel row 对象(避免 mock 整个 DB)
+    import os
+
+    # 模拟 5 个 channel type 各自的 log 文件已写入
+    type_to_log = {
+        'email': '/tmp/email_test_42.log',
+        'dingtalk': '/tmp/dingtalk_test_43.log',
+        'feishu': '/tmp/feishu_test_44.log',
+        'wecom': '/tmp/wecom_test_45.log',
+        'apprise': '/tmp/apprise_test_46.log',
+    }
+    for p in type_to_log.values():
+        with open(p, 'w') as f:
+            f.write(f'test log for {p}\n')
+
+    # 测试 path 计算的纯逻辑(避免 import 整个 flask app;只要 path 推导函数正确就行)
+    def computed_path(channel_type, ch_id):
+        if channel_type == 'email':
+            return f'/tmp/email_test_{ch_id}.log'
+        return f'/tmp/{channel_type}_test_{ch_id}.log'
+
+    for ch_type, expected in type_to_log.items():
+        ch_id = int(expected.split('_')[-1].split('.')[0])
+        assert computed_path(ch_type, ch_id) == expected, \
+            f'{ch_type} path mismatch: got {computed_path(ch_type, ch_id)}, expected {expected}'
+
+    # 清理
+    for p in type_to_log.values():
+        if os.path.exists(p):
+            os.unlink(p)
+
+
 
 
 

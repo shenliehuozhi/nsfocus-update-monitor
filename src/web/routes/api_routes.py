@@ -168,10 +168,23 @@ def test_channel(ch_id: int):
 @bp_channels.route('/<int:ch_id>/test-log', methods=['GET'])
 @require_auth
 def get_channel_test_log(ch_id: int):
-    """Read the most recent test log for an email channel.
-    Returns 404 if no test has been run yet."""
+    """Read the most recent test log for any channel type.
+
+    Path convention: /tmp/<type>_test_<id>.log (5 notifiers all share this
+    scheme; email is grandfathered at /tmp/email_test_<id>.log for back-compat).
+
+    Returns 404 if no test has been run yet.
+    """
     import os
-    path = f'/tmp/email_test_{ch_id}.log'
+    from src.models.channel import get_by_id
+    ch = get_by_id(ch_id)
+    if not ch:
+        return jsonify({'code': 40400, 'message': '渠道不存在'}), 404
+    ch_type = ch.get('type', 'email')
+    if ch_type == 'email':
+        path = f'/tmp/email_test_{ch_id}.log'
+    else:
+        path = f'/tmp/{ch_type}_test_{ch_id}.log'
     if not os.path.exists(path):
         return jsonify({'code': 40400, 'message': '尚未运行测试'}), 404
     try:
