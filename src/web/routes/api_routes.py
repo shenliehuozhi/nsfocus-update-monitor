@@ -92,14 +92,9 @@ def delete_channel(ch_id: int):
         names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rules)
         msgs.append(f'订阅规则：{names}')
 
-    # delivery_log history records for this channel
-    ref_dl = query(
-        "SELECT sr.id, sr.name, COUNT(*) as cnt FROM delivery_log dl "
-        "INNER JOIN subscription_rules sr ON dl.rule_id = sr.id "
-        "WHERE dl.channel_id = ? GROUP BY sr.id, sr.name", (ch_id,))
-    if ref_dl:
-        detail = '、'.join(f'「{r["name"]}」({r["cnt"]}条历史记录)' for r in ref_dl)
-        msgs.append(f'历史推送记录：{detail}')
+    # NOTE: delivery_log 是只读审计流水,不作为删除拦截依据。
+    # 历史记录保留,UI 走 fallback name 显示"未知渠道"。
+    # 校验它会让用户被卡死 — 历史记录没提供清理入口,见 §32.5。
 
     if msgs:
         msg = f'渠道「{ch_name}」存在以下关联，无法删除：\n  • ' + '\n  • '.join(msgs) + '\n\n请先在订阅规则中取消该渠道的绑定后再试。'
@@ -325,14 +320,9 @@ def delete_customer(cid: int):
         names = '、'.join(f'「{r["name"]}」(id={r["id"]})' for r in ref_rc)
         msgs.append(f'渠道绑定：{names}')
 
-    # delivery_log history records
-    ref_dl = query(
-        "SELECT sr.id, sr.name, COUNT(*) as cnt FROM delivery_log dl "
-        "INNER JOIN subscription_rules sr ON dl.rule_id = sr.id "
-        "WHERE dl.customer_id = ? GROUP BY sr.id, sr.name", (cid,))
-    if ref_dl:
-        detail = '、'.join(f'「{r["name"]}」({r["cnt"]}条历史记录)' for r in ref_dl)
-        msgs.append(f'历史推送记录：{detail}')
+    # NOTE: delivery_log 是只读审计流水,不作为删除拦截依据。
+    # 历史记录保留,UI 走 fallback name 显示"未知客户"。
+    # 校验它会让用户被卡死 — 历史记录没提供清理入口,见 §32.5。
 
     if msgs:
         msg = f'客户「{cust_name}」存在以下关联，无法删除：\n  • ' + '\n  • '.join(msgs) + '\n\n请先删除或解绑相关订阅规则后再试。'

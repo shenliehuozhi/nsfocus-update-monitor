@@ -38,8 +38,16 @@ def create_rule(user_id: int, **kwargs) -> int:
         kwargs['digest_config'] = json.dumps(kwargs['digest_config'], ensure_ascii=False)
     if 'window_config' in kwargs and not isinstance(kwargs['window_config'], str):
         kwargs['window_config'] = json.dumps(kwargs['window_config'], ensure_ascii=False)
-    if 'template' in kwargs:
-        # 值域白名单:详见 base.py:TEMPLATE_NAMES
+    if 'channel_templates' in kwargs:
+        # 临时兼容代码:之前实验新增的字段名,2026-07-10 §32.4 终版改回 template 字段。
+        # 收到老 wire-format 时把内容搬进 template 列(JSON 字典)。后续版本可移除。
+        kwargs['template'] = json.dumps(_sanitize_channel_templates(kwargs['channel_templates']), ensure_ascii=False)
+        del kwargs['channel_templates']
+    elif 'template' in kwargs and isinstance(kwargs['template'], dict):
+        # 字典形式(JSON 形态),验证后 dump
+        kwargs['template'] = json.dumps(_sanitize_channel_templates(kwargs['template']), ensure_ascii=False)
+    elif 'template' in kwargs:
+        # 标量形式(老数据 / 兼容路径):full / strip / brief / feishu_full
         from src.notifiers.base import TEMPLATE_NAMES
         if kwargs['template'] not in TEMPLATE_NAMES:
             kwargs['template'] = 'full'
@@ -71,6 +79,14 @@ def update_rule(rule_id: int, **kwargs) -> None:
         kwargs['filter_conditions'] = json.dumps(kwargs['filter_conditions'], ensure_ascii=False)
     if 'digest_config' in kwargs and not isinstance(kwargs['digest_config'], str):
         kwargs['digest_config'] = json.dumps(kwargs['digest_config'], ensure_ascii=False)
+    if 'window_config' in kwargs and not isinstance(kwargs['window_config'], str):
+        kwargs['window_config'] = json.dumps(kwargs['window_config'], ensure_ascii=False)
+    if 'channel_templates' in kwargs:
+        # 临时兼容代码:把老 wire-format 内容搬进 template 列(JSON 字典)。后续版本可移除。
+        kwargs['template'] = json.dumps(_sanitize_channel_templates(kwargs['channel_templates']), ensure_ascii=False)
+        del kwargs['channel_templates']
+    elif 'template' in kwargs and isinstance(kwargs['template'], dict):
+        kwargs['template'] = json.dumps(_sanitize_channel_templates(kwargs['template']), ensure_ascii=False)
     sets = ', '.join(f'{k} = ?' for k in kwargs)
     execute(f"UPDATE subscription_rules SET {sets} WHERE id = ?", tuple(kwargs.values()) + (rule_id,))
 
@@ -148,7 +164,46 @@ def _parse_rule(row: dict) -> dict:
             row['window_config'] = {}
     else:
         row['window_config'] = {}
+    # template: 字典形式(JSON 形态)时 = {"<channel_id>": "<template_name>", ...}
+    # 标量形式(老数据 / 兼容路径):full / strip / brief / feishu_full
+    # 老规则 / 新规则 template 为空时,返回 {} (notifier router 按渠道类型 fallback 到默认模板)
+    if row.get('template'):
+        try:
+            parsed = json.loads(row['template'])
+            if isinstance(parsed, dict):
+                row['template'] = parsed
+            elif isinstance(parsed, str):
+                # 标量(老数据):保持原值,router 会识别
+                row['template'] = parsed
+            else:
+                row['template'] = {}
+        except (json.JSONDecodeError, TypeError):
+            # 不是 JSON 也不是合法模板名 → 当作空
+            row['template'] = {}
+    else:
+        row['template'] = {}
     return row
+
+
+def _sanitize_channel_templates(raw) -> dict:
+    """校验 channel_templates 字典的 key/value 合法性。
+
+    key 必须是 int (channel_id) 或可转 int 的字符串;value 必须是
+    TEMPLATE_NAMES 白名单内名称。不合法项一律丢弃,确保 DB 写入安全。
+    """
+    from src.notifiers.base import TEMPLATE_NAMES
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    for k, v in raw.items():
+        try:
+            cid = int(k)
+        except (TypeError, ValueError):
+            continue
+        if not isinstance(v, str) or v not in TEMPLATE_NAMES:
+            continue
+        out[cid] = v
+    return out
 
 
 # ── Rule-Channel-Customer Bindings ──────────────────────────

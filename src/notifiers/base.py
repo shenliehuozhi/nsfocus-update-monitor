@@ -836,6 +836,18 @@ TEMPLATE_NAMES: dict[str, str] = {
     'feishu_full':  '模板 D · 飞书全量(单段,飞书专属)',
 }
 
+# 渠道类型 → 默认模板。subscription_rules.template 字段无论是标量(老数据)还是
+# JSON 字典(新数据)都没指定某个渠道时,router fallback 用这张表(钉钉/企微 A,
+# 飞书 D,apprise A,email 用 base 默认)。
+# 见订阅规则 §32.4(wechat/dingtalk A/B/C、feishu A/B/C/D、apprise=A、email=不动)。
+DEFAULT_TEMPLATE_BY_CHANNEL: dict[str, str] = {
+    'wecom':    'full',
+    'dingtalk': 'full',
+    'feishu':   'feishu_full',
+    'apprise':  'full',
+    'email':    'full',
+}
+
 
 def format_template_bodies(template: str, msg: NotificationMessage, *,
                             for_rollback: bool = False,

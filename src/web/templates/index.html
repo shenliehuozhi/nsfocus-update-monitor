@@ -3737,9 +3737,40 @@ function renderChanTags(){
     const c=chData.find(x=>x.id===cid);
     if(!c)return'';
     const isEmail=c.type==='email';
-    const label=`${c.name}${isEmail?' ('+c.type+')':''}`;
-    return `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:${isEmail?'#fef3c7':'#e8f0fe'};border:1px solid ${isEmail?'#fbbf24':'#c2d8fc'};border-radius:16px;font-size:12px;color:${isEmail?'#92400e':'#1e40af'}"><span style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(label)}</span><button onclick="removeChanTag(${cid})" style="background:none;border:none;color:inherit;cursor:pointer;font-size:14px;line-height:1;padding:0;opacity:0.7">×</button></span>`;
+    const bg=isEmail?'#fef3c7':'#e8f0fe';
+    const bd=isEmail?'#fbbf24':'#c2d8fc';
+    const fg=isEmail?'#92400e':'#1e40af';
+    const opts=getTplOptsForChannel(c.type);
+    return `<div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span></span><span style="font-size:11px;opacity:0.75">模板</span><select data-cid="${cid}" onchange="onChanTplChange(${cid}, this.value)" style="font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">${opts}</select><button onclick="removeChanTag(${cid})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
   }).join('');
+  // 回显每个渠道当前选中的模板(渲染后单独设 selected,避免 inline template 内 escaped)
+  const tpls=window._chanTpls||{};
+  container.querySelectorAll('select[data-cid]').forEach(sel=>{
+    const cid=parseInt(sel.dataset.cid);
+    const cur=tpls[cid]||'';
+    sel.value=cur;
+  });
+}
+
+// 每个渠道类型可选模板子集(2026-07-10 §32.4 渠道矩阵)
+// email 渠道不需要模板选择(发邮件不走降级策略),但 UI 仍给"默认"占位,后端走 base 默认
+// key:channel.type → value:list of template ids (空字符串表示"使用默认")
+const CHAN_TPL_OPTIONS={
+  dingtalk:[['full','A · 完整(默认)'],['strip','B · 智能裁剪'],['brief','C · 极简']],
+  wecom:   [['full','A · 完整(默认)'],['strip','B · 智能裁剪'],['brief','C · 极简']],
+  feishu:  [['feishu_full','D · 飞书全量(默认)'],['full','A · 完整(切多段)'],['strip','B · 智能裁剪'],['brief','C · 极简']],
+  apprise: [['full','A · 完整(默认)']],
+  email:   [['full','A · 完整(默认)']],
+};
+const CHAN_DEFAULT_TPL={dingtalk:'full',wecom:'full',feishu:'feishu_full',apprise:'full',email:'full'};
+function getTplOptsForChannel(chType){
+  const list=CHAN_TPL_OPTIONS[chType]||[['full','A · 完整(默认)']];
+  return '<option value="">— 默认('+({full:'A',strip:'B',brief:'C',feishu_full:'D'}[CHAN_DEFAULT_TPL[chType]||'full'])+') —</option>'+list.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+}
+function onChanTplChange(cid,val){
+  window._chanTpls=window._chanTpls||{};
+  if(!val){delete window._chanTpls[cid];}
+  else{window._chanTpls[cid]=val;}
 }
 
 function removeChanTag(cid){
@@ -3835,8 +3866,7 @@ async function openRModal(id){
     </div>
 
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">通知渠道</div>
-    <div class="form-group"><label>通知模板 <span style="font-weight:400;color:var(--muted);font-size:11px">不同模板对超长描述采用不同降级策略(项目 §32)。飞书默认 D,钉钉/企微默认 A</span></label><select id="rtpl"><option value="full">A · 完整(切多段,默认)</option><option value="strip">B · 智能裁剪(strip 英文段,4 档降级)</option><option value="brief">C · 极简(只 head + 发布链接)</option><option value="feishu_full">D · 飞书全量(单段不切,飞书专属)</option></select></div>
-    <div id="rchansTags" style="display:flex;flex-wrap:wrap;gap:6px;min-height:28px;margin-bottom:8px"></div>
+    <div id="rchansTags" style="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
     <button class="btn btn-xs btn-outline" onclick="openChanSelModal()">+ 添加渠道</button>
     <div id="emailFields" class="hidden" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">
       <div class="form-group"><label>客户邮箱 <span style="font-weight:400;color:var(--muted);font-size:11px">多个用逗号分隔，留空则使用客户档案邮箱</span></label><input id="remails" placeholder="a@x.com, b@x.com"></div>
@@ -3854,7 +3884,14 @@ async function openRModal(id){
   if(id){
     // Load existing rule
     const rR=await api('/subscriptions');const r=(rR.data||[]).find(x=>x.id===id);if(!r)return;
-    document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;window._selChans=r.channels||[];renderChanTags();
+    document.getElementById('rid').value=r.id;document.getElementById('rnm').value=r.name;window._selChans=r.channels||[];
+    // 加载每个渠道的模板选择(per-channel,2026-07-10 §32.4 改造);兼容老规则(template 字段是标量时当作全局值 fallback)
+    // 注意:后端 _parse_rule 把 template JSON parse 成 dict 后,key 是字符串,这里统一转 int
+    window._chanTpls={};
+    const saved=(typeof r.template==='object'&&r.template)?r.template:{};
+    const savedInt={};Object.keys(saved).forEach(k=>{savedInt[parseInt(k)]=saved[k];});
+    (r.channels||[]).forEach(cid=>{cid=parseInt(cid);if(savedInt[cid])window._chanTpls[cid]=savedInt[cid];else if(typeof r.template==='string'&&r.template)window._chanTpls[cid]=r.template;});
+    renderChanTags();
     document.getElementById('rcust').value=r.customer_id||'';
     document.getElementById('remails').value=r.customer_emails||'';
     onCustChange();
@@ -3880,7 +3917,6 @@ async function openRModal(id){
     updateEmailFields();
     document.getElementById('rdl').value=r.delay_days||r.delay_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
     document.getElementById('rnr').checked=r.notify_rollback===1;
-    if(document.getElementById('rtpl'))document.getElementById('rtpl').value=r.template||'full';
     onDigestModeChange();
     const dc=r.digest_config||{};
     if(r.digest_mode==='weekly'){setTimeout(()=>{if(document.getElementById('dc-weekday'))document.getElementById('dc-weekday').value=dc.weekday??6;},100);}
@@ -3894,7 +3930,7 @@ async function openRModal(id){
     onWinToggle();
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rattDisplay').textContent='选客户后自动显示';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();onCustChange();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rattDisplay').textContent='选客户后自动显示';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];window._chanTpls={};renderCondPills();renderChanTags();updateEmailFields();onDigestModeChange();onCustChange();
   }
 }
 
@@ -3957,7 +3993,7 @@ function validateRuleConf(){
   const fc=isAll?{}:{chains:window._condChains||[]};
   const emails=document.getElementById('remails')?.value.trim()||'';
   const nrr=document.getElementById('rnr')?.checked?1:0;
-  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,template:document.getElementById('rtpl')?.value||'full'};
+  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:chs,notify_rollback:nrr,customer_emails:emails,template:window._chanTpls||{}};
   const dm=d.digest_mode;
   if(dm){
     let dc={};

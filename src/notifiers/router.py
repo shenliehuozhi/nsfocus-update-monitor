@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 
 from src.core.logger import get_logger
-from src.notifiers.base import NotificationMessage, DeliveryResult
+from src.notifiers.base import NotificationMessage, DeliveryResult, TEMPLATE_NAMES, DEFAULT_TEMPLATE_BY_CHANNEL
 from src.notifiers.wecom import WecomNotifier
 from src.notifiers.dingtalk import DingtalkNotifier
 from src.notifiers.feishu import FeishuNotifier
@@ -210,10 +210,26 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
 
         # Build channel config with rule-level overrides
         ch_config = dict(channel['config'])
-        # NOTE: template 是订阅规则级别配置(每个 rule 可独立选通知模板)。
-        # 通过 ch_config['_template'] 注入到 notifier.send()。默认 'full'(行为不变)。
+        # NOTE: template 字段语义(2026-07-10 §32.4 改造后):
+        #   - 字典形态 {"<channel_id>":"<template_name>"} → 按渠道精确选择
+        #   - 标量形态 "full" / "strip" / "brief" / "feishu_full" → 所有渠道共用(老数据)
+        #   - 空 / 非法 → 走 DEFAULT_TEMPLATE_BY_CHANNEL[channel.type]
+        # 通过 ch_config['_template'] 注入到 notifier.send()。
         # 兼容矩阵详见 base.py:TEMPLATE_NAMES 周围注释。
-        template = rule.get('template', '') or 'full'
+        tpl_field = rule.get('template')
+        if isinstance(tpl_field, dict):
+            rule_ch_tpl = tpl_field.get(channel_id) or tpl_field.get(str(channel_id))
+            rule_global_tpl = ''  # 字典形态没有"全局"概念
+        elif isinstance(tpl_field, str) and tpl_field:
+            rule_ch_tpl = None
+            rule_global_tpl = tpl_field  # 标量形态:所有渠道共用
+        else:
+            rule_ch_tpl = None
+            rule_global_tpl = ''
+        ch_type_default = DEFAULT_TEMPLATE_BY_CHANNEL.get(channel['type'], 'full')
+        template = rule_ch_tpl or rule_global_tpl or ch_type_default
+        if template not in TEMPLATE_NAMES:
+            template = 'full'
         ch_config['_template'] = template
         if channel['type'] == 'email':
             if rule.get('customer_emails'):
