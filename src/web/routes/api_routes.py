@@ -471,9 +471,11 @@ def resend_targeted(sid: int):
 
     channel = get_by_id(channel_id)
     if not channel:
-        return jsonify({'code': 40400, 'message': '渠道不存在'}), 404
+        # 渠道 ID 在历史记录里但渠道已删除/不存在 → 提示用户具体信息
+        # (推送历史行保留 channel_name/channel_type,但 channels 表行已不在)
+        return jsonify({'code': 40400, 'message': f'渠道不存在(ID={channel_id}),可能已被删除'}), 404
     if not channel.get('is_active'):
-        return jsonify({'code': 40001, 'message': '渠道已停用'}), 400
+        return jsonify({'code': 40001, 'message': f'渠道已停用({channel.get("name", channel_id)}),无法推送'}), 400
 
     # ── 构建 relay_config（复用手动推送的配置）──
     # 先复制渠道配置
