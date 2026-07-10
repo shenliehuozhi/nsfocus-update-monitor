@@ -4027,22 +4027,32 @@ async function history(){
       html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
+        // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
+        // 拆出原渠道名(展示用)和客户名(代替 LEFT JOIN customers 的 d.customer_name)
+        const _SEP='|Nsf0cus|';
+        let _chanName = d.channel_name || '';
+        let _custName = '';
+        if (_chanName.includes(_SEP)) {
+          const _parts = _chanName.split(_SEP);
+          _chanName = _parts[0];
+          _custName = _parts.slice(1).join(_SEP);  // 客户名理论上不含分隔符,但 slice(1).join 防止嵌套
+        }
         // 渠道列: 机器人显示「🤖 类型: 渠道名」;email 显示「渠道名 (发件邮箱)」
         // 发件邮箱 sender 由 email notifier 写入;老数据/机器人渠道为空时 fallback 到 recipient
         let channelDisp;
         if (botTypes.has(d.channel_type)) {
-          channelDisp = `🤖 ${botTypeCN[d.channel_type]}: ${d.channel_name||'—'}`;
+          channelDisp = `🤖 ${botTypeCN[d.channel_type]}: ${_chanName||'—'}`;
         } else if (d.channel_type === 'email') {
           let senderEmail = d.sender || d.recipient || '';
-          channelDisp = senderEmail ? `${d.channel_name||'—'} (${senderEmail})` : (d.channel_name||'—');
+          channelDisp = senderEmail ? `${_chanName||'—'} (${senderEmail})` : (_chanName||'—');
         } else {
-          channelDisp = d.channel_name || '—';
+          channelDisp = _chanName || '—';
         }
-        // 收件人:email 渠道显示邮箱;机器人渠道没个人收件人,用 channel_name 替代,跟机器人名一致
-        let recipient = d.recipient || d.channel_name || '—';
+        // 收件人:email 渠道显示邮箱;机器人渠道没个人收件人,用 _chanName 替代,跟机器人名一致
+        let recipient = d.recipient || _chanName || '—';
         html += `<tr style="background:#f8f8f8">
             <td>${fmtTZ(d.sent_at||h.pushed_at||h.first_seen_at||'',true)}</td>
-            <td>${d.customer_name||'—'}</td>
+            <td>${_custName||d.customer_name||'—'}</td>
             <td>${h.product_name||''}</td>
             <td>${typeCN(h.package_type)}</td>
             <td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td>
@@ -4070,10 +4080,14 @@ function _renderRecentDeliveries(deliveries,range){
   // Aggregate: group by customer+product+type
   let agg={};
   deliveries.forEach(d=>{
+    // 2026-07-11: channel_name 可能含客户名, split 出原渠道名再聚合,避免渠道列变长
+    let _cn = d.channel_name || '';
+    const _idx = _cn.indexOf('|Nsf0cus|');
+    if (_idx >= 0) _cn = _cn.substring(0, _idx);
     let key=`${d.customer_name||'—'}|${d.product_name}|${d.package_type}`;
     if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:d.package_type,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
     agg[key].count++;
-    agg[key].channels.add(d.channel_name||d.channel_type);
+    agg[key].channels.add(_cn||d.channel_type);
     if(d.sent_at>agg[key].last)agg[key].last=d.sent_at;
   });
   let rows=Object.values(agg).sort((a,b)=>b.last.localeCompare(a.last)).slice(0,15).map(a=>{

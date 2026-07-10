@@ -261,6 +261,34 @@ CREATE TABLE IF NOT EXISTS delivery_log (
     retry_count INTEGER DEFAULT 0
 , recipient TEXT DEFAULT '');
 """
+# ── Delivery Log ────────────────────────────────────────────
+
+# 2026-07-11 channel_name 改造: 写入时拼上客户名
+# 格式: "<原渠道名>|Nsf0cus|<客户名>" (3 段,Nsf0cus 当分隔符)
+# 前端按此分隔符 split 取 [0] 是渠道名,[1] 是客户名
+# 优点: 不加列 / 不迁移老数据 / 删除客户后历史仍能看到名字
+_SEP = '|Nsf0cus|'
+
+
+def _compose_channel_name(channel_name: str, customer_id) -> str:
+    """log_delivery 内部用: 把客户名拼进 channel_name。
+
+    - customer_id 缺失 (None / 0 / ''): 不拼,原值返回
+    - 客户已被删 (CUSTOMER_GONE): 写 '[已删除]'
+    - 正常: 拼成 '<channel_name>|Nsf0cus|<customer_name>'
+
+    注意: 已经拼过的 (含 |Nsf0cus|) 不重复拼,避免嵌套。
+    """
+    if not customer_id:
+        return channel_name
+    if _SEP in (channel_name or ''):
+        # 已拼过,跳过 (幂等保护)
+        return channel_name
+    from src.models.database import query as _q
+    rows = _q("SELECT name FROM customers WHERE id = ?", (customer_id,))
+    if rows:
+        return f"{channel_name}{_SEP}{rows[0]['name']}"
+    return f"{channel_name}{_SEP}[已删除]"
 
 
 def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
@@ -268,6 +296,8 @@ def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
                  status: str = 'pending', error: str = '',
                  rule_id: int = None, recipient: str = '', sender: str = '') -> int:
     from src.models.database import execute
+    # 2026-07-11: 写入时把客户名拼进 channel_name (详见 _compose_channel_name)
+    channel_name = _compose_channel_name(channel_name, customer_id)
     sent_at = None
     if status == 'sent':
         from datetime import datetime
