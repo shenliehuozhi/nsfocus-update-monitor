@@ -22,60 +22,14 @@ logger = get_logger('email')
 ATTACHMENT_MAX_SIZE = int(os.getenv('MONITOR_ATTACHMENT_MAX_SIZE', '10485760'))
 
 
-# ── Test log writers ───────────────────────────────────────────────
-
-class TestLogWriter:
-    """Append-only writer that records the SMTP transaction to a file."""
-
-    def __init__(self, channel_id: int, channel_name: str, log_path: str = None):
-        self.channel_id = channel_id
-        self.channel_name = channel_name
-        self.path = log_path if log_path else f'/tmp/email_test_{channel_id}.log'
-        self.started_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        self.lines: list[str] = []
-        try:
-            with open(self.path, 'w', encoding='utf-8') as f:
-                f.write(f'=== Email Test Log: {channel_name} (channel_id={channel_id}) ===\n')
-                f.write(f'Started: {self.started_at}\n')
-                f.write('=' * 60 + '\n')
-        except OSError as e:
-            logger.warning(f'Failed to initialize test log file {self.path}: {e}')
-
-    def _append(self, level: str, msg: str):
-        ts = datetime.now().strftime('%H:%M:%S.%f')[:-3]
-        line = f'[{ts}] [{level:5s}] {msg}'
-        self.lines.append(line)
-        try:
-            with open(self.path, 'a', encoding='utf-8') as f:
-                f.write(line + '\n')
-        except OSError:
-            pass
-
-    def info(self, msg: str):
-        self._append('INFO', msg)
-
-    def warn(self, msg: str):
-        self._append('WARN', msg)
-
-    def error(self, msg: str):
-        self._append('ERROR', msg)
-
-    def ok(self, msg: str):
-        self._append('OK', msg)
-
-
-class PushLogWriter(TestLogWriter):
-    """Variant of TestLogWriter used by manual push flows."""
-    pass
-
-
-class _NullLogWriter:
-    """No-op writer for production notifications."""
-
-    def info(self, msg: str): pass
-    def warn(self, msg: str): pass
-    def error(self, msg: str): pass
-    def ok(self, msg: str): pass
+# ── Test log writers ────────────────────────────────────────────────
+# Imported from src.notifiers._log so all channels (email + robot) share
+# the same writer API (info/warn/error/ok + disk append + in-memory lines).
+from src.notifiers._log import (  # noqa: F401  re-exported
+    TestLogWriter,
+    PushLogWriter,
+    _NullLogWriter,
+)
 
 
 class EmailNotifier(BaseNotifier):

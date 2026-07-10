@@ -116,7 +116,7 @@ def test_channel(ch_id: int):
     from src.models.channel import get_by_id
     from src.notifiers.base import NotificationMessage
     from src.notifiers.router import NOTIFIERS
-    from src.notifiers.email import TestLogWriter
+    from src.notifiers._log import TestLogWriter
 
     ch = get_by_id(ch_id)
     if not ch:
@@ -138,21 +138,29 @@ def test_channel(ch_id: int):
     if not notifier:
         return jsonify({'code': 40001, 'message': f'Unknown channel type: {ch["type"]}'}), 400
 
-    # Only email currently emits per-step traces; other notifiers get the null writer.
-    if ch['type'] == 'email':
-        log_writer = TestLogWriter(ch_id, ch.get('name', ''))
-        ch_cfg = dict(ch['config'])
-        ch_cfg['_test_log_writer'] = log_writer
-        result = notifier.send(test_msg, ch_cfg)
+    # 5 个渠道都注入 log_writer 到 config._test_log_writer。
+    # log 路径按渠道分文件 /tmp/<type>_test_<id>.log,跟 email 同款机制。
+    # 各 send() 内用 get_log_writer(config, type, ch_id, ch_name) 自动拿到对应 writer
+    # (没注入 = noop,生产路径不受影响)。
+    ch_type = ch['type']
+    if ch_type == 'email':
+        log_path = f'/tmp/email_test_{ch_id}.log'
     else:
-        result = notifier.send(test_msg, ch['config'])
+        log_path = f'/tmp/{ch_type}_test_{ch_id}.log'
+    log_writer = TestLogWriter(ch_id, ch.get('name', ''), log_path=log_path,
+                              header=f'{ch_type.capitalize()} Test Log')
+    ch_cfg = dict(ch['config'])
+    ch_cfg['_test_log_writer'] = log_writer
+    ch_cfg['_channel_id'] = ch_id
+    # 实际推送模拟(仅测试)
+    result = notifier.send(test_msg, ch_cfg)
 
     return jsonify({
         'code': 0,
         'data': {
             'success': result.success,
             'error': result.error_message,
-            'log_path': f'/tmp/email_test_{ch_id}.log' if ch['type'] == 'email' else None,
+            'log_path': log_path,
         }
     })
 
@@ -186,20 +194,28 @@ def get_channel_test_log(ch_id: int):
 @bp_channels.route('/log-file', methods=['GET'])
 @require_auth
 def read_log_file():
-    """Generic log file reader restricted to whitelisted email log paths.
+    """Generic log file reader restricted to whitelisted test/push log paths.
 
-    Used by the push result modal to display the SMTP trace produced during
-    a manual push (which lives at /tmp/email_push_{channel_id}.log, a path
-    the frontend receives as part of the push response).
+    Used by the push result modal AND the channel 测试按钮 to display the
+    in-flight trace. Both live under /tmp with names matching the whitelist:
 
-    Path traversal protection: only allow files under /tmp whose name
-    matches the email_test_*.log or email_push_*.log pattern.
+      /tmp/email_test_<id>.log      (legacy email 测试)
+      /tmp/<type>_test_<id>.log     (dingtalk/feishu/wecom/apprise 测试)
+      /tmp/email_push_<id>_<ts>.log (legacy email push)
+      /tmp/<type>_push_<id>_<ts>.log(future per-channel push)
+
+    Where <type> is one of: dingtalk, feishu, wecom, apprise, email.
+
+    Path traversal protection: only allow files under /tmp whose name matches
+    this exact pattern.
     """
     import os
     import re
     path = request.args.get('path', '')
-    # Whitelist: must be exactly /tmp/email_{test,push}_<digits>.log
-    if not re.fullmatch(r'/tmp/email_(test|push)_\d+\.log', path):
+    # Whitelist: /tmp/(<type>)_(test|push)_(<id>).log or (test|push)_(<id>_<ts>).log
+    if not re.fullmatch(
+        r'/tmp/(email|dingtalk|feishu|wecom|apprise)_(test|push)_[\d_]+\.log',
+        path):
         return jsonify({'code': 40001, 'message': '非法的日志文件路径'}), 400
     if not os.path.exists(path):
         return jsonify({'code': 40400, 'message': '日志文件不存在'}), 404

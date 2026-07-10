@@ -3,7 +3,12 @@
 import json
 import requests
 
+from src.core.logger import get_logger
+from src.notifiers._log import get_log_writer
 from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _sign_url
+
+
+logger = get_logger('feishu')
 
 
 class FeishuNotifier(BaseNotifier):
@@ -12,17 +17,27 @@ class FeishuNotifier(BaseNotifier):
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
         secret = config.get('secret', '')
+
+        log = get_log_writer(config, 'feishu',
+                             config.get('_channel_id', 0),
+                             config.get('name', ''))
+        log.info(f'开始推送 product={message.product_name} v={message.package_version} file={message.file_name}')
+        log.info(f'  urgency={message.urgency} is_rollback={message.is_rollback} has_secret={bool(secret)}')
+
         if not webhook_url:
+            log.error('webhook_url 为空,推送终止')
             return DeliveryResult(False, 'feishu', '', 'Missing webhook_url')
 
         # 飞书机器人后台 3 选 1 安全设置:签名校验 / 自定义关键词 / IP 白名单
         # 仅当后台启用了「签名校验」且本项目填了 secret 时,才能成功推送。
         # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 秒 + base64 raw (不 quote)。
         url = _sign_url(webhook_url, secret, timestamp_unit='s', url_quote=False)
+        log.info(f'  signed URL tail: ...{url[-60:]}')
 
         # 飞书使用富文本 (post) 格式 — 一次可能返回多个 payload(长描述分多条)
         payloads = self._build_post(message)
         name = config.get('name', '')
+        log.info(f'  payloads={len(payloads)}, sizes={[len(json.dumps(p, ensure_ascii=False).encode("utf-8")) for p in payloads]}B')
 
         for i, content in enumerate(payloads):
             payload = {
@@ -36,13 +51,18 @@ class FeishuNotifier(BaseNotifier):
             try:
                 resp = requests.post(url, json=payload, timeout=10)
                 result = resp.json()
+                log.info(f'  HTTP {resp.status_code}  code={result.get("code")} msg={result.get("msg", "")}')
                 if result.get('code') == 0 or result.get('StatusCode') == 0:
+                    log.ok(f'payload {i+1}/{len(payloads)} sent')
                     continue
+                log.error(f'Feishu error [{i+1}/{len(payloads)}]: {result.get("msg", "unknown")}')
                 return DeliveryResult(False, 'feishu', name,
                                       f"Feishu error [{i+1}/{len(payloads)}]: {result.get('msg', 'unknown')}")
             except Exception as e:
+                log.error(f'HTTP exception: {type(e).__name__}: {e}')
                 return DeliveryResult(False, 'feishu', name, str(e))
 
+        log.ok(f'全部 {len(payloads)} 条推送成功')
         return DeliveryResult(True, 'feishu', name,
                               f"Sent {len(payloads)} message(s)" if len(payloads) > 1 else '')
 

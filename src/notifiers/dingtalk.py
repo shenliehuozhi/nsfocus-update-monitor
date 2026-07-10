@@ -5,7 +5,12 @@ import re
 
 import requests
 
+from src.core.logger import get_logger
+from src.notifiers._log import get_log_writer
 from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_bodies, _sign_url
+
+
+logger = get_logger('dingtalk')
 
 
 class DingtalkNotifier(BaseNotifier):
@@ -100,20 +105,31 @@ class DingtalkNotifier(BaseNotifier):
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
         secret = config.get('secret', '')
+
+        # 测试日志:测试按钮触发的请求注入 _test_log_writer;其他场景 noop。
+        # 5 个机器人 notifier 都按此模式记录,可读 /tmp/<type>_test_<id>.log。
+        # log 必须早于 early-return,这样 missing webhook_url 也能看到诊断信息。
+        log = get_log_writer(config, 'dingtalk',
+                             config.get('_channel_id', 0),
+                             config.get('name', ''))
         if not webhook_url:
+            log.error('webhook_url 为空,推送终止')
             return DeliveryResult(False, 'dingtalk', '', 'Missing webhook_url')
 
+        log.info(f'开始推送 product={message.product_name} v={message.package_version} file={message.file_name}')
+        log.info(f'  urgency={message.urgency} is_rollback={message.is_rollback} has_secret={bool(secret)}')
         # 钉钉机器人后台 3 选 1 安全设置:加签 / 自定义关键词 / IP 白名单
         # 仅当后台启用了「加签」且本项目填了 secret 时,才能成功推送。
         # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 毫秒 + base64 url-quote。
         url = _sign_url(webhook_url, secret, timestamp_unit='ms', url_quote=True)
-        # 钉钉 markdown 客户端不识别 '\n' 作为换行,使用 '<br/>' 强制换行
+        log.info(f'  signed URL tail: ...{url[-60:]}')
         bodies = _format_markdown_bodies(message, message.is_rollback, line_break='<br/>')
         # 给 title 一行加 <font color> + 给每个 meta 行 label 染橙色
         bodies = [self._wrap_labels_with_color(self._wrap_title_with_color(b, message))
                   for b in bodies]
         name = config.get('name', '')
         title = f'{"⚠️ 撤回" if message.is_rollback else "🔔 升级通知"} {message.product_name} {message.package_version}'
+        log.info(f'  parts={len(bodies)}, sizes={[len(b.encode("utf-8")) for b in bodies]}B')
 
         for i, body in enumerate(bodies):
             payload = {
@@ -126,13 +142,18 @@ class DingtalkNotifier(BaseNotifier):
             try:
                 resp = requests.post(url, json=payload, timeout=10)
                 result = resp.json()
+                log.info(f'  HTTP {resp.status_code}  errcode={result.get("errcode")} errmsg={result.get("errmsg", "")}')
                 if result.get('errcode') != 0:
+                    log.error(f'DingTalk error [{i+1}/{len(bodies)}]: {result.get("errmsg", "unknown")}')
                     return DeliveryResult(False, 'dingtalk', name,
                                           f"Dingtalk error [{i+1}/{len(bodies)}]: {result.get('errmsg', 'unknown')}")
+                log.ok(f'part {i+1}/{len(bodies)} sent ({len(body.encode("utf-8"))}B)')
             except Exception as e:
+                log.error(f'HTTP exception: {type(e).__name__}: {e}')
                 return DeliveryResult(False, 'dingtalk', name,
                                       f"Dingtalk error [{i+1}/{len(bodies)}]: {str(e)}")
 
+        log.ok(f'全部 {len(bodies)} 条推送成功')
         return DeliveryResult(True, 'dingtalk', name,
                               f"Sent {len(bodies)} message(s)" if len(bodies) > 1 else '')
 

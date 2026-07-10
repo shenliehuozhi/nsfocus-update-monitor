@@ -475,6 +475,142 @@ def test_feishu_strips_backticks_from_value_text():
     assert '33.41M' in full or '35.03M' in full  # size_display formatting
 
 
+# =======================================================================
+# TestLogWriter / 机器人 log writer 行为测试 (2026-07-10 加频道覆盖)
+# =======================================================================
+
+from src.notifiers._log import TestLogWriter, _NullLogWriter, get_log_writer
+
+
+def test_test_log_writer_writes_to_disk(tmp_path, monkeypatch):
+    """TestLogWriter 能正确写文件 + in-memory 缓存(给前端 /api/channels/<id>/test-log 读)。"""
+    log_path = str(tmp_path / 'test_1.log')
+    writer = TestLogWriter(42, '测试渠道', log_path=log_path,
+                          header='Test Log')
+    writer.info('info message')
+    writer.warn('warning message')
+    writer.error('error message')
+    writer.ok('success')
+    # In-memory lines
+    assert any('[INFO ] info message' in line for line in writer.lines)
+    assert any('[WARN ] warning message' in line for line in writer.lines)
+    assert any('[ERROR] error message' in line for line in writer.lines)
+    assert any('[OK   ] success' in line for line in writer.lines)
+    # On disk
+    content = open(log_path, encoding='utf-8').read()
+    assert '开始' in content or 'Started' in content
+    assert 'info message' in content
+    assert 'success' in content
+
+
+def test_test_log_writer_handles_disk_error(monkeypatch):
+    """TestLogWriter 在 OSError(磁盘满/无权限)时仍保留内存 lines,不抛。"""
+    writer = TestLogWriter(1, 'test', log_path='/nonexistent/path/that/cannot/be/written/xx.log')
+    # 不应抛异常
+    writer.info('mem-only message')
+    assert any('mem-only message' in line for line in writer.lines)
+
+
+def test_get_log_writer_returns_null_when_disabled():
+    """config['_log_disabled']=True 或没 _test_log_writer 时返回 _NullLogWriter。"""
+    null_w1 = get_log_writer({}, 'dingtalk', 1, 'name')
+    assert isinstance(null_w1, _NullLogWriter)
+    null_w2 = get_log_writer({'_log_disabled': True}, 'dingtalk', 1, 'name')
+    assert isinstance(null_w2, _NullLogWriter)
+
+
+def test_get_log_writer_returns_passed_writer():
+    """config['_test_log_writer'] 显式传入时原样返回(允许 API 注入)。"""
+    custom = TestLogWriter(42, 'name', log_path='/tmp/test_42.log',
+                           header='Test Log')
+    out = get_log_writer({'_test_log_writer': custom}, 'dingtalk', 42, 'name')
+    assert out is custom
+
+
+def test_null_log_writer_silently_drops():
+    """_NullLogWriter.info/warn/error/ok 全是 noop,不抛。"""
+    null_w = _NullLogWriter()
+    for fn in (null_w.info, null_w.warn, null_w.error, null_w.ok):
+        fn('test message')  # 无异常
+
+
+def test_dingtalk_send_writes_to_log_writer(monkeypatch):
+    """DingTalk 不传 webhook_url 时应该走 log_writer.error 路径(并返回 False)。
+
+    验证:_test_log_writer 被注入后,失败时 log.error 被调用。
+    """
+    from src.notifiers.dingtalk import DingtalkNotifier
+    msg = NotificationMessage(
+        title='t', product_name='X', version_branch='', package_type='pkg',
+        file_name='x.bin', package_version='v1', md5_hash='a'*32,
+        file_size=100, description_summary='', description_full='',
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=[], chain_url='',
+    )
+    # 故意 missing webhook_url
+    import os
+    log_path = '/tmp/test_dingtalk_missing.log'
+    if os.path.exists(log_path):
+        os.unlink(log_path)
+    writer = TestLogWriter(99, 'test', log_path=log_path, header='Test Log')
+    result = DingtalkNotifier().send(msg, {
+        'webhook_url': '',  # missing
+        'secret': '',
+        'name': '钉钉',
+        '_test_log_writer': writer,
+        '_channel_id': 99,
+    })
+    assert not result.success
+    content = open(log_path, encoding='utf-8').read()
+    # Verify: webhook_url missing → log records "webhook_url 为空"
+    assert 'webhook_url 为空' in content
+    # Verify: log also captures channel name in header
+    assert '钉钉' in content or 'test' in content  # header includes channel_name 'test'
+
+
+def test_feishu_send_writes_to_log_writer(monkeypatch, tmp_path):
+    """FeiShu 同样: 注入 log_writer 后,失败/成功都写内容。"""
+    from src.notifiers.feishu import FeishuNotifier
+
+    msg = NotificationMessage(
+        title='t', product_name='X', version_branch='', package_type='pkg',
+        file_name='x.bin', package_version='v1', md5_hash='a'*32,
+        file_size=100, description_summary='', description_full='',
+        download_url='', source_url='', published_at='', source_id=0,
+        chain=[], chain_url='',
+    )
+    log_path = str(tmp_path / 'fs_test.log')
+    writer = TestLogWriter(11, '飞书', log_path=log_path, header='Test Log')
+
+    # mock requests.post to always return 200
+    import requests as rq
+    orig = rq.post
+    class FakeResp:
+        status_code = 200
+        def json(self): return {'code': 0, 'msg': 'success'}
+    rq.post = lambda *a, **k: FakeResp()
+    try:
+        result = FeishuNotifier().send(msg, {
+            'webhook_url': 'https://open.feishu.cn/open-apis/bot/v2/hook/FAKE',
+            'secret': '',
+            'name': '飞书-test',
+            '_test_log_writer': writer,
+            '_channel_id': 11,
+        })
+    finally:
+        rq.post = orig
+
+    content = open(log_path, encoding='utf-8').read()
+    # log should record the dispatch attempt with URL + HTTP status
+    assert '开始推送' in content
+    assert 'HTTP 200' in content
+    # channel 名称写到 header
+    assert '飞书' in content  # channel_name '飞书' used in TestLogWriter construction
+
+
+
+
+
 
 
 

@@ -2,7 +2,12 @@
 
 import requests
 
+from src.core.logger import get_logger
+from src.notifiers._log import get_log_writer
 from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult
+
+
+logger = get_logger('apprise')
 
 
 class AppriseNotifier(BaseNotifier):
@@ -10,19 +15,29 @@ class AppriseNotifier(BaseNotifier):
 
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
-        if not webhook_url:
-            return DeliveryResult(False, 'apprise', '', 'Missing webhook_url')
 
+        log = get_log_writer(config, 'apprise',
+                             config.get('_channel_id', 0),
+                             config.get('name', ''))
+        log.info(f'开始推送 product={message.product_name} v={message.package_version}')
+        if not webhook_url:
+            log.error('webhook_url 为空,推送终止')
+            return DeliveryResult(False, 'apprise', '', 'Missing webhook_url')
         body = self._build_body(message)
+        body_bytes = len(str(body).encode('utf-8'))
+        log.info(f'  payload bytes={body_bytes}')
 
         try:
             resp = requests.post(webhook_url, json=body, timeout=15)
+            log.info(f'  HTTP {resp.status_code}  text={resp.text[:80]}')
             if resp.status_code in (200, 200, 201):
+                log.ok('推送成功')
                 return DeliveryResult(True, 'apprise', config.get('name', ''))
-            else:
-                return DeliveryResult(False, 'apprise', config.get('name', ''),
-                                     f'HTTP {resp.status_code}: {resp.text[:100]}')
+            log.error(f'HTTP {resp.status_code}')
+            return DeliveryResult(False, 'apprise', config.get('name', ''),
+                                 f'HTTP {resp.status_code}: {resp.text[:100]}')
         except Exception as e:
+            log.error(f'HTTP exception: {type(e).__name__}: {e}')
             return DeliveryResult(False, 'apprise', config.get('name', ''), str(e))
 
     def _build_body(self, msg: NotificationMessage) -> dict:

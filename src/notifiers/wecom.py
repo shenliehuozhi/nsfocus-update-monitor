@@ -3,7 +3,12 @@
 import json
 import requests
 
+from src.core.logger import get_logger
+from src.notifiers._log import get_log_writer
 from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _format_markdown_body
+
+
+logger = get_logger('wecom')
 
 
 class WecomNotifier(BaseNotifier):
@@ -11,7 +16,13 @@ class WecomNotifier(BaseNotifier):
 
     def send(self, message: NotificationMessage, config: dict) -> DeliveryResult:
         webhook_url = config.get('webhook_url', '')
+
+        log = get_log_writer(config, 'wecom',
+                             config.get('_channel_id', 0),
+                             config.get('name', ''))
+        log.info(f'开始推送 product={message.product_name} v={message.package_version} file={message.file_name}')
         if not webhook_url:
+            log.error('webhook_url 为空,推送终止')
             return DeliveryResult(False, 'wecom', '', 'Missing webhook_url')
 
         name = config.get('name', '')
@@ -30,6 +41,7 @@ class WecomNotifier(BaseNotifier):
         else:
             content = message.description_full or ''
             if not content:
+                log.error('消息体为空 (product_name 缺 + description_full 缺)')
                 return DeliveryResult(False, 'wecom', name, 'Empty message body')
 
         # 按 4096 字节硬限分割（WeCom 单条 markdown 上限）
@@ -39,8 +51,8 @@ class WecomNotifier(BaseNotifier):
             bodies = [content]
         else:
             bodies = self._split_bodies(content, MAX_BYTES)
+        log.info(f'  parts={len(bodies)}, sizes={[len(b.encode("utf-8")) for b in bodies]}B')
 
-        name = config.get('name', '')
         for i, body in enumerate(bodies):
             payload = {
                 'msgtype': 'markdown',
@@ -49,13 +61,18 @@ class WecomNotifier(BaseNotifier):
             try:
                 resp = requests.post(webhook_url, json=payload, timeout=10)
                 result = resp.json()
+                log.info(f'  HTTP {resp.status_code}  errcode={result.get("errcode")} errmsg={result.get("errmsg", "")}')
                 if result.get('errcode') != 0:
+                    log.error(f'Wecom error [{i+1}/{len(bodies)}]: {result.get("errmsg", "unknown")}')
                     return DeliveryResult(False, 'wecom', name,
                                          f"Wecom error [{i+1}/{len(bodies)}]: {result.get('errmsg', 'unknown')}")
+                log.ok(f'part {i+1}/{len(bodies)} sent')
             except Exception as e:
+                log.error(f'HTTP exception: {type(e).__name__}: {e}')
                 return DeliveryResult(False, 'wecom', name,
                                       f"Wecom error [{i+1}/{len(bodies)}]: {str(e)}")
 
+        log.ok(f'全部 {len(bodies)} 条推送成功')
         return DeliveryResult(True, 'wecom', name,
                               f"Sent {len(bodies)} message(s)" if len(bodies) > 1 else '')
 
