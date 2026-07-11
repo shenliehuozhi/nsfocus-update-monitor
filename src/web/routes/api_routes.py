@@ -328,7 +328,13 @@ def delete_customer(cid: int):
         msg = f'客户「{cust_name}」存在以下关联，无法删除：\n  • ' + '\n  • '.join(msgs) + '\n\n请先删除或解绑相关订阅规则后再试。'
         return jsonify({'code': 40900, 'message': msg}), 409
 
-    delete(cid)
+    # 并发兜底: API 层先 check 通过后到 delete 之间,可能有新引用插入
+    # 模型层 customer.py:delete 会抛 ValueError,这里接住统一报 409
+    try:
+        delete(cid)
+    except ValueError as e:
+        return jsonify({'code': 40900, 'message': f'客户「{cust_name}」存在关联,无法删除:{e}'}), 409
+
     _audit('customer_delete', {'id': cid})
     return jsonify({'code': 0})
 
