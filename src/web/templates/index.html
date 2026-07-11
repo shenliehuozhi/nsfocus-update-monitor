@@ -3802,7 +3802,7 @@ const CHAN_TPL_OPTIONS={
 };
 // 2026-07-11: select option 悬停说明 (跟 §32.4 弹窗模板说明表格互补)
 const TPL_OPTION_TITLE={
-  'full':         'A · 完整: 标题+元信息+描述,超 4KB 自动切多段。钉钉/企微/邮箱默认',
+  'full':         'A · 完整: 标题+元信息+描述,超 4KB 自动切多段。钉钉/企微默认',
   'strip':        'B · 智能裁剪: 优先完整描述 → 超长剥英文段 → 仍超则只保留 attention 关键行 → 兜底只 head+链接',
   'brief':        'C · 极简: 只 head + 链接,描述完全省略,适合「通知到人即可,详情自己点」的内部群',
   'feishu_full':  'D · 飞书全量: 飞书专属单段展示,放宽到 30KB;飞书默认',
@@ -3906,10 +3906,11 @@ async function openRModal(id){
 
     <div class="form-section" style="background:#f6f8fa"><div class="form-section-title">通知渠道</div>
     <!-- 2026-07-11: 4 模板说明 (A=完整 / B=智能裁剪 / C=极简 / D=飞书全量) -->
+    <!-- 仅钉钉/企微/飞书 走模板机制;邮箱是 HTML 全量单封,不走这 4 档 -->
     <div style="margin-bottom:10px;padding:8px 10px;background:#fff;border:1px solid #e5e7eb;border-radius:6px;font-size:11px;color:#374151;line-height:1.6">
-      <div style="font-weight:600;margin-bottom:4px;color:#111827">📝 模板说明 (悬停 select 选项可看详情)</div>
+      <div style="font-weight:600;margin-bottom:4px;color:#111827">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">
-        <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微/邮箱默认</div>
+        <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微默认</div>
         <div><b>B · 智能裁剪</b></div><div>优先完整描述 → 超长自动剥英文段 → 仍超则只保留 attention 关键行 → 兜底只 head+链接</div>
         <div><b>C · 极简</b></div><div>只 head + 链接,描述完全省略,适合「通知到人即可,详情自己点」的内部群</div>
         <div><b>D · 飞书全量</b></div><div>飞书专属单段展示,放宽到 30KB;飞书默认</div>
