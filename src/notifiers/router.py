@@ -210,40 +210,47 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
 
         # Build channel config with rule-level overrides
         ch_config = dict(channel['config'])
-        # NOTE: template 字段语义(2026-07-10 §32.4 改造后):
-        #   - 字典形态 {"<channel_id>":"<template_name>"} → 按渠道精确选择
-        #   - 标量形态 "full" / "strip" / "brief" / "feishu_full" → 所有渠道共用(老数据)
-        #   - 空 / 非法 → 走 DEFAULT_TEMPLATE_BY_CHANNEL[channel.type]
-        # 通过 ch_config['_template'] 注入到 notifier.send()。
-        # 兼容矩阵详见 base.py:TEMPLATE_NAMES 周围注释。
-        tpl_field = rule.get('template')
-        if isinstance(tpl_field, dict):
-            rule_ch_tpl = tpl_field.get(channel_id) or tpl_field.get(str(channel_id))
-            rule_global_tpl = ''  # 字典形态没有"全局"概念
-        elif isinstance(tpl_field, str) and tpl_field:
-            rule_ch_tpl = None
-            rule_global_tpl = tpl_field  # 标量形态:所有渠道共用
+        # 2026-07-11 per-channel 字段 fallback 链 (rule_channels → subscription_rules → customers → DEFAULT)
+        # binding = rule_channels 那行 (包含 per-channel 字段)
+        # rule = subscription_rules 那行 (含全局 customer_emails / template 字典)
+        # rule_template 是 _parse_rule 后可能为 dict 或 str
+        # ── 模板选择 ──
+        rc_template = (binding.get('template') or '').strip()
+        rule_tpl_field = rule.get('template')
+        if isinstance(rule_tpl_field, dict):
+            rule_ch_tpl = rule_tpl_field.get(channel_id) or rule_tpl_field.get(str(channel_id)) or ''
+        elif isinstance(rule_tpl_field, str) and rule_tpl_field:
+            rule_ch_tpl = rule_tpl_field  # 老标量形态:所有渠道共用
         else:
-            rule_ch_tpl = None
-            rule_global_tpl = ''
+            rule_ch_tpl = ''
         ch_type_default = DEFAULT_TEMPLATE_BY_CHANNEL.get(channel['type'], 'full')
-        template = rule_ch_tpl or rule_global_tpl or ch_type_default
+        template = rc_template or rule_ch_tpl or ch_type_default
         if template not in TEMPLATE_NAMES:
             template = 'full'
         ch_config['_template'] = template
+
         if channel['type'] == 'email':
-            if rule.get('customer_emails'):
+            # 收件人: per-channel (rule_channels.customer_emails) → 全局 (rule.customer_emails) → 不设
+            rc_emails = (binding.get('customer_emails') or '').strip()
+            if rc_emails:
+                ch_config['rule_emails'] = rc_emails
+            elif rule.get('customer_emails'):
                 ch_config['rule_emails'] = rule['customer_emails']
-            # Attachment size: read from customer only (per-customer setting).
-            # Falls back to global default when customer is unset (0).
-            cust_id = binding.get('customer_id', 0)
-            if cust_id:
-                from src.models.database import query as _q
-                _crow = _q("SELECT attachment_max_mb FROM customers WHERE id=?", (cust_id,))
-                if _crow:
-                    customer_attach_mb = int(_crow[0].get('attachment_max_mb') or 0)
-                    if customer_attach_mb > 0:
-                        ch_config['attachment_max_mb'] = str(customer_attach_mb)
+            # 附件大小: per-channel (rule_channels.attachment_max_mb)
+            #          → per-customer (customers.attachment_max_mb)
+            #          → 不设 (用 email.py 默认 ATTACHMENT_MAX_SIZE)
+            rc_attach = int(binding.get('attachment_max_mb') or 0)
+            if rc_attach > 0:
+                ch_config['attachment_max_mb'] = str(rc_attach)
+            else:
+                cust_id = binding.get('customer_id', 0)
+                if cust_id:
+                    from src.models.database import query as _q
+                    _crow = _q("SELECT attachment_max_mb FROM customers WHERE id=?", (cust_id,))
+                    if _crow:
+                        customer_attach_mb = int(_crow[0].get('attachment_max_mb') or 0)
+                        if customer_attach_mb > 0:
+                            ch_config['attachment_max_mb'] = str(customer_attach_mb)
             # Inject rate-limit context
             ch_config['_channel_id'] = channel_id
             ch_config['_customer_id'] = binding.get('customer_id', 0)

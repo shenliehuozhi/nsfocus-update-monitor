@@ -112,7 +112,19 @@ def list_rules(user_id: int = None) -> list:
         rows = query("SELECT * FROM subscription_rules ORDER BY name")
     rules = [_parse_rule(r) for r in rows]
     for rule in rules:
-        ch_rows = query("SELECT channel_id FROM rule_channels WHERE rule_id = ?", (rule['id'],))
+        ch_rows = query("SELECT * FROM rule_channels WHERE rule_id = ?", (rule['id'],))
+        # 2026-07-11: 返回完整 rule_channels 行 (per-channel 字段),前端编辑规则时回填
+        rule['channels'] = [
+            {
+                'channel_id': r['channel_id'],
+                'customer_id': r['customer_id'],
+                'customer_emails': r.get('customer_emails') or '',
+                'attachment_max_mb': r.get('attachment_max_mb') or 0,
+                'template': r.get('template') or '',
+                'extras': r.get('extras') or '{}',
+            }
+            for r in ch_rows if r.get('channel_id')
+        ]
         channel_ids = [r['channel_id'] for r in ch_rows if r.get('channel_id')]
         # 解析每个渠道的通知对象：email显示邮箱，机器人显示name
         notification_targets = []
@@ -127,7 +139,6 @@ def list_rules(user_id: int = None) -> list:
                 else:
                     type_label = {'wecom': '企业微信', 'dingtalk': '钉钉', 'feishu': '飞书'}.get(ch_type, ch_type)
                     notification_targets.append(f"{ch.get('name', '')}({type_label})")
-        rule['channels'] = channel_ids
         # 通知对象：优先取规则的 customer_emails（邮件通知对象），没有则取渠道名（机器人类型）
         rule['notification_targets'] = [e.strip() for e in (rule.get('customer_emails') or '').split(',') if e.strip()]
         if not rule['notification_targets']:
@@ -214,15 +225,38 @@ CREATE TABLE IF NOT EXISTS rule_channels (
     rule_id INTEGER NOT NULL REFERENCES subscription_rules(id) ON DELETE CASCADE,
     channel_id INTEGER REFERENCES channels(id),
     customer_id INTEGER REFERENCES customers(id)
-)
+, customer_emails TEXT DEFAULT '', attachment_max_mb INTEGER DEFAULT 0, template TEXT DEFAULT '', extras TEXT DEFAULT '{}');
 """
 
 
-def bind_channel(rule_id: int, channel_id: int = None, customer_id: int = None) -> int:
+# 2026-07-11: rule_channels 加 4 个 per-channel 字段
+#   customer_emails: per-channel 收件人 (替代全局 subscription_rules.customer_emails)
+#   attachment_max_mb: per-channel 附件大小限制 (替代 customers.attachment_max_mb)
+#   template: per-channel 模板 (替代全局 subscription_rules.template JSON dict)
+#   extras: JSON 兜底字段,以后新加 per-channel 属性用它,不用再 ALTER
+# 老数据兼容: 新列默认 '', 0, '', '{}',发送时 4 级 fallback 自动兼容
+def _migrate_rule_channels_per_channel(db):
+    cols = [r[1] for r in db.execute("PRAGMA table_info(rule_channels)")]
+    if 'customer_emails' not in cols:
+        db.execute("ALTER TABLE rule_channels ADD COLUMN customer_emails TEXT DEFAULT ''")
+    if 'attachment_max_mb' not in cols:
+        db.execute("ALTER TABLE rule_channels ADD COLUMN attachment_max_mb INTEGER DEFAULT 0")
+    if 'template' not in cols:
+        db.execute("ALTER TABLE rule_channels ADD COLUMN template TEXT DEFAULT ''")
+    if 'extras' not in cols:
+        db.execute("ALTER TABLE rule_channels ADD COLUMN extras TEXT DEFAULT '{}'")
+
+
+def bind_channel(rule_id: int, channel_id: int = None, customer_id: int = None,
+                 customer_emails: str = '', attachment_max_mb: int = 0,
+                 template: str = '', extras: str = '{}') -> int:
     from src.models.database import execute
     return execute(
-        "INSERT INTO rule_channels (rule_id, channel_id, customer_id) VALUES (?, ?, ?)",
-        (rule_id, channel_id, customer_id)
+        """INSERT INTO rule_channels (rule_id, channel_id, customer_id,
+           customer_emails, attachment_max_mb, template, extras)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+        (rule_id, channel_id, customer_id, customer_emails,
+         attachment_max_mb, template, extras)
     )
 
 
@@ -543,6 +577,8 @@ def create_tables(db):
         db.execute("ALTER TABLE subscription_rules ADD COLUMN attachment_max_mb INTEGER DEFAULT 0")
     except Exception:
         pass
+    # 2026-07-11: rule_channels per-channel 字段 (4 列)
+    _migrate_rule_channels_per_channel(db)
 
 
 # ── Digest Queue ──────────────────────────────────────────────

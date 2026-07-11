@@ -358,8 +358,23 @@ def create_subscription():
     from src.models.subscription import create_rule, bind_channel, unbind_channel
     rid = create_rule(g.user_id, **data)
     unbind_channel(rid)
-    for ch_id in channels:
-        bind_channel(rid, channel_id=ch_id)
+    # channels 兼容两种格式:
+    #   老: [channel_id, channel_id, ...]  (数字 list)
+    #   新: [{channel_id, customer_id, customer_emails, attachment_max_mb, template, extras}, ...]  (对象 list)
+    for ch in channels:
+        if isinstance(ch, dict):
+            bind_channel(
+                rid,
+                channel_id=ch.get('channel_id'),
+                customer_id=ch.get('customer_id'),
+                customer_emails=ch.get('customer_emails', '') or '',
+                attachment_max_mb=int(ch.get('attachment_max_mb') or 0),
+                template=ch.get('template', '') or '',
+                extras=ch.get('extras', '{}') or '{}',
+            )
+        else:
+            # 老格式: 纯数字 channel_id
+            bind_channel(rid, channel_id=ch)
     for cust_id in customers:
         bind_channel(rid, customer_id=cust_id)
     _audit('subscription_create', {'id': rid, 'name': data.get('name')})
@@ -375,8 +390,19 @@ def update_subscription(rid: int):
     update_rule(rid, **data)
     if channels is not None:
         unbind_channel(rid)
-        for ch_id in channels:
-            bind_channel(rid, channel_id=ch_id)
+        for ch in channels:
+            if isinstance(ch, dict):
+                bind_channel(
+                    rid,
+                    channel_id=ch.get('channel_id'),
+                    customer_id=ch.get('customer_id'),
+                    customer_emails=ch.get('customer_emails', '') or '',
+                    attachment_max_mb=int(ch.get('attachment_max_mb') or 0),
+                    template=ch.get('template', '') or '',
+                    extras=ch.get('extras', '{}') or '{}',
+                )
+            else:
+                bind_channel(rid, channel_id=ch)
     if customers is not None:
         for cust_id in customers:
             bind_channel(rid, customer_id=cust_id)
