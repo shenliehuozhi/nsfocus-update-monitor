@@ -3745,8 +3745,9 @@ function renderChanTags(){
     const bd=isEmail?'#fbbf24':'#c2d8fc';
     const fg=isEmail?'#92400e':'#1e40af';
     const opts=getTplOptsForChannel(c.type);
-    // email 行: grid 6 列对齐 (渠道名 | 模板 | 收件人 | 附件大小 | ×)
-    // robot 行: grid 4 列对齐 (渠道名 | 模板 | ×)
+    // email 行: 4 列 (渠道名 | 收件人 | 附件大小 | ×),无模板列
+    // feishu 行: 4 列 (渠道名 | 模板 | ×),select 只 1 个 D 选项 (feishu.py 走 _build_post,4 模板不生效,固定 D)
+    // 其他机器人 (wecom/dingtalk/apprise) 行: 4 列 (渠道名 | 模板 | ×),正常 3 模板
     if (isEmail) {
       // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
       // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
@@ -3796,7 +3797,9 @@ function onChanFieldChange(cid, field, val){
 const CHAN_TPL_OPTIONS={
   dingtalk:[['full','A · 完整(默认)'],['strip','B · 智能裁剪'],['brief','C · 极简']],
   wecom:   [['full','A · 完整(默认)'],['strip','B · 智能裁剪'],['brief','C · 极简']],
-  feishu:  [['feishu_full','D · 飞书全量(默认)'],['full','A · 完整(切多段)'],['strip','B · 智能裁剪'],['brief','C · 极简']],
+  // 2026-07-11: 飞书渠道固定 D (feishu.py 走 _build_post,不读 _template,A/B/C 无效)
+  // 只保留 D 选项,用户看到 select 但只能选 D (跟"无 select"行为一致)
+  feishu:  [['feishu_full','D · 飞书全量']],
   apprise: [['full','A · 完整(默认)']],
   email:   [['full','A · 完整(默认)']],
 };
@@ -3810,7 +3813,11 @@ const TPL_OPTION_TITLE={
 const CHAN_DEFAULT_TPL={dingtalk:'full',wecom:'full',feishu:'feishu_full',apprise:'full',email:'full'};
 function getTplOptsForChannel(chType){
   const list=CHAN_TPL_OPTIONS[chType]||[['full','A · 完整(默认)']];
-  return '<option value="">— 默认('+({full:'A',strip:'B',brief:'C',feishu_full:'D'}[CHAN_DEFAULT_TPL[chType]||'full'])+') —</option>'+list.map(([v,l])=>`<option value="${v}" title="${(TPL_OPTION_TITLE[v]||'').replace(/"/g,'&quot;')}">${l}</option>`).join('');
+  // 飞书固定 D,只 1 个选项 → 不显示 "默认" 那行 (默认就是 D,无意义)
+  // 其他渠道 3 选项 → 显示 "默认" 让用户快速回退
+  const defaultOpt = chType === 'feishu' ? '' :
+    '<option value="">— 默认('+({full:'A',strip:'B',brief:'C',feishu_full:'D'}[CHAN_DEFAULT_TPL[chType]||'full'])+') —</option>';
+  return defaultOpt + list.map(([v,l])=>`<option value="${v}" title="${(TPL_OPTION_TITLE[v]||'').replace(/"/g,'&quot;')}">${l}</option>`).join('');
 }
 function onChanTplChange(cid,val){
   window._chanTpls=window._chanTpls||{};
