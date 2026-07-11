@@ -3749,9 +3749,9 @@ function renderChanTags(){
     // robot 行: grid 4 列对齐 (渠道名 | 模板 | ×)
     if (isEmail) {
       // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
-      return `<div style="display:grid;grid-template-columns:1fr auto 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
+      // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
+      return `<div style="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span></span>
-        <select data-cid="${c.id}" data-field="template" onchange="onChanFieldChange(${c.id}, 'template', this.value)" style="font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};min-width:140px">${opts}</select>
         <input data-cid="${c.id}" data-field="customer_emails" placeholder="收件人邮箱,逗号分隔" value="${escHtml(getChanField(c.id,'customer_emails'))}" onchange="onChanFieldChange(${c.id}, 'customer_emails', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
         <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="附件大小(MB)" value="${getChanField(c.id,'attachment_max_mb')||''}" onchange="onChanFieldChange(${c.id}, 'attachment_max_mb', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
         <button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
