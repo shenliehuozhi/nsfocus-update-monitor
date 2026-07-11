@@ -3751,13 +3751,13 @@ function renderChanTags(){
       // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
       // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
       return `<div style="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span></span>
+        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span>
         <input data-cid="${c.id}" data-field="customer_emails" placeholder="收件人邮箱,逗号分隔" value="${escHtml(getChanField(c.id,'customer_emails'))}" onchange="onChanFieldChange(${c.id}, 'customer_emails', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
         <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="附件大小(MB)" value="${getChanField(c.id,'attachment_max_mb')||''}" onchange="onChanFieldChange(${c.id}, 'attachment_max_mb', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
         <button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
       </div>`;
     }
-    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span></span><span style="font-size:11px;opacity:0.75">模板</span><select data-cid="${c.id}" data-field="template" onchange="onChanFieldChange(${c.id}, 'template', this.value)" style="font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};min-width:140px">${opts}</select><button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
+    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span><span style="font-size:11px;opacity:0.75">模板</span><select data-cid="${c.id}" data-field="template" onchange="onChanFieldChange(${c.id}, 'template', this.value)" style="font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};min-width:140px">${opts}</select><button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
   };
 
   robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span style="color:var(--muted);font-size:12px">未添加机器人渠道</span>';
@@ -3866,7 +3866,7 @@ async function loadCV(s,loadType){
 async function openRModal(id){
   // Ensure we have channels and customers loaded
   let chOpts=window._chOpts;
-  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}">${c.name}${c.email?' ('+c.email+')':''}</option>`).join(''):'';
+  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}" title="#${c.id}">${c.name} <span style="color:#666">#${c.id}</span>${c.email?' ('+c.email+')':''}</option>`).join(''):'';
   if(!chOpts){
     const[cR,custR]=await Promise.all([api('/channels'),api('/customers')]);
     const chans=cR.data||[];
@@ -4115,7 +4115,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr style="background:#f8f8f8"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono" title="${escHtml(h.file_name||'')}" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.file_name||'')}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
@@ -4146,7 +4146,7 @@ async function history(){
             <td>${_custName||d.customer_name||'—'}</td>
             <td>${h.product_name||''}</td>
             <td>${typeCN(h.package_type)}</td>
-            <td class="mono" title="${escHtml(h.file_name||'')}">${(h.file_name||'').length>32?(h.file_name||'').substring(0,29)+'…':(h.file_name||'')}</td>
+            <td class="mono" title="${escHtml(h.file_name||'')}" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.file_name||'')}</td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
             <td>${escHtml(channelDisp)}</td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
