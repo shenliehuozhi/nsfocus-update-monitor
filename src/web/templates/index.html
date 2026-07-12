@@ -2010,7 +2010,7 @@ function dataRightToggleRow(rowId) {
     <span class="data-detail-k">发布时间</span><span style="font-size:12.5px">${fmtTZ(snap.published_at, true)}</span>
     <span class="data-detail-k">首次发现</span><span style="font-size:12.5px">${fmtTZ(snap.first_seen_at, true)}</span>
     <span class="data-detail-k">最近采集</span><span style="font-size:12.5px">${fmtTZ(snap.last_seen_at, true)}</span>
-    <span class="data-detail-k">下载地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}" target="_blank" style="color:#0e9f6e">下载升级包</a></span>
+    <span class="data-detail-k">下载地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}" target="_blank" style="color:#0e9f6e">${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}</a></span>
     <span class="data-detail-k">发布地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com' + (snap.source_url || '')}" target="_blank" style="color:var(--primary)">${'https://update.nsfocus.com' + (snap.source_url || '')}</a></span>
     ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span style="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
     <span class="data-detail-k">MD5</span><span style="font-size:12.5px" id="snap-md5-${snapId}">—</span>

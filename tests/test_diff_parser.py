@@ -85,6 +85,39 @@ def test_parse_rules_ips_no_markers():
     assert result == {'added': [], 'updated': []}
 
 
+def test_parse_rules_ips_half_width_colon_vendor_realistic():
+    """2026-07-12 实测 vendor 页面用半角冒号「新增规则:」「更新规则:」(不是全角「：」)。
+    旧代码用 find('新增规则：') 找不到 → 返回 0 条。修法:parse_rules 内预处理归一为全角。
+    这条是 bug 回归保护,real data 验证(2.0.0.32720/2.0.0.32939) 共解析出 49+32 / 70+4 条。"""
+    desc = (
+        "本升级包为入侵防护特征库升级包。\n"
+        "新增规则:\n"  # ← 半角冒号,真实页面是这个
+        "1. 攻击[31050]:泛微 mobilemode/public.jsp 任意用户登录漏洞\n"
+        "2. 攻击[31049]:whatweb 指纹扫描工具\n"
+        "更新规则:\n"  # ← 半角冒号
+        "1. 攻击[31040]:某条已有规则更新\n"
+    )
+    result = parse_rules(desc)
+    assert result['added'] == [
+        (31050, '泛微 mobilemode/public.jsp 任意用户登录漏洞'),
+        (31049, 'whatweb 指纹扫描工具'),
+    ], f"应取半角冒号块 2 条,实有: {result['added']}"
+    assert result['updated'] == [(31040, '某条已有规则更新')], f"应取半角冒号 updated 1 条,实有: {result['updated']}"
+
+
+def test_parse_rules_ips_mixed_colons_within_text():
+    """同一份描述里 既有半角又有全角冒号 marker,都应能解析。"""
+    desc = (
+        "新增规则:\n"  # 半角
+        "1. 攻击[10001]:规则A\n"
+        "更新规则：\n"  # 全角
+        "1. 攻击[10002]:规则B\n"
+    )
+    result = parse_rules(desc)
+    assert (10001, '规则A') in result['added']
+    assert (10002, '规则B') in result['updated']
+
+
 def test_parse_rules_ips_added_with_colon_variant():
     """English colon 'Updated:' inside description does not break zh parser."""
     desc = (

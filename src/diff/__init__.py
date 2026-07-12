@@ -61,12 +61,19 @@ def parse_rules(description_raw: str) -> Dict[str, List[Tuple[int, str]]]:
     if not description_raw:
         return {'added': [], 'updated': []}
 
+    # 2026-07-12 半角冒号兼容: vendor portal 实际页是「新增规则:」「更新规则:」(半角)
+    # 旧代码只搜全角「新增规则:」「更新规则:」,2.0.0.32720/2.0.0.32939 等实测页面 0 条规则
+    # 描述头部预处理: 把半角冒号 marker 归一为全角,只动 description_raw 不动 _slice_block 通用接口
+    # WAF 走 parse_rules_waf,这里只影响 IPS,marker 不变 → 不影响 WAF
+    _norm = description_raw
+    if '新增规则:' in _norm or '更新规则:' in _norm:
+        _norm = _norm.replace('新增规则:', '新增规则：').replace('更新规则:', '更新规则：')
     zh_added_block = _slice_block(
-        description_raw, '新增规则：',
+        _norm, '新增规则：',
         ['更新规则：', '注意事项：', 'new rules:'],
     )
     zh_updated_block = _slice_block(
-        description_raw, '更新规则：',
+        _norm, '更新规则：',
         ['注意事项：', 'new rules:'],
     )
     return {
