@@ -118,6 +118,55 @@ def test_parse_rules_ips_mixed_colons_within_text():
     assert (10002, '规则B') in result['updated']
 
 
+# 2026-07-12 用户提: vendor marker 后面可能跟各种符号(空格/句号/换行/控制符等),不能漏
+# 实现策略: 把 marker 后紧跟的 [:：\s\n\r\t。.]+ 全规整为 「：\n」,下游逻辑稳定
+
+def test_parse_rules_ips_marker_with_period_then_newline():
+    """marker 后跟半角冒号 + 句号 + 换行 (实测 vendor 出现过)。"""
+    desc = "新增规则:.\n1. 攻击[20001]:规则A\n2. 攻击[20002]:规则B"
+    result = parse_rules(desc)
+    assert result['added'] == [(20001, '规则A'), (20002, '规则B')], f"应取 2 条,实有: {result['added']}"
+
+
+def test_parse_rules_ips_marker_with_chinese_period():
+    """marker 后跟全角冒号 + 中文句号。"""
+    desc = "新增规则：。\n1. 攻击[20100]:规则A"
+    result = parse_rules(desc)
+    assert result['added'] == [(20100, '规则A')], f"应取 1 条,实有: {result['added']}"
+
+
+def test_parse_rules_ips_marker_with_space_only():
+    """marker 后只跟空格(无冒号),也应能解析。"""
+    desc = "新增规则 \n1. 攻击[20200]:规则A"
+    result = parse_rules(desc)
+    assert result['added'] == [(20200, '规则A')], f"应取 1 条,实有: {result['added']}"
+
+
+def test_parse_rules_ips_marker_no_punctuation():
+    """marker 后紧跟数字(无任何符号)。"""
+    desc = "新增规则\n1. 攻击[20300]:规则A"
+    result = parse_rules(desc)
+    assert result['added'] == [(20300, '规则A')], f"应取 1 条,实有: {result['added']}"
+
+
+def test_parse_rules_ips_marker_with_zhuyi_no_rules():
+    """「新增规则\n无」+「注意事项:」—— vendor 无规则时显示「无」,不应误抓。"""
+    desc = "新增规则\n无\n注意事项：\n1. 该升级包升级后引擎自动重启生效"
+    result = parse_rules(desc)
+    assert result['added'] == [], f"无规则时应空,实有: {result['added']}"
+    assert result['updated'] == []
+
+
+def test_parse_rules_ips_real_vendor_2_0_0_32720():
+    """真实 vendor 数据 dry-run (2.0.0.32720 IPS 规则包):
+    前缀「新增规则:\n1. 攻击[31050]:...」+ 49 条 added + 32 条 updated。
+    旧代码 parse 0 条,半角冒号 fix 后 parse 49+32。"""
+    desc = "本升级包为入侵防护特征库升级包。\n该升级包新增/改进的规则有:\n新增规则:\n1. 攻击[31050]:泛微 mobilemode/public.jsp 任意用户登录漏洞\n2. 攻击[31049]:whatweb 指纹扫描工具\n3. 攻击[26730]:Node.js 原型链污染\n更新规则:\n1. 攻击[30001]:某已有规则更新\n2. 攻击[30002]:另一条更新"
+    result = parse_rules(desc)
+    assert len(result['added']) == 3, f"应取 3 条 added,实有 {len(result['added'])}"
+    assert len(result['updated']) == 2, f"应取 2 条 updated,实有 {len(result['updated'])}"
+
+
 def test_parse_rules_ips_added_with_colon_variant():
     """English colon 'Updated:' inside description does not break zh parser."""
     desc = (

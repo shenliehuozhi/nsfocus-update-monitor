@@ -61,13 +61,28 @@ def parse_rules(description_raw: str) -> Dict[str, List[Tuple[int, str]]]:
     if not description_raw:
         return {'added': [], 'updated': []}
 
-    # 2026-07-12 半角冒号兼容: vendor portal 实际页是「新增规则:」「更新规则:」(半角)
-    # 旧代码只搜全角「新增规则:」「更新规则:」,2.0.0.32720/2.0.0.32939 等实测页面 0 条规则
-    # 描述头部预处理: 把半角冒号 marker 归一为全角,只动 description_raw 不动 _slice_block 通用接口
-    # WAF 走 parse_rules_waf,这里只影响 IPS,marker 不变 → 不影响 WAF
+    # 2026-07-12 vendor marker 后缀符号兼容:
+    #   实测 vendor 在「新增规则」「更新规则」后面跟了多种符号:
+    #     ":\n" ":." "：" "：\n" "。" "  " "\t" 都有
+    #   归一策略: 扫整个文本,marker 后紧跟的 1+ 个分隔符 (全/半角冒号 + 中文/英文句号
+    #   + 空白 + 控制符) → 全部规整为 "：\n"
+    #   后续如 vendor 把「新增规则」改成别的字(「新增的规则」等),改 _MARKERS 列表即可
+    _MARKERS = ('新增规则', '更新规则')
+    _SEP_CHARS = ':：\s\n\r\t。.'
+    _NORMED_SUFFIX = '：\n'
     _norm = description_raw
-    if '新增规则:' in _norm or '更新规则:' in _norm:
-        _norm = _norm.replace('新增规则:', '新增规则：').replace('更新规则:', '更新规则：')
+    for marker in _MARKERS:
+        idx = 0
+        while True:
+            i = _norm.find(marker, idx)
+            if i < 0: break
+            j = i + len(marker)
+            # marker 之后到下一个「非分隔符」(字母/数字/中文)之间的字符全部替换
+            k = j
+            while k < len(_norm) and _norm[k] in _SEP_CHARS:
+                k += 1
+            _norm = _norm[:j] + _NORMED_SUFFIX + _norm[k:]
+            idx = j + len(_NORMED_SUFFIX)
     zh_added_block = _slice_block(
         _norm, '新增规则：',
         ['更新规则：', '注意事项：', 'new rules:'],
