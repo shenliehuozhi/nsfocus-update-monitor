@@ -3309,6 +3309,67 @@ async function delC(id){await confirmAct('删除此客户？', async ()=>{const 
 // ── Subscriptions ──
 const PKG=[['sys','系统'],['rule','规则'],['nti','威胁情报'],['av','病毒库'],['apprule','应用规则'],['url','URL分类'],['wcs','恶意站点'],['judge','研判规则'],['geo','地理库'],['interface','接口'],['special','特殊'],['other','其他'],['merge','合并'],['client','客户端'],['av_stream','流式病毒库']];
 let PROD=[];
+const TPL_META={
+  full:{key:'A',name:'完整',bg:'#e8f0fe',fg:'#1e40af'},
+  strip:{key:'B',name:'智能裁剪',bg:'#fef3c7',fg:'#92400e'},
+  brief:{key:'C',name:'极简',bg:'#fef9c3',fg:'#854d0e'},
+  feishu_full:{key:'D',name:'飞书全量',bg:'#f3e8ff',fg:'#6b21a8'},
+};
+function tplBadgeHtml(tpl){
+  const m=TPL_META[tpl]||TPL_META.full;
+  return `<span style="display:inline-block;white-space:nowrap"><span class="badge" style="background:${m.bg};color:${m.fg};font-size:10px;padding:1px 6px;border-radius:8px">${m.key}</span> ${m.name}</span>`;
+}
+function _ruleTemplateValueForChannel(r,cid){
+  if(!r)return '';
+  if(r.template&&typeof r.template==='object')return r.template[cid]||r.template[String(cid)]||'';
+  if(typeof r.template==='string')return r.template;
+  return '';
+}
+function _channelByIdFromList(channels,cid){
+  return (channels||[]).find(c=>String(c.id)===String(cid))||{};
+}
+function templateForRuleChannel(r,chRow,channels){
+  const cid=typeof chRow==='object'&&chRow?chRow.channel_id:chRow;
+  const channel=_channelByIdFromList(channels,cid);
+  const chType=channel.type||(chRow&&chRow.channel_type)||'';
+  if(chType==='email')return {type:chType,template:'',html:'<span style="font-size:11px;color:var(--muted)">邮件 HTML</span>'};
+  const rcTpl=typeof chRow==='object'&&chRow?(chRow.template||''):'';
+  let tpl=rcTpl||_ruleTemplateValueForChannel(r,cid)||CHAN_DEFAULT_TPL[chType]||'full';
+  if(chType==='feishu'&&tpl!=='feishu_full')tpl='feishu_full';
+  if(!TPL_META[tpl])tpl=CHAN_DEFAULT_TPL[chType]||'full';
+  return {type:chType,template:tpl,html:tplBadgeHtml(tpl)};
+}
+function renderRuleTemplateSummary(r,channels){
+  const rows=(r.channels||[]).filter(ch=>typeof ch==='object'?ch&&ch.channel_id:ch);
+  if(!rows.length){
+    const tpl=(typeof r.template==='string'&&r.template)?r.template:'';
+    return tpl?tplBadgeHtml(TPL_META[tpl]?tpl:'full'):'<span style="color:var(--muted)">—</span>';
+  }
+  return rows.map(ch=>{
+    const cid=typeof ch==='object'&&ch?ch.channel_id:ch;
+    const channel=_channelByIdFromList(channels,cid);
+    const info=templateForRuleChannel(r,ch,channels);
+    const title=escHtml(`${channel.name||'渠道'} #${cid}`);
+    return `<div title="${title}" style="margin:1px 0">${info.html}</div>`;
+  }).join('');
+}
+function getChannelById(cid){
+  return (window._chData||[]).find(c=>String(c.id)===String(cid))||null;
+}
+function feishuDefaultTplForChannelId(cid){
+  const ch=getChannelById(cid);
+  return ch&&ch.type==='feishu'?'feishu_full':'';
+}
+function ensureFeishuDefaultTemplate(cid){
+  const tpl=feishuDefaultTplForChannelId(cid);
+  if(!tpl)return;
+  window._chanCfg=window._chanCfg||{};
+  window._chanCfg[cid]=window._chanCfg[cid]||{};
+  // 飞书当前只有 D · 飞书全量一个有效选项；空值或旧 A/B/C 值都归一到 D。
+  if(window._chanCfg[cid].template!==tpl)window._chanCfg[cid].template=tpl;
+  window._chanTpls=window._chanTpls||{};
+  if(window._chanTpls[cid]!==tpl)window._chanTpls[cid]=tpl;
+}
 async function subscriptions(){
   const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
@@ -3317,7 +3378,7 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:#e8f0fe;border:1px solid #c2d8fc;border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'#dbeafe':'#fef3c7'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${(r.notification_targets||[]).join(', ')}">${(r.notification_targets||[]).join(', ')||'<span style="color:var(--muted)">—</span>'}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px"><span class="badge" style="background:${({full:'#e8f0fe',strip:'#fef3c7',brief:'#fef9c3',feishu_full:'#f3e8ff'})[r.template||'full']||'#e8f0fe'};color:${({full:'#1e40af',strip:'#92400e',brief:'#854d0e',feishu_full:'#6b21a8'})[r.template||'full']||'#1e40af'};font-size:10px;padding:1px 6px;border-radius:8px">${({full:'A',strip:'B',brief:'C',feishu_full:'D'})[r.template||'full']||'A'}</span> ${({full:'完整',strip:'智能裁剪',brief:'极简',feishu_full:'飞书全量'})[r.template||'full']||'完整'}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:#e8f0fe;border:1px solid #c2d8fc;border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'#dbeafe':'#fef3c7'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${(r.notification_targets||[]).join(', ')}">${(r.notification_targets||[]).join(', ')||'<span style="color:var(--muted)">—</span>'}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:100px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
@@ -3739,6 +3800,8 @@ function renderChanTags(){
   const rc=document.getElementById('robotCount');if(rc)rc.textContent=robotChans.length?`(已选 ${robotChans.length} 个)`:'';
   const ec=document.getElementById('emailCount');if(ec)ec.textContent=emailChans.length?`(已选 ${emailChans.length} 个)`:'';
 
+  sel.forEach(cid=>ensureFeishuDefaultTemplate(cid));
+
   const tagHtml=(c)=>{
     const isEmail=c.type==='email';
     const bg=isEmail?'#fef3c7':'#e8f0fe';
@@ -3768,7 +3831,12 @@ function renderChanTags(){
   const tpls=window._chanTpls||{};
   document.querySelectorAll('select[data-cid][data-field="template"]').forEach(sel=>{
     const cid=parseInt(sel.dataset.cid);
-    const cur=tpls[cid]||'';
+    const ch=getChannelById(cid);
+    let cur=tpls[cid]||getChanField(cid,'template')||'';
+    if(ch&&ch.type==='feishu'&&cur!=='feishu_full'){
+      ensureFeishuDefaultTemplate(cid);
+      cur='feishu_full';
+    }
     sel.value=cur;
   });
 }
@@ -4087,7 +4155,7 @@ function validateRuleConf(){
       customer_id: cid,
       customer_emails: cfg.customer_emails||'',
       attachment_max_mb: parseInt(cfg.attachment_max_mb)||0,
-      template: cfg.template||(window._chanTpls||{})[channelId]||'',
+      template: cfg.template||(window._chanTpls||{})[channelId]||feishuDefaultTplForChannelId(channelId),
       extras: cfg.extras||'{}'
     };
   });
