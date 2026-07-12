@@ -430,6 +430,63 @@ def test_send_immediate_logs_failed_delivery():
 
 
 # ============================================================================
+# Email recipient fallback chain (per-channel → rule → per-customer → unset)
+# 2026-07-12 新增:客户档案 email 作为兜底,跟附件大小 (per-customer fallback) 对称
+# ============================================================================
+
+def _run_email_recipient_test(bindings, customer_email, expected):
+    """Helper: 4 个新 test 共享同一份 channel + notifier setup.
+    customer_email: 注入到 customers.email 查询的返回值;None=不关心→空list.
+    用 side_effect 区分 query 用途:dedup/其他→空 list,customers.email 查询→指定值."""
+    rule = _rule(customer_emails='rule_global@x.com' if expected == 'rule_global@x.com' else '')
+    snap = _snap()
+    channels = [{'id': 5, 'type': 'email', 'is_active': 1, 'config': {}, 'name': 'mail',
+                 'email_hourly_limit': 0, 'email_daily_limit': 0}]
+    fake_notifier = MagicMock()
+    fake_notifier.send.return_value = DeliveryResult(True, 'email', 'mail')
+    def _q_side_effect(sql, params=()):
+        if 'SELECT email FROM customers' in sql:
+            return [{'email': customer_email}] if customer_email is not None else [{'email': ''}]
+        return []
+    with patch('src.notifiers.router.get_rule_channels', return_value=bindings), \
+         patch('src.notifiers.router.get_by_id', return_value=channels[0]), \
+         patch('src.models.database.query', side_effect=_q_side_effect), \
+         patch('src.notifiers.router.NOTIFIERS', {'email': fake_notifier}), \
+         patch('src.models.subscription.log_delivery'), \
+         patch('src.notifiers.router.time.sleep'):
+        router._send_immediate(snap, rule)
+    return fake_notifier.send.call_args.args[1]
+
+
+def test_email_recipient_per_channel_wins():
+    """per-channel (rule_channels.customer_emails) > rule 全局 > customer 档案."""
+    bindings = [{'channel_id': 5, 'customer_id': 1, 'template': '', 'customer_emails': 'per_channel@y.com', 'attachment_max_mb': 0}]
+    cfg = _run_email_recipient_test(bindings, customer_email='cust@x.com', expected='per_channel@y.com')
+    assert cfg['rule_emails'] == 'per_channel@y.com', f"应取 per-channel,实有: {cfg.get('rule_emails')}"
+
+
+def test_email_recipient_rule_global_fallback():
+    """per-channel 空 → 取 rule.customer_emails 全局."""
+    bindings = [{'channel_id': 5, 'customer_id': 1, 'template': '', 'customer_emails': '', 'attachment_max_mb': 0}]
+    cfg = _run_email_recipient_test(bindings, customer_email='cust@x.com', expected='rule_global@x.com')
+    assert cfg['rule_emails'] == 'rule_global@x.com', f"应取 rule 全局,实有: {cfg.get('rule_emails')}"
+
+
+def test_email_recipient_per_customer_fallback():
+    """per-channel 空 + rule 全局空 → 查 customers.email 兜底."""
+    bindings = [{'channel_id': 5, 'customer_id': 1, 'template': '', 'customer_emails': '', 'attachment_max_mb': 0}]
+    cfg = _run_email_recipient_test(bindings, customer_email='cust@x.com', expected='cust@x.com')
+    assert cfg['rule_emails'] == 'cust@x.com', f"应取 per-customer 兜底,实有: {cfg.get('rule_emails')}"
+
+
+def test_email_recipient_no_email_anywhere():
+    """per-channel 空 + rule 空 + customer 无 email → rule_emails 不应设置."""
+    bindings = [{'channel_id': 5, 'customer_id': 1, 'template': '', 'customer_emails': '', 'attachment_max_mb': 0}]
+    cfg = _run_email_recipient_test(bindings, customer_email='', expected=None)
+    assert 'rule_emails' not in cfg, f"应不设置 rule_emails,实有: {cfg.get('rule_emails')}"
+
+
+# ============================================================================
 # Template selection fallback chain
 # ============================================================================
 

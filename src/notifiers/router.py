@@ -230,12 +230,23 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         ch_config['_template'] = template
 
         if channel['type'] == 'email':
-            # 收件人: per-channel (rule_channels.customer_emails) → 全局 (rule.customer_emails) → 不设
+            # 2026-07-12 收件人 fallback 链: per-channel → 全局 rule → per-customer → 不设
+            # 跟附件大小 (per-channel → per-customer → 默认 10MB) 对称,客户档案 email 是兜底
+            # 没设的话发送端会拿到空 list 静默不发,所以必须加 per-customer fallback
             rc_emails = (binding.get('customer_emails') or '').strip()
             if rc_emails:
                 ch_config['rule_emails'] = rc_emails
             elif rule.get('customer_emails'):
                 ch_config['rule_emails'] = rule['customer_emails']
+            else:
+                cust_id = binding.get('customer_id', 0)
+                if cust_id:
+                    from src.models.database import query as _q
+                    _crow = _q("SELECT email FROM customers WHERE id=?", (cust_id,))
+                    if _crow:
+                        _cust_email = (_crow[0].get('email') or '').strip()
+                        if _cust_email:
+                            ch_config['rule_emails'] = _cust_email
             # 附件大小: per-channel (rule_channels.attachment_max_mb)
             #          → per-customer (customers.attachment_max_mb)
             #          → 不设 (用 email.py 默认 ATTACHMENT_MAX_SIZE)

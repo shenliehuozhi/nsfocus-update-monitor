@@ -3370,6 +3370,27 @@ function ensureFeishuDefaultTemplate(cid){
   window._chanTpls=window._chanTpls||{};
   if(window._chanTpls[cid]!==tpl)window._chanTpls[cid]=tpl;
 }
+// 2026-07-12 附件大小回填:客户档案有值 → input.value 预填,placeholder 写「客户档案 X MB」;
+// 客户档案 0/未选 → input.value 留空,placeholder 写「全局默认 10 MB」。两条都「不写入」rule_channels,
+// 后端 router.py 走 3 级 fallback 自动取值(避免把客户档案值固化进 rule 渠道行,后续改客户档案值会失同步)。
+function attPlaceholder(){
+  const c=window._currentCustomer;
+  if(c && Number(c.attachment_max_mb)>0) return `客户档案 ${c.attachment_max_mb} MB(留空即用)`;
+  return '默认 10 MB(留空即用)';
+}
+function attDefaultValue(){
+  // 2026-07-12 B 模式:不预填,只走 placeholder。saveRule 写 0 → router per-customer fallback
+  // 客户档案附件大小变更后所有规则自动跟,避免「预填后写死」丢联动
+  return '';
+}
+// 收件人邮箱 placeholder:跟附件大小对称,客户档案 email 自动带出
+function emailPlaceholder(){
+  const c=window._currentCustomer;
+  if(c && (c.email||'').trim()) return `${c.email.trim()}(客户档案,留空即用)`;
+  return '收件人邮箱,逗号分隔';
+}
+// 收件人邮箱也用 B 模式,value 永远空 → router per-customer fallback 生效
+function emailDefaultValue(){ return ''; }
 async function subscriptions(){
   const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
@@ -3387,13 +3408,17 @@ function onCustChange(){
   let cid=document.getElementById('rcust').value;
   let row=document.getElementById('custInfoRow');
   let emailSpan=document.getElementById('custEmailDisplay');
-  let attDisplay=document.getElementById('rattDisplay');
+  let attachRow=document.getElementById('custAttachRow');
+  let attachSpan=document.getElementById('custAttachDisplay');
   if(!cid||!window._custs){
     if(row)row.style.display='none';
-    if(attDisplay) attDisplay.textContent='选客户后自动显示';
+    if(attachRow)attachRow.style.display='none';
+    window._currentCustomer=null;
+    try{ renderChanTags(); }catch(e){}
     return;
   }
   let c=window._custs.find(x=>x.id==cid);
+  window._currentCustomer=c||null;
   if(c&&emailSpan){
     emailSpan.textContent=c.email||'（未设置）';
     row.style.display='';
@@ -3401,15 +3426,19 @@ function onCustChange(){
     row.style.display='none';
   }
   // Display the customer's attachment_max_mb (read-only — comes from customer).
-  if(attDisplay){
-    if(c && c.attachment_max_mb){
-      attDisplay.textContent = c.attachment_max_mb + ' MB（来自客户档案）';
-      attDisplay.style.color = '';
+  // 全局默认 10MB = 10485760 字节,见 src/notifiers/email.py ATTACHMENT_MAX_SIZE
+  if(attachRow&&attachSpan){
+    if(c && Number(c.attachment_max_mb)>0){
+      attachSpan.textContent = c.attachment_max_mb + ' MB（来自客户档案）';
+      attachSpan.style.color = '';
     }else{
-      attDisplay.textContent = '未配置（使用全局默认）';
-      attDisplay.style.color = 'var(--muted)';
+      attachSpan.textContent = '未配置(发送时默认 10 MB)';
+      attachSpan.style.color = 'var(--muted)';
     }
+    attachRow.style.display='';
   }
+  // 已渲染的 email 渠道 tag 同步展示客户档案附件大小(仅展示,saveRule 仍写 0 让 router 自动 fallback)
+  try{ renderChanTags(); }catch(e){}
 }
 
 function toggleAllMode(){
@@ -3816,8 +3845,8 @@ function renderChanTags(){
       // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
       return `<div style="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
         <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span>
-        <input data-cid="${c.id}" data-field="customer_emails" placeholder="收件人邮箱,逗号分隔" value="${escHtml(getChanField(c.id,'customer_emails'))}" onchange="onChanFieldChange(${c.id}, 'customer_emails', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
-        <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="附件大小(MB)" value="${getChanField(c.id,'attachment_max_mb')||''}" onchange="onChanFieldChange(${c.id}, 'attachment_max_mb', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
+        <input data-cid="${c.id}" data-field="customer_emails" placeholder="${emailPlaceholder()}" value="${emailDefaultValue()}" onchange="onChanFieldChange(${c.id}, 'customer_emails', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
+        <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" onchange="onChanFieldChange(${c.id}, 'attachment_max_mb', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
         <button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
       </div>`;
     }
@@ -3960,6 +3989,7 @@ async function openRModal(id){
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户</label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
     <div id="custInfoRow" class="form-group" style="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
+    <div id="custAttachRow" class="form-group" style="margin-top:2px;font-size:12px;color:var(--muted);display:none">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
     <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px" placeholder="不限制"></div>
     </div>
 
