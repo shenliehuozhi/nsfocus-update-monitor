@@ -3934,17 +3934,30 @@ function updateEmailFields(){
   return;
 }
 
-function openChanSelModal(){
+function openChanSelModal(filterType){
+  // 2026-07-12 filterType: null=全量, 'email'=只邮箱, 'non_email'=只机器人(wecom/dingtalk/feishu/apprise)
+  // 由「+ 添加机器人渠道」/「+ 添加邮箱渠道」两个独立按钮触发,弹窗只显示对应类型
   const chData=window._chData||[];
   const sel=window._selChans||[];
-  const avail=chData.filter(c=>!sel.includes(c.id));
-  if(!avail.length){toast('已添加所有渠道','warn');return;}
+  let avail=chData.filter(c=>!sel.includes(c.id));
+  let headerLabel='选择通知渠道';
+  let emptyLabel='已添加所有渠道';
+  if(filterType==='email'){
+    avail=avail.filter(c=>c.type==='email');
+    headerLabel='选择邮箱渠道';
+    emptyLabel='没有可添加的邮箱渠道(请先在「通知渠道」页创建)';
+  }else if(filterType==='non_email'){
+    avail=avail.filter(c=>c.type!=='email');
+    headerLabel='选择机器人渠道';
+    emptyLabel='没有可添加的机器人渠道(请先在「通知渠道」页创建)';
+  }
+  if(!avail.length){toast(emptyLabel,'warn');return;}
   const opts=avail.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   const modal=document.createElement('div');
   modal.id='chanSelModal';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:360px" onclick="event.stopPropagation()"><div class="card-hd">选择通知渠道 <button onclick="document.getElementById('chanSelModal').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><div class="form-group"><label>渠道</label><select id="newChanSel" style="width:100%">${opts}</select></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" style="flex:1" onclick="(function(){const v=parseInt(document.getElementById('newChanSel').value);if(v&&!(window._selChans||[]).includes(v)){window._selChans.push(v);renderChanTags();updateEmailFields();}document.getElementById('chanSelModal').remove();})()">添加</button><button class="btn btn-outline" onclick="document.getElementById('chanSelModal').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" style="width:360px" onclick="event.stopPropagation()"><div class="card-hd">${headerLabel} <button onclick="document.getElementById('chanSelModal').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><div class="form-group"><label>渠道</label><select id="newChanSel" style="width:100%">${opts}</select></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" style="flex:1" onclick="(function(){const v=parseInt(document.getElementById('newChanSel').value);if(v&&!(window._selChans||[]).includes(v)){window._selChans.push(v);renderChanTags();updateEmailFields();}document.getElementById('chanSelModal').remove();})()">添加</button><button class="btn btn-outline" onclick="document.getElementById('chanSelModal').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
 }
 
@@ -4022,11 +4035,11 @@ async function openRModal(id){
       </div>
     </div>
     <div style="margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">🤖 机器人渠道 <span id="robotCount" style="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="openChanSelModal()">+ 添加机器人渠道</button></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">🤖 机器人渠道 <span id="robotCount" style="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="openChanSelModal('non_email')">+ 添加机器人渠道</button></div>
       <div id="rchansRobotTags" style="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
     </div>
     <div style="margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">📧 邮箱渠道 <span id="emailCount" style="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="openChanSelModal()">+ 添加邮箱渠道</button></div>
+      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">📧 邮箱渠道 <span id="emailCount" style="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="openChanSelModal('email')">+ 添加邮箱渠道</button></div>
       <div id="rchansEmailTags" style="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
     </div>
     </div>
