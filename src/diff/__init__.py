@@ -68,7 +68,7 @@ def parse_rules(description_raw: str) -> Dict[str, List[Tuple[int, str]]]:
     #   + 空白 + 控制符) → 全部规整为 "：\n"
     #   后续如 vendor 把「新增规则」改成别的字(「新增的规则」等),改 _MARKERS 列表即可
     _MARKERS = ('新增规则', '更新规则')
-    _SEP_CHARS = ':：\s\n\r\t。.'
+    _SEP_CHARS = r':：\s\n\r\t。.'  # raw: \s \n \r \t 都要视作分隔符
     _NORMED_SUFFIX = '：\n'
     _norm = description_raw
     for marker in _MARKERS:
@@ -120,24 +120,67 @@ def parse_rules_waf(description_raw: str) -> Dict[str, List[Tuple[int, str]]]:
     unlike IPS where we derive "deleted" via set-difference.
 
     Returns:
-        {
-          'added':   [(rule_id: int, name: str), ...],   # "一、新增规则" block
-          'updated': [(rule_id: int, name: str), ...],   # "二、修改规则" block
-          'deleted': [(rule_id: int, name: str), ...],   # "三、删除规则" block (if any)
-        }
+      {
+        'added':   [(rule_id: int, name: str), ...],   # "新增规则" block
+        'updated': [(rule_id: int, name: str), ...],   # "修改规则" block
+        'deleted': [(rule_id: int, name: str), ...],   # "删除规则" block (if any)
+      }
     "其他修改" / "升级建议" sections are ignored — they contain prose, not rules.
+
+    2026-07-12 切块策略升级 (用户提):
+      旧版依赖「一、新增规则」「二、修改规则」等带「中文数字、」前缀的 marker,
+      如果 vendor 哪天改成「一.新增规则」「1. 新增规则」甚至漏写编号,旧版直接 0 条。
+      新版以**纯关键字** (新增规则/修改规则/删除规则/其他修改/升级建议) 为准,
+      关键字前面可有可无中文/英文/标点编号前缀 (一、 / 一. / 1. / 1、 / (一) / （一）),
+      也可全无编号。段定位更鲁棒,跟 IPS 后缀归一思路一致。
     """
     if not description_raw:
         return {'added': [], 'updated': [], 'deleted': []}
 
-    def _extract(marker: str, end_markers: List[str]) -> List[Tuple[int, str]]:
-        block = _slice_block(description_raw, marker, end_markers)
-        # Skip blocks where the body just says "无" / "无\n" / has <10 chars
-        cleaned = block.strip()
-        if not cleaned or cleaned in ('无', '无\n', '无\r\n') or len(cleaned) < 10:
+    KEYWORDS = ('新增规则', '修改规则', '删除规则', '其他修改', '升级建议')
+    # 行首匹配: 可选 (中文/英文数字 + 标点 / 圆括号) + 关键字 + 行尾
+    # 兼容: 「一、新增规则」「一.新增规则」「1. 新增规则」「(一)新增规则」「（1）新增规则」「新增规则」 都应匹配
+    # 行尾: 空白 + 换行 或 文本末尾
+    prefix_alt = r'(?:[一二三四五六七八九十0-9]+[、.)]|\([一二三四五六七八九十0-9]+\)|（[一二三四五六七八九十0-9]+）)?[ \t]*'
+    KW_HEADER_RE = re.compile(
+        r'^[ \t]*' + prefix_alt + '(' + '|'.join(KEYWORDS) + r')(?=[ \t]*(?:\r?\n|$))',
+        re.MULTILINE,
+    )
+
+    # 收集段头 (位置, 关键字索引, 关键字文本)
+    section_positions = []
+    for m in KW_HEADER_RE.finditer(description_raw):
+        kw_text = m.group(1)
+        for i, k in enumerate(KEYWORDS):
+            if kw_text == k:
+                section_positions.append((m.start(), i, k))
+                break
+    section_positions.sort()
+
+    def _extract(kw_idx: int) -> List[Tuple[int, str]]:
+        target_pos = None
+        target_idx_in_list = None
+        for idx, (pos, kw_i, k) in enumerate(section_positions):
+            if kw_i == kw_idx:
+                target_pos = pos
+                target_idx_in_list = idx
+                break
+        if target_pos is None:
+            return []
+        # 切到下一个段头 (按出现顺序)
+        if target_idx_in_list + 1 < len(section_positions):
+            block = description_raw[target_pos:section_positions[target_idx_in_list + 1][0]]
+        else:
+            block = description_raw[target_pos:]
+        # 「无」占位 (实测 vendor「三、删除规则\n无\n------」这种) → 跳过
+        # 不再用 len(cleaned) < 10 这个粗判: 段头已精确匹配,block 内容可能短(只有 1 条规则)
+        # 直接剥段头第一行后看规则行数,0 条 → 跳过
+        nl = block.find('\n')
+        body = block[nl + 1:] if nl > 0 else ''
+        if not body.strip() or body.strip() in ('无', '无\n', '无\r\n'):
             return []
         out = []
-        for rid, name in _WAF_RULE_LINE_RE.findall(block):
+        for rid, name in _WAF_RULE_LINE_RE.findall(body):
             # The page uses "-------..." as a section separator line at the end
             # of every rule block. Strip that trailing divider from the name.
             name = re.sub(r'-{3,}\s*$', '', name).rstrip()
@@ -147,9 +190,9 @@ def parse_rules_waf(description_raw: str) -> Dict[str, List[Tuple[int, str]]]:
         return out
 
     return {
-        'added':   _extract('一、新增规则', ['二、修改规则', '三、删除规则', '四、其他修改', '五、升级建议']),
-        'updated': _extract('二、修改规则', ['三、删除规则', '四、其他修改', '五、升级建议']),
-        'deleted': _extract('三、删除规则', ['四、其他修改', '五、升级建议']),
+        'added':   _extract(0),
+        'updated': _extract(1),
+        'deleted': _extract(2),
     }
 
 
