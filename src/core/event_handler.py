@@ -365,9 +365,11 @@ def _build_summary_message(summary: dict, mode: str) -> str:
         severity = 'normal'
 
     mode_label = _MODE_LABELS.get(mode, mode)
-    product_count = len(products)
+    # 真实访问过的产品数(active=1 的总数),不再是 len(products) (只数有 items 的)
+    total_products = summary.get('products_total', len(products))
+    zero_count = total_products - len(products)
     lines = [
-        f"{icon} {mode_label} 完成 | {product_count}产品 | 新增 {total_new} 个包",
+        f"{icon} {mode_label} 完成 | {total_products}产品 | 新增 {total_new} 个包",
         f"耗时：{_fmt_duration(duration)}",
     ]
 
@@ -395,6 +397,35 @@ def _build_summary_message(summary: dict, mode: str) -> str:
             # 截断超长错误
             msg = err[:120] if len(err) > 120 else err
             lines.append(f'• {msg}')
+
+    # --- 0 items 诊断段(quick 模式才填充,full/delta 为空 list) ---
+    # 仅在有 0 items 产品时显示,分两种情况:hash 变了(警告) / hash 稳定(提示)
+    zero_items = summary.get('zero_items', []) or []
+    if zero_items:
+        changed_diag = [d for d in zero_items if d.get('changed_urls')]
+        stable_diag = [d for d in zero_items if not d.get('changed_urls')]
+        lines.append('─' * 30)
+        if changed_diag:
+            lines.append(
+                f'⚠️ {len(zero_items)} 个产品本次 0 items,'
+                f'其中 {len(changed_diag)} 个页面 hash 发生变化(绿盟可能改了页面):'
+            )
+            for d in changed_diag:
+                lines.append(f'  • {d["name"]}')
+                for c in d['changed_urls'][:5]:  # 每产品最多列 5 个 URL
+                    short = c['url'] if len(c['url']) <= 50 else '...' + c['url'][-47:]
+                    if c.get('first_seen'):
+                        lines.append(f'    - {short}')
+                        lines.append(f'      hash: (首次记录,本次为基准)')
+                    else:
+                        lines.append(f'    - {short}')
+                        lines.append(f'      hash: {c["prev"][:8]}... → {c["hash"][:8]}...')
+                if len(d['changed_urls']) > 5:
+                    lines.append(f'    ... 共 {len(d["changed_urls"])} 个 URL 变化')
+        else:
+            lines.append(
+                f'ℹ️ {len(zero_items)} 个产品本次 0 items(页面 hash 未变,绿盟该页面稳定为空)'
+            )
 
     return '\n'.join(lines)
 

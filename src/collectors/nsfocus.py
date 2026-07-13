@@ -427,6 +427,7 @@ class NsfocusCollector(BaseCollector):
         # objects directly because mutating them (ti.version_branch = ...) would corrupt
         # the cached copy. Each chain rebuilds its own items from the cached template.
         url_cache: dict = {}  # url -> list of dicts (raw fields from items)
+        zero_hashes: dict = {}  # url -> page_hash (0 items 诊断用,不重算)
 
         for url, ver, pkg, chain in urls:
             checked += 1
@@ -470,6 +471,10 @@ class NsfocusCollector(BaseCollector):
                     # Display URL uses the clean original url (from DB paths, no corruption)
                     display_url = url[-50:]  # last 50 chars of clean path
                     logger.info(f'【{product_name}】FETCH {display_url}  hash={page_hash}')
+
+                    # Record page hash for 0-items diagnostic (only first time we see this URL)
+                    if full_url not in zero_hashes:
+                        zero_hashes[full_url] = page_hash
 
                     # Extract items from the page
                     table_items = self._extract_table_items(
@@ -602,7 +607,9 @@ class NsfocusCollector(BaseCollector):
                 logger.warning(f'Quick {product_name}: {full_url}: {e}')
 
         logger.info(f'Quick {product_name}: {len(items)} items extracted from {total} URLs (deduped to {len(url_cache)} unique URLs)')
-        return items
+
+        # 0 items 时返回 url→hash 映射(诊断用);有 items 时返回空 dict
+        return items, ({} if items else zero_hashes)
 
     # ── Internal ──────────────────────────────────────────────
 

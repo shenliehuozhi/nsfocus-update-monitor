@@ -438,6 +438,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             'active': True, 'mode': mode, 'phase': 'init',
             'current_product': '', 'current_version': '',
             'products_done': 0, 'products_total': len(_collector_products()),
+            'zero_items': [],  # 0 items 产品诊断列表: [{name, changed_urls, stable_urls}]
             'items_collected': 0, 'total_new': 0, 'total_rollback': 0,
             'errors': [], 'started_at': datetime.utcnow().isoformat(),
             'finished_at': None, 'duration_s': 0,
@@ -467,6 +468,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         'started_at': datetime.utcnow().isoformat(),
         'finished_at': None,  # Set on every completion path (L519, L640, L654) and used by L521/L641/L663
         'products': {},
+        'products_total': len(_collector_products()),  # 实际访问过的产品数 (=active 总数)
+        'zero_items': [],  # 0 items 产品诊断列表: [{name, changed_urls, stable_count}]
         'total_new': 0, 'total_rollback': 0, 'total_notified': 0,
         'errors': [],
     }
@@ -534,12 +537,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         # 3. Collect
         _emit('collecting', product='Starting...')
         all_items = []
+        zero_hashes_by_name: dict = {}  # 默认空,full 模式不填充
 
         if mode == 'quick':
-            all_items = _collect_quick(existing_sources, cookie, _emit)
+            all_items, zero_hashes_by_name = _collect_quick(existing_sources, cookie, _emit)
         elif mode == 'delta':
             # Legacy: redirect delta to quick
-            all_items = _collect_quick(existing_sources, cookie, _emit)
+            all_items, zero_hashes_by_name = _collect_quick(existing_sources, cookie, _emit)
         else:
             all_items = _collect_full(existing_sources, list(collect_sessions.values()), cookie, _emit)
 
@@ -655,6 +659,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         # 7. Process delayed queue
         process_delayed_queue()
 
+        # 7b. 0-items 诊断:对比 url→hash 与 DB 中上次记录,只 UPDATE 实际变化的
+        # 仅 quick 模式有意义(其他模式 zero_hashes_by_name 为空 dict)
+        if zero_hashes_by_name:
+            _build_zero_items_diag(summary, existing_sources, zero_hashes_by_name)
+
         summary['duration_s'] = int(time.time() - start)
         summary['finished_at'] = datetime.utcnow().isoformat()
         if mode == 'full':
@@ -738,6 +747,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
     products = list(_collector_products().items())
     done = 0
     touched_source_ids = []  # batch: collect all touched source_ids for single SQL
+    zero_hashes_by_name: dict = {}  # name -> {url: hash}  0 items 诊断
 
     for name, url in products:
         done += 1
@@ -747,10 +757,12 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         src = existing_sources[name]
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
-            items = _collector._collect_quick(src['id'], name)
+            items, zhash = _collector._collect_quick(src['id'], name)
             all_items.extend(items)
             if items:
                 logger.info(f'Quick: {name} extracted {len(items)} items')
+            elif zhash:
+                zero_hashes_by_name[name] = zhash
             emit('collecting', product=name, items=len(items))
             update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
             # Bump last_seen_at for unchanged packages too (reflects collection ran)
@@ -771,7 +783,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         from src.models.snapshot import touch_active_snapshots
         touch_active_snapshots(touched_source_ids)
 
-    return all_items
+    return all_items, zero_hashes_by_name
 
 
 def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> list:
@@ -1665,3 +1677,78 @@ def _run_db_cleanup():
     except Exception as e:
         logger.warning(f'清理汇总事件发送失败: {e}')
 
+
+
+
+# ── 0-items 诊断:对比 url→hash 与 DB 中上次记录的 ──────────────────
+def _build_zero_items_diag(summary: dict, existing_sources: dict,
+                            zero_hashes_by_name: dict) -> None:
+    """填充 summary['zero_items'] + UPDATE content_sources.config(仅 hash 变化时)。
+
+    zero_hashes_by_name: {name: {url: hash}}   本次扫描 0 items 产品的 url→hash
+    existing_sources:    {name: src_row}      从 list_content_sources 来
+    summary:             dict                  会被原地修改 zero_items
+
+    写入策略:仅当 current_hashes != stored_hashes 时 UPDATE content_sources.config,
+    减少不必要的写。用 WHERE id=? AND json_extract(config,'$.quick_zero_hashes') != ?
+    让 SQLite 自己判断。"""
+    import json as _json
+    from src.models.database import query as _db_q, execute as _db_e
+
+    diag_list = []
+    for name, curr_hashes in zero_hashes_by_name.items():
+        if name not in existing_sources:
+            continue
+        src_id = existing_sources[name]['id']
+
+        # 始终从 DB 读最新 config(existing_sources 里的可能 stale)
+        stored = {}
+        cfg = {}
+        try:
+            row = _db_q("SELECT config FROM content_sources WHERE id = ?", (src_id,))
+            if row:
+                cfg_raw = row[0].get('config') or '{}'
+                cfg = _json.loads(cfg_raw) if cfg_raw.strip() else {}
+                stored = cfg.get('quick_zero_hashes', {})
+        except Exception:
+            stored = {}
+
+        changed = []
+        stable = []
+        first_seen = False
+        for url, h in curr_hashes.items():
+            prev = stored.get(url)
+            if prev is None:
+                first_seen = True
+                changed.append({'url': url, 'hash': h, 'prev': None, 'first_seen': True})
+            elif prev != h:
+                changed.append({'url': url, 'hash': h, 'prev': prev, 'first_seen': False})
+            else:
+                stable.append(url)
+
+        # 仅当本次 hash 集合与上次不同才写 DB(避免无意义 UPDATE)
+        curr_key = sorted(curr_hashes.items())
+        stored_key = sorted(stored.items())
+        if curr_key != stored_key:
+            new_cfg = dict(cfg) if isinstance(cfg, dict) else {}
+            new_cfg['quick_zero_hashes'] = curr_hashes
+            try:
+                _db_e(
+                    "UPDATE content_sources SET config = ? WHERE id = ?",
+                    (_json.dumps(new_cfg, ensure_ascii=False), src_id)
+                )
+            except Exception as e:
+                logger.warning(f'zero_items diag write fail for {name}: {e}')
+
+        diag_list.append({
+            'name': name,
+            'changed_urls': changed,
+            'stable_count': len(stable),
+            'first_seen': first_seen and not stored,
+        })
+
+    summary['zero_items'] = diag_list
+    n_changed = sum(1 for d in diag_list if d['changed_urls'])
+    logger.info(f'Zero-items diagnostic: {len(diag_list)} products, '
+                f'{n_changed} have hash changes, '
+                f'{sum(1 for d in diag_list if d["first_seen"])} first-time records')
