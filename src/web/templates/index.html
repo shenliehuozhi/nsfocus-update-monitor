@@ -6442,19 +6442,25 @@ function _rdSniffKind(url){
 
 const _rdKindLabel = { ips: 'IDPS', waf: 'WAF' };
 
+// 2026-07-12 重构: 入口只决定预期 kind,不再设 _rd.sourceKind 初值
+// 真实 kind 由后端 fetch 返 source_kind 决定 (line 6566 处 _rd.sourceKind = j.data.source_kind)
+// 防止「IDPS 入口粘 WAF URL」,在 rdUrlValidate / rdFetch 里校验强制
 async function toolDiffRuleOpen(){
-  _rd.sourceKind = 'ips';
   return _toolDiffOpenImpl('🔍 IDPS 规则库 Diff',
-    'https://update.nsfocus.com/update/listNewipsDetail/v/rule5.6.11_v2');
+    'https://update.nsfocus.com/update/listNewipsDetail/v/rule5.6.11_v2',
+    'ips');
 }
 
 async function toolDiffWafOpen(){
-  _rd.sourceKind = 'waf';
   return _toolDiffOpenImpl('🛡️ WAF 规则库 Diff',
-    'https://update.nsfocus.com/update/listWafV69Detail/v/rule');
+    'https://update.nsfocus.com/update/listWafV69Detail/v/rule',
+    'waf');
 }
 
-async function _toolDiffOpenImpl(title, placeholder){
+async function _toolDiffOpenImpl(title, placeholder, expectedKind){
+  // expectedKind: 'ips' | 'waf' — 入口的预期 kind
+  // 实际 kind 还得看 URL sniff,前端双校验避免用户粘错
+  _rd.expectedKind = expectedKind;
   const app=document.getElementById('app');
   app.innerHTML=`
     <div class="card">
@@ -6513,8 +6519,8 @@ async function _toolDiffOpenImpl(title, placeholder){
     </div>
   `;
   // 恢复上次输入的 URL + 实时校验
-  // 按 _rd.sourceKind 分别存,避免 IPS 和 WAF 互相串值
-  const last = localStorage.getItem('rd_last_url_' + _rd.sourceKind);
+  // 2026-07-12 统一 key (入口切换时也共用最近 URL,避免误删体验)
+  const last = localStorage.getItem('rd_last_url');
   if (last) {
     document.getElementById('rdUrl').value = last;
     // 延迟一帧触发 input 事件以显示 hint
@@ -6537,7 +6543,16 @@ async function rdFetch(force){
   force = !!force;
   const url = document.getElementById('rdUrl').value.trim();
   if (!url) { rdToast('请输入 vendor portal 链接', 'error'); return; }
-  localStorage.setItem('rd_last_url_' + _rd.sourceKind, url);
+  // 2026-07-12 入口校验: 用户在 IDPS 入口粘 WAF URL (或反之) → 拒绝,引导切工具
+  const sniffKind = isIpsPath ? 'ips' : isWafPath ? 'waf' : '';
+  if (sniffKind && sniffKind !== _rd.expectedKind) {
+    rdToast('URL 是 ' + _rdKindLabel[sniffKind] + ' 链接, 当前是 ' + _rdKindLabel[_rd.expectedKind] + ' 工具,请切到对应入口或改正 URL', 'error', 6000);
+    status.textContent = '';
+    btn.disabled = false; fbtn.disabled = false;
+    btn.textContent = '🚀 提取规则信息';
+    return;
+  }
+  localStorage.setItem('rd_last_url', url);
 
   const btn = document.getElementById('rdFetchBtn');
   const fbtn = document.getElementById('rdForceBtn');
@@ -6601,12 +6616,24 @@ async function rdUrlValidate(){
     return;
   }
 
-  // 嗅探用户实际粘的 URL 类型(可能跟 _rd.sourceKind 不一致)
+  // 嗅探用户实际粘的 URL 类型 (跟入口 expectedKind 对比校验)
   const sniffKind = isWafPath ? 'waf' : 'ips';
-  const mismatch = sniffKind !== _rd.sourceKind;
-  const mismatchTip = mismatch
-    ? `<span style="color:var(--muted)"> · 当前是 ${_rdKindLabel[sniffKind]} 链接, 后端会按 ${_rdKindLabel[sniffKind]} 解析</span>`
-    : '';
+  const expected = _rd.expectedKind;
+  const mismatch = expected && sniffKind !== expected;
+  const fetchBtn = document.getElementById('rdFetchBtn');
+  const forceBtn = document.getElementById('rdForceBtn');
+  if (mismatch) {
+    // 入口跟 URL 不匹配:置灰按钮 + 红色警告
+    if (fetchBtn) fetchBtn.disabled = true;
+    if (forceBtn) forceBtn.disabled = true;
+    hint.style.display = 'block';
+    hint.innerHTML = `<span style="color:var(--danger);font-weight:600">🚫 入口跟 URL 不匹配</span> · 当前是 <b>${_rdKindLabel[expected]}</b> 工具,但 URL 是 <b>${_rdKindLabel[sniffKind]}</b> 链接。请点 ← 返回切到 <b>${_rdKindLabel[sniffKind]}</b> 工具,或改正 URL`;
+    return;
+  } else {
+    if (fetchBtn) fetchBtn.disabled = false;
+    if (forceBtn) forceBtn.disabled = false;
+  }
+  const mismatchTip = '';
 
   // 看缓存里有没有现成的 cache-status 可查
   hint.style.display = 'block';
