@@ -1,6 +1,7 @@
 # Flask Web
 flask==3.0.0
 flask-cors==4.0.0
+flask-compress==1.15  # 启用 gzip 压缩, /api/diff/fetch 3MB JSON → 150KB
 
 # HTTP
 requests==2.31.0

@@ -14,7 +14,7 @@ a = Analysis(
         ('src/web/static', 'src/web/static'),
     ],
     hiddenimports=[
-        'flask', 'flask_cors', 'apscheduler', 'requests',
+        'flask', 'flask_cors', 'flask_compress', 'apscheduler', 'requests',
         'beautifulsoup4', 'bs4', 'cryptography', 'jwt',
         'bcrypt', 'jinja2', 'markupsafe', 'werkzeug',
         'ordered_set', 'importlib_metadata',
