@@ -1,0 +1,10 @@
+# 默认启用白名单 - 打包种子用
+# 每行一个产品 name(精确匹配 content_sources.name)
+# 不在此列表中的产品,导出 initial_sources.json 时会被强制设为 is_active=0
+# 修改后: 重跑 python3 scripts/export_initial_sources.py 即可生效
+# (注意: 此配置只影响"导出种子",不影响你当前 DB 的运行时启用状态)
+WEB应用防护系统(WAF)
+网络入侵防护系统(IPS)
+网络入侵检测系统(IDS)
+远程安全评估系统(RSAS)
+绿盟综合威胁探针(UTS)
