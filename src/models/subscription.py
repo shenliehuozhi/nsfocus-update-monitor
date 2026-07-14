@@ -125,24 +125,65 @@ def list_rules(user_id: int = None) -> list:
             }
             for r in ch_rows if r.get('channel_id')
         ]
+        # 2026-07-14: 通知对象按渠道分组,每 binding 一组,前端表格逐行渲染
+        # 收件人 fallback 链(每个 binding 独立算):
+        #   rule_channels.customer_emails → customers.email → channels.config.to_list(email)/渠道名(机器人)
+        # 跟 src/notifiers/router.py 里的发送端 fallback 对称,避免列表显示和实际发送对不上
+        TYPE_LABEL = {'email': '邮件', 'wecom': '企微', 'dingtalk': '钉钉', 'feishu': '飞书'}
         channel_ids = [r['channel_id'] for r in ch_rows if r.get('channel_id')]
-        # 解析每个渠道的通知对象：email显示邮箱，机器人显示name
-        notification_targets = []
-        for cid in channel_ids:
-            ch = query("SELECT * FROM channels WHERE id = ?", (cid,))
-            if ch:
-                ch = _decrypt_config(ch[0])
-                ch_type = ch.get('type', '')
-                if ch_type == 'email':
-                    to_list = ch.get('config', {}).get('to_list', [])
-                    notification_targets.extend([e for e in to_list if e])
-                else:
-                    type_label = {'wecom': '企业微信', 'dingtalk': '钉钉', 'feishu': '飞书'}.get(ch_type, ch_type)
-                    notification_targets.append(f"{ch.get('name', '')}({type_label})")
-        # 通知对象：优先取规则的 customer_emails（邮件通知对象），没有则取渠道名（机器人类型）
-        rule['notification_targets'] = [e.strip() for e in (rule.get('customer_emails') or '').split(',') if e.strip()]
-        if not rule['notification_targets']:
-            rule['notification_targets'] = notification_targets
+        # 一次性查所有渠道 + 所有客户,N+1 改 2 次查询
+        channels_by_id = {}
+        if channel_ids:
+            placeholders = ','.join('?' * len(channel_ids))
+            for c in query(f"SELECT * FROM channels WHERE id IN ({placeholders})", tuple(channel_ids)):
+                channels_by_id[c['id']] = _decrypt_config(c)
+        cust_ids = {r.get('customer_id') for r in ch_rows if r.get('customer_id')}
+        customers_by_id = {}
+        if cust_ids:
+            placeholders = ','.join('?' * len(cust_ids))
+            for cu in query(f"SELECT id, name, email FROM customers WHERE id IN ({placeholders})", tuple(cust_ids)):
+                customers_by_id[cu['id']] = cu
+        groups = []
+        for r in ch_rows:
+            cid = r.get('channel_id')
+            ch = channels_by_id.get(cid) if cid else None
+            ch_type = (ch or {}).get('type', '')
+            type_label = TYPE_LABEL.get(ch_type, ch_type)
+            ch_name = (ch or {}).get('name', '')
+            cust_id = r.get('customer_id')
+            cust = customers_by_id.get(cust_id) if cust_id else None
+            # 收件人 fallback:per-channel customer_emails > customers.email > 渠道 to_list(邮件) / 渠道名(机器人)
+            recipients = []
+            rc_emails = (r.get('customer_emails') or '').strip()
+            if rc_emails:
+                recipients = [e.strip() for e in rc_emails.split(',') if e.strip()]
+            elif cust and (cust.get('email') or '').strip():
+                recipients = [(cust['email'] or '').strip()]
+            elif ch_type == 'email' and ch:
+                to_list = (ch.get('config') or {}).get('to_list') or []
+                recipients = [e for e in to_list if e]
+            elif ch:
+                # 机器人:收件人=渠道名(对接群里就是这个机器人)
+                recipients = [ch_name]
+            attach_mb = int(r.get('attachment_max_mb') or 0)
+            groups.append({
+                'channel_id': cid,
+                'channel_type': ch_type,
+                'channel_name': ch_name,
+                'type_label': type_label,
+                'customer_id': cust_id,
+                'customer_name': (cust or {}).get('name', '') if cust else '',
+                'recipients': recipients,
+                'attachment_max_mb': attach_mb,
+            })
+        rule['notification_groups'] = groups
+        # 保留旧字段兼容(只读路径/history 等可能引用),合并为扁平邮箱列表,无 binding 时给空数组
+        flat = []
+        for g in groups:
+            for e in g['recipients']:
+                if e and e not in flat:
+                    flat.append(e)
+        rule['notification_targets'] = flat
     return rules
 
 

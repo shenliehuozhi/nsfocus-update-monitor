@@ -8,25 +8,37 @@
 :root{--bg:#f1f4f8;--card:#fff;--text:#1a2332;--muted:#6b7d95;--border:#e2e7ee;--primary:#4361ee;--danger:#e5484d;--success:#0ca678;--warn:#f08c00;--header:#111827;--snap-bg:#f8fafc;--snap-border:#e2e7ee;--snap-row-hover:#f5f7fa;--snap-rollback-bg:rgba(229,72,77,0.04);--snap-rollback-border:var(--danger);--snap-ver-bg:#f0f4f9;--snap-ver-border:#d0d8e4;--snap-chip-bg:#eef2f8;--snap-chip-active-bg:var(--primary);--snap-chip-active-color:#fff;--snap-new-badge:#dbeafe;--snap-new-color:#1d4ed8;--snap-empty-badge:#fee2e2;--snap-empty-color:#dc2626;--snap-pkg-type-badge:#ede9fe;--snap-pkg-type-color:#5b21b6}
 *{margin:0;padding:0;box-sizing:border-box}
 body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:var(--bg);color:var(--text)}
-.header{background:var(--header);color:#fff;display:flex;align-items:center;height:58px;padding:0 24px;gap:24px;position:sticky;top:0;z-index:100;box-shadow:0 2px 8px rgba(0,0,0,.12)}
-.header h1{font-size:16px;font-weight:700}
+.header{background:rgba(255,255,255,0.78);color:var(--text);display:flex;align-items:center;height:58px;padding:0 24px;gap:24px;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 var(--border),0 2px 12px rgba(15,23,42,0.06);backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px)}
+.header h1{font-size:16px;font-weight:700;color:var(--header-text,#1a2332)}
 .nav{display:flex;gap:2px}
-.nav a{color:#9ca3af;text-decoration:none;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:500;transition:.15s}
-.nav a:hover{color:#e5e7eb;background:rgba(255,255,255,.06)}
-.nav a.active{color:#fff;background:var(--primary)}
-.user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:#d1d5db}
-.user button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.15);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
-.user button:hover{background:rgba(255,255,255,.18)}
+.nav a{color:var(--muted);text-decoration:none;padding:7px 16px;border-radius:6px;font-size:13px;font-weight:500;transition:.15s}
+.nav a:hover{color:var(--primary);background:rgba(67,97,238,0.08)}
+.nav a.active{color:#fff;background:var(--primary);box-shadow:0 2px 4px rgba(67,97,238,0.25)}
+.user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)}
+.user button{background:transparent;color:var(--text);border:1px solid var(--border);padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
+.user button:hover{background:var(--bg);border-color:var(--primary);color:var(--primary)}
 .main{max-width:100%;margin:0;padding:20px 24px}
 .card{background:var(--card);border-radius:10px;border:1px solid var(--border);margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);position:relative}
 .card-hd{padding:12px 18px;border-bottom:1px solid var(--border);font-weight:600;font-size:13px;display:flex;align-items:flex-start;flex-wrap:wrap;gap:8px;color:var(--text)}
 .card-bd{padding:16px 18px}.card-bd.pt0{padding-top:0}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
-.stat{text-align:center;padding:16px 12px;background:#f8fafc;border-radius:8px;border:1px solid var(--border)}
+.stat{position:relative;text-align:center;padding:16px 12px 14px;background:#fff;border-radius:10px;border:1px solid var(--border);transition:transform .15s,box-shadow .15s,border-color .15s}
+.stat::before{display:none}
+.stat:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(15,23,42,0.06)}
 .stat .num{font-size:26px;font-weight:800;color:var(--header);line-height:1.2}
-.stat .label{font-size:11px;color:var(--muted);margin-top:2px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
-.stat.green .num{color:var(--success)}.stat.red .num{color:var(--danger)}
+.stat .label{font-size:11px;color:var(--muted);margin-top:4px;font-weight:500;text-transform:uppercase;letter-spacing:.5px}
+.stat.tint-primary{border-color:rgba(67,97,238,0.25)}.stat.tint-primary .num{color:var(--primary)}
+.stat.tint-primary:hover{border-color:var(--primary)}
+.stat.tint-success{border-color:rgba(12,166,120,0.25)}.stat.tint-success .num{color:var(--success)}
+.stat.tint-success:hover{border-color:var(--success)}
+.stat.tint-danger{border-color:rgba(229,72,77,0.25)}.stat.tint-danger .num{color:var(--danger)}
+.stat.tint-danger:hover{border-color:var(--danger)}
+.stat.tint-warn{border-color:rgba(240,140,0,0.25)}.stat.tint-warn .num{color:var(--warn)}
+.stat.tint-warn:hover{border-color:var(--warn)}
+.stat.tint-neutral{border-color:var(--border)}.stat.tint-neutral .num{color:var(--text)}
+.stat.tint-info{border-color:rgba(14,165,233,0.25)}.stat.tint-info .num{color:#0ea5e9}
+.stat.tint-info:hover{border-color:#0ea5e9}
 table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:left;padding:8px 12px;font-size:12px;font-weight:600;color:var(--muted);background:#f8fafc;border-bottom:2px solid var(--border);text-transform:uppercase;letter-spacing:.4px}
 td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
@@ -104,6 +116,17 @@ body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-cont
 .mono{font-family:'SF Mono','Fira Code',monospace}
 .desc-box{background:#fff;border:1px solid var(--border);border-radius:6px;padding:10px;max-height:200px;overflow-y:auto;font-size:12.5px;line-height:1.7;white-space:pre-wrap;word-break:break-all;color:#555}
 .info-bar{background:#eef4ff;border:1px solid #ccd9f0;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:#3a5080}
+.info-bar-stat{background:#f8fafc;border:1px solid var(--border);color:var(--text);display:flex;flex-wrap:wrap;align-items:center;gap:0;border-radius:10px;padding:6px 0}
+.info-bar-stat .info-seg{padding:8px 16px;display:inline-flex;align-items:center;gap:4px;font-size:12.5px}
+.info-bar-stat .info-seg-time{color:var(--primary)}
+.info-bar-stat .info-seg-next{color:var(--muted);border-left:1px solid var(--border)}
+.info-bar-stat .info-seg-week{color:var(--text);border-left:1px solid var(--border);margin-left:auto}
+.info-bar-stat b{font-weight:600;color:var(--text)}
+.info-bar-stat .info-num{color:var(--primary);font-weight:700}
+.info-bar-stat .info-ok{color:var(--success);font-weight:700}
+.info-bar-stat .info-err{color:var(--danger);font-weight:700}
+.info-bar-stat .info-muted{color:var(--muted);font-weight:600}
+.info-bar-stat .info-tag{display:inline-block;padding:1px 6px;margin-left:4px;font-size:10px;background:rgba(67,97,238,0.1);color:var(--primary);border-radius:4px;font-weight:500}
 .collecting-warning{display:none;position:fixed;top:0;left:0;right:0;background:#dc2626;color:#fff;padding:0;font-size:13px;font-weight:600;height:36px;line-height:36px;text-align:center;z-index:200}
 body.warning-open .header{top:36px}
 .collecting-warning .warn-inner{white-space:nowrap;display:inline-block;padding:0 20px}
@@ -455,20 +478,20 @@ async function dashboard(range){
   document.getElementById('app').innerHTML=
     sesWarn +
     `<div class="grid3">
-      <div class="stat green"><div class="num">${d.session_status?.active||0}</div><div class="label">活跃 Session</div></div>
-      <div class="stat"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
-      <div class="stat"><div class="num">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</div><div class="label">调度器</div></div>
+      <div class="stat tint-info"><div class="num">${d.session_status?.active||0}</div><div class="label">活跃 Session</div></div>
+      <div class="stat tint-neutral"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
+      <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-neutral':'tint-danger')}"><div class="num">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</div><div class="label">调度器</div></div>
     </div>
     <div class="grid3" style="margin-top:12px">
-      <div class="stat"><div class="num" style="color:var(--primary)">${d.push_today?.total||0}</div><div class="label">今日推送</div></div>
-      <div class="stat green"><div class="num">${d.push_today?.success||0}</div><div class="label">成功</div></div>
-      <div class="stat"><div class="num" style="color:${d.push_today?.failed>0?'var(--danger)':(d.push_today?.failed===0?'var(--muted)':'var(--success)')}">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
+      <div class="stat tint-primary"><div class="num">${d.push_today?.total||0}</div><div class="label">今日推送</div></div>
+      <div class="stat tint-success"><div class="num">${d.push_today?.success||0}</div><div class="label">成功</div></div>
+      <div class="stat ${d.push_today?.failed>0?'tint-danger':(d.push_today?.failed===0?'tint-success':'tint-neutral')}"><div class="num">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
-      <div class="info-bar">
-        <span>⏱️ 上次采集: <span id="lastColText">${lastCol}</span>${sch.last_mode?' ['+mode_label[sch.last_mode]+']':''}<span id="dashProgress" style="display:none;margin-left:8px;font-size:12px;color:var(--primary);font-weight:600"></span></span>
-        <span>⏭️ 下次采集: ${nextCol}</span>
-        <span>📊 本周: ${d.push_week?.total||0}次 <span style="color:var(--success)">${d.push_week?.success||0}✓</span> ${d.push_week?.failed>0?'<span style="color:var(--danger)">'+d.push_week.failed+'✗</span>':('<span style="color:var(--muted)">0✗</span>')}</span>
+      <div class="info-bar info-bar-stat">
+        <span class="info-seg info-seg-time">⏱️ 上次采集: <b>${lastCol}</b>${sch.last_mode?' <span class="info-tag">'+mode_label[sch.last_mode]+'</span>':''}<span id="dashProgress" style="display:none;margin-left:8px;font-size:12px;color:var(--primary);font-weight:600"></span></span>
+        <span class="info-seg info-seg-next">⏭️ 下次采集: <b>${nextCol}</b></span>
+        <span class="info-seg info-seg-week">📊 本周: <b class="info-num">${d.push_week?.total||0}</b>次 <b class="info-ok">${d.push_week?.success||0}✓</b> ${d.push_week?.failed>0?'<b class="info-err">'+d.push_week.failed+'✗</b>':('<b class="info-muted">0✗</b>')}</span>
       </div>
     </div>
 
@@ -3399,8 +3422,8 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:#e8f0fe;border:1px solid #c2d8fc;border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'#dbeafe':'#fef3c7'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px" title="${(r.notification_targets||[]).join(', ')}">${(r.notification_targets||[]).join(', ')||'<span style="color:var(--muted)">—</span>'}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:100px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:#e8f0fe;border:1px solid #c2d8fc;border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'#dbeafe':'#fef3c7'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><span style="display:inline-block;padding:0 5px;margin-right:4px;background:#f1f5f9;color:#475569;border-radius:3px;font-size:10px;font-weight:600">${escHtml(g.type_label||"-")}</span>${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:320px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
 
@@ -6487,7 +6510,7 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
           <div class="rd-table-container" id="rdPkgTableContainer">
             <table class="rd-table" id="rdPkgTable">
               <thead><tr>
-                <th style="width:36px"></th><th>版本号</th><th>文件名</th><th>发布时间 (CST)</th><th>大小</th><th>MD5</th>
+                <th style="width:36px"></th><th style="width:100px">版本号</th><th style="width:230px">文件名</th><th style="width:150px">发布时间 (CST)</th><th style="width:60px">大小</th><th style="width:260px">MD5</th>
               </tr></thead>
               <tbody></tbody>
             </table>
@@ -6544,7 +6567,10 @@ async function rdFetch(force){
   const url = document.getElementById('rdUrl').value.trim();
   if (!url) { rdToast('请输入 vendor portal 链接', 'error'); return; }
   // 2026-07-12 入口校验: 用户在 IDPS 入口粘 WAF URL (或反之) → 拒绝,引导切工具
-  const sniffKind = isIpsPath ? 'ips' : isWafPath ? 'waf' : '';
+  // 跟 rdUrlValidate 对称:嗅探 URL 路径决定 sniffKind
+  const _isIpsPath = url.indexOf('/listNewipsDetail') >= 0;
+  const _isWafPath = url.indexOf('/listWafV') >= 0 && url.indexOf('Detail') >= 0;
+  const sniffKind = _isIpsPath ? 'ips' : _isWafPath ? 'waf' : '';
   if (sniffKind && sniffKind !== _rd.expectedKind) {
     rdToast('URL 是 ' + _rdKindLabel[sniffKind] + ' 链接, 当前是 ' + _rdKindLabel[_rd.expectedKind] + ' 工具,请切到对应入口或改正 URL', 'error', 6000);
     status.textContent = '';
@@ -6588,7 +6614,8 @@ async function rdFetch(force){
     rdRenderPkgTable();
     document.getElementById('rdStep1').style.display = 'block';
   } catch (e) {
-    rdToast('网络错误: ' + e.message, 'error', 6000);
+    rdToast('提取失败: ' + e.message, 'error', 6000);
+    status.textContent = '✗ ' + e.message;
   } finally {
     btn.disabled = false; fbtn.disabled = false;
     btn.textContent = '🚀 提取规则信息';
@@ -6638,18 +6665,110 @@ async function rdUrlValidate(){
   // 看缓存里有没有现成的 cache-status 可查
   hint.style.display = 'block';
   hint.innerHTML = '<span style="color:var(--muted)">🔍 校验中...</span>';
+
+  // 2026-07-14: 反推 URL 对应的 chain 路径(从 _dataAll 里的 package_type.paths 查)
+  // _dataAll 未加载时主动 loadDataAll() 一次(in flight 用 _rdChainLoading 防重复请求)
+  const chainPromise = (async () => {
+    if (!_dataAll || !Object.keys(_dataAll).length) {
+      if (!_rd._chainLoading) {
+        _rd._chainLoading = loadDataAll();
+      }
+      await _rd._chainLoading;
+      _rd._chainLoading = null;
+    }
+    try {
+      const u = new URL(url);
+      // 2026-07-14: _srcUrlChainMap 同 path 会被后写覆盖(只能存 1 条 chain),
+      // 但 vendor portal 经常把同一 URL 挂在多个子分类下(比如 IPS rule5.6.11_v2
+      // 出现在 5 个子分类:标准/飞腾/海光/海光P/海光U)。所以这里**直接遍历 _dataAll**
+      // 找全部 chain,绕过 map 覆盖问题。
+      const stripped = (u.pathname || '').replace(/\/+$/, '').replace(/^\/+/, '') || '';
+      const matches = [];
+      const seenChain = new Set();
+      const seenSid = new Set();
+      for (const [sid, src] of Object.entries(_dataAll || {})) {
+        if (seenSid.has(sid)) continue;
+        seenSid.add(sid);
+        const paths = (src.package_type && src.package_type.paths) || [];
+        for (const p of paths) {
+          if (!p || !p.url || !p.chain || !p.chain.length) continue;
+          // 容错匹配:单/双/无前导斜杠都试
+          const pu = String(p.url).replace(/\/+$/, '');
+          if (pu !== stripped && '/' + pu !== stripped && pu.replace(/^\//, '') !== stripped) continue;
+          const key = p.chain.join('||');
+          if (seenChain.has(key)) continue;
+          seenChain.add(key);
+          matches.push({
+            chain: p.chain,
+            srcName: src.display_name || src.name || ''
+          });
+        }
+      }
+      return matches;
+    } catch (_) { /* invalid URL — ignore */ }
+    return [];
+  })();
+
   try {
     const r = await fetch(API + '/diff/cache-status?url=' + encodeURIComponent(url), { headers: { 'Authorization': 'Bearer ' + T }});
     const j = await r.json();
+    let baseHint;
     if (j.code === 0 && j.data && j.data.exists) {
       const age = j.data.age_seconds || 0;
       const ageStr = age < 60 ? `${age}秒前` : age < 3600 ? `${Math.floor(age/60)}分钟前` : `${Math.floor(age/3600)}小时前`;
-      hint.innerHTML = `<span style="color:var(--success)">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>${mismatchTip}`;
+      baseHint = `<span style="color:var(--success)">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>`;
     } else {
-      hint.innerHTML = `<span style="color:var(--muted)">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>${mismatchTip}`;
+      baseHint = `<span style="color:var(--muted)">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>`;
     }
+    // 链路径(可能有 0 条 = URL 不在已采集产品里,或多条 = 跨产品共用 URL)
+    const matches = await chainPromise;
+    let chainHtml = '';
+    if (matches && matches.length) {
+      // 纯文本格式(贴工单/微信友好),转 > 替换 ›
+      const plainText = matches.map((m, i) =>
+        `${i + 1}. ` + m.chain.join(' > ') + (m.srcName ? `  [${m.srcName}]` : '')
+      ).join('\n');
+      const headerText = `链路 (${matches.length} 条匹配):`;
+      // escape 给 inline onclick 用(避免引号/换行/中文出错)
+      const safeText = plainText.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/"/g, '&quot;');
+      const safeHeader = headerText.replace(/"/g, '&quot;');
+      chainHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      chainHtml += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">`;
+      chainHtml += `<span style="color:var(--muted);font-weight:600">📍 ${headerText}</span>`;
+      chainHtml += `<button class="btn btn-xs btn-outline" onclick="rdCopyChains('${safeHeader}\\n${safeText}')" title="复制为纯文本(可贴工单/微信)">📋 复制链路</button>`;
+      chainHtml += `</div>`;
+      matches.forEach((m, i) => {
+        const segments = m.chain.map(s => `<span style="color:var(--primary)">${escHtml(s)}</span>`).join(` <span style="color:var(--muted)">›</span> `);
+        const srcLabel = m.srcName ? `<span style="color:var(--muted);font-size:11px"> [${escHtml(m.srcName)}]</span>` : '';
+        chainHtml += `<div style="margin-top:2px;padding-left:14px">${i + 1}. ${segments}${srcLabel}</div>`;
+      });
+      chainHtml += '</div>';
+    }
+    hint.innerHTML = baseHint + mismatchTip + chainHtml;
   } catch (e) {
     hint.style.display = 'none';
+  }
+}
+
+// 复制链路到剪贴板(rdUrlValidate 「📋 复制链路」按钮调用)
+// text = 转义后的字符串,JS 里 \\n 是换行,' \\' 是单引号,需要还原
+function rdCopyChains(escapedText){
+  const text = escapedText.replace(/\\n/g, '\n').replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+  const done = () => rdToast('链路已复制到剪贴板 (' + text.split('\n').length + ' 行)', 'success', 2000);
+  const fail = (e) => rdToast('复制失败: ' + e.message, 'error', 4000);
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fail);
+  } else {
+    // 旧浏览器 fallback:用临时 textarea + execCommand
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch (e) { fail(e); }
+    finally { document.body.removeChild(ta); }
   }
 }
 
@@ -6666,10 +6785,10 @@ function rdRenderPkgTable(){
     return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${p.package_version}">
       <td><input type="checkbox" class="rd-pkg-cb" data-ver="${p.package_version}" ${isSel ? 'checked' : ''} onchange="rdToggleSel('${p.package_version}')"></td>
       <td style="font-family:monospace">${p.package_version}</td>
-      <td style="font-size:12px;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.file_name}">${p.file_name}</td>
+      <td style="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
       <td style="font-size:12px">${pubCST}</td>
       <td style="font-size:12px">${p.file_size_raw || '—'}</td>
-      <td style="font-size:11px;font-family:monospace;color:var(--muted)">${(p.md5_hash||'').slice(0, 10)}…</td>
+      <td style="font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span style="color:var(--muted)">—</span>'}</td>
     </tr>`;
   }).join('');
 }
