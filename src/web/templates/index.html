@@ -4350,7 +4350,7 @@ async function history(){
           let senderEmail = d.sender || d.recipient || '';
           channelDisp = senderEmail ? `${escHtml(_chanName||'—')} (${escHtml(senderEmail)})` : escHtml(_chanName||'—');
         } else {
-          channelDisp = _chanName || '—';
+          channelDisp = escHtml(_chanName) || '—';
         }
         // 收件人:email 渠道显示邮箱;机器人渠道没个人收件人,用 _chanName 替代,跟机器人名一致
         let recipient = d.recipient || _chanName || '—';
@@ -4361,7 +4361,7 @@ async function history(){
             <td>${typeCN(h.package_type)}</td>
             <td class="mono" title="${escHtml(h.file_name||'')}" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.file_name||'')}</td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
-            <td>${escHtml(channelDisp)}</td>
+            <td>${channelDisp}</td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
             <td><button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" onclick="resendTargeted(${h.id},${d.channel_id||0},${d.customer_id||0},this)">📤 重推</button></td>
