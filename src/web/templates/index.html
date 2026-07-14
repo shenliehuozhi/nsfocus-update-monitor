@@ -65,8 +65,8 @@
 body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:var(--bg);color:var(--text)}
 .header{background:rgba(255,255,255,0.78);color:var(--text);display:flex;align-items:center;height:58px;padding:0 24px;gap:24px;position:sticky;top:0;z-index:100;box-shadow:0 1px 0 var(--border),0 2px 12px rgba(15,23,42,0.06);backdrop-filter:saturate(180%) blur(14px);-webkit-backdrop-filter:saturate(180%) blur(14px)}
 .header h1{font-size:16px;font-weight:700;color:var(--header-text,var(--text))}
-.nav{display:flex;gap:2px}
-.nav a{color:var(--muted);text-decoration:none;padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;transition:.15s}
+.nav{display:flex;gap:1px;flex-wrap:nowrap;overflow:hidden}
+.nav a{color:#4a5568;text-decoration:none;padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;transition:.15s;white-space:nowrap;flex-shrink:0}
 .nav a:hover{color:var(--primary);background:rgba(67,97,238,0.08)}
 .nav a.active{color:#fff;background:var(--primary);box-shadow:0 2px 4px rgba(67,97,238,0.25)}
 .user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--text)}
@@ -629,11 +629,11 @@ async function dashboard(range){
         </div>
         <div class="card-bd" style="padding:12px;box-sizing:border-box;height:375px;display:flex;flex-direction:column">
           <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
-          <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;max-height:80px;overflow-y:auto;overflow-x:hidden"></div>
+          <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;line-height:1.4;max-height:108px;overflow-y:auto;overflow-x:hidden;padding-right:4px"></div>
         </div>
       </div>
 
-      <div class="card" style="flex:1;min-width:280px;max-width:400px;display:flex;flex-direction:column">
+      <div class="card" style="flex:1;min-width:280px;display:flex;flex-direction:column">
         <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
           <span>📊 产品发布分布</span>
           <div id="pieRange" style="display:flex;gap:4px;margin-left:8px">
@@ -725,11 +725,13 @@ function _renderProdDistTable(data){
     data.map((item,i)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
       return `<tr style="border-bottom:1px solid var(--gray-bg)">
-        <td style="padding:9px 12px;display:flex;align-items:center;gap:6px">
-          <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px" title="${item.name}">${item.name}</span>
+        <td style="padding:9px 12px">
+          <div style="display:flex;align-items:center;gap:6px;min-width:0">
+            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${item.name}">${item.name}</span>
+          </div>
         </td>
-        <td style="padding:9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
+        <td style="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
         <td style="padding:9px 12px">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
