@@ -4328,7 +4328,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr style="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td class="mono" title="${escHtml(h.file_name||'')}" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.file_name||'')}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr style="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td title="${escHtml(h.file_name||'')}" style="max-width:380px"><span style="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
@@ -4359,7 +4359,7 @@ async function history(){
             <td>${_custName||d.customer_name||'—'}</td>
             <td>${h.product_name||''}</td>
             <td>${typeCN(h.package_type)}</td>
-            <td class="mono" title="${escHtml(h.file_name||'')}" style="max-width:380px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(h.file_name||'')}</td>
+            <td title="${escHtml(h.file_name||'')}" style="max-width:380px"><span style="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
             <td>${channelDisp}</td>
             <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
