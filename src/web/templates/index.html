@@ -3177,7 +3177,7 @@ function _onEmailHostChange(){
 function openChModal(id){
   editingChId=id||0;
   const title=id?'编辑渠道':'添加渠道';
-  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">企业微信</option><option value="dingtalk">钉钉</option><option value="feishu">飞书</option><option value="apprise">Apprise</option><option value="email">邮件</option></select></div></div><div id="chcfg"></div>`;
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">💬 企业微信</option><option value="dingtalk">📞 钉钉</option><option value="feishu">🪶 飞书</option><option value="apprise">🔗 Apprise</option><option value="email">📧 邮件</option></select></div></div><div id="chcfg"></div>`;
   const modal=document.createElement('div');
   modal.id='chModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
@@ -4323,8 +4323,7 @@ async function history(){
   const r=await api('/history?limit=200&days='+days);const list=r.data?.items||[];
   // 不再按 minute-level 聚合,每个 delivery 直接一行
   // 渠道类型 → 中文标签 + emoji
-  const botTypeCN = {wecom:'企业微信', dingtalk:'钉钉', feishu:'飞书', webhook:'Webhook'};
-  const botTypes = new Set(Object.keys(botTypeCN));
+  const botTypes = new Set(['wecom','dingtalk','feishu','webhook']);
   let html='';
   list.forEach(h=>{
     let dels=h.deliveries||[];
@@ -4342,14 +4341,14 @@ async function history(){
           _chanName = _parts[0];
           _custName = _parts.slice(1).join(_SEP);  // 客户名理论上不含分隔符,但 slice(1).join 防止嵌套
         }
-        // 渠道列: 机器人显示「🤖 类型: 渠道名」;email 显示「渠道名 (发件邮箱)」
+        // 渠道列: 机器人显示「<chip 类型> 渠道名」;email 显示「渠道名 (发件邮箱)」
         // 发件邮箱 sender 由 email notifier 写入;老数据/机器人渠道为空时 fallback 到 recipient
         let channelDisp;
         if (botTypes.has(d.channel_type)) {
-          channelDisp = `🤖 ${botTypeCN[d.channel_type]}: ${_chanName||'—'}`;
+          channelDisp = `${chTypeChip(d.channel_type, false)} ${escHtml(_chanName||'—')}`;
         } else if (d.channel_type === 'email') {
           let senderEmail = d.sender || d.recipient || '';
-          channelDisp = senderEmail ? `${_chanName||'—'} (${senderEmail})` : (_chanName||'—');
+          channelDisp = senderEmail ? `${escHtml(_chanName||'—')} (${escHtml(senderEmail)})` : escHtml(_chanName||'—');
         } else {
           channelDisp = _chanName || '—';
         }
