@@ -161,21 +161,9 @@ class NsfocusCollector(BaseCollector):
             _log(f'入口: {url}')
             html = self._fetch_discover(url)
 
-            # Extract section titles from entry page (e.g. "WEB应用防护系统(WAF)列表")
+# Extract section titles from entry page (e.g. "WEB应用防护系统(WAF)列表")
             # and map each top-level link to its containing section.
-            section_titles = {}
-            import re as _re
-            for sec_match in _re.finditer(r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html):
-                sec_title = sec_match.group(1).strip().lstrip('>')
-                if sec_title:
-                    # Find all links within this section (until next ser_c_b_tit or end)
-                    sec_start = sec_match.end()
-                    next_sec = html.find("ser_c_b_tit", sec_start)
-                    sec_html = html[sec_start:next_sec if next_sec > 0 else len(html)]
-                    for link_match in _re.finditer(r'<a href=["\']([^"\']+)["\']\s*>', sec_html):
-                        link_url = link_match.group(1).strip()
-                        if link_url and not link_url.startswith('#'):
-                            section_titles[link_url] = sec_title
+            section_titles = self._extract_ser_c_b_sections(html)
 
             # Top-level links exclude sidebar + stopped links
             top_links = self._extract_content_links(html)
@@ -248,8 +236,17 @@ class NsfocusCollector(BaseCollector):
                     paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
                     return
 
+                # Tag each sub-link with the ser_c_b_tit section it belongs to on
+                # THIS page (not the entry page). Required for version pages that
+                # have multiple ser_c_b_tit blocks (e.g. IPS /update/ipsIndex/v/5.6.10
+                # has both 标准系列升级包列表 and 10000系列升级包列表). Without this,
+                # all sub-links inherit the entry-page section title and branches
+                # that share detail URLs (e.g. IPS listNewipsDetail/v/engine is
+                # used by BOTH 标准系列 and 10000系列) are silently collapsed.
+                sub_section_titles = self._extract_ser_c_b_sections(page_html)
                 for sub_text, sub_url in sub_links:
-                    new_chain = list(chain) + [sub_text]
+                    sec = sub_section_titles.get(sub_url, '')
+                    new_chain = list(chain) + ([sec, sub_text] if sec else [sub_text])
                     recurse(sub_url, new_chain, depth + 1)
 
             # Start recursion from top-level links
@@ -715,6 +712,36 @@ class NsfocusCollector(BaseCollector):
                 logger.warning(f'{path}: {last_error}')
                 break  # non-retryable error
         raise Exception(last_error or f'Failed after {MAX_RETRIES+1} attempts')
+
+    @staticmethod
+    def _extract_ser_c_b_sections(html: str) -> dict:
+        """Map each <a href> in a page to its containing ser_c_b_tit section title.
+
+        Vendor pages (e.g. IPS /update/ipsIndex/v/5.6.10) can have MULTIPLE
+        ser_c_b_tit blocks on a single page: one for 标准系列升级包列表 and
+        another for 10000系列升级包列表. Without section annotation, recurse()
+        would tag every sub-link with the inherited entry-page section,
+        collapsing branches that share detail URLs (e.g. IPS listNewipsDetail/v/engine
+        is used by BOTH 标准系列 and 10000系列).
+
+        Returns: dict[href -> section_title]. Only hrefs containing '/update/' are
+        recorded (sidebar/nav links excluded). Section titles are stripped and
+        leading '>' is removed.
+        """
+        import re as _re
+        sections = {}
+        for sec_match in _re.finditer(r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html):
+            sec_title = sec_match.group(1).strip().lstrip('>')
+            if not sec_title:
+                continue
+            sec_start = sec_match.end()
+            next_sec = html.find("ser_c_b_tit", sec_start)
+            sec_html = html[sec_start:next_sec if next_sec > 0 else len(html)]
+            for link_match in _re.finditer(r'<a href=[\"\']([^\"\']+)[\"\']\s*>', sec_html):
+                link_url = link_match.group(1).strip()
+                if link_url and '/update/' in link_url and not link_url.startswith('#'):
+                    sections[link_url] = sec_title
+        return sections
 
     def _extract_content_links(self, html: str) -> list[tuple[str, str]]:
         soup = BeautifulSoup(html, 'html.parser')
