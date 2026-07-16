@@ -225,6 +225,37 @@ def _get_chain(source_id: int, source_url: str, path_id: str = None) -> list:
     return by_url.get(rel_path, [])
 
 
+def _get_chain_derived(source_id: int, source_url: str, path_id: str = None) -> dict:
+    """Reverse-lookup chain from snapshot identity, then derive the legacy
+    snapshot fields (product_name / version_branch / package_type) from
+    chain text.
+
+    With the v3 URL-based path_id change, snapshots no longer carry these
+    chain-derived fields — they're computed at read time. Chain structure
+    (paths[].chain[]):
+      - chain[0]   = product name (e.g. "网络入侵防护系统(IPS)")
+      - chain[-2]  = version (e.g. "网络入侵防护系统 5.6.10")
+      - chain[-1]  = package type (e.g. "引擎升级包")
+
+    Returns dict with keys: product_name, version_branch, package_type,
+    and full chain list. Empty dict if no chain found.
+    """
+    chain = _get_chain(source_id, source_url, path_id)
+    if not chain:
+        return {
+            'product_name': '',
+            'version_branch': '',
+            'package_type': '',
+            'chain': [],
+        }
+    return {
+        'product_name': chain[0] if len(chain) >= 1 else '',
+        'version_branch': chain[-2] if len(chain) >= 2 else '',
+        'package_type': chain[-1] if len(chain) >= 1 else '',
+        'chain': chain,
+    }
+
+
 def invalidate_chain_cache():
     """供外部调用的缓存失效接口（产品管理修改路径后调用）。"""
     global _chain_cache_loaded

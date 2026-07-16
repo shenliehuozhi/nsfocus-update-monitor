@@ -447,9 +447,34 @@ def get_active_snapshots(source_id: int) -> list:
 
 
 def get_snapshot(snapshot_id: int) -> dict | None:
+    """Fetch a single snapshot by id, enriched with chain-derived fields.
+
+    v3 design: snapshots no longer store product_name / version_branch /
+    package_type (chain-derived redundancy). Reverse-lookup from
+    content_sources.package_type.paths at read time so downstream code
+    (notifiers, event_handler, API) keeps working unchanged in semantics.
+    """
     from src.models.database import query
     rows = query("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,))
-    return rows[0] if rows else None
+    if not rows:
+        return None
+    snap = dict(rows[0])
+    # Enrich with chain-derived fields if we have source_id and source_url
+    if snap.get('source_id') and snap.get('source_url'):
+        try:
+            from src.core.scheduler import _get_chain_derived
+            derived = _get_chain_derived(
+                snap['source_id'],
+                snap['source_url'],
+                snap.get('path_id') or '',
+            )
+            # Only override if we got real values (don't blank out pre-existing)
+            for k in ('product_name', 'version_branch', 'package_type'):
+                if derived.get(k):
+                    snap[k] = derived[k]
+        except Exception:
+            pass  # enrichment best-effort, don't fail the read
+    return snap
 
 
 def get_rollback_snapshots() -> list:

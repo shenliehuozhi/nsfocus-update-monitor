@@ -1051,37 +1051,76 @@ def batch_update_products():
 @bp_options.route('/versions', methods=['GET'])
 @require_auth
 def get_versions():
-    """Get versions for a product from snapshots."""
+    """Get versions for a product from content_sources.package_type.paths.
+
+    v3 design: snapshots no longer store product_name/version_branch.
+    Derive from content_sources.package_type.paths[].chain instead.
+    Chain structure: chain[0]=product_name, chain[-2]=version.
+    """
     product = request.args.get('product', '')
+    import json
     from src.models.database import query
     if product:
-        rows = query(
-            "SELECT DISTINCT version_branch FROM snapshots WHERE product_name=? AND status='active' ORDER BY version_branch",
-            (product,))
+        rows = query("SELECT package_type FROM content_sources WHERE is_active=1")
     else:
-        rows = query("SELECT DISTINCT product_name, version_branch FROM snapshots WHERE status='active' ORDER BY product_name, version_branch")
-    versions = [r['version_branch'] for r in rows]
-    return jsonify({'code': 0, 'data': versions})
+        rows = query("SELECT package_type FROM content_sources WHERE is_active=1")
+    versions_set = set()
+    products_set = set()
+    for row in rows:
+        try:
+            cfg = json.loads(row['package_type'] or '{}')
+        except Exception:
+            continue
+        for p in cfg.get('paths', []):
+            chain = p.get('chain') or []
+            if len(chain) < 2:
+                continue
+            prod = chain[0]
+            ver = chain[-2]
+            if product and prod != product:
+                continue
+            products_set.add(prod)
+            versions_set.add((prod, ver))
+    if product:
+        return jsonify({'code': 0, 'data': sorted({v for _, v in versions_set})})
+    else:
+        return jsonify({'code': 0, 'data': sorted(versions_set)})
 
 
 @bp_options.route('/package-types', methods=['GET'])
 @require_auth
 def get_package_types():
-    """Get package types from snapshots."""
+    """Get package types from content_sources.package_type.paths.
+
+    v3 design: snapshots no longer store package_type. Derive from paths
+    instead. Chain structure: chain[-1]=package_type.
+    """
     product = request.args.get('product', '')
     version = request.args.get('version', '')
+    import json
     from src.models.database import query
-    conditions = ["status='active'"]
-    params = []
-    if product:
-        conditions.append("product_name=?")
-        params.append(product)
-    if version:
-        conditions.append("version_branch=?")
-        params.append(version)
-    sql = f"SELECT DISTINCT package_type FROM snapshots WHERE {' AND '.join(conditions)} ORDER BY package_type"
-    rows = query(sql, tuple(params))
-    types = [r['package_type'] for r in rows]
+    rows = query("SELECT package_type FROM content_sources WHERE is_active=1")
+    types_set = set()
+    for row in rows:
+        try:
+            cfg = json.loads(row['package_type'] or '{}')
+        except Exception:
+            continue
+        for p in cfg.get('paths', []):
+            chain = p.get('chain') or []
+            if not chain:
+                continue
+            if len(chain) < 1:
+                continue
+            prod = chain[0] if len(chain) >= 1 else ''
+            ver = chain[-2] if len(chain) >= 2 else ''
+            pkg = chain[-1]
+            if product and prod != product:
+                continue
+            if version and ver != version:
+                continue
+            types_set.add(pkg)
+    types = sorted(types_set)
     if not types:
         types = ['sys', 'rule', 'nti', 'av', 'url', 'special']
     return jsonify({'code': 0, 'data': types})
@@ -1344,12 +1383,31 @@ def get_classification():
     from src.notifiers.router import _load_classification_config
     config = _load_classification_config()
 
-    # Also return known product+type combinations from snapshots
+    # Also return known product+type combinations. v3 design: derive from
+    # content_sources.package_type.paths since snapshots no longer store
+    # product_name / package_type.
     from src.models.database import query
-    combos = query(
-        "SELECT DISTINCT product_name, package_type FROM snapshots WHERE status='active' ORDER BY product_name, package_type"
-    )
-    known_types = [{'product': r['product_name'], 'type': r['package_type']} for r in combos]
+    import json as _json
+    rows = query("SELECT package_type FROM content_sources WHERE is_active=1")
+    seen = set()
+    known_types = []
+    for row in rows:
+        try:
+            cfg = _json.loads(row['package_type'] or '{}')
+        except Exception:
+            continue
+        for p in cfg.get('paths', []):
+            chain = p.get('chain') or []
+            if len(chain) < 2:
+                continue
+            prod = chain[0]
+            pkg = chain[-1]
+            key = (prod, pkg)
+            if key in seen:
+                continue
+            seen.add(key)
+            known_types.append({'product': prod, 'type': pkg})
+    known_types.sort(key=lambda x: (x['product'], x['type']))
 
     return jsonify({
         'code': 0,

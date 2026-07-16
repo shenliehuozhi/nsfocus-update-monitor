@@ -75,6 +75,25 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
         logger.warning(f'Snapshot {snapshot_id} not found')
         return
 
+    # ── Enrich snap with chain-derived fields ───────────────────
+    # v3 design: snapshots no longer carry product_name / version_branch /
+    # package_type (chain-derived redundancy). Reverse-lookup from
+    # content_sources.package_type.paths via source_url. This keeps
+    # downstream notifiers/event_handler code unchanged in semantics
+    # while making the DB clean.
+    from src.core.scheduler import _get_chain_derived
+    derived = _get_chain_derived(
+        snap.get('source_id', 0),
+        snap.get('source_url', ''),
+        snap.get('path_id', ''),
+    )
+    # Inject derived fields into snap (sqlite3.Row is dict-like; we
+    # create a shallow copy to avoid mutating the cached row).
+    snap = dict(snap)
+    snap['product_name'] = derived['product_name']
+    snap['version_branch'] = derived['version_branch']
+    snap['package_type'] = derived['package_type']
+
     from src.models.subscription import get_rule
     rule = get_rule(rule_id)
     if not rule:
