@@ -630,13 +630,29 @@ class NsfocusCollector(BaseCollector):
                 time.sleep(backoff)
             try:
                 logger.debug(f'[discover] GET {url}')
-                resp = self._discover_session.get(url, timeout=TIMEOUT)
+                # Stream large responses and stop after 50KB. Many vendor
+                # detail pages (rule/AV libraries) are 1-3 MB text dumps with no
+                # upgrade-package table; we only need the page header to detect
+                # sub-links and compute the package-type hash (which
+                # _extract_table_items already does on html[:50000]). Without
+                # this, IPS-style products spend ~6s/URL downloading bodies that
+                # are discarded, making a full 80-product discover take 37-43 min
+                # instead of ~12-15 min.
+                resp = self._discover_session.get(url, timeout=TIMEOUT, stream=True)
                 resp.raise_for_status()
                 if '/portal/index' in resp.url:
                     raise SessionExpiredError('Session expired')
                 if '/update/upLic' in resp.url:
                     raise RedirectToLicenseError('Redirected to /update/upLic — session context switched')
-                return resp.text
+                chunks = []
+                total = 0
+                for chunk in resp.iter_content(chunk_size=8192):
+                    chunks.append(chunk)
+                    total += len(chunk)
+                    if total >= 50000:
+                        break
+                resp.close()
+                return b''.join(chunks).decode('utf-8', errors='replace')
             except SessionExpiredError:
                 raise
             except RedirectToLicenseError:
