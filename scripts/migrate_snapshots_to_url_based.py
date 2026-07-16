@@ -1,0 +1,240 @@
+#!/usr/bin/env python3
+"""Migrate snapshots table to URL-based identity (drop chain + sid dimension).
+
+Background
+----------
+Prior to 2026-07-16, snapshots.path_id was computed as
+MD5(source_url + JSON(chain))[:12]. Whenever the collector evolved
+(chain text grew new ser_c_b_tit block names, whitespace shifted, etc.)
+all snapshots for the same physical file would be re-keyed, producing
+hundreds of spurious NEW/WITHDRAWN notifications on the next collect.
+
+This migration moves snapshots to a stable identity keyed only on the
+physical URL of the final page:
+
+    snapshots.path_id   := MD5(source_url)[:12]
+    snapshots UNIQUE    := (source_url, path_id, file_name, md5_hash)
+                          partial index WHERE status='active'
+
+Multiple chains that share one URL now collapse to one active snapshot
+row — semantically correct, since chains describe subscription
+branches but the file content they discover is the same physical file.
+
+Behavior
+--------
+For active rows sharing (source_url, file_name, md5_hash): keep the
+one with the most recent last_seen_at, mark the others as 'superseded'
+with rollback_confirmed_at = now. This resolves the legacy 6-18
+multiple-chain duplicates.
+
+For non-active rows (superseded/withdrawn) sharing the same key: leave
+as-is. The new partial unique index (WHERE status='active') permits
+audit-history rows to coexist with a current active row at the same
+identity — exactly what happens when a vendor removes a file
+(withdrawn) and later re-releases it (new active row).
+
+Recompute path_id for every active row using the new MD5(source_url)
+algorithm.
+
+Drop the old UNIQUE index, recreate as a partial unique index on
+active rows only.
+
+Idempotent: re-running is a no-op once the marker is set.
+
+Usage
+-----
+Dry-run (default): print planned changes, do not write.
+Apply:            --apply
+
+The script also auto-runs on service startup if the
+snapshots_migration_v3 marker row in system_settings is absent (see
+src/app.py migration check).
+"""
+
+import argparse
+import hashlib
+import os
+import sys
+
+# Add project root so we can import src.models.database
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.models.database import get_db
+
+
+MIGRATION_KEY = 'snapshots_migration_v3'
+
+
+def md5_url(source_url: str) -> str:
+    """Mirror of _compute_path_id in src/core/scheduler.py."""
+    if not source_url:
+        return ''
+    return hashlib.md5(source_url.encode()).hexdigest()[:12]
+
+
+def already_migrated(db) -> bool:
+    """Return True if this migration has already run on this DB."""
+    row = db.execute(
+        "SELECT value FROM system_settings WHERE key=?", (MIGRATION_KEY,)
+    ).fetchone()
+    return bool(row and row[0] == '1')
+
+
+def plan(db):
+    """Return a dict describing planned changes.
+
+    Three kinds of duplicates are resolved:
+    1. Same key + same status='active' (multiple chains writing the same
+       file under the new URL-based identity) → keep the one with the most
+       recent last_seen_at, mark others superseded.
+    2. Same key + mixed statuses (historical: file was once withdrawn then
+       re-released, or legacy 6-18 path_id collisions) → keep the most
+       recent 'active' row, others stay in their existing status (they
+       are valid history once a partial unique index allows it).
+    3. Same key + all non-active (pure history) → leave alone, partial
+       unique index will allow it.
+    """
+    # Active rows with non-empty source_url, grouped by (url, pid, file, md5)
+    rows = db.execute("""
+        SELECT id, source_url, file_name, md5_hash, path_id, last_seen_at, status
+        FROM snapshots
+        WHERE source_url != ''
+        ORDER BY source_url, file_name, md5_hash, last_seen_at DESC, id DESC
+    """).fetchall()
+
+    # Group by identity. Within each group, keep the first row (most recent
+    # last_seen_at, tie-break by highest id). All other ACTIVE rows in the
+    # same group go to superseded (they're duplicates under the new identity).
+    # Non-active rows are left as-is (they're valid history).
+    seen_keys = {}  # (url, file, md5) -> keep_id
+    supersede_ids = []
+    for r in rows:
+        key = (r[1], r[2], r[3])
+        if r[6] != 'active':
+            continue  # leave non-active alone
+        if key not in seen_keys:
+            seen_keys[key] = r[0]
+        else:
+            supersede_ids.append(r[0])
+
+    # Path_id updates: every active row needs path_id == MD5(source_url)[:12]
+    pathid_updates = []
+    for r in rows:
+        if r[6] != 'active':
+            continue
+        new_pid = md5_url(r[1])
+        if r[4] != new_pid:
+            pathid_updates.append((r[0], new_pid))
+
+    # Check current UNIQUE index shape
+    idx = db.execute("""
+        SELECT sql FROM sqlite_master
+        WHERE type='index' AND name='idx_snapshots_unique'
+    """).fetchone()
+    current_sql = idx[0] if idx else ''
+    needs_index_rebuild = 'source_id' in current_sql or 'WHERE status' not in (current_sql or '')
+
+    return {
+        'supersede_ids': supersede_ids,
+        'pathid_updates': pathid_updates,
+        'current_unique_sql': current_sql,
+        'needs_index_rebuild': needs_index_rebuild,
+        'active_total': sum(1 for r in rows if r[6] == 'active'),
+        'active_unique': len(seen_keys),
+    }
+
+
+def apply(db, plan_data):
+    """Apply the migration. Idempotent."""
+    n_supersede = 0
+    n_pathid = 0
+
+    # 1. Mark duplicates as superseded FIRST (before index rebuild, since
+    # new index has tighter constraints and would conflict with duplicates).
+    if plan_data['supersede_ids']:
+        for sid in plan_data['supersede_ids']:
+            db.execute(
+                "UPDATE snapshots SET status='superseded', "
+                "rollback_confirmed_at=datetime('now') WHERE id=?",
+                (sid,)
+            )
+            n_supersede += 1
+
+    # 2. Recompute path_id
+    if plan_data['pathid_updates']:
+        for sid, new_pid in plan_data['pathid_updates']:
+            db.execute(
+                "UPDATE snapshots SET path_id=? WHERE id=? AND status='active'",
+                (new_pid, sid)
+            )
+            n_pathid += 1
+
+    # 3. Rebuild UNIQUE index AFTER data is consistent (no duplicates, all
+    # path_id consistent). Old shape had source_id in the index, new shape
+    # uses (source_url, path_id, file_name, md5_hash) and is partial — only
+    # active rows must be unique. Withdrawn/superseded rows can coexist
+    # (they preserve audit history of files that have been removed by the
+    # vendor, which is exactly when a new active row would appear with the
+    # same identity — UNIQUE without WHERE would block that re-add).
+    index_rebuilt = False
+    if plan_data['needs_index_rebuild']:
+        db.execute("DROP INDEX IF EXISTS idx_snapshots_unique")
+        db.execute("""
+            CREATE UNIQUE INDEX idx_snapshots_unique
+            ON snapshots(source_url, path_id, file_name, md5_hash)
+            WHERE status = 'active'
+        """)
+        index_rebuilt = True
+
+    # 4. Mark migration done
+    db.execute("""
+        INSERT OR REPLACE INTO system_settings (key, value, updated_at)
+        VALUES (?, '1', datetime('now'))
+    """, (MIGRATION_KEY,))
+
+    db.commit()
+    return {
+        'superseded': n_supersede,
+        'pathid_updated': n_pathid,
+        'unique_index_rebuilt': index_rebuilt,
+    }
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    ap.add_argument('--apply', action='store_true',
+                    help='Apply changes (default is dry-run).')
+    args = ap.parse_args()
+
+    db = get_db()
+
+    if already_migrated(db):
+        print(f'✓ Already migrated (system_settings.{MIGRATION_KEY}=1). Nothing to do.')
+        return 0
+
+    plan_data = plan(db)
+    print('=' * 60)
+    print('Plan:')
+    print(f'  active rows (with source_url): {plan_data["active_total"]}')
+    print(f'  unique (source_url, file, md5): {plan_data["active_unique"]}')
+    print(f'  to supersede (duplicates):      {len(plan_data["supersede_ids"])}')
+    print(f'  path_id updates:                {len(plan_data["pathid_updates"])}')
+    print(f'  unique index needs rebuild:     {plan_data["needs_index_rebuild"]}')
+    print(f'  current unique SQL: {plan_data["current_unique_sql"][:80]}...' if plan_data['current_unique_sql'] else '')
+    print('=' * 60)
+
+    if not args.apply:
+        print('Dry-run (use --apply to commit).')
+        return 0
+
+    result = apply(db, plan_data)
+    print()
+    print('✓ Applied:')
+    print(f'  superseded: {result["superseded"]} rows')
+    print(f'  path_id updated: {result["pathid_updated"]} rows')
+    print(f'  unique index rebuilt: {result["unique_index_rebuilt"]}')
+    print(f'  marker: system_settings.{MIGRATION_KEY}=1')
+
+
+if __name__ == '__main__':
+    sys.exit(main() or 0)
