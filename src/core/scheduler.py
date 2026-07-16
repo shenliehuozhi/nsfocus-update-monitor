@@ -50,12 +50,24 @@ _chain_cache_loaded = False
 _BASE_URL = 'https://update.nsfocus.com'
 
 
-def _compute_path_id(source_url: str, chain: list) -> str:
-    """计算 chain 的 path_id,与 _collect_quick 写入 snapshots.path_id 时算法一致。"""
+def _compute_path_id(source_url: str, chain: list = None) -> str:
+    """Compute path_id from source_url only.
+
+    Chain argument is accepted but ignored — it was previously used in the
+    hash to disambiguate chains sharing a URL, but that caused snapshots to
+    be re-keyed (and re-emitted) whenever paths.chain text drifted (e.g.
+    sec_c_b_tit block names changed). Identity should be stable across
+    chain-text changes: a file is the same file regardless of which
+    subscription branch discovered it. See plan discussion 2026-07-16.
+
+    `chain` is kept in the signature for backward compatibility with callers
+    that still pass it.
+    """
     import hashlib as _hl
-    import json as _json
-    full = source_url if (source_url or '').startswith('http') else _BASE_URL + (source_url or '')
-    return _hl.md5((full + _json.dumps(chain, ensure_ascii=False)).encode()).hexdigest()[:12]
+    url = source_url or ''
+    if not url.startswith('http'):
+        url = _BASE_URL + url
+    return _hl.md5(url.encode()).hexdigest()[:12]
 
 
 def _build_url_chain_cache():
