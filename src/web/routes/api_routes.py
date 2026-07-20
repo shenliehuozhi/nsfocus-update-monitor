@@ -1126,19 +1126,18 @@ def get_latest_snapshots():
             pt = None
         final_pt = pt or {'types': [], 'paths': [], 'modes': {}}
         # Attach path_id to each path so the frontend can disambiguate multi-chain
-        # shared URLs (NSFocus real structure). path_id = MD5(BASE_URL + url +
-        # JSON(chain))[:12], matches the value stored in snapshots.path_id and
-        # the UNIQUE index on (source_id, path_id, file_name, md5_hash).
+        # shared URLs (NSFocus real structure). path_id = MD5(url)[:12], matching
+        # scheduler._compute_path_id() (src/core/scheduler.py:53) and the value
+        # stored in snapshots.path_id by save_snapshot. The earlier MD5(url+chain)
+        # formula caused frontend path_id to mismatch DB path_id, breaking
+        # dataBuildFeed's path lookup (right feed showed no new packages).
         import hashlib as _hashlib
         for _p in final_pt.get('paths', []) or []:
             _u = _p.get('url') or ''
-            _c = _p.get('chain') or []
             if not _u:
                 continue
             _full = _u if _u.startswith('http') else (BASE_URL + _u if _u.startswith('/') else BASE_URL + '/' + _u)
-            _p['path_id'] = _hashlib.md5(
-                (_full + _json.dumps(_c, ensure_ascii=False)).encode()
-            ).hexdigest()[:12]
+            _p['path_id'] = _hashlib.md5(_full.encode()).hexdigest()[:12]
         source_map[s['id']] = {
             'id': s['id'],
             'name': s['name'],
