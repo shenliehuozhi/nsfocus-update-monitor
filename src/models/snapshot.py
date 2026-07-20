@@ -334,8 +334,9 @@ def save_snapshot(snap: dict) -> int:
 
     existing = query(
         """SELECT id FROM snapshots
-           WHERE source_id = ? AND path_id = ? AND file_name = ? AND md5_hash = ?""",
-        (snap['source_id'], snap.get('path_id', ''),
+           WHERE source_url = ? AND path_id = ? AND file_name = ? AND md5_hash = ?
+                 AND status = 'active'""",
+        (snap.get('source_url', ''), snap.get('path_id', ''),
          snap.get('file_name', ''), snap['md5_hash'])
     )
 
