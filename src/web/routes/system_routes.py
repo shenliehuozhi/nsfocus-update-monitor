@@ -984,9 +984,21 @@ def discover_products_confirm():
                 raise Exception('无有效会话')
 
             cookie = sessions[0]['cookie_value']
+
+            # ── Apply pkg-type changes via local JSON diff (fast path) ───
+            # 之前每个产品重跑一次 vendor 全量爬虫 (discover_package_types),
+            # 73 个产品 ≈ 70+ 分钟。discover 阶段已经把 diff 算好了 (added/deleted/modified
+            # paths),只需要对每产品:
+            #   1. 从 DB 读 package_type JSON
+            #   2. 按 chain 删 deleted,追加 added,按 url 替换 modified
+            #   3. update_source 写回
+            # vendor 重跑(原行为)只在下面 LOCAL_APPLY_ONLY=False 时启用,留作回退/手动校对。
+            LOCAL_APPLY_ONLY = True
+
             from src.collectors.nsfocus import NsfocusCollector
-            collector = NsfocusCollector()
-            collector._set_cookie(cookie)
+            collector = NsfocusCollector() if not LOCAL_APPLY_ONLY else None
+            if collector:
+                collector._set_cookie(cookie)
 
             total = len(pkg_changes)
             for idx, (key, change) in enumerate(pkg_changes.items()):
@@ -1003,32 +1015,113 @@ def discover_products_confirm():
                 with _confirm_lock:
                     _confirm_state['phase'] = f'updating_pkg ({idx+1}/{total})'
 
-                captured_lines = []
-                def capture_log(msg):
-                    if msg:
-                        captured_lines.append(str(msg))
-                        _log(f'  {msg}')
-                def on_progress(phase, current, total_p):
-                    _log(f'  → 版本 {current}/{total_p}: {phase}')
+                added = change.get('added_paths', []) or []
+                deleted = change.get('deleted_paths', []) or []
+                modified = change.get('modified_paths', []) or []
+                has_changes = bool(added or deleted or modified)
 
-                discovered = collector.discover_package_types(
-                    source_id, cookie,
-                    log_fn=capture_log,
-                    progress_fn=on_progress
-                )
-                new_pkg_json = json.dumps({
-                    'types': discovered.get('types', []),
-                    'paths': discovered.get('paths', []),
-                    'modes': discovered.get('modes', {}),
-                })
+                if LOCAL_APPLY_ONLY:
+                    # 快路径: 本地 JSON diff, 不联网
+                    cur_pkg_str = (src.get('package_type') or '').strip()
+                    if cur_pkg_str:
+                        try:
+                            cur_pkg = json.loads(cur_pkg_str)
+                        except (ValueError, TypeError):
+                            _log(f'  ⚠️ 当前 package_type JSON 解析失败, 走 vendor 重跑路径')
+                            cur_pkg = {'types': [], 'paths': [], 'modes': {}}
+                    else:
+                        cur_pkg = {'types': [], 'paths': [], 'modes': {}}
+                    cur_paths = list(cur_pkg.get('paths', []))
+
+                    # ── 防御: 如果 added/deleted 都是 chain 字面变化产物(commit 8c41709
+                    # 砍 sec 段后, discover 用新 chain, 但 diff 仍把 cur 标 deleted),
+                    # 按 chain 字面匹配会"什么都不删"也"什么都不加"。这种情况下
+                    # cur.paths 已经是最终态, 直接跳过 update_source 避免误删路径。
+                    cur_chains_set = {tuple(p.get('chain') or []) for p in cur_paths}
+                    deleted_chain_keys = {tuple(p.get('chain') or []) for p in deleted}
+                    added_chain_keys = {tuple(p.get('chain') or []) for p in added}
+                    n_deleted_in_cur = len(deleted_chain_keys & cur_chains_set)
+                    n_added_already = len(added_chain_keys & cur_chains_set)
+                    if has_changes and n_deleted_in_cur == 0 and n_added_already == len(added):
+                        _log(f'  ⚠️ diff 全是 chain 字面变化产物 (deleted 都不在 cur.paths, '
+                             f'added 全已在 cur.paths), cur.paths 已是最终态, 跳过更新')
+                        _log(f'  skipped: deleted={len(deleted)} added={len(added)} modified={len(modified)} cur_paths={len(cur_paths)}')
+                        has_changes = False  # 不算变更, 不写 package_type_changed=1
+                        new_pkg_json = cur_pkg_str  # no-op
+                    else:
+                        # 1. 按 chain 完全匹配删除 deleted_paths
+                        deleted_chains = {tuple(p.get('chain') or []): p for p in deleted}
+                        before = len(cur_paths)
+                        cur_paths = [p for p in cur_paths if tuple(p.get('chain') or []) not in deleted_chains]
+                        n_deleted = before - len(cur_paths)
+
+                        # 2. 按 url 替换 modified_paths (modified data 为空时跳过)
+                        modified_by_url = {p.get('url'): p for p in modified if p.get('url')}
+                        n_modified = 0
+                        for i, p in enumerate(cur_paths):
+                            u = p.get('url')
+                            if u and u in modified_by_url:
+                                cur_paths[i] = modified_by_url[u]
+                                n_modified += 1
+
+                        # 3. 追加 added_paths (按 chain 唯一, 防御性去重)
+                        existing_chains = {tuple(p.get('chain') or []) for p in cur_paths}
+                        n_added = 0
+                        for p in added:
+                            ck = tuple(p.get('chain') or [])
+                            if ck and ck not in existing_chains:
+                                cur_paths.append(p)
+                                existing_chains.add(ck)
+                                n_added += 1
+
+                        # 4. 重算 types (去重 + 排序)
+                        all_types = sorted({t for p in cur_paths for t in (p.get('types') or []) if t})
+
+                        # 5. 保留旧 modes, 没有的 type 补 'auto'
+                        cur_modes = dict(cur_pkg.get('modes') or {})
+                        for t in all_types:
+                            cur_modes.setdefault(t, 'auto')
+                        # 删了 paths 对应的 modes 一起清 (防止遗留)
+                        kept_types = set(all_types)
+                        cur_modes = {k: v for k, v in cur_modes.items() if k in kept_types}
+
+                        new_pkg_json = json.dumps({
+                            'types': all_types,
+                            'paths': cur_paths,
+                            'modes': cur_modes,
+                        }, ensure_ascii=False)
+                        _log(f'  本地 diff: -{n_deleted} +{n_added} ~{n_modified} → paths={len(cur_paths)} types={len(all_types)}')
+                    new_pkg = None
+                else:
+                    # 慢路径: vendor 重跑 (留作回退)
+                    captured_lines = []
+                    def capture_log(msg):
+                        if msg:
+                            captured_lines.append(str(msg))
+                            _log(f'  {msg}')
+                    def on_progress(phase, current, total_p):
+                        _log(f'  → 版本 {current}/{total_p}: {phase}')
+
+                    new_pkg = collector.discover_package_types(
+                        source_id, cookie,
+                        log_fn=capture_log,
+                        progress_fn=on_progress
+                    )
+                    new_pkg_json = json.dumps({
+                        'types': new_pkg.get('types', []),
+                        'paths': new_pkg.get('paths', []),
+                        'modes': new_pkg.get('modes', {}),
+                    }, ensure_ascii=False)
+
                 update_source(source_id,
                     package_type=new_pkg_json,
                     package_type_discovered=new_pkg_json,
-                    package_type_changed=1 if (change['added_paths'] or change['deleted_paths'] or change['modified_paths']) else 0)
-                # 产品路径变更后失效 chain 缓存，确保订阅条件能匹配新路径
-                from src.core.scheduler import invalidate_chain_cache
-                invalidate_chain_cache()
+                    package_type_changed=1 if has_changes else 0)
                 pkg_updated_prods.append(product_name)
+
+            # 所有产品 update 完后, 一次性失效 chain 缓存
+            from src.core.scheduler import invalidate_chain_cache
+            invalidate_chain_cache()
 
             _audit_in_thread('product_discover_save', {
                 'added': len(saved_prods), 'removed': len(deleted_prods),

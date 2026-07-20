@@ -33,7 +33,8 @@ bp_sources = Blueprint('sources', __name__, url_prefix='/api/sources')
 
 @bp_sources.route('', methods=['GET'])
 def list_sources():
-    from src.models.content_source import list_sources as ls
+    # list_sources() lives in src.models.snapshot (renamed from content_source during refactor).
+    from src.models.snapshot import list_sources as ls
     rows = ls('nsfocus')
     return jsonify({'code': 0, 'data': [dict(r) for r in rows]})
 
