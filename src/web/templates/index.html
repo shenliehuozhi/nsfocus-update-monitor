@@ -1060,6 +1060,11 @@ let _dataAll = {};
 // Chain prefix cache: keyed by 'sid|chain.join("/")', value = precomputed prefixSegCount[]
 // Eliminates repeated O(paths) traversal in dataRightToggleRow
 let _dataChainPrefixCache = {};
+// Name → sid map (built when _dataAll loads); used to detect stale chain
+// subscriptions whose paths no longer exist after a vendor re-discovery.
+let _nameToSid = {};
+// Cached name|chain match results so render rules can reuse without recompute
+let _chainStaleCache = {};
 // Snapshot detail cache: keyed by snapshot_id, value = Promise from /api/snapshot/{id}
 let _snapDetailCache = {};
 // Per-source URL→chain map: keyed by sid, value = { normalizedUrl: chain }
@@ -1083,6 +1088,13 @@ async function dataPage() {
   ]);
   _dataAll = r.data || {};
   _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.snapshots_per_group) || 5);
+  // Rebuild name→sid index; clear stale-chain cache since _dataAll changed
+  _nameToSid = {};
+  Object.entries(_dataAll).forEach(([sid, src]) => {
+    const nm = src.display_name || src.name;
+    if (nm) _nameToSid[nm] = String(sid);
+  });
+  _chainStaleCache = {};
   const t0 = performance.now();
   // Build _srcUrlChainMap once: URL→chain lookup per source
   // Also clear chain prefix cache since _dataAll changed
@@ -1397,6 +1409,38 @@ function statusBadge(status) {
 // 是否是已撤回/已替代的旧包(用于视觉弱化)
 function isOldSnapshot(s) {
   return s && (s.status === 'withdrawn' || s.status === 'superseded');
+}
+
+// Detect if a subscription chain is still present in the vendor package_type.paths.
+// Used to flag rules whose chains went stale after a re-discovery trimmed
+// redundant ser_c_b_tit segments (commit 8c41709) or vendor-side structure changes.
+// Returns true when the chain no longer matches any current path:
+//   - leaf: requires exact chain match in vendor paths
+//   - subtree: requires at least one path whose chain starts with this chain
+// Also returns true when the product name in chain[0] is no longer registered.
+function isChainStale(chain, match) {
+  if (!Array.isArray(chain) || chain.length === 0) return false;
+  const cacheKey = JSON.stringify(chain) + '|' + (match || 'leaf');
+  if (cacheKey in _chainStaleCache) return _chainStaleCache[cacheKey];
+  const sid = _nameToSid[chain[0]];
+  if (!sid) return _chainStaleCache[cacheKey] = true;
+  const paths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
+  if (paths.length === 0) return _chainStaleCache[cacheKey] = true;
+  let stale;
+  if (match === 'subtree') {
+    const prefixLen = chain.length;
+    stale = !paths.some(p => Array.isArray(p.chain) && p.chain.length >= prefixLen
+      && p.chain.slice(0, prefixLen).every((seg, i) => seg === chain[i]));
+  } else {
+    const exact = JSON.stringify(chain);
+    stale = !paths.some(p => Array.isArray(p.chain) && JSON.stringify(p.chain) === exact);
+  }
+  return _chainStaleCache[cacheKey] = stale;
+}
+
+// Red ⚠ badge shown on stale-chain pills; tooltip explains the cause.
+function chainWarnBadge() {
+  return `<span class="chain-stale-warn" title="订阅路径已不存在（产品包结构已变），需重新配置订阅条件" style="color:var(--danger);font-weight:700;cursor:help;font-size:13px;flex-shrink:0;margin-left:2px">⚠️</span>`;
 }
 
 function buildFlatVerTreeHtml(snapshots) {
@@ -3489,6 +3533,22 @@ function emailPlaceholder(){
 // 收件人邮箱也用 B 模式,value 永远空 → router per-customer fallback 生效
 function emailDefaultValue(){ return ''; }
 async function subscriptions(){
+  // Build the minimal data needed for isChainStale() — sid→vendor paths only.
+  // Calling dataPage() here would reset the right-side feed state and trigger
+  // an extra /latest/snapshots fetch for no benefit. We only need _nameToSid
+  // and package_type.paths, so fetch lightweight snapshots once and reuse.
+  if (Object.keys(_dataAll).length === 0) {
+    try {
+      const r = await api('/latest/snapshots');
+      _dataAll = r.data || {};
+      _nameToSid = {};
+      Object.entries(_dataAll).forEach(([sid, src]) => {
+        const nm = src.display_name || src.name;
+        if (nm) _nameToSid[nm] = String(sid);
+      });
+      _chainStaleCache = {};
+    } catch (e) { /* fall through with empty _dataAll → all chains look stale, user can still edit */ }
+  }
   const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
@@ -3496,7 +3556,7 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
-  let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';return `<span class="pill-tip"><span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="color:var(--muted);font-size:11px">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'', false)}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge():'';return `<span class="pill-tip">${staleBadge}<span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="font-size:11px;color:var(--muted)">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'', false)}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:320px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
@@ -3830,12 +3890,13 @@ function renderChainSelList(chains) {
   return chains.map((c, i) => {
     const pathStr = c.chain.join(' › ');
     const isLeaf = c.match !== 'subtree';
+    const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge() : '';
     const matchHtml = isLeaf
       ? `<span style="font-size:10px;padding:2px 6px;background:var(--primary-light);color:#1e40af;border-radius:8px;font-weight:600">leaf（仅当前节点）</span>`
       : `<span style="font-size:10px;padding:2px 6px;background:var(--warn-light);color:#92400e;border-radius:8px;font-weight:600">sub（包含子节点）</span>`;
     return `<div style="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid var(--gray-bg);font-size:12px;flex-wrap:wrap">
       <span style="flex:1;min-width:0;color:var(--gray-muted);word-break:break-all">${escHtml(pathStr)}</span>
-      ${matchHtml}
+      ${matchHtml}${staleBadge}
       <button onclick="removeChainCond(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 2px">×</button>
     </div>`;
   }).join('');
@@ -3880,10 +3941,11 @@ function renderCondPills() {
     const pathStr = c.chain.join(' › ');
     const isLeaf = c.match !== 'subtree';
     const matchLabel = isLeaf ? 'leaf' : 'sub';
+    const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge() : '';
     const pill = document.createElement('div');
     pill.className = 'cond-pill';
     pill.style = 'display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0';
-    pill.innerHTML = `<span style="color:#1e40af;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
+    pill.innerHTML = `${staleBadge}<span style="color:#1e40af;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
       <span style="background:${isLeaf ? 'var(--primary-light)' : 'var(--warn-light)'};color:${isLeaf ? '#1e40af' : '#92400e'};font-size:10px;padding:1px 5px;border-radius:8px;font-weight:600">${matchLabel}</span>
       <button onclick="removeCondPill(${i})" style="background:none;border:none;color:var(--gray-disabled);cursor:pointer;font-size:14px;line-height:1;padding:0">×</button>`;
     container.appendChild(pill);
