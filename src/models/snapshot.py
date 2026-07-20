@@ -293,7 +293,7 @@ SNAPSHOT_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_snapshots_product ON snapshots(product_name, version_branch)",
     "CREATE INDEX IF NOT EXISTS idx_snapshots_status ON snapshots(status)",
     "CREATE INDEX IF NOT EXISTS idx_snapshots_md5 ON snapshots(md5_hash)",
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_snapshots_unique ON snapshots(source_id, path_id, file_name, md5_hash)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_snapshots_unique ON snapshots(source_id, source_url, path_id, file_name, md5_hash) WHERE status='active'",
 ]
 
 
@@ -334,9 +334,9 @@ def save_snapshot(snap: dict) -> int:
 
     existing = query(
         """SELECT id FROM snapshots
-           WHERE source_url = ? AND path_id = ? AND file_name = ? AND md5_hash = ?
+           WHERE source_id = ? AND source_url = ? AND path_id = ? AND file_name = ? AND md5_hash = ?
                  AND status = 'active'""",
-        (snap.get('source_url', ''), snap.get('path_id', ''),
+        (snap.get('source_id', 0), snap.get('source_url', ''), snap.get('path_id', ''),
          snap.get('file_name', ''), snap['md5_hash'])
     )
 
