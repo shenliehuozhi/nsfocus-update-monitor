@@ -161,13 +161,9 @@ class NsfocusCollector(BaseCollector):
             _log(f'入口: {url}')
             html = self._fetch_discover(url)
 
-# Extract section titles from entry page (e.g. "WEB应用防护系统(WAF)列表")
-            # and map each top-level link to its containing section.
-            section_titles = self._extract_ser_c_b_sections(html)
-
             # Top-level links exclude sidebar + stopped links
-            top_links = self._extract_content_links(html)
-            top_links = [(t.strip(), u) for t, u in top_links
+            top_links = self._extract_content_links_with_sections(html)
+            top_links = [(t.strip(), u, sec) for t, u, sec in top_links
                          if not self._is_sidebar_link(u)
                          and not self._is_stopped(u, html)]
 
@@ -223,8 +219,8 @@ class NsfocusCollector(BaseCollector):
                 # so we avoid creating spurious "intermediate" paths with only the
                 # version name as the type (e.g. "WAF V6.0.9" instead of
                 # "WAF V6.0.9系统升级包").
-                sub_links = self._extract_content_links(page_html)
-                sub_links = [(t.strip(), u) for t, u in sub_links
+                sub_links = self._extract_content_links_with_sections(page_html)
+                sub_links = [(t.strip(), u, sec) for t, u, sec in sub_links
                               if not self._is_sidebar_link(u)
                               and not self._is_stopped(u, page_html)]
 
@@ -236,27 +232,20 @@ class NsfocusCollector(BaseCollector):
                     paths.append({'chain': [name] + list(chain), 'types': [type_name], 'url': page_url})
                     return
 
-                # Tag each sub-link with the ser_c_b_tit section it belongs to on
-                # THIS page (not the entry page). Required for version pages that
-                # have multiple ser_c_b_tit blocks (e.g. IPS /update/ipsIndex/v/5.6.10
-                # has both 标准系列升级包列表 and 10000系列升级包列表). Without this,
-                # all sub-links inherit the entry-page section title and branches
-                # that share detail URLs (e.g. IPS listNewipsDetail/v/engine is
-                # used by BOTH 标准系列 and 10000系列) are silently collapsed.
-                sub_section_titles = self._extract_ser_c_b_sections(page_html)
-                for sub_text, sub_url in sub_links:
-                    sec = sub_section_titles.get(sub_url, '')
+                # Section is attached to each link occurrence, not looked up by URL.
+                # A vendor page may repeat the same URL in multiple sections (IPS
+                # 5.6.10 standard vs 10000 series), so dict[url] would overwrite
+                # the first occurrence and silently move it into the later section.
+                for sub_text, sub_url, sec in sub_links:
                     new_chain = list(chain) + ([sec, sub_text] if sec else [sub_text])
                     recurse(sub_url, new_chain, depth + 1)
 
             # Start recursion from top-level links
             total = len(top_links)
-            for idx, (top_text, top_url) in enumerate(top_links):
+            for idx, (top_text, top_url, sec_title) in enumerate(top_links):
                 # Notify progress: which version we're starting
                 if progress_fn:
                     progress_fn(f'fetching_ver', idx + 1, total)
-                # section_title is extracted from entry page ser_c_b_tit markers
-                sec_title = section_titles.get(top_url, '')
                 initial_chain = [sec_title, top_text] if sec_title else [top_text]
                 recurse(top_url, initial_chain, depth=1)
 
@@ -586,9 +575,12 @@ class NsfocusCollector(BaseCollector):
                 # chains (all of which share the same dataclass instances). The fix:
                 # build a per-chain list of NEW instances, extend that, and let the
                 # cache hold its own reference (untouched).
-                chain_path_id = hashlib.md5(
-                    (full_url + json.dumps(chain, ensure_ascii=False)).encode()
-                ).hexdigest()[:12]
+                # v3 URL-based scheme: path_id is MD5(url)[:12] (same for
+                # all chains sharing this URL; UNIQUE partial index merges
+                # them on (source_url, path_id, file, md5)). Chain identity
+                # is preserved separately in content_sources.package_type.paths
+                # for display/chain-matching.
+                chain_path_id = hashlib.md5(full_url.encode()).hexdigest()[:12]
                 per_chain_items = []
                 for ti in cached_items:
                     new_ti = replace(ti,
@@ -730,34 +722,46 @@ class NsfocusCollector(BaseCollector):
         raise Exception(last_error or f'Failed after {MAX_RETRIES+1} attempts')
 
     @staticmethod
-    def _extract_ser_c_b_sections(html: str) -> dict:
-        """Map each <a href> in a page to its containing ser_c_b_tit section title.
+    def _extract_sectioned_link_occurrences(html: str) -> list[tuple[str, str, str]]:
+        """Return every content-link occurrence as (text, href, section title).
 
-        Vendor pages (e.g. IPS /update/ipsIndex/v/5.6.10) can have MULTIPLE
-        ser_c_b_tit blocks on a single page: one for 标准系列升级包列表 and
-        another for 10000系列升级包列表. Without section annotation, recurse()
-        would tag every sub-link with the inherited entry-page section,
-        collapsing branches that share detail URLs (e.g. IPS listNewipsDetail/v/engine
-        is used by BOTH 标准系列 and 10000系列).
-
-        Returns: dict[href -> section_title]. Only hrefs containing '/update/' are
-        recorded (sidebar/nav links excluded). Section titles are stripped and
-        leading '>' is removed.
+        This intentionally preserves duplicate hrefs. NSFocus may put one detail
+        URL in several ``ser_c_b_tit`` sections, where each occurrence represents
+        a distinct product branch.
         """
-        import re as _re
-        sections = {}
-        for sec_match in _re.finditer(r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html):
+        section_matches = list(re.finditer(
+            r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html
+        ))
+        links = []
+        for idx, sec_match in enumerate(section_matches):
             sec_title = sec_match.group(1).strip().lstrip('>')
             if not sec_title:
                 continue
-            sec_start = sec_match.end()
-            next_sec = html.find("ser_c_b_tit", sec_start)
-            sec_html = html[sec_start:next_sec if next_sec > 0 else len(html)]
-            for link_match in _re.finditer(r'<a href=[\"\']([^\"\']+)[\"\']\s*>', sec_html):
-                link_url = link_match.group(1).strip()
-                if link_url and '/update/' in link_url and not link_url.startswith('#'):
-                    sections[link_url] = sec_title
-        return sections
+            sec_end = (section_matches[idx + 1].start()
+                       if idx + 1 < len(section_matches) else len(html))
+            sec_html = html[sec_match.end():sec_end]
+            soup = BeautifulSoup(sec_html, 'html.parser')
+            for a_tag in soup.find_all('a', href=True):
+                href = a_tag['href'].strip()
+                text = a_tag.get_text(strip=True)
+                if text and '/update/' in href and not href.startswith('#'):
+                    links.append((text, href, sec_title))
+        return links
+
+    def _extract_content_links_with_sections(self, html: str) -> list[tuple[str, str, str]]:
+        """Attach section titles to content links without collapsing duplicates."""
+        from collections import defaultdict, deque
+
+        section_queues = defaultdict(deque)
+        for text, href, section in self._extract_sectioned_link_occurrences(html):
+            section_queues[(text, href)].append(section)
+
+        links = []
+        for text, href in self._extract_content_links(html):
+            queue = section_queues.get((text, href))
+            section = queue.popleft() if queue else ''
+            links.append((text, href, section))
+        return links
 
     def _extract_content_links(self, html: str) -> list[tuple[str, str]]:
         soup = BeautifulSoup(html, 'html.parser')
@@ -778,14 +782,15 @@ class NsfocusCollector(BaseCollector):
         import hashlib
         import json as _json
         page_hash = hashlib.md5(html[:50000].encode()).hexdigest()
-        # path_id = MD5(page_url + JSON(chain))[:12] — encodes BOTH url and the
-        # chain text so that multiple chains sharing one URL get distinct path_ids.
-        # Used as part of UNIQUE index (source_id, path_id, file_name, md5_hash).
+        # path_id = MD5(page_url)[:12] — stable identity for this final page
+        # (v3 URL-based scheme). Multiple chains sharing one URL get the
+        # same path_id; the UNIQUE index (source_url, path_id, file_name,
+        # md5_hash) WHERE status='active' ensures physical deduplication
+        # (same URL + file = one row, UPSERT path). See commit b0f4145 +
+        # a233af9 for the design rationale.
         if current_chain is None:
             current_chain = []
-        path_id = hashlib.md5(
-            (page_url + _json.dumps(current_chain, ensure_ascii=False)).encode()
-        ).hexdigest()[:12]
+        path_id = hashlib.md5(page_url.encode()).hexdigest()[:12]
         items = []
         soup = BeautifulSoup(html, 'html.parser')
         table = soup.find('table')
