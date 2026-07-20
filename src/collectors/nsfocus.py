@@ -728,10 +728,21 @@ class NsfocusCollector(BaseCollector):
         This intentionally preserves duplicate hrefs. NSFocus may put one detail
         URL in several ``ser_c_b_tit`` sections, where each occurrence represents
         a distinct product branch.
+
+        When the current page has only 1 ``ser_c_b_tit`` section, the section
+        title is dropped (returned as ``''``). A single section carries no
+        disambiguation value, so appending it to every chain only adds noise —
+        e.g. WAF's /listWafV69Detail/v/hg sub-page has one section called
+        "信息技术应用创新-WEB应用防护系统(WAF)升级包列表" wrapping every
+        version link; the version itself is already in chain[+1] as the link
+        text. Downstream ``[sec, sub_text] if sec else [sub_text]`` skips the
+        empty sec automatically, so chain stays compact.
         """
         section_matches = list(re.finditer(
             r"ser_c_b_tit['\">]\s*([^<]+?)\s*</div>", html
         ))
+        # Single-section pages: no disambiguation, drop section title entirely.
+        single_section = (len(section_matches) <= 1)
         links = []
         for idx, sec_match in enumerate(section_matches):
             sec_title = sec_match.group(1).strip().lstrip('>')
@@ -745,7 +756,7 @@ class NsfocusCollector(BaseCollector):
                 href = a_tag['href'].strip()
                 text = a_tag.get_text(strip=True)
                 if text and '/update/' in href and not href.startswith('#'):
-                    links.append((text, href, sec_title))
+                    links.append((text, href, '' if single_section else sec_title))
         return links
 
     def _extract_content_links_with_sections(self, html: str) -> list[tuple[str, str, str]]:
