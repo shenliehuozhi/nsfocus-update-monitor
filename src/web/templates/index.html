@@ -1438,9 +1438,42 @@ function isChainStale(chain, match) {
   return _chainStaleCache[cacheKey] = stale;
 }
 
+// Diagnose why a subscription chain is stale; returns user-facing explanation
+// suitable for a tooltip. Three failure modes:
+//   1. product not found (renamed/deleted)
+//   2. product has no discovered paths yet
+//   3. chain text no longer matches any vendor path (vendor changed, or our
+//      8c41709 trim removed redundant ser_c_b_tit middle layers)
+function _diagnoseChainStale(chain, match) {
+  if (!Array.isArray(chain) || chain.length === 0) {
+    return '订阅路径为空';
+  }
+  const sid = _nameToSid[chain[0]];
+  if (!sid) {
+    return `订阅的产品「${chain[0]}」已不存在或已禁用，无法匹配任何快照。请编辑订阅重新选择产品。`;
+  }
+  const paths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
+  if (paths.length === 0) {
+    return `产品「${chain[0]}」当前还没有可采集的包路径（可能尚未完成包类型发现），无法匹配订阅。请先完成发现后再编辑订阅。`;
+  }
+  const modeLabel = match === 'subtree' ? '子树（前缀）' : '精确（整条）';
+  const chainStr = chain.join(' › ');
+  // Show sibling paths under the same section (chain[1]) so user can pick a
+  // replacement without opening the discovery tree.
+  const sameSection = paths.filter(p => Array.isArray(p.chain)
+    && p.chain[0] === chain[0] && p.chain[1] === chain[1]);
+  if (sameSection.length === 0) {
+    return `订阅路径已失效（${modeLabel}匹配）\n\n订阅路径：${chainStr}\n\n产品「${chain[0]}」下当前没有任何以「${chain[1] || ''}」开头的路径。可能原因：产品分组结构已变更（如新增/删除/重命名，或系统升级砍掉了冗余的 ser_c_b_tit 中间层）。\n\n请编辑订阅重新选择路径。`;
+  }
+  const sample = sameSection.slice(0, 3).map(p => '• ' + p.chain.join(' › ')).join('\n');
+  const more = sameSection.length > 3 ? `\n… 共 ${sameSection.length} 条` : '';
+  return `订阅路径已失效（${modeLabel}匹配）\n\n订阅路径：${chainStr}\n\n产品「${chain[0]}」的「${chain[1]}」分组下当前存在的路径为：\n${sample}${more}\n\n请编辑订阅,从上述路径中重新选择。`;
+}
+
 // Red ⚠ badge shown on stale-chain pills; tooltip explains the cause.
-function chainWarnBadge() {
-  return `<span class="chain-stale-warn" title="订阅路径已不存在（产品包结构已变），需重新配置订阅条件" style="color:var(--danger);font-weight:700;cursor:help;font-size:13px;flex-shrink:0;margin-left:2px">⚠️</span>`;
+function chainWarnBadge(chain, match) {
+  const tip = _diagnoseChainStale(chain, match);
+  return `<span class="chain-stale-warn" title="${escHtml(tip)}" style="color:var(--danger);font-weight:700;cursor:help;font-size:13px;flex-shrink:0;margin-left:2px">⚠️</span>`;
 }
 
 function buildFlatVerTreeHtml(snapshots) {
@@ -3556,7 +3589,7 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
-let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge():'';return `<span class="pill-tip">${staleBadge}<span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="font-size:11px;color:var(--muted)">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'', false)}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip">${staleBadge}<span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="font-size:11px;color:var(--muted)">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'', false)}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:320px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
@@ -3890,7 +3923,7 @@ function renderChainSelList(chains) {
   return chains.map((c, i) => {
     const pathStr = c.chain.join(' › ');
     const isLeaf = c.match !== 'subtree';
-    const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge() : '';
+    const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const matchHtml = isLeaf
       ? `<span style="font-size:10px;padding:2px 6px;background:var(--primary-light);color:#1e40af;border-radius:8px;font-weight:600">leaf（仅当前节点）</span>`
       : `<span style="font-size:10px;padding:2px 6px;background:var(--warn-light);color:#92400e;border-radius:8px;font-weight:600">sub（包含子节点）</span>`;
@@ -3941,7 +3974,7 @@ function renderCondPills() {
     const pathStr = c.chain.join(' › ');
     const isLeaf = c.match !== 'subtree';
     const matchLabel = isLeaf ? 'leaf' : 'sub';
-    const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge() : '';
+    const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const pill = document.createElement('div');
     pill.className = 'cond-pill';
     pill.style = 'display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0';
