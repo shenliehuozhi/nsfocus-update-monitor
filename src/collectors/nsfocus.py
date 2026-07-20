@@ -331,7 +331,8 @@ class NsfocusCollector(BaseCollector):
 
     # ── Quick: HEAD-check known pages, only GET changed ones ──
 
-    def _collect_quick(self, source_id: int, product_name: str) -> list:
+    def _collect_quick(self, source_id: int, product_name: str,
+                       shared_url_cache=None) -> list:
         """Quick collection: revisit known package-page URLs, HEAD-check for changes.
 
         Primary source: content_sources.package_type_discovered.paths (has final-page URLs).
@@ -414,6 +415,15 @@ class NsfocusCollector(BaseCollector):
         # the cached copy. Each chain rebuilds its own items from the cached template.
         url_cache: dict = {}  # url -> list of dicts (raw fields from items)
         zero_hashes: dict = {}  # url -> page_hash (0 items 诊断用,不重算)
+
+        # shared_url_cache: cross-product (and cross-chain) URL dedup cache.
+        # When scheduler passes one in, it's the same dict across all products in
+        # this cycle — a URL hit by product A can be reused by product B without
+        # a second fetch+parse. When None (e.g. legacy callers / tests), we build
+        # a per-product dict as before (in-product dedup only).
+        if shared_url_cache is None:
+            shared_url_cache = {}
+        url_cache = shared_url_cache  # alias for in-loop readability
 
         for url, ver, pkg, chain in urls:
             checked += 1

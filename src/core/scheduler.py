@@ -760,6 +760,11 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
     done = 0
     touched_source_ids = []  # batch: collect all touched source_ids for single SQL
     zero_hashes_by_name: dict = {}  # name -> {url: hash}  0 items 诊断
+    # Cross-product (and cross-chain) URL dedup cache: shared by all products
+    # in this cycle. Filled lazily by NsfocusCollector._collect_quick on the
+    # first fetch per URL; subsequent hits (same product's later chain, or any
+    # other product) skip fetch+parse+old_snaps SQL entirely.
+    shared_url_cache: dict = {}
 
     for name, url in products:
         done += 1
@@ -769,7 +774,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         src = existing_sources[name]
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
-            items, zhash = _collector._collect_quick(src['id'], name)
+            items, zhash = _collector._collect_quick(src['id'], name, shared_url_cache=shared_url_cache)
             all_items.extend(items)
             if items:
                 logger.info(f'Quick: {name} extracted {len(items)} items')
@@ -809,6 +814,8 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
     products = list(_collector_products().items())
     done = 0
     touched_source_ids = []  # batch: collect all touched source_ids for single SQL
+    # _collect_full delegates to _collect_quick — share the same cross-product cache.
+    shared_url_cache: dict = {}
 
     for name, url in products:
         done += 1
@@ -821,7 +828,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         # Try each session in order on SessionExpiredError
         while session_idx < len(sessions):
             try:
-                items = _collector._collect_quick(src['id'], name)
+                items = _collector._collect_quick(src['id'], name, shared_url_cache=shared_url_cache)
                 all_items.extend(items)
                 emit('collecting', product=name, items=len(items))
                 update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
