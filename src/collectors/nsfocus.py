@@ -332,7 +332,8 @@ class NsfocusCollector(BaseCollector):
     # ── Quick: HEAD-check known pages, only GET changed ones ──
 
     def _collect_quick(self, source_id: int, product_name: str,
-                       shared_url_cache=None) -> list:
+                       shared_url_cache=None, shared_url_sids=None,
+                       shared_stats=None) -> list:
         """Quick collection: revisit known package-page URLs, HEAD-check for changes.
 
         Primary source: content_sources.package_type_discovered.paths (has final-page URLs).
@@ -424,6 +425,31 @@ class NsfocusCollector(BaseCollector):
         if shared_url_cache is None:
             shared_url_cache = {}
         url_cache = shared_url_cache  # alias for in-loop readability
+
+        # shared_url_sids: parallel dict tracking which source_id first wrote each
+        # URL into the cache. Used to distinguish cross-sid cache hits (new value
+        # added by the shared_url_cache patch) from in-product cache hits (the
+        # legacy url_cache case where the same product hits its own chain-shared
+        # URLs on subsequent iterations). Scheduler passes a dict shared across
+        # products to enable cross-sid accounting; legacy callers pass None and
+        # get only in-product accounting.
+        if shared_url_sids is None:
+            shared_url_sids = {}
+        url_sids = shared_url_sids
+
+        # Per-call stats.
+        if shared_stats is None:
+            shared_stats = {}
+        stats = shared_stats
+        # Initialize keys only if dict is fresh (scheduler passes {} each cycle).
+        stats.setdefault('fetches', 0)
+        stats.setdefault('in_product_hits', 0)
+        stats.setdefault('cross_sid_hits', 0)
+        # Snapshot at start so per-call log can show this call's delta without
+        # confusing the running total.
+        call_fetches = stats['fetches']
+        call_in_product = stats['in_product_hits']
+        call_cross_sid = stats['cross_sid_hits']
 
         for url, ver, pkg, chain in urls:
             checked += 1
@@ -568,9 +594,26 @@ class NsfocusCollector(BaseCollector):
 
                     # Cache result for other chains that share this URL
                     url_cache[full_url] = cached_items
+                    url_sids[full_url] = source_id  # mark this sid as the writer
+                    stats['fetches'] += 1
                 else:
                     # URL already fetched — reuse cached items
                     cached_items = url_cache[full_url]
+                    # Classify hit: in-product (same sid wrote it) vs cross-sid.
+                    writer_sid = url_sids.get(full_url)
+                    if writer_sid is None:
+                        # Legacy caller didn't pass shared_url_sids — fall back
+                        # to in-product classification (url_cache could still be
+                        # cross-product if scheduler passed shared_url_cache
+                        # without shared_url_sids, but we can't tell here).
+                        stats['in_product_hits'] += 1
+                    elif writer_sid == source_id:
+                        stats['in_product_hits'] += 1
+                    else:
+                        stats['cross_sid_hits'] += 1
+                        logger.info(f'  [{product_name}] cross-sid cache hit '
+                                   f'(writer=sid {writer_sid}, me=sid {source_id}) '
+                                   f'url={full_url}')
 
                 # ── Attribute cached items to current chain (ver, pkg, path_id) ──
                 # _extract_table_items hard-coded (ver, pkg, path_id) into each item
@@ -605,7 +648,18 @@ class NsfocusCollector(BaseCollector):
             except Exception as e:
                 logger.warning(f'Quick {product_name}: {full_url}: {e}')
 
-        logger.info(f'Quick {product_name}: {len(items)} items extracted from {total} URLs (deduped to {len(url_cache)} unique URLs)')
+        # Compute deltas since start of this call (for per-product log clarity).
+        delta_fetches = stats['fetches'] - call_fetches
+        delta_in_product = stats['in_product_hits'] - call_in_product
+        delta_cross_sid = stats['cross_sid_hits'] - call_cross_sid
+
+        logger.info(f'Quick {product_name}: {len(items)} items extracted from {total} URLs '
+                    f'(deduped to {len(url_cache)} unique URLs; '
+                    f'this call: fetches={delta_fetches}, '
+                    f'in_product_hits={delta_in_product}, '
+                    f'cross_sid_hits={delta_cross_sid}; '
+                    f'cycle total so far: fetches={stats["fetches"]}, '
+                    f'cross_sid_hits={stats["cross_sid_hits"]})')
 
         # 0 items 时返回 url→hash 映射(诊断用);有 items 时返回空 dict
         return items, ({} if items else zero_hashes)
