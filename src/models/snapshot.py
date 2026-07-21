@@ -294,6 +294,9 @@ SNAPSHOT_INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_snapshots_status ON snapshots(status)",
     "CREATE INDEX IF NOT EXISTS idx_snapshots_md5 ON snapshots(md5_hash)",
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_snapshots_unique ON snapshots(source_id, source_url, path_id, file_name, md5_hash) WHERE status='active'",
+    # 2026-07-22 复合索引 — save_snapshot 第二查 (sid,url,path_id,status) 走这条
+    # 不加这条的话,第二查会退化成 idx_snapshots_source 单列索引然后扫 status
+    "CREATE INDEX IF NOT EXISTS idx_snapshots_url_status ON snapshots(source_id, source_url, path_id, status)",
 ]
 
 
@@ -317,31 +320,50 @@ def _add_column_if_missing(db, table: str, column: str, definition: str):
 
 
 def save_snapshot(snap: dict) -> int:
-    """Insert or update a snapshot. Match on unique key. Returns snapshot id."""
+    """Insert or update a snapshot. Match on unique key. Returns snapshot id.
+
+    Three-tier identity matching (2026-07-22):
+      1. active 命中 → UPDATE (status=active, first_seen 保留, last_seen=now)
+         → detector 判 UNCHANGED → 不推 NEW ✓
+      2. superseded/withdrawn/rollback 命中 (第二查,仅当 1 没命中)
+         → UPDATE 但 status 按 old_status 决定:
+              superseded → active(被取代的本次重现,复活为最新)
+              withdrawn/rollback → 保持原状态(撤回不复活)
+         → first_seen 保留, last_seen=now
+         → detector 判 UNCHANGED → 不推 NEW ✓ (修场景 1 + 撤回撤销不复活误推)
+      3. 都没命中 → INSERT (first_seen=last_seen=now)
+         → detector 判 NEW → 推 NEW ✓ (真新包)
+         → 但: 如果 snap['is_resurrection']=True 且 cycle_resurrect_ts 非空,
+                INSERT 但 first_seen = cycle_resurrect_ts(老), last_seen = now(新)
+                → detector 判 UNCHANGED → 不推 NEW ✓ (修场景 2 冒泡接位)
+
+    这个改动处理三种边界:
+      A. 老 superseded 冒泡 (场景 1) → 走路径 2 → UNCHANGED
+      B. 全新 B 冒泡 (场景 2)     → 走路径 3 (is_resurrection=True) → UNCHANGED
+      C. 撤回后重发新版本(同 fn 不同 md5) → 走路径 3 (is_resurrection=False) → NEW
+    """
     import json
     from src.models.database import execute, query
 
     # ── Defensive guard: skip "half-parsed" items (file_name empty but md5 present) ──
-    # These come from NSFocus detail pages where the parser failed to extract file_name
-    # but did extract md5_hash. Inserting them creates "ghost rows" that pollute the
-    # "latest packages" view in the frontend. If file_name is missing, parser is broken.
     if not snap.get('file_name', ''):
-        return 0  # 0 = "skipped, not a real snapshot" (caller treats 0 as no-op)
+        return 0
 
     desc_parsed = snap.get('description_parsed', {})
     if not isinstance(desc_parsed, str):
         desc_parsed = json.dumps(desc_parsed, ensure_ascii=False)
 
-    existing = query(
-        """SELECT id FROM snapshots
-           WHERE source_id = ? AND source_url = ? AND path_id = ? AND file_name = ? AND md5_hash = ?
-                 AND status = 'active'""",
+    # ── 第一查: active (高频路径,99% 命中这里) ─────────────────────
+    existing_active = query(
+        """SELECT id, first_seen_at FROM snapshots
+           WHERE source_id = ? AND source_url = ? AND path_id = ?
+             AND file_name = ? AND md5_hash = ? AND status = 'active'""",
         (snap.get('source_id', 0), snap.get('source_url', ''), snap.get('path_id', ''),
          snap.get('file_name', ''), snap['md5_hash'])
     )
 
-    if existing:
-        sid = existing[0]['id']
+    if existing_active:
+        sid = existing_active[0]['id']
         execute("""
             UPDATE snapshots SET
                 version_branch = ?, package_type = ?,
@@ -353,8 +375,8 @@ def save_snapshot(snap: dict) -> int:
             WHERE id = ?
         """, (
             snap.get('version_branch', ''), snap.get('package_type', ''),
-            snap.get('file_name', ''), snap.get('package_version', ''),
-            snap.get('file_size', 0), snap.get('description_raw', ''),
+            snap.get('file_name', ''), snap.get('package_version', ''), snap.get('file_size', 0),
+            snap.get('description_raw', ''),
             desc_parsed, snap.get('min_sys_version', ''),
             int(snap.get('restart_required', False)),
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
@@ -363,9 +385,78 @@ def save_snapshot(snap: dict) -> int:
             sid
         ))
         return sid
+
+    # ── 第二查: superseded/withdrawn/rollback (只第一查没命中时) ─────
+    # 处理: 老 superseded 冒泡(场景 1) + 撤回撤销(同 md5 又挂上)
+    existing_other = query(
+        """SELECT id, status, first_seen_at FROM snapshots
+           WHERE source_id = ? AND source_url = ? AND path_id = ?
+             AND file_name = ? AND md5_hash = ?
+             AND status IN ('superseded','withdrawn','rollback')""",
+        (snap.get('source_id', 0), snap.get('source_url', ''), snap.get('path_id', ''),
+         snap.get('file_name', ''), snap['md5_hash'])
+    )
+
+    if existing_other:
+        sid = existing_other[0]['id']
+        old_status = existing_other[0]['status']
+        # superseded → active (本次重现,复活为最新)
+        # withdrawn/rollback → 保持 (撤回不复活)
+        if old_status == 'superseded':
+            new_status = 'active'
+        else:
+            new_status = old_status
+        execute("""
+            UPDATE snapshots SET
+                version_branch = ?, package_type = ?,
+                file_name = ?, package_version = ?, file_size = ?,
+                description_raw = ?, description_parsed = ?,
+                min_sys_version = ?, restart_required = ?, urgency = ?,
+                download_id = ?, published_at = ?, last_seen_at = datetime('now'),
+                status = ?, rollback_cycles = 0, page_hash = ?, source_url = ?
+            WHERE id = ?
+        """, (
+            snap.get('version_branch', ''), snap.get('package_type', ''),
+            snap.get('file_name', ''), snap.get('package_version', ''), snap.get('file_size', 0),
+            snap.get('description_raw', ''),
+            desc_parsed, snap.get('min_sys_version', ''),
+            int(snap.get('restart_required', False)),
+            snap.get('urgency', 'normal'), snap.get('download_id', 0),
+            snap.get('published_at', ''), snap.get('page_hash', ''),
+            snap.get('source_url', ''),
+            new_status,
+            sid
+        ))
+        return sid
+
+    # ── 第三段: 都没命中 → INSERT ────────────────────────────────────
+    # 区分: 真新包 vs 冒泡接位者 (场景 2)
+    # 真新包: first_seen=last_seen=now → detector 推 NEW ✓
+    # 冒泡接位: first_seen=cycle_resurrect_ts(老), last_seen=now → detector 判 UNCHANGED ✓
+    if snap.get('is_resurrection') and snap.get('cycle_resurrect_ts'):
+        return execute("""
+            INSERT INTO snapshots
+            (source_id, product_name, version_branch, package_type,
+             file_name, package_version, md5_hash, file_size,
+             description_raw, description_parsed, min_sys_version,
+             restart_required, urgency, download_id, published_at, page_hash, source_url, path_id,
+             first_seen_at, last_seen_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, datetime('now'))
+        """, (
+            snap['source_id'], snap['product_name'], snap['version_branch'],
+            snap['package_type'], snap.get('file_name', ''),
+            snap.get('package_version', ''), snap['md5_hash'], snap.get('file_size', 0),
+            snap.get('description_raw', ''), desc_parsed, snap.get('min_sys_version', ''),
+            int(snap.get('restart_required', False)),
+            snap.get('urgency', 'normal'), snap.get('download_id', 0),
+            snap.get('published_at', ''), snap.get('page_hash', ''),
+            snap.get('source_url', ''), snap.get('path_id', ''),
+            snap['cycle_resurrect_ts'],
+        ))
     else:
         return execute("""
-            INSERT INTO snapshots 
+            INSERT INTO snapshots
             (source_id, product_name, version_branch, package_type,
              file_name, package_version, md5_hash, file_size,
              description_raw, description_parsed, min_sys_version,
@@ -374,9 +465,8 @@ def save_snapshot(snap: dict) -> int:
         """, (
             snap['source_id'], snap['product_name'], snap['version_branch'],
             snap['package_type'], snap.get('file_name', ''),
-            snap.get('package_version', ''), snap['md5_hash'],
-            snap.get('file_size', 0), snap.get('description_raw', ''),
-            desc_parsed, snap.get('min_sys_version', ''),
+            snap.get('package_version', ''), snap['md5_hash'], snap.get('file_size', 0),
+            snap.get('description_raw', ''), desc_parsed, snap.get('min_sys_version', ''),
             int(snap.get('restart_required', False)),
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
             snap.get('published_at', ''), snap.get('page_hash', ''),

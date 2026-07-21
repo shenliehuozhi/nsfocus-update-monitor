@@ -603,7 +603,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
 
             result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
                                   check_rollback=True,
-                                  seen_ids={s['id'] for s in before_snaps})
+                                  seen_ids={s['id'] for s in before_snaps},
+                                  withdrawn_items=cycle_withdrawn_by_src.get(src['id']))
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
@@ -773,6 +774,10 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
 
     cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0}
 
+    # 2026-07-22 改动 3: 撤回通知 — 每个 sid 收集本次 cycle 被标 withdrawn 的行
+    # 收集在 product 循环外,detector 再按 source_id 分发
+    cycle_withdrawn_by_src: dict = {}  # source_id -> [snap_dict, ...]
+
     for name, url in products:
         done += 1
         emit('collecting', product=name)
@@ -781,12 +786,17 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         src = existing_sources[name]
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
+            # 2026-07-22 改动 3: out_withdrawn 传给 collector 收集撤回行
+            per_src_withdrawn: list = []
             items, zhash = _collector._collect_quick(
                 src['id'], name,
                 shared_url_cache=shared_url_cache,
                 shared_url_sids=shared_url_sids,
-                shared_stats=cycle_stats)
+                shared_stats=cycle_stats,
+                out_withdrawn=per_src_withdrawn)
             all_items.extend(items)
+            if per_src_withdrawn:
+                cycle_withdrawn_by_src.setdefault(src['id'], []).extend(per_src_withdrawn)
             if items:
                 logger.info(f'Quick: {name} extracted {len(items)} items')
             elif zhash:
@@ -848,12 +858,17 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         # Try each session in order on SessionExpiredError
         while session_idx < len(sessions):
             try:
+                # 2026-07-22 改动 3: full mode 也支持撤回通知
+                per_src_withdrawn: list = []
                 items = _collector._collect_quick(
                     src['id'], name,
                     shared_url_cache=shared_url_cache,
                     shared_url_sids=shared_url_sids,
-                    shared_stats=cycle_stats)
+                    shared_stats=cycle_stats,
+                    out_withdrawn=per_src_withdrawn)
                 all_items.extend(items)
+                if per_src_withdrawn:
+                    cycle_withdrawn_by_src.setdefault(src['id'], []).extend(per_src_withdrawn)
                 emit('collecting', product=name, items=len(items))
                 update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
                 touched_source_ids.append(src['id'])

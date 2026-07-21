@@ -27,6 +27,12 @@ class UnifiedContentItem:
     page_hash: str = ''
     source_url: str = ''           # detail page URL for quick-mode HEAD check
     path_id: str = ''              # MD5(source_url + JSON(chain))[:12], unique per (url, chain)
+    # 2026-07-22 改动 2: 冒泡接位标记
+    # 当绿盟撤最新包导致老包冒泡到页面第一位被采到时,collector 标 is_resurrection=True
+    # save_snapshot 看到这个标记时,INSERT 行 first_seen_at 用 cycle_resurrect_ts(老时间)
+    # detector 看 first_seen != last_seen → UNCHANGED → 不推 NEW ✓
+    is_resurrection: bool = False
+    cycle_resurrect_ts: str = ''   # 冒泡 cycle 触发时间(撤回行的 last_seen_at)
 
     def to_snapshot_dict(self) -> dict:
         return {
@@ -48,6 +54,8 @@ class UnifiedContentItem:
             'page_hash': self.page_hash,
             'source_url': self.source_url,
             'path_id': self.path_id,
+            'is_resurrection': self.is_resurrection,
+            'cycle_resurrect_ts': self.cycle_resurrect_ts,
         }
 
 

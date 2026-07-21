@@ -333,7 +333,8 @@ class NsfocusCollector(BaseCollector):
 
     def _collect_quick(self, source_id: int, product_name: str,
                        shared_url_cache=None, shared_url_sids=None,
-                       shared_stats=None) -> list:
+                       shared_stats=None,
+                       out_withdrawn: list | None = None) -> list:
         """Quick collection: revisit known package-page URLs, HEAD-check for changes.
 
         Primary source: content_sources.package_type_discovered.paths (has final-page URLs).
@@ -353,6 +354,14 @@ class NsfocusCollector(BaseCollector):
         from src.models.database import execute as snap_exec
         items = []
         seen_ids = set()  # track snapshot IDs for rollback detection (Bug #006)
+
+        # 2026-07-22 改动 2: 冒泡检测 — 本 cycle 内被标 withdrawn 的 (sid, full_url, path_id) 集合
+        # 同一 cycle 内,若 (sid, full_url, path_id) 刚有 withdrawn 事件,
+        # 后续采到的 item 视为"接位者"(因为绿盟列表页只显示 N 个,撤回最新导致老包冒泡到第一位)
+        # 用 DB 持久化的 last_seen_at 跨 cycle 查询:同一路径最近有过撤回 → 本次 item 标 is_resurrection
+        from datetime import datetime as _dt
+        cycle_start_ts = _dt.utcnow().isoformat()  # 冒泡 INSERT 时 first_seen 用
+        withdrawn_paths_in_cycle: set = set()       # 本 cycle 内被标 withdrawn 的路径
 
         # ── Step 1: get final-page URLs from content_sources.package_type_discovered ──
         src_rows = snap_query(
@@ -536,7 +545,24 @@ class NsfocusCollector(BaseCollector):
                     old_map = {(s['file_name'], s['path_id'], s['md5_hash'] or ''): s for s in old_snaps}
 
                     if cached_items:
+                        # 2026-07-22 改动 2: 冒泡标记 — 同 (sid,full_url,path_id) 刚被标 withdrawn,
+                        # 后续采到的 item 是"接位者",save_snapshot INSERT 时 first_seen 用 cycle_start_ts
+                        # DB 跨 cycle 查询:last_withdrawn_at 非空说明这路径之前有过撤回事件
+                        path_key = (source_id, full_url, chain_path_id)
+                        is_resurrection_path = path_key in withdrawn_paths_in_cycle
+                        if not is_resurrection_path:
+                            # 跨 cycle 检查:DB 里同路径最近一次撤回时间
+                            last_wd_rows = snap_query(
+                                """SELECT MAX(last_seen_at) AS last_wd FROM snapshots
+                                   WHERE source_id=? AND source_url=? AND path_id=?
+                                     AND status='withdrawn'""",
+                                path_key)
+                            is_resurrection_path = bool(last_wd_rows[0]['last_wd']) if last_wd_rows else False
+
                         for ti in cached_items:
+                            # 标记冒泡接位者
+                            ti.is_resurrection = is_resurrection_path
+                            ti.cycle_resurrect_ts = cycle_start_ts if is_resurrection_path else ''
                             key = (ti.file_name, ti.path_id, ti.md5_hash or '')
                             old_s = old_map.get(key)
                             if old_s is None:
@@ -589,8 +615,18 @@ class NsfocusCollector(BaseCollector):
                                     # 老行 pub 不早于任一新包 → 绿盟主动撤回/下架
                                     logger.info(f'  ◄ WITHDRAWN {fname} ({size} bytes)')
                                     logger.info(f'    type={type_str}  md5={md5_short}...')
-                                    snap_exec("UPDATE snapshots SET status='withdrawn' WHERE id=?",
-                                              (old_s['id'],))
+                                    # 2026-07-22: 刷 last_seen_at 供跨 cycle 冒泡检测使用
+                                    # 同时把行加入 out_withdrawn 传出,走改动 3 的撤回通知路径
+                                    snap_exec(
+                                        "UPDATE snapshots SET status='withdrawn', "
+                                        "last_seen_at=datetime('now') WHERE id=?",
+                                        (old_s['id'],))
+                                    # 改动 2: 本 cycle 标记 — 后续采到的 item 视为接位者
+                                    withdrawn_paths_in_cycle.add(
+                                        (source_id, full_url, chain_path_id))
+                                    # 改动 3: 撤回通知 — 收集刚标 withdrawn 的行
+                                    if out_withdrawn is not None:
+                                        out_withdrawn.append(dict(old_s))
 
                     # Cache result for other chains that share this URL
                     url_cache[full_url] = cached_items

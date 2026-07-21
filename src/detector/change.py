@@ -31,13 +31,17 @@ class DetectionResult:
 
 def run_detection(source_id: int, items: list[UnifiedContentItem],
                   rollback_confirm: int = 2, check_rollback: bool = True,
-                  seen_ids: set = None) -> DetectionResult:
+                  seen_ids: set = None,
+                  withdrawn_items: list = None) -> DetectionResult:
     """Main detection entry point.
 
     1. Save/update all collected items as snapshots
     2. Mark items NOT in this batch as rollback_pending
     3. Confirm rollbacks after N consecutive misses
     4. Return categorized results
+
+    2026-07-22 改动 3: withdrawn_items 是 collector 报告的"刚被标 withdrawn 的行",
+    这些行需要进 result.rollback_items 让 scheduler 推 ⚠️ 撤回通知。
     """
     result = DetectionResult(source_id=source_id)
 
@@ -79,6 +83,13 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
     if check_rollback:
         confirmed = _confirm_rollbacks(source_id, rollback_confirm)
         result.rollback_items = confirmed
+
+    # 2026-07-22 改动 3: 撤回通知 — 把 collector 报告的刚标 withdrawn 行加入 rollback_items
+    # 这些行通过 route_notifications(is_rollback=True) 推送 ⚠️ 撤回 消息
+    if withdrawn_items:
+        result.rollback_items.extend(withdrawn_items)
+        logger.info(f'Source {source_id}: {len(withdrawn_items)} withdrawn item(s) '
+                    f'reported by collector, queued for rollback push')
 
     return result
 
