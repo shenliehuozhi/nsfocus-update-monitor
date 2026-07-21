@@ -687,7 +687,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         # Replaced by a daemon thread doing PASSIVE checkpoint every 5 minutes (no lock needed).
         # See: docs/database-is-locked-analysis.md
         from src.notifiers.router import _emit_push_summary
-        _emit_push_summary()
+        summary['push_summaries'] = _emit_push_summary()
 
         logger.info(f'Cycle complete ({mode}): {summary["total_new"]} new, '
                     f'{summary["total_rollback"]} rollbacks, {summary["duration_s"]}s')
@@ -765,6 +765,13 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
     # first fetch per URL; subsequent hits (same product's later chain, or any
     # other product) skip fetch+parse+old_snaps SQL entirely.
     shared_url_cache: dict = {}
+    # Parallel dict tracking which source_id first wrote each URL into
+    # shared_url_cache. Used by _collect_quick to classify cache hits as
+    # in-product (same sid) vs cross-sid (different sid) — the latter is the
+    # new value added by the shared_url_cache patch.
+    shared_url_sids: dict = {}
+
+    cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0}
 
     for name, url in products:
         done += 1
@@ -774,7 +781,11 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         src = existing_sources[name]
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
-            items, zhash = _collector._collect_quick(src['id'], name, shared_url_cache=shared_url_cache)
+            items, zhash = _collector._collect_quick(
+                src['id'], name,
+                shared_url_cache=shared_url_cache,
+                shared_url_sids=shared_url_sids,
+                shared_stats=cycle_stats)
             all_items.extend(items)
             if items:
                 logger.info(f'Quick: {name} extracted {len(items)} items')
@@ -794,6 +805,13 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
             _progress['errors'].append(f'{name}: {str(e)[:100]}')
 
         _progress['products_done'] = done
+
+    # Cycle cache summary — fetches vs hits (in-product vs cross-sid).
+    # Logged at INFO so it's visible in service_error.log without enabling debug.
+    logger.info(f'[cache] cycle summary: fetches={cycle_stats["fetches"]}, '
+                f'in_product_hits={cycle_stats["in_product_hits"]}, '
+                f'cross_sid_hits={cycle_stats["cross_sid_hits"]}, '
+                f'unique_urls={len(shared_url_cache)}')
 
     # Batch update: single SQL for all sources (minimizes SQLite lock contention)
     if touched_source_ids:
@@ -816,6 +834,8 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
     touched_source_ids = []  # batch: collect all touched source_ids for single SQL
     # _collect_full delegates to _collect_quick — share the same cross-product cache.
     shared_url_cache: dict = {}
+    shared_url_sids: dict = {}
+    cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0}
 
     for name, url in products:
         done += 1
@@ -828,7 +848,11 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         # Try each session in order on SessionExpiredError
         while session_idx < len(sessions):
             try:
-                items = _collector._collect_quick(src['id'], name, shared_url_cache=shared_url_cache)
+                items = _collector._collect_quick(
+                    src['id'], name,
+                    shared_url_cache=shared_url_cache,
+                    shared_url_sids=shared_url_sids,
+                    shared_stats=cycle_stats)
                 all_items.extend(items)
                 emit('collecting', product=name, items=len(items))
                 update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())

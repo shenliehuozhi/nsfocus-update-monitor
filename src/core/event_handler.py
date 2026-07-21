@@ -344,14 +344,23 @@ def _fmt_duration(seconds: int) -> str:
 
 
 def _build_summary_message(summary: dict, mode: str) -> str:
-    """Build collection summary notification message (three modes)."""
+    """Build collection summary notification message.
+
+    结构:
+      [头部] icon + mode + 总览 + 采集开始/结束 + 总耗时
+      [采集情况段]  (有内容才出现)
+         - 有新包:产品 → 类型 列表
+         - 无新包但有错误:错误摘要
+         - 0 items:统计 (0 空 / N 正常 / 共 M 产品)
+      [推送段]  (有推送才出现)
+         - 推送开始/结束 + 总耗时
+         - 推送结果汇总 (成功/失败/给客户)
+    """
     total_new = summary.get('total_new', 0)
     errors = summary.get('errors', [])
     products = summary.get('products', {})
-
-    started_at = summary.get('started_at', '')
-    finished_at = summary.get('finished_at', '') or datetime.utcnow().isoformat()
     duration = summary.get('duration_s', 0)
+    total_products = summary.get('products_total', len(products))
 
     # Determine icon and label
     if total_new > 0:
@@ -365,67 +374,153 @@ def _build_summary_message(summary: dict, mode: str) -> str:
         severity = 'normal'
 
     mode_label = _MODE_LABELS.get(mode, mode)
-    # 真实访问过的产品数(active=1 的总数),不再是 len(products) (只数有 items 的)
-    total_products = summary.get('products_total', len(products))
-    zero_count = total_products - len(products)
-    lines = [
-        f"{icon} {mode_label} 完成 | {total_products}产品 | 新增 {total_new} 个包",
-        f"耗时：{_fmt_duration(duration)}",
-    ]
 
-    # --- 有新包：按产品→类型两级展开 ---
-    if total_new > 0:
-        lines.append('─' * 30)
-        for pname, pdata in sorted(products.items()):
-            new_count = pdata.get('new', 0)
-            if new_count == 0:
-                continue
-            by_type = pdata.get('by_type', {})
-            type_lines = []
-            for pkg_type, count in sorted(by_type.items(), key=lambda x: -x[1]):
-                label = _PKG_TYPE_CN.get(pkg_type, pkg_type)
-                type_lines.append(f'{label}：{count}个包')
-            type_str = '，'.join(type_lines)
-            lines.append(f'📦 {pname}')
-            lines.append(f'   └─ {type_str}')
+    # ── 时间窗口(采集开始/结束 + 总耗时) ──
+    started_at = summary.get('started_at', '')
+    finished_at = summary.get('finished_at', '')
+    from datetime import datetime, timezone, timedelta
+    tz_cst = timezone(timedelta(hours=8))
 
-    # --- 无新包但有错误 ---
-    elif errors:
-        lines.append('─' * 30)
-        lines.append('错误摘要：')
-        for err in errors[:5]:
-            # 截断超长错误
-            msg = err[:120] if len(err) > 120 else err
-            lines.append(f'• {msg}')
+    def _to_cst_str(iso_str):
+        if not iso_str:
+            return ''
+        try:
+            ts = iso_str.replace('Z', '+00:00')
+            dt = datetime.fromisoformat(ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(tz_cst).strftime('%Y-%m-%d %H:%M:%S')
+        except Exception:
+            return iso_str
 
-    # --- 0 items 诊断段(quick 模式才填充,full/delta 为空 list) ---
-    # 仅在有 0 items 产品时显示,分两种情况:hash 变了(警告) / hash 稳定(提示)
-    zero_items = summary.get('zero_items', []) or []
-    if zero_items:
-        changed_diag = [d for d in zero_items if d.get('changed_urls')]
-        stable_diag = [d for d in zero_items if not d.get('changed_urls')]
+    start_cst = _to_cst_str(started_at)
+    end_cst = _to_cst_str(finished_at)
+
+    # ── 头部 ──
+    lines = [f"{icon} {mode_label} 完成 | 新增 {total_new} 个包"]
+    if start_cst:
+        lines.append(f"采集开始：{start_cst}（CST）")
+    if end_cst:
+        lines.append(f"采集结束：{end_cst}（CST）")
+    lines.append(f"耗时：{_fmt_duration(duration)}")
+
+    # ── 采集情况段(独立小节) ──
+    has_collection_section = total_new > 0 or errors or summary.get('zero_items')
+    if has_collection_section:
+        # 段标题 + 段间空一行
+        lines.append('')
         lines.append('─' * 30)
-        if changed_diag:
-            lines.append(
-                f'⚠️ {len(zero_items)} 个产品本次 0 items,'
-                f'其中 {len(changed_diag)} 个页面 hash 发生变化(绿盟可能改了页面):'
-            )
-            for d in changed_diag:
-                lines.append(f'  • {d["name"]}')
-                for c in d['changed_urls'][:5]:  # 每产品最多列 5 个 URL
-                    short = c['url'] if len(c['url']) <= 50 else '...' + c['url'][-47:]
-                    if c.get('first_seen'):
-                        lines.append(f'    - {short}')
-                        lines.append(f'      hash: (首次记录,本次为基准)')
-                    else:
-                        lines.append(f'    - {short}')
-                        lines.append(f'      hash: {c["prev"][:8]}... → {c["hash"][:8]}...')
-                if len(d['changed_urls']) > 5:
-                    lines.append(f'    ... 共 {len(d["changed_urls"])} 个 URL 变化')
-        else:
-            lines.append(
-                f'ℹ️ {len(zero_items)} 个产品本次 0 items(页面 hash 未变,绿盟该页面稳定为空)'
-            )
+        lines.append('📊 采集情况')
+
+        if total_new > 0:
+            lines.append('')
+            lines.append(f'新增包详情（{total_new} 个）')
+            for pname, pdata in sorted(products.items()):
+                new_count = pdata.get('new', 0)
+                if new_count == 0:
+                    continue
+                by_type = pdata.get('by_type', {})
+                type_lines = []
+                for pkg_type, count in sorted(by_type.items(), key=lambda x: -x[1]):
+                    label = _PKG_TYPE_CN.get(pkg_type, pkg_type)
+                    type_lines.append(f'{label}：{count}个包')
+                type_str = '，'.join(type_lines)
+                lines.append(f'  📦 {pname}')
+                lines.append(f'     └─ {type_str}')
+
+        elif errors:
+            lines.append('')
+            lines.append('错误摘要：')
+            for err in errors[:5]:
+                msg = err[:120] if len(err) > 120 else err
+                lines.append(f'  • {msg}')
+
+        # 0 items 诊断(quick 模式)
+        zero_items = summary.get('zero_items', []) or []
+        if zero_items:
+            changed_diag = [d for d in zero_items if d.get('changed_urls')]
+            stable_diag = [d for d in zero_items if not d.get('changed_urls')]
+            lines.append('')
+            if changed_diag:
+                lines.append(
+                    f'⚠️ {len(zero_items)} 个产品本次 0 items,'
+                    f'其中 {len(changed_diag)} 个页面 hash 发生变化:'
+                )
+                for d in changed_diag:
+                    lines.append(f'  • {d["name"]}')
+                    for c in d['changed_urls'][:5]:
+                        short = c['url'] if len(c['url']) <= 50 else '...' + c['url'][-47:]
+                        if c.get('first_seen'):
+                            lines.append(f'    - {short}')
+                            lines.append(f'      hash: (首次记录,本次为基准)')
+                        else:
+                            lines.append(f'    - {short}')
+                            lines.append(f'      hash: {c["prev"][:8]}... → {c["hash"][:8]}...')
+                    if len(d['changed_urls']) > 5:
+                        lines.append(f'    ... 共 {len(d["changed_urls"])} 个 URL 变化')
+            else:
+                # 改为:总产品 80 / 0 items 12 / 正常 68 的拆解
+                normal_count = total_products - len(zero_items)
+                lines.append(
+                    f'ℹ️ {len(zero_items)} 个产品本次 0 items'
+                    f' / {normal_count} 正常 (共 {total_products} 产品)'
+                )
+
+    # ── 推送段(独立小节) ──
+    push_summaries = summary.get('push_summaries') or []
+    if push_summaries:
+        # 段标题 + 段间空一行
+        lines.append('')
+        lines.append('─' * 30)
+        lines.append('📨 推送情况')
+
+        # 推送时间窗口
+        all_pushed = []
+        for s in push_summaries:
+            for item in s.get('items', []):
+                pa = item.get('pushed_at', '')
+                if pa:
+                    all_pushed.append(pa)
+        if all_pushed:
+            push_start_utc = min(all_pushed)
+            push_end_utc = max(all_pushed)
+            try:
+                start_dt = datetime.fromisoformat(push_start_utc.replace('Z', '+00:00'))
+                end_dt = datetime.fromisoformat(push_end_utc.replace('Z', '+00:00'))
+                start_cst_push = start_dt.astimezone(tz_cst).strftime('%Y-%m-%d %H:%M:%S')
+                end_cst_push = end_dt.astimezone(tz_cst).strftime('%Y-%m-%d %H:%M:%S')
+                push_seconds = int((end_dt - start_dt).total_seconds())
+                lines.append('')
+                lines.append(f'推送开始：{start_cst_push}（CST）')
+                lines.append(f'推送结束：{end_cst_push}（CST）')
+                lines.append(f'耗时：{_fmt_duration(push_seconds)}')
+            except Exception:
+                pass
+
+        # 推送结果汇总
+        total_push = sum(s.get('total', 0) for s in push_summaries)
+        total_success = sum(s.get('success', 0) for s in push_summaries)
+        total_failed = sum(s.get('failed', 0) for s in push_summaries)
+
+        lines.append('')
+        lines.append(f'推送结果汇总：成功 {total_success} / 失败 {total_failed}（共 {total_push} 条）')
+
+        # 按 (客户 × 产品) 聚合
+        cust_prod = {}
+        for s in push_summaries:
+            cust = s.get('customer_name', '') or '(未指定客户)'
+            for item in s.get('items', []):
+                prod = item.get('product_name', '') or '(未知产品)'
+                cust_prod.setdefault(cust, {}).setdefault(prod, 0)
+                cust_prod[cust][prod] += 1
+
+        lines.append('')
+        lines.append('推送明细：')
+        for cust in sorted(cust_prod.keys()):
+            prod_lines = []
+            for prod in sorted(cust_prod[cust].keys()):
+                prod_lines.append(f'{prod} ×{cust_prod[cust][prod]}')
+            lines.append(f'  📤 {cust}：' + '，'.join(prod_lines))
 
     return '\n'.join(lines)
 

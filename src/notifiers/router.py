@@ -34,12 +34,15 @@ _RATE_LIMIT_INTERVAL = float(os.getenv('MONITOR_RATE_LIMIT_SEC', '3'))
 _last_send: dict[str, float] = {}
 
 
-def _emit_push_summary():
+def _emit_push_summary() -> list:
     """Emit a single push_summary system event for all accumulated push results.
     Called at the end of a collection cycle to report aggregated push outcomes.
+
+    Returns the summaries list (for embedding into collection summary); emits
+    the standalone push_summary notification here as before.
     """
     if not _push_summary_accumulator:
-        return
+        return []
     summaries = list(_push_summary_accumulator.values())
     _push_summary_accumulator.clear()
 
@@ -49,6 +52,7 @@ def _emit_push_summary():
 
     from src.core.event_handler import emit_push_summary
     emit_push_summary(summaries)
+    return summaries
 
 
 def _is_maintenance_mode() -> bool:
