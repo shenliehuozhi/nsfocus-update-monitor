@@ -20,6 +20,50 @@
 
 ---
 
+## [2026-07-20] — 1000 系列层级目录识别修复与连锁清理
+
+> 本段从 `f5323a8` 开始追溯，涵盖 10 个 commit，按"问题 → 修复 → 副作用清理"的时间顺序整理。
+
+### 触发问题
+- **discover 漏识别**（`f5323a8`）：NSFocus 站点 IPS 等产品在 `/update/ipsIndex/v/5.6.10` 这种含多个 `ser_c_b_tit` 区块的页面里，同一 detail URL 在多个区块出现时，`dict[href -> section_title]` 折叠会让"标准系列升级包列表"丢 3 个子类型到"10000系列升级包列表"（UI 上 5→2、4→5 错位）
+
+### 数据库层（`snapshots` 表去重语义）
+- **`5b7f0c6` fix(snapshot)**：`save_snapshot` 的去重查询改按 `source_url` 而非 `source_id`（commit 前 5 元组缺 source_id，会让跨 sid 同 URL 的包被误判为同一行）
+- **`708f955` fix(snapshots)**：把 `source_id` 加进 `UNIQUE INDEX` 和 `save_snapshot` SELECT 命中键（`source_id, source_url, path_id, file_name, md5_hash` WHERE status='active'）
+
+### 文档
+- **`b431a4e` docs(reference)**：补 `references/2026-07-20-session-summary.md`（126 行），记录 sid-in-UNIQUE、dedupe 清理、refactor 决策的来龙去脉
+
+### Chain 长度治理（`ser_c_b_tit` 单段不进 chain）
+- **`8c41709` nsfocus**：当某子页的 `ser_c_b_tit` 区块数 ≤1 时，该段 sec_title **不进** chain（之前所有 sec 都进，导致 WAF 海光 V6.0.9.1 Bot特征升级这种页面 chain 出现冗余段，path_id 与 `_chainToUrlMap` 全部失效，必须用户主动「刷新包类型」重采）
+
+### 订阅系统（应对 chain 变长/变化后的静默失效）
+- **`1870b6b` UI**：订阅条件里失效的 chain 加红 ⚠️ 角标（一眼看到哪条链不再有效）
+- **`8499816` UI tooltip**：红 ⚠️ 上挂诊断化 tooltip，列出 4 种失效原因（产品消失 / 产品无 paths / sec 整段没了 / sec 还在但精确 chain 没了）
+
+### Discover 性能（避免 vendor 重跑）
+- **`b9e9114` perf(discover)**：`confirm_apply` 走本地 JSON diff（temp file `added/deleted_paths`）而非重跑 `discover_package_types`；实测 73 产品 × 60s/vendor = 70+ 分钟 → 本地 JSON diff 4 秒
+
+### API 路径一致性
+- **`4d2ed03` fix(api)**：前端 `_srcUrlChainMap` 用的 path_id 算法 (`MD5(BASE_URL+url+JSON(chain))[:12]`) 与后端 `save_snapshot` 写入的 (`MD5(url)[:12]`) 不一致，导致 `dataBuildFeed` path 查找失效；统一为 `MD5(url)[:12]`，匹配 `scheduler._compute_path_id`
+
+### 采集性能（本会话衍生优化）
+- **`4297840` perf(collect)**：`NsfocusCollector._collect_quick` 新增 `shared_url_cache` 参数；scheduler 在产品循环外建一次 dict 注入，所有产品共用同一 cache。NSFocus 的 N chain → 1 URL 共享结构 + 跨 sid 共享 URL 都能命中，省去重复 fetch + parse + old_snaps SQL。实测白天 cycle 耗时均值 725s → 672s（中位节省 18s / 2.6%），网络波动大时收益被网络本身掩盖
+
+### 受影响文件
+```
+src/collectors/nsfocus.py            chain 提取 + discover 修复
+src/core/scheduler.py                性能 patch
+src/models/snapshot.py               UNIQUE INDEX + dedupe 语义
+src/web/routes/api_routes.py         path_id 算法对齐
+src/web/routes/system_routes.py      confirm_apply 重构
+src/web/templates/index.html         订阅失效 UI
+tests/test_nsfocus_section_links.py  f5323a8 配套测试
+references/2026-07-20-session-summary.md  会话总结
+```
+
+---
+
 ## [0.1.0] - 2026-05-29
 
 ### 新增
