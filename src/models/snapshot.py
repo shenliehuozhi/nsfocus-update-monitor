@@ -343,7 +343,8 @@ def save_snapshot(snap: dict) -> int:
     if existing:
         sid = existing[0]['id']
         execute("""
-            UPDATE snapshots SET 
+            UPDATE snapshots SET
+                version_branch = ?, package_type = ?,
                 file_name = ?, package_version = ?, file_size = ?,
                 description_raw = ?, description_parsed = ?,
                 min_sys_version = ?, restart_required = ?, urgency = ?,
@@ -351,6 +352,7 @@ def save_snapshot(snap: dict) -> int:
                 status = 'active', rollback_cycles = 0, page_hash = ?, source_url = ?
             WHERE id = ?
         """, (
+            snap.get('version_branch', ''), snap.get('package_type', ''),
             snap.get('file_name', ''), snap.get('package_version', ''),
             snap.get('file_size', 0), snap.get('description_raw', ''),
             desc_parsed, snap.get('min_sys_version', ''),
