@@ -551,13 +551,15 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         all_items = []
         zero_hashes_by_name: dict = {}  # 默认空,full 模式不填充
 
+        cycle_withdrawn_by_src: dict = {}  # source_id -> [snap_dict, ...]
+
         if mode == 'quick':
-            all_items, zero_hashes_by_name = _collect_quick(existing_sources, cookie, _emit)
+            all_items, zero_hashes_by_name, cycle_withdrawn_by_src = _collect_quick(existing_sources, cookie, _emit)
         elif mode == 'delta':
             # Legacy: redirect delta to quick
-            all_items, zero_hashes_by_name = _collect_quick(existing_sources, cookie, _emit)
+            all_items, zero_hashes_by_name, cycle_withdrawn_by_src = _collect_quick(existing_sources, cookie, _emit)
         else:
-            all_items = _collect_full(existing_sources, list(collect_sessions.values()), cookie, _emit)
+            all_items, cycle_withdrawn_by_src = _collect_full(existing_sources, list(collect_sessions.values()), cookie, _emit)
 
         with _progress_lock:
             _progress['products_done'] = len(existing_sources)
@@ -828,7 +830,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         from src.models.snapshot import touch_active_snapshots
         touch_active_snapshots(touched_source_ids)
 
-    return all_items, zero_hashes_by_name
+    return all_items, zero_hashes_by_name, cycle_withdrawn_by_src
 
 
 def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> list:
@@ -846,6 +848,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
     shared_url_cache: dict = {}
     shared_url_sids: dict = {}
     cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0}
+    cycle_withdrawn_by_src: dict = {}  # source_id -> [snap_dict, ...]
 
     for name, url in products:
         done += 1
@@ -897,7 +900,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         from src.models.snapshot import touch_active_snapshots
         touch_active_snapshots(touched_source_ids)
 
-    return all_items
+    return all_items, cycle_withdrawn_by_src
 
 
 def is_full_scan_due() -> bool:
