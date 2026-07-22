@@ -130,14 +130,19 @@ def _build_chain(msg: 'NotificationMessage', db_path: str | None = None) -> tupl
 
 @dataclass
 class NotificationMessage:
-    """Unified notification message format."""
-    title: str
-    product_name: str
-    version_branch: str
-    package_type: str
-    file_name: str
-    package_version: str
-    md5_hash: str
+    """Unified notification message format.
+
+    2026-07-22: 6 个原必填字段加 default='',允许系统级汇总通知
+    (如 push_summary)直接构造,不依赖 snap dict。
+    业务通知仍走 from_snapshot(),这些字段从 snap 自动填。
+    """
+    title: str = ''
+    product_name: str = ''
+    version_branch: str = ''
+    package_type: str = ''
+    file_name: str = ''
+    package_version: str = ''
+    md5_hash: str = ''
     file_size: int = 0
     description_summary: str = ''
     description_full: str = ''

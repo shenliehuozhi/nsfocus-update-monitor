@@ -223,17 +223,10 @@ def emit_push_summary(summaries: list):
     notifier = _get_notifier(channel)
     if notifier:
         from src.notifiers.base import NotificationMessage
-        # 2026-07-22: push_summary 是系统级汇总通知,没有具体产品/包元数据,
-        # 但 NotificationMessage 有 6 个必填字段(product_name 等无 default)。
-        # 全部填 '' 让 __init__ 通过,description_full 装实际内容。
+        # push_summary 是系统级汇总通知,description_full 装实际内容
+        # (6 个必填字段在 NotificationMessage 已加 default='',无需手填)
         msg = NotificationMessage(
             title='绿盟监控 - 推送汇总',
-            product_name='',
-            version_branch='',
-            package_type='',
-            file_name='',
-            package_version='',
-            md5_hash='',
             description_full=message_text,
         )
         try:
