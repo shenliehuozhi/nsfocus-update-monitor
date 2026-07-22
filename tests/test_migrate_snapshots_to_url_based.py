@@ -78,9 +78,28 @@ def test_plan_deduplicates_within_source_id_but_not_across_sources():
     planned = _MIGRATION.plan(db)
 
     assert planned["delete_rows"] == [(1, 2)]
-    assert planned["active_total"] == 3
-    assert planned["active_unique"] == 2
+    assert planned["row_total"] == 3
+    assert planned["row_unique"] == 2
     assert {row_id for row_id, _ in planned["pathid_updates"]} == {2, 3}
+
+
+def test_plan_deduplicates_all_statuses_by_new_path_id_file_md5_and_sid():
+    db = _db()
+    url = "https://update.nsfocus.com/update/history"
+    # Different legacy chain-based path_ids and statuses collapse after path_id
+    # is recalculated from URL. The newest row wins regardless of status.
+    _insert(db, (1, 10, url, "pkg.zip", "abc", "legacy-a", "2026-07-01", "active"))
+    _insert(db, (2, 10, url, "pkg.zip", "abc", "legacy-b", "2026-07-02", "superseded"))
+    _insert(db, (3, 10, url, "pkg.zip", "abc", "legacy-c", "2026-07-03", "withdrawn"))
+
+    planned = _MIGRATION.plan(db)
+
+    assert planned["delete_rows"] == [(2, 3), (1, 3)]
+    assert planned["row_total"] == 3
+    assert planned["row_unique"] == 1
+    assert planned["pathid_updates"] == [
+        (3, hashlib.md5(url.encode()).hexdigest()[:12])
+    ]
 
 
 def test_apply_repoints_references_deletes_duplicate_and_builds_sid_index():
@@ -89,8 +108,9 @@ def test_apply_repoints_references_deletes_duplicate_and_builds_sid_index():
     expected_pid = hashlib.md5(url.encode()).hexdigest()[:12]
     _insert(db, (1, 10, url, "pkg.zip", "abc", "old-a", "2026-07-01", "active"))
     _insert(db, (2, 10, url, "pkg.zip", "abc", "old-b", "2026-07-02", "active"))
-    # Historical rows are audit data, not active duplicates; leave them intact.
-    _insert(db, (4, 10, url, "pkg.zip", "abc", "historic", "2026-06-01", "superseded"))
+    # A different MD5 is a different identity and remains, but its historical
+    # path_id is still migrated to the URL-based value.
+    _insert(db, (4, 10, url, "pkg.zip", "different", "historic", "2026-06-01", "superseded"))
     for table in ("delivery_log", "delayed_queue", "digest_queue"):
         db.execute(f"INSERT INTO {table} (id, snapshot_id) VALUES (1, 1)")
 
@@ -99,14 +119,14 @@ def test_apply_repoints_references_deletes_duplicate_and_builds_sid_index():
     assert result == {
         "deleted": 1,
         "references_repointed": 3,
-        "pathid_updated": 1,
+        "pathid_updated": 2,
         "unique_index_rebuilt": True,
     }
     assert db.execute("SELECT COUNT(*) FROM snapshots WHERE id=1").fetchone()[0] == 0
     assert db.execute("SELECT path_id FROM snapshots WHERE id=2").fetchone()[0] == expected_pid
     assert db.execute("SELECT status, path_id FROM snapshots WHERE id=4").fetchone() == (
         "superseded",
-        "historic",
+        expected_pid,
     )
     for table in ("delivery_log", "delayed_queue", "digest_queue"):
         assert db.execute(f"SELECT snapshot_id FROM {table} WHERE id=1").fetchone()[0] == 2

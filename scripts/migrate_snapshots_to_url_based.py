@@ -22,20 +22,15 @@ source_id is the product/business ownership boundary.
 
 Behavior
 --------
-For active rows sharing (source_id, source_url, file_name, md5_hash): keep
-the one with the most recent last_seen_at and delete the other physical
+For all rows sharing the final identity
+(source_id, MD5(source_url), file_name, md5_hash), keep the one with the
+most recent last_seen_at regardless of status and delete the other physical
 duplicate rows. Before deletion, references in delivery_log, delayed_queue,
-and digest_queue are repointed to the retained row. This resolves the legacy
-6-18 multiple-chain duplicates without leaving artificial audit history.
+and digest_queue are repointed to the retained row. Different source_id or
+file_name/MD5 values remain separate.
 
-For non-active rows (superseded/withdrawn) sharing the same key: leave
-as-is. The new partial unique index (WHERE status='active') permits
-audit-history rows to coexist with a current active row at the same
-identity — exactly what happens when a vendor removes a file
-(withdrawn) and later re-releases it (new active row).
-
-Recompute path_id for every active row using the new MD5(source_url)
-algorithm.
+Recompute path_id for every retained row, including active, superseded, and
+withdrawn rows.
 
 Drop the old UNIQUE index, recreate as a partial unique index on
 active rows only.
@@ -84,19 +79,17 @@ def already_migrated(db) -> bool:
 def plan(db):
     """Return a dict describing planned changes.
 
-    Three kinds of duplicates are resolved:
-    1. Same key + same status='active' (multiple chains writing the same
-       file under the new URL-based identity) → keep the one with the most
-       recent last_seen_at, delete the other physical duplicates.
-    2. Same key + mixed statuses (historical: file was once withdrawn then
-       re-released, or legacy 6-18 path_id collisions) → keep the most
-       recent 'active' row, others stay in their existing status (they
-       are valid history once a partial unique index allows it).
-    3. Same key + all non-active (pure history) → leave alone, partial
-       unique index will allow it.
+    One final identity is used for every status:
+      (source_id, MD5(source_url), file_name, md5_hash)
+
+    The row with the latest last_seen_at (then highest id) is retained and
+    keeps its current status. All other rows in that identity are deleted
+    after their references are repointed. Different MD5 values remain as
+    separate package identities even when URL and file_name match.
     """
-    # Active rows with non-empty source_url, grouped by
-    # (source_id, url, file, md5). source_id is the product boundary.
+    # Rows with non-empty source_url, grouped by the FINAL identity:
+    # (source_id, MD5(url), file, md5). source_id is the product boundary;
+    # status is deliberately not part of identity.
     rows = db.execute("""
         SELECT id, source_id, source_url, file_name, md5_hash,
                path_id, last_seen_at, status
@@ -106,25 +99,23 @@ def plan(db):
                  last_seen_at DESC, id DESC
     """).fetchall()
 
-    # Group by identity. Within each group, keep the first row (most recent
-    # last_seen_at, tie-break by highest id). All other ACTIVE rows in the
-    # same group are deleted. Non-active rows are valid history and remain.
-    seen_keys = {}  # (source_id, url, file, md5) -> keep_id
+    # Keep the newest row for each final identity regardless of status. Every
+    # other row is the same package identity under an obsolete chain path_id.
+    seen_keys = {}  # (source_id, new_path_id, file, md5) -> keep_id
     delete_rows = []  # (duplicate_id, keep_id)
     for r in rows:
-        key = (r[1], r[2], r[3], r[4])
-        if r[7] != 'active':
-            continue
+        new_pid = md5_url(r[2])
+        key = (r[1], new_pid, r[3], r[4])
         if key not in seen_keys:
             seen_keys[key] = r[0]
         else:
             delete_rows.append((r[0], seen_keys[key]))
 
-    # Path_id updates: every retained active row needs URL-based path_id.
+    # Recompute path_id for every retained row, including historical statuses.
     duplicate_ids = {duplicate_id for duplicate_id, _ in delete_rows}
     pathid_updates = []
     for r in rows:
-        if r[7] != 'active' or r[0] in duplicate_ids:
+        if r[0] in duplicate_ids:
             continue
         new_pid = md5_url(r[2])
         if r[5] != new_pid:
@@ -148,8 +139,8 @@ def plan(db):
         'pathid_updates': pathid_updates,
         'current_unique_sql': current_sql,
         'needs_index_rebuild': needs_index_rebuild,
-        'active_total': sum(1 for r in rows if r[7] == 'active'),
-        'active_unique': len(seen_keys),
+        'row_total': len(rows),
+        'row_unique': len(seen_keys),
     }
 
 
@@ -183,7 +174,7 @@ def apply(db, plan_data):
     if plan_data['pathid_updates']:
         for sid, new_pid in plan_data['pathid_updates']:
             db.execute(
-                "UPDATE snapshots SET path_id=? WHERE id=? AND status='active'",
+                "UPDATE snapshots SET path_id=? WHERE id=?",
                 (new_pid, sid)
             )
             n_pathid += 1
@@ -232,8 +223,8 @@ def main():
     plan_data = plan(db)
     print('=' * 60)
     print('Plan:')
-    print(f'  active rows (with source_url): {plan_data["active_total"]}')
-    print(f'  unique (source_id, source_url, file, md5): {plan_data["active_unique"]}')
+    print(f'  rows (with source_url): {plan_data["row_total"]}')
+    print(f'  unique (source_id, path_id, file, md5): {plan_data["row_unique"]}')
     print(f'  to delete (duplicates):         {len(plan_data["delete_rows"])}')
     print(f'  path_id updates:                {len(plan_data["pathid_updates"])}')
     print(f'  unique index needs rebuild:     {plan_data["needs_index_rebuild"]}')
