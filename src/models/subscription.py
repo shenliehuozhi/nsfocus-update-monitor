@@ -93,13 +93,26 @@ def update_rule(rule_id: int, **kwargs) -> None:
 
 def get_rule(rule_id: int) -> dict | None:
     from src.models.database import query
-    rows = query("SELECT * FROM subscription_rules WHERE id = ?", (rule_id,))
+    # 2026-07-22: LEFT JOIN customers 把 cu.name as customer_name 加进 dict
+    # 让所有用 rule.get('customer_name') 的地方(推送汇总 / 推送通知 / frontend)都自动拿到客户名
+    # 之前是 SELECT *,没有 customer_name,显示"未指定客户"bug
+    rows = query(
+        """SELECT r.*, cu.name as customer_name, cu.email as customer_email
+           FROM subscription_rules r
+           LEFT JOIN customers cu ON r.customer_id = cu.id
+           WHERE r.id = ?""",
+        (rule_id,))
     return _parse_rule(rows[0]) if rows else None
 
 
 def get_enabled_rules() -> list:
     from src.models.database import query
-    rows = query("SELECT * FROM subscription_rules WHERE enabled = 1")
+    # 2026-07-22: 同样 LEFT JOIN,enabled 列表也带 customer_name
+    rows = query(
+        """SELECT r.*, cu.name as customer_name, cu.email as customer_email
+           FROM subscription_rules r
+           LEFT JOIN customers cu ON r.customer_id = cu.id
+           WHERE r.enabled = 1""")
     return [_parse_rule(r) for r in rows]
 
 
