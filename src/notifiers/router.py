@@ -40,17 +40,20 @@ def _emit_push_summary() -> list:
 
     Returns the summaries list (for embedding into collection summary); emits
     the standalone push_summary notification here as before.
+
+    2026-07-22: 0 推送也发"无推送"汇总通知(让用户知道路径在跑 + 配置生效)。
+    summaries 列表为空时发一个简单的"本次无推送"消息。
     """
-    if not _push_summary_accumulator:
-        return []
-    summaries = list(_push_summary_accumulator.values())
-    _push_summary_accumulator.clear()
-
-    total = sum(s['total'] for s in summaries)
-    success = sum(s['success'] for s in summaries)
-    failed = sum(s['failed'] for s in summaries)
-
     from src.core.event_handler import emit_push_summary
+    # 即使 0 推送也发汇总通知(路径验证 + 用户反馈)
+    if not _push_summary_accumulator:
+        # 构造空 summaries(一个空段)
+        summaries = []
+    else:
+        summaries = list(_push_summary_accumulator.values())
+        _push_summary_accumulator.clear()
+
+    # 调 emit_push_summary,它会处理 0 推送的"无推送"分支
     emit_push_summary(summaries)
     return summaries
 

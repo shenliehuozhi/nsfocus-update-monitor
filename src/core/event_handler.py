@@ -194,20 +194,27 @@ def _build_push_summary_message(summaries: list) -> str:
 def emit_push_summary(summaries: list):
     """Send an aggregated push summary to the system event notification channel.
     Called once per collection cycle via _emit_push_summary in router.py.
-    """
-    if not summaries:
-        return
 
+    2026-07-22: 0 推送也发(路径验证 + 用户反馈)。
+    summaries=[] 时发一条"本次无推送"短消息,有 summaries 时跟以前一样。
+    """
     event_type = 'push_summary'
     if not is_event_enabled(event_type):
         return
 
-    # Build message
-    message_text = _build_push_summary_message(summaries)
+    # 0 推送:发一条简短通知(让用户知道路径在跑)
+    if not summaries:
+        message_text = '【推送汇总】本次无推送(0 个 NEW 包)'
+    else:
+        message_text = _build_push_summary_message(summaries)
 
-    total_all = sum(s['total'] for s in summaries)
-    success_all = sum(s['success'] for s in summaries)
-    failed_all = sum(s['failed'] for s in summaries)
+    # 统计数(0 推送时都是 0)
+    if summaries:
+        total_all = sum(s['total'] for s in summaries)
+        success_all = sum(s['success'] for s in summaries)
+        failed_all = sum(s['failed'] for s in summaries)
+    else:
+        total_all = success_all = failed_all = 0
 
     # Send to notification channel（不依赖 DB 写入）
     channel = get_notify_channel()
