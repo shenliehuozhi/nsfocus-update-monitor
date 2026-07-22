@@ -1,11 +1,16 @@
 """System event handler — record events and send notifications.
 
 Called by:
-- router.py: emit_push() on delivery success/failure
+- router.py: emit_push_summary() once per cycle (aggregated push report)
 - scheduler.py: emit_collection_summary() on collection complete
 - scheduler.py: emit_session_error() on session heartbeat failure
 - log_scanner.py: emit_log_error() on log anomaly
 - collectors/nsfocus.py: emit_network_error() on network error
+
+Deprecated:
+- emit_push() 单条推送成功/失败通知 — 2026-07-22 移除前端选项,后端函数保留为
+  no-op 占位,避免外部 import 报错。如果未来需要单条通知,可以从 router.py
+  _send_immediate 成功后调 emit_push(...) 重新启用。
 """
 
 import json
@@ -74,8 +79,13 @@ def _build_push_message(snap: dict, rule: dict, success: bool,
 
 def emit_push(snap: dict, rule: dict, success: bool, error: str = None,
               is_rollback: bool = False):
-    """推送成功/失败时调用"""
-    event_type = 'push_success' if success else 'push_failed'
+    """[DEPRECATED 2026-07-22] 单条推送成功/失败通知 — 前端已合并到 push_summary。
+
+    调用方无(router.py 不再触发),保留函数体以防外部 import 调用,但不执行任何操作。
+    推送结果请用 emit_push_summary() (router.py cycle 末调一次)。
+    """
+    logger.debug(f'emit_push() called but deprecated: snap={snap.get("file_name")} success={success}')
+    return
 
     # 检查是否启用
     if not is_event_enabled(event_type):

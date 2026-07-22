@@ -4634,13 +4634,12 @@ async function settings(){
         <div class="cfg-row">
           <div class="form-group"><label>事件类型</label>
             <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;white-space:nowrap">
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_success" ${(cfg.event_types||[]).includes('push_success')?'checked':''}> 推送成功</label>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_failed" ${(cfg.event_types||[]).includes('push_failed')?'checked':''}> 推送失败</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_summary" ${(cfg.event_types||[]).includes('push_summary')?'checked':''}> 推送汇总</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
             </div>
-            <p class="cfg-hint">空=全部启用</p>
+            <p class="cfg-hint">推送汇总合并本 cycle 所有推送成功/失败详情(单条不再发);采集完成=cycle 末汇总;空=全部启用</p>
           </div>
         </div>
       </div>
@@ -6265,6 +6264,13 @@ async function forceStopAndSave(){
     ops_contact_email:document.getElementById('cfg-ops-email').value.trim(),
     ops_contact_phone:document.getElementById('cfg-ops-phone').value.trim()};
   const r=await api('/settings/force-stop',{method:'POST',body:JSON.stringify(d)});
+  await saveEventConfig();
+  toast(r.code===0?'采集已停止，配置已保存':'保存失败',r.code===0?'success':'error');
+  if(r.code===0) settings();
+}
+
+async function saveEventConfig(){
+  // 共享事件配置保存逻辑(force-stop 和正常 saveSettings 都用)
   const eventEnabled=document.getElementById('cfg-event-enabled').checked;
   const eventChannel=document.getElementById('cfg-event-channel').value;
   const eventTypes=Array.from(document.querySelectorAll('.cfg-event-type:checked')).map(cb=>cb.value);
@@ -6273,8 +6279,6 @@ async function forceStopAndSave(){
     channel_id:eventChannel?parseInt(eventChannel):null,
     event_types:eventTypes
   })});
-  toast(r.code===0?'采集已停止，配置已保存':'保存失败',r.code===0?'success':'error');
-  if(r.code===0) settings();
 }
 
 async function saveSettings(){
@@ -6289,15 +6293,7 @@ async function saveSettings(){
     ops_contact_phone:document.getElementById('cfg-ops-phone').value.trim()};
   const r=await api('/settings/config',{method:'PUT',body:JSON.stringify(d)});
 
-  // 保存系统事件配置
-  const eventEnabled=document.getElementById('cfg-event-enabled').checked;
-  const eventChannel=document.getElementById('cfg-event-channel').value;
-  const eventTypes=Array.from(document.querySelectorAll('.cfg-event-type:checked')).map(cb=>cb.value);
-  await api('/settings/event-config',{method:'PUT',body:JSON.stringify({
-    enabled:eventEnabled,
-    channel_id:eventChannel?parseInt(eventChannel):null,
-    event_types:eventTypes
-  })});
+  await saveEventConfig();
 
   toast(r.code===0?'配置已保存':'保存失败',r.code===0?'success':'error');
 }
