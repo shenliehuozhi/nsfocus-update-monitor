@@ -289,13 +289,11 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
     lines.append(type_line)
 
     # 字段名固定宽度(不含 '**' 标记),使冒号对齐
-    # MD5 字段冒号前 6 空格(label 'MD5' 3 字符 + 6 半角空 = 9 字符)
-    # 其他字段冒号前 1 空格(label 已 pad 到 4 字符)
+    # 字段名固定宽度(不含 '**' 标记),使冒号对齐
+    # 所有 label 走 _pad_label pad 到 4 字符 → 末尾统一有 1 空格 + ':' 在第 6 列
+    # (MD5 长度 3 字符 pad 1 空格,跟其他 label 4 字符 等宽,冒号自然对齐)
     for label, val in meta:
-        if label == 'MD5':
-            padded_label = 'MD5' + ' ' * 6   # 6 空格(用户指定)
-        else:
-            padded_label = _pad_label(label)  # 4 字符宽
+        padded_label = _pad_label(label)  # 所有 label 一律 4 字符宽
         if val is not None and str(val).strip():
             # 发布页面/下载地址冒号后 3 空格;其他 1 空格
             suffix = '   ' if label in ('发布页面', '下载地址') else ' '

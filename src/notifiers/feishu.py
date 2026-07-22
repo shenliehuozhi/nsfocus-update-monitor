@@ -139,6 +139,9 @@ class FeishuNotifier(BaseNotifier):
             + value 模仿钉钉 markdown 风格。
             同时剥掉 value text tag 里的反引号(飞书不渲染 markdown
             反引号, 显示字面字符会显得「没有渲染干净」)。
+
+            2026-07-22 修复:所有 label pad 到 4 字符宽 + 1 空格,确保冒号在
+            同一列(跟 base._format_markdown_body 对齐方式一致)。
             """
             stripped = []
             for t in value_tags:
@@ -148,7 +151,11 @@ class FeishuNotifier(BaseNotifier):
                     stripped.append(new_t)
                 else:
                     stripped.append(t)
-            return [{'tag': 'text', 'text': f'{label} '}] + stripped
+            # pad label 到 4 字符宽(最长 label 是 4 字符,如"发布页面")
+            # 然后加 1 空格 → label + 1 空格总宽 = 5 字符
+            # value 第一个 text tag 之前会自动跟 ": " 连起来,冒号对齐第 6 列
+            padded_label = label + ' ' * (4 - len(label)) + ' '
+            return [{'tag': 'text', 'text': padded_label}] + stripped
 
         if msg.is_rollback:
             head_paras.append([{'tag': 'text', 'text': '⚠️ 此软件包已被撤回,请暂缓升级'}])
