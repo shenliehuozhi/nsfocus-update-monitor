@@ -1269,6 +1269,15 @@ def discover_products_confirm():
                         for t in all_types:
                             cur_modes.setdefault(t, 'auto')
                         # 删了 paths 对应的 modes 一起清 (防止遗留)
+                        kept_types = set(all_types)
+                        cur_modes = {k: v for k, v in cur_modes.items() if k in kept_types}
+
+                        new_pkg_json = json.dumps({
+                            'types': all_types,
+                            'paths': cur_paths,
+                            'modes': cur_modes,
+                        }, ensure_ascii=False)
+                        _log(f'  本地 diff: -{n_deleted} +{n_added} ~{n_modified} → paths={len(cur_paths)} types={len(all_types)}')
                     new_pkg = None
                 else:
                         # 慢路径: vendor 重跑 (留作回退)
