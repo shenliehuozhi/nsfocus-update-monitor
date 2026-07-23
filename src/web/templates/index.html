@@ -6411,7 +6411,20 @@ function showProductForm(p){
   const isManual = p ? p.is_manual !== false : true; // default to true for new add
   modalBody('pform',`<div style="padding:24px">
     <div style="font-size:15px;font-weight:600;margin-bottom:20px">${isEdit?'✏️ 编辑产品':'➕ 手动添加产品'}</div>
-    <div class="form-group"><label>产品名称 <span style="color:var(--danger)">*</span></label>
+    <div class="info-bar">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <span style="font-size:16px;line-height:1">💡</span>
+        <div style="flex:1">
+          <div style="font-weight:600;margin-bottom:4px">什么时候用手动添加?</div>
+          <div style="line-height:1.7">
+            • <b>用途:</b>自动发现没扫到的产品(自定义 / 灰度 / 私有 / 内部测试)<br>
+            • <b>建议:</b>绿盟官网已上架的标准产品 — 用「自动发现」批量加<br>
+            • <b>下一步:</b>保存后会自动弹窗,问你是否立即刷新包类型
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="form-group" style="margin-top:16px"><label>产品名称 <span style="color:var(--danger)">*</span></label>
       <input id="pf-name" value="${escHtml(name)}" placeholder="如: WEB应用防护系统(WAF)" style="width:100%;padding:8px 12px;border:1px solid var(--gray-border);border-radius:8px;font-size:14px">
     </div>
     <div class="form-group" style="margin-top:14px"><label>入口URL <span style="color:var(--danger)">*</span></label>
