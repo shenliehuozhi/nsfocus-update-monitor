@@ -109,6 +109,11 @@ def _get_products_full() -> list[dict]:
 class NsfocusCollector(BaseCollector):
     source_type = 'nsfocus'
 
+    # discover_package_types 递归深度上限。海光系列 / 嵌套多代版本可能需要 7-8。
+    # 改大后副作用: HTTP 请求变多,但能覆盖到深嵌套的产品路径。
+    # 改小后副作用: 截断在浅层,深嵌套的产品路径不会被发现。
+    DEFAULT_MAX_DEPTH = 6
+
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
@@ -133,11 +138,13 @@ class NsfocusCollector(BaseCollector):
         warnings.warn('NsfocusCollector.collect() is deprecated; use scheduler delta/full modes', DeprecationWarning, stacklevel=2)
         return []
 
-    def discover_package_types(self, source_id: int, session_cookie: str, log_fn=None, progress_fn=None) -> dict:
+    def discover_package_types(self, source_id: int, session_cookie: str, log_fn=None, progress_fn=None, max_depth: int = None) -> dict:
         """Fully recursive directory-tree traversal for package type discovery.
 
         progress_fn: optional callback(phase: str) called when starting each top-level
                       version branch, so the caller can update UI progress.
+        max_depth:   递归深度上限,None 走 NsfocusCollector.DEFAULT_MAX_DEPTH(默认 6)。
+                      命中上限会在日志写 ⚠️ 提示,便于发现深嵌套产品被截断。
         """
         from src.models.snapshot import get_source
         src = get_source(source_id)
@@ -147,6 +154,7 @@ class NsfocusCollector(BaseCollector):
         url = src['entry_url']
         self._set_discover_cookie(session_cookie)
         _log = lambda msg: log_fn(msg) if log_fn else None
+        effective_max_depth = max_depth if max_depth is not None else self.DEFAULT_MAX_DEPTH
 
         all_types = []    # union list
         paths = []        # list of {chain, types}
@@ -183,7 +191,10 @@ class NsfocusCollector(BaseCollector):
                 # E.g. NSFocus's 海光 V6.0.8 规则 uses the same detail URL as 普通
                 # WAF V6.0.8 规则; without the chain-key they would collide.
                 visit_key = (page_url, tuple(chain))
-                if depth > 6 or visit_key in visited:
+                if depth > effective_max_depth or visit_key in visited:
+                    # 命中深度上限:打 warn 日志便于发现深嵌套产品被截断(只首次打,避免刷屏)
+                    if depth > effective_max_depth and depth == effective_max_depth + 1:
+                        _log(f'  ⚠️ 递归深度命中上限 {effective_max_depth},可能截断深嵌套产品: {chain} @ {page_url}')
                     return
                 visited.add(visit_key)
 

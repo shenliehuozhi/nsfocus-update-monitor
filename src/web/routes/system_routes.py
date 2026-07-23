@@ -14,6 +14,8 @@ from src.collectors.nsfocus import PRODUCTS
 
 bp = Blueprint('system', __name__, url_prefix='/api/system')
 _refresh_pool = None  # ThreadPoolExecutor for pkg-type refresh, lazy init
+# Stage 2 (discover_package_types) 并发 worker 数 — 保守起步,后续按绿盟风控观察调整
+DISCOVER_STAGE2_WORKERS = 3
 _auto_discover_state = None  # {active, phase, progress, total, log_lines, result}
 _auto_discover_lock = None
 _confirm_state = None  # {active, phase, log_lines, result, error}
@@ -26,22 +28,29 @@ _PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 _PENDING_FILE = os.path.join(_PROJECT_ROOT, 'data', 'discover_pending.json')
 
 # ── Dedicated discover/confirm log file ──────────────────────────────
-_disc_log_file = None
+# 用 RotatingFileHandler(10MB/份 × 5 份备份),与 _audit 同款模式。
+# 老实现是 open('a') 追加,跑久了会膨胀到几十 MB 还无法清理。
+_disc_logger = None
+_DISC_LOG_FILE = os.path.join(_PROJECT_ROOT, 'data', 'discover.log')
 
 def _disc_log_path():
-    global _disc_log_file
-    if _disc_log_file is None:
-        _disc_log_file = os.path.join(_PROJECT_ROOT, 'data', 'discover.log')
-    return _disc_log_file
+    """返回当前 discover.log 文件路径(供 _disc_log lazy init 用)。"""
+    return _DISC_LOG_FILE
 
 def _disc_log(msg, prefix='[auto_discover]'):
-    """Append a timestamped line to data/discover.log."""
+    """Append a timestamped line to data/discover.log (rotating, max 10MB × 5 backups)."""
+    global _disc_logger
     try:
-        import datetime as _dt
-        ts = _dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        line = f'{ts} {prefix} {msg}\n'
-        with open(_disc_log_path(), 'a', encoding='utf-8') as f:
-            f.write(line)
+        if _disc_logger is None:
+            import logging as _logging
+            from logging.handlers import RotatingFileHandler
+            _disc_logger = _logging.getLogger('disc.file')
+            _disc_logger.setLevel(_logging.INFO)
+            _disc_logger.propagate = False  # 避免冒泡到 root logger
+            handler = RotatingFileHandler(_DISC_LOG_FILE, maxBytes=10_000_000, backupCount=5, encoding='utf-8')
+            handler.setFormatter(_logging.Formatter('%(asctime)s %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+            _disc_logger.addHandler(handler)
+        _disc_logger.info(f'{prefix} {msg}')
     except Exception:
         pass
 
@@ -78,7 +87,10 @@ def _clear_pending():
         pass
 
 # ── Service-startup recovery ─────────────────────────────────────────
-_auto_discover_lock = threading.Lock()
+# _auto_discover_lock is lazy-initialized in route handlers (POST /products/discover).
+# No module-level Lock() here — would mask the lazy-init contract and leave the
+# DELETE /products/discover/confirm route unprotected if service starts and
+# immediately receives a DELETE before any POST.
 _pending = _load_pending()
 if _pending:
     _auto_discover_state = {
@@ -703,13 +715,31 @@ def discover_products():
             'current': '',
             'log_lines': [],
             'result': None,   # set when done/error
+            'cancel_requested': False,  # 用户通过 /discover/cancel 主动中止
         }
 
-    def _log(msg):
+    def _log(msg, *, level=None, product=None):
+        """结构化日志条目(level: info/warn/error/success;product: 当前产品名)。
+        后端用 emoji 前缀分类(🔍/📦→info, ⚠️→warn, ❌→error, ✅/✔→success);
+        也可显式传 level 覆盖默认推断。"""
+        msg_str = str(msg)
+        if level is None:
+            # emoji 前缀 → level 推断
+            if msg_str.startswith('❌') or '失败' in msg_str[:20] or msg_str.startswith('ERROR'):
+                level = 'error'
+            elif msg_str.startswith('⚠️'):
+                level = 'warn'
+            elif msg_str.startswith('✅') or msg_str.startswith('✔'):
+                level = 'success'
+            elif msg_str.startswith('⏹'):
+                level = 'warn'  # cancel
+            else:
+                level = 'info'
+        entry = {'ts': __import__('datetime').datetime.utcnow().isoformat() + 'Z', 'level': level, 'product': product, 'msg': msg_str}
         with _auto_discover_lock:
             if _auto_discover_state:
-                _auto_discover_state['log_lines'].append(str(msg))
-        _disc_log(msg, '[auto_discover]')
+                _auto_discover_state['log_lines'].append(entry)
+        _disc_log(msg_str, '[auto_discover]')
 
     def _run():
         global _auto_discover_state, _auto_discover_lock
@@ -753,56 +783,147 @@ def discover_products():
             with _auto_discover_lock:
                 _auto_discover_state['phase'] = 'discovering_pkg_types'
                 _auto_discover_state['total'] = total
+                _auto_discover_state['progress'] = 0  # 已完成数(并发场景语义)
+                _auto_discover_state['running_products'] = []  # 当前并发做的产品名列表
+                _auto_discover_state['failed_products'] = []  # 失败的产品 {name, error}
 
             pkg_changes = {}   # {source_id or temp_id: {added_paths, deleted_paths, modified_paths}}
+            # 进度计数器(atomic),用独立 lock 保护避免与 _auto_discover_lock 互相等待
+            _progress_counter = [0]  # 用 list 包装实现闭包内修改
+            _progress_lock = threading.Lock()
+            failed_products = []  # 主线程汇总,worker 不直接改
 
-            # For unchanged products, fetch current stored package_type for diff
-            unchanged_map = {p['entry_url']: p for p in prod_unchanged}
-
-            for idx, p in enumerate(all_products):
+            # ── Stage 2: 并发跑每个产品的 discover_package_types ──
+            # DB 只读(get_source) + 纯计算 diff + 网络请求,无写操作,无 _write_lock 风险。
+            # 每个 worker 独立 NsfocusCollector 实例 + 独立 captured_lines 列表,
+            # 返回 (entry_url, source_id, product_name, current_pkg, discovered_pkg, error)。
+            def _discover_one(p):
+                """worker 单产品发现。抛异常时返回 (error=...) 由主线程记入 failed_products。"""
                 source_id = p.get('id')
-                # If source exists in DB, get its current package_type
                 current_pkg = None
                 if source_id:
-                    from src.models.snapshot import get_source
-                    src = get_source(source_id)
-                    if src and src.get('package_type'):
-                        try:
+                    try:
+                        from src.models.snapshot import get_source
+                        src = get_source(source_id)
+                        if src and src.get('package_type'):
                             current_pkg = json.loads(src['package_type'])
-                        except Exception:
-                            pass
-
-                # Discover new package types
-                _log(f'[{idx+1}/{total}] 发现包类型: {p["name"]}')
-                with _auto_discover_lock:
-                    _auto_discover_state['progress'] = idx + 1
-                    _auto_discover_state['current'] = p['name']
+                    except Exception as e:
+                        return {
+                            'entry_url': p['entry_url'],
+                            'source_id': source_id,
+                            'product_name': p['name'],
+                            'error': f'读 DB 失败: {e}',
+                        }
 
                 if source_id:
-                    # Wrap log_fn to capture every log line from nested discovery calls
                     captured_lines = []
                     def capture_log(msg):
                         if msg:
                             captured_lines.append(str(msg))
                             _log(msg)
-                    def on_progress(phase, current, total):
-                        _log(f'  → 版本 {current}/{total}: {phase}')
-                    discovered_pkg = collector.discover_package_types(source_id, cookie, log_fn=capture_log, progress_fn=on_progress)
+                    def on_progress(phase, current, total_p):
+                        _log(f'  → 版本 {current}/{total_p}: {phase}')
+                    try:
+                        # 每个 worker 用独立的 collector + cookie,避免共享状态
+                        local_collector = NsfocusCollector()
+                        local_collector._set_cookie(cookie)
+                        # 注册到 running_products(在 lock 内)
+                        with _auto_discover_lock:
+                            if _auto_discover_state:
+                                _auto_discover_state['running_products'].append(p['name'])
+                        try:
+                            discovered_pkg = local_collector.discover_package_types(
+                                source_id, cookie,
+                                log_fn=capture_log, progress_fn=on_progress
+                            )
+                        finally:
+                            # 移除出 running_products(无论成败)
+                            with _auto_discover_lock:
+                                if _auto_discover_state:
+                                    try:
+                                        _auto_discover_state['running_products'].remove(p['name'])
+                                    except ValueError:
+                                        pass
+                    except Exception as e:
+                        return {
+                            'entry_url': p['entry_url'],
+                            'source_id': source_id,
+                            'product_name': p['name'],
+                            'error': str(e),
+                        }
                 else:
-                    # New product — no source_id yet, can't call discover_package_types
-                    # We'll insert the product first (in confirm step) then set package_type
+                    # New product — no source_id,confirm 时再处理
                     discovered_pkg = {'types': [], 'paths': [], 'modes': {}}
 
-                # Diff
-                diff = NsfocusCollector.diff_package_types(current_pkg, discovered_pkg)
-                if diff['added_paths'] or diff['deleted_paths'] or diff['modified_paths']:
-                    pkg_changes[p.get('id') or p['entry_url']] = {
-                        **diff,
-                        'product_name': p['name'],
-                        'entry_url': p['entry_url'],
-                    }
+                return {
+                    'entry_url': p['entry_url'],
+                    'source_id': source_id,
+                    'product_name': p['name'],
+                    'current_pkg': current_pkg,
+                    'discovered_pkg': discovered_pkg,
+                }
 
-            _log(f'包类型发现完成，共 {len(pkg_changes)} 个产品有变更')
+            # 用 ThreadPoolExecutor 并发跑,as_completed() 主线程串行收结果
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            workers = min(DISCOVER_STAGE2_WORKERS, total) if total else 1
+            _log(f'开始并发 Stage 2 (workers={workers}/{total})')
+            cancelled_midway = False
+            # 手管理 ThreadPoolExecutor: cancel 时直接 shutdown(wait=False),不阻塞
+            # 等剩余 worker(它们还会跑完,但结果我们不收;网络请求中断不了,5-15s 后自然结束)
+            pool = ThreadPoolExecutor(max_workers=workers)
+            try:
+                futures = {pool.submit(_discover_one, p): p for p in all_products}
+                for fut in as_completed(futures):
+                    # 每收一个结果都检查 cancel — 简单取消策略:
+                    # 当前已 submit 的 worker 会跑完,但不再处理后续结果;
+                    # 已完成的产品也不进 pkg_changes(等于全部丢弃,跟用户预期一致)
+                    if _auto_discover_state and _auto_discover_state.get('cancel_requested'):
+                        _log(f'⏹ 收到取消请求,已停止接收结果 (剩余 {len(futures) - _progress_counter[0]} 个未跑)')
+                        cancelled_midway = True
+                        break
+                    r = fut.result()
+                    # 进度累加(atomic)
+                    with _progress_lock:
+                        _progress_counter[0] += 1
+                        done_count = _progress_counter[0]
+                    with _auto_discover_lock:
+                        if _auto_discover_state:
+                            _auto_discover_state['progress'] = done_count
+                    if r.get('error'):
+                        failed_products.append({'name': r['product_name'], 'error': r['error']})
+                        _log(f"  ❌ [{done_count}/{total}] {r['product_name']} 失败: {r['error']}")
+                        continue
+                    # Diff(主线程串行)
+                    diff = NsfocusCollector.diff_package_types(r['current_pkg'], r['discovered_pkg'])
+                    if diff['added_paths'] or diff['deleted_paths'] or diff['modified_paths']:
+                        pkg_changes[r.get('source_id') or r['entry_url']] = {
+                            **diff,
+                            'product_name': r['product_name'],
+                            'entry_url': r['entry_url'],
+                        }
+                    _log(f"  ✅ [{done_count}/{total}] 完成: {r['product_name']}")
+            finally:
+                # cancel 时不等剩余 worker,直接退出;正常完成时 wait=True 等 worker 自然结束
+                pool.shutdown(wait=not cancelled_midway)
+
+            # ── cancel 路径:丢弃所有结果,设 phase='cancelled',不写 pending ──
+            if cancelled_midway:
+                with _auto_discover_lock:
+                    if _auto_discover_state:
+                        _auto_discover_state['phase'] = 'cancelled'
+                        _auto_discover_state['active'] = False
+                        _auto_discover_state['failed_products'] = []
+                _log('⏹ 自动发现已取消,本次结果已丢弃')
+                # 不写 _save_pending,不让用户 confirm 部分结果
+                return  # 直接退出 _run(),跳过 done 分支
+
+            # failed_products 写回 state 给前端 banner 显示
+            with _auto_discover_lock:
+                if _auto_discover_state:
+                    _auto_discover_state['failed_products'] = failed_products
+
+            fail_msg = f'失败 {len(failed_products)} 个' if failed_products else ''
+            _log(f'包类型发现完成，共 {len(pkg_changes)} 个产品有变更 {fail_msg}'.rstrip())
 
             result = {
                 'products': {
@@ -825,18 +946,37 @@ def discover_products():
         except Exception as e:
             import traceback
             _disc_log(f'ERROR: {e}', '[auto_discover]')
-            _log(f'错误: {e}')
+            cat, friendly = _classify_error(e)
+            _log(f'❌ {friendly}', level='error')
             with _auto_discover_lock:
                 if _auto_discover_state:
                     _auto_discover_state['phase'] = 'error'
                     _auto_discover_state['active'] = False
-                    _auto_discover_state['result'] = {'error': str(e)}
+                    _auto_discover_state['result'] = {'error': str(e), 'error_category': cat, 'error_message': friendly}
             _clear_pending()
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
 
     return {'code': 0, 'message': '自动发现已启动，请轮询状态'}
+
+
+# ── 错误分类 helper(自动发现 + 确认应用流程共用) ──
+# 给前端 toast/弹窗提供可读的修复建议,而不是只看原始 str(e)。
+def _classify_error(e):
+    """返回 (category, message) 元组。
+    category ∈ {'session','network','db','vendor','internal'} 用于前端可分类处理。"""
+    msg = str(e) or type(e).__name__
+    s = msg.lower()
+    if 'session' in s or '无有效会话' in msg or 'cookie' in s or 'phpsessid' in s:
+        return 'session', f'{msg} — 请检查发现 Session 是否有效或添加新的 PHPSESSID'
+    if '网络' in msg or 'network' in s or 'timeout' in s or 'connection' in s or 'redirect' in s:
+        return 'network', f'{msg} — 请检查网络/绿盟站点可达性,稍后重试'
+    if 'database' in s or 'sqlite' in s or 'lock' in s or 'is locked' in s:
+        return 'db', f'{msg} — 数据库锁/连接异常,稍后重试或重启服务'
+    if 'parse' in s or 'json' in s or 'decode' in s or 'encoding' in s:
+        return 'vendor', f'{msg} — 绿盟页面结构可能变更,需更新解析器'
+    return 'internal', f'{msg} — 内部错误,查看日志或联系维护者'
 
 
 @bp.route('/products/discover/status', methods=['GET'])
@@ -861,6 +1001,22 @@ def discover_products_status():
     # Don't expose lock in response
     state.pop('_lock', None)
     return {'code': 0, 'data': state}
+
+
+@bp.route('/products/discover/cancel', methods=['POST'])
+@require_auth
+def discover_products_cancel():
+    """Cancel a running auto-discover. Worker pool will drain in-flight tasks
+    but no further results will be aggregated. Phase transitions to 'cancelled'."""
+    global _auto_discover_lock
+    if _auto_discover_lock is None:
+        return {'code': 400, 'message': '没有正在运行的自动发现任务'}, 400
+    with _auto_discover_lock:
+        if not _auto_discover_state or not _auto_discover_state.get('active'):
+            return {'code': 400, 'message': '没有正在运行的自动发现任务'}, 400
+        _auto_discover_state['cancel_requested'] = True
+    _disc_log('cancel requested by user', '[auto_discover]')
+    return {'code': 0, 'message': '取消请求已提交,正在停止…'}
 
 
 @bp.route('/products/discover/confirm', methods=['POST'])
@@ -933,6 +1089,37 @@ def discover_products_confirm():
         pkg_updated_prods = []
         import traceback as _tb
         _disc_log(f'thread started: user_id={user_id}, prod_added={len(prod_added)}, prod_removed={len(prod_removed)}, pkg_changes={len(pkg_changes) if pkg_changes else "None"}', '[confirm]')
+
+        # ── 应用前备份:把将要变更的产品当前状态写到 data/discover_backups/ ──
+        # 备份文件包含:prod_added(新增)/ prod_removed(删除)/ pkg_changes 各自影响的产品当前 content_sources 行。
+        # 应用出错或误操作后,运维可读 backup 文件手动恢复(sqlite3 直连 update/delete)。
+        # 暂不做自动 rollback endpoint,降低风险;本地单机场景,运维可控。
+        try:
+            from src.models.database import query
+            affected_entry_urls = set()
+            affected_entry_urls.update(p.get('entry_url', '') for p in prod_added if p.get('entry_url'))
+            affected_entry_urls.update(p.get('entry_url', '') for p in prod_removed if p.get('entry_url'))
+            affected_entry_urls.update(p.get('entry_url', '') for k, p in (pkg_changes or {}).items() if p.get('entry_url'))
+            backup_rows = []
+            if affected_entry_urls:
+                placeholders = ','.join('?' * len(affected_entry_urls))
+                backup_rows = query(f'SELECT * FROM content_sources WHERE entry_url IN ({placeholders})', tuple(affected_entry_urls))
+            backup_dir = os.path.join(_PROJECT_ROOT, 'data', 'discover_backups')
+            os.makedirs(backup_dir, exist_ok=True)
+            backup_ts = __import__('datetime').datetime.utcnow().strftime('%Y%m%d_%H%M%S')
+            backup_path = os.path.join(backup_dir, f'discover_{backup_ts}.json')
+            with open(backup_path, 'w', encoding='utf-8') as f:
+                import json as _json_bak
+                _json_bak.dump({
+                    'saved_at_utc': __import__('datetime').datetime.utcnow().isoformat() + 'Z',
+                    'prod_added_count': len(prod_added),
+                    'prod_removed_count': len(prod_removed),
+                    'pkg_changes_count': len(pkg_changes or {}),
+                    'content_sources': backup_rows,
+                }, f, ensure_ascii=False, indent=2)
+            _disc_log(f'[confirm] backup saved: {backup_path} ({len(backup_rows)} rows)', '[confirm]')
+        except Exception as e:
+            _disc_log(f'[confirm] backup failed (non-fatal,继续应用): {e}', '[confirm]')
 
         def _audit_in_thread(action: str, details: dict = None):
             """Thread-safe audit to file (no g/request access)."""
@@ -1033,18 +1220,18 @@ def discover_products_confirm():
                         cur_pkg = {'types': [], 'paths': [], 'modes': {}}
                     cur_paths = list(cur_pkg.get('paths', []))
 
-                    # ── 防御: 如果 added/deleted 都是 chain 字面变化产物(commit 8c41709
-                    # 砍 sec 段后, discover 用新 chain, 但 diff 仍把 cur 标 deleted),
-                    # 按 chain 字面匹配会"什么都不删"也"什么都不加"。这种情况下
-                    # cur.paths 已经是最终态, 直接跳过 update_source 避免误删路径。
+                    # ── 防御: chain 字面变化产物检测(commit 8c41709 砍 sec 段后常见)
+                    # 原判定只检查 n_added_already == len(added),漏判"删 5 在 cur + 加 4 字面变化"的混合 case。
+                    # 新判定:deleted 中没真删 + added 中没真加 → 全部字面变化,cur.paths 已是最终态,跳过。
+                    #   n_real_deleted = deleted ∩ cur.chains
+                    #   n_real_added   = added - cur.chains(cur 已有算字面,cur 没有才是真新加)
                     cur_chains_set = {tuple(p.get('chain') or []) for p in cur_paths}
                     deleted_chain_keys = {tuple(p.get('chain') or []) for p in deleted}
                     added_chain_keys = {tuple(p.get('chain') or []) for p in added}
-                    n_deleted_in_cur = len(deleted_chain_keys & cur_chains_set)
-                    n_added_already = len(added_chain_keys & cur_chains_set)
-                    if has_changes and n_deleted_in_cur == 0 and n_added_already == len(added):
-                        _log(f'  ⚠️ diff 全是 chain 字面变化产物 (deleted 都不在 cur.paths, '
-                             f'added 全已在 cur.paths), cur.paths 已是最终态, 跳过更新')
+                    n_real_deleted = len(deleted_chain_keys & cur_chains_set)
+                    n_real_added = len(added_chain_keys - cur_chains_set)
+                    if has_changes and n_real_deleted == 0 and n_real_added == 0:
+                        _log(f'  ⚠️ diff 全是 chain 字面变化产物 (无真删/真加), cur.paths 已是最终态, 跳过更新')
                         _log(f'  skipped: deleted={len(deleted)} added={len(added)} modified={len(modified)} cur_paths={len(cur_paths)}')
                         has_changes = False  # 不算变更, 不写 package_type_changed=1
                         new_pkg_json = cur_pkg_str  # no-op
@@ -1082,36 +1269,27 @@ def discover_products_confirm():
                         for t in all_types:
                             cur_modes.setdefault(t, 'auto')
                         # 删了 paths 对应的 modes 一起清 (防止遗留)
-                        kept_types = set(all_types)
-                        cur_modes = {k: v for k, v in cur_modes.items() if k in kept_types}
-
-                        new_pkg_json = json.dumps({
-                            'types': all_types,
-                            'paths': cur_paths,
-                            'modes': cur_modes,
-                        }, ensure_ascii=False)
-                        _log(f'  本地 diff: -{n_deleted} +{n_added} ~{n_modified} → paths={len(cur_paths)} types={len(all_types)}')
                     new_pkg = None
                 else:
-                    # 慢路径: vendor 重跑 (留作回退)
-                    captured_lines = []
-                    def capture_log(msg):
-                        if msg:
-                            captured_lines.append(str(msg))
-                            _log(f'  {msg}')
-                    def on_progress(phase, current, total_p):
-                        _log(f'  → 版本 {current}/{total_p}: {phase}')
+                        # 慢路径: vendor 重跑 (留作回退)
+                        captured_lines = []
+                        def capture_log(msg):
+                            if msg:
+                                captured_lines.append(str(msg))
+                                _log(f'  {msg}')
+                        def on_progress(phase, current, total_p):
+                            _log(f'  → 版本 {current}/{total_p}: {phase}')
 
-                    new_pkg = collector.discover_package_types(
-                        source_id, cookie,
-                        log_fn=capture_log,
-                        progress_fn=on_progress
-                    )
-                    new_pkg_json = json.dumps({
-                        'types': new_pkg.get('types', []),
-                        'paths': new_pkg.get('paths', []),
-                        'modes': new_pkg.get('modes', {}),
-                    }, ensure_ascii=False)
+                        new_pkg = collector.discover_package_types(
+                            source_id, cookie,
+                            log_fn=capture_log,
+                            progress_fn=on_progress
+                        )
+                        new_pkg_json = json.dumps({
+                            'types': new_pkg.get('types', []),
+                            'paths': new_pkg.get('paths', []),
+                            'modes': new_pkg.get('modes', {}),
+                        }, ensure_ascii=False)
 
                 update_source(source_id,
                     package_type=new_pkg_json,
@@ -1129,14 +1307,56 @@ def discover_products_confirm():
             })
 
             _disc_log(f'[confirm] ✅ 应用完成: 新增产品{len(saved_prods)} 删除{len(deleted_prods)} 包类型更新{len(pkg_updated_prods)}', '[confirm]')
+
+            # ── 计算"应用变更影响了哪些订阅" ──
+            # 改 package_type 后,某些订阅的 chain 可能失效 — 找出受影响订阅数,
+            # 给前端 toast 一个"查看影响详情"的可点链接。规则只用 chain[0](产品名)
+            # 和 products[](产品名列表)做匹配 — 这两处引用了本次变更产品的订阅都会列出。
+            affected_subs = []  # [{product_name, count, rule_ids: [...]}]
+            if pkg_updated_prods:
+                try:
+                    from src.models.subscription import list_rules
+                    import json as _json
+                    all_rules = list_rules()
+                    # name → rule_ids 聚合
+                    name_to_rules = {p: [] for p in pkg_updated_prods}
+                    for rule in all_rules:
+                        try:
+                            fc = rule.get('filter_conditions') or {}
+                            if isinstance(fc, str):
+                                fc = _json.loads(fc)
+                        except Exception:
+                            continue
+                        # 1. chain[0] 引用
+                        for c in (fc.get('chains') or []):
+                            ch = c.get('chain') or []
+                            if ch and isinstance(ch, list) and ch[0] in name_to_rules:
+                                name_to_rules[ch[0]].append(rule['id'])
+                        # 2. products[] 引用(按 display_name/name)
+                        rule_prods = set(fc.get('products') or [])
+                        # rule 是 name, 跟 product 的 display_name 或 name 比对
+                        for pname in pkg_updated_prods:
+                            if pname in rule_prods:
+                                name_to_rules[pname].append(rule['id'])
+                    for pname, rids in name_to_rules.items():
+                        if rids:
+                            affected_subs.append({
+                                'product_name': pname,
+                                'count': len(set(rids)),
+                                'rule_ids': sorted(set(rids)),
+                            })
+                except Exception as e:
+                    _disc_log(f'calc affected subs failed: {e}', '[confirm]')
+
             with _confirm_lock:
                 _confirm_state['result'] = {
                     'saved': saved_prods, 'deleted': deleted_prods,
                     'pkg_updated': pkg_updated_prods,
+                    'affected_subscriptions': affected_subs,
                 }
                 _confirm_state['active'] = False
                 _confirm_state['phase'] = 'done'
-            _log('✅ 确认应用完成')
+            _log(f'✅ 确认应用完成 — 受影响订阅 {len(affected_subs)} 个产品')
             _clear_pending()
             # Clear in-memory state so service restart doesn't restore stale pending
             global _auto_discover_state
@@ -1145,11 +1365,14 @@ def discover_products_confirm():
         except Exception as e:
             import traceback
             _disc_log(f'ERROR: {e}', '[confirm]')
-            _log(f'❌ 错误: {e}')
+            cat, friendly = _classify_error(e)
+            _log(f'❌ {friendly}', level='error')
             with _confirm_lock:
                 _confirm_state['active'] = False
                 _confirm_state['phase'] = 'error'
                 _confirm_state['error'] = str(e)
+                _confirm_state['error_category'] = cat
+                _confirm_state['error_message'] = friendly
 
     t = threading.Thread(target=_run, daemon=True)
     t.start()
@@ -1161,19 +1384,23 @@ def discover_products_confirm():
 @require_auth
 def discover_confirm_discard():
     """Discard pending discover result and clear temp file."""
-    global _pending
+    global _auto_discover_lock, _confirm_lock
     _clear_pending()
-    # Clear in-memory state so subsequent status calls return empty
-    if _auto_discover_lock:
-        with _auto_discover_lock:
-            if _auto_discover_state:
-                _auto_discover_state.update({'active': False, 'phase': 'done', 'error': 'discarded'})
-                _auto_discover_state.pop('result', None)
-    _pending = None
-    if _confirm_lock:
-        with _confirm_lock:
-            if _confirm_state:
-                _confirm_state.update({'active': False, 'phase': 'done', 'error': 'discarded'})
+    # Explicit lazy init: service may receive DELETE before any POST, in which
+    # case _auto_discover_lock is still None (we removed the module-level Lock()
+    # to keep the lazy-init contract consistent). Skipping with `if` would
+    # leak the stale pending state forever.
+    if _auto_discover_lock is None:
+        _auto_discover_lock = threading.Lock()
+    with _auto_discover_lock:
+        if _auto_discover_state:
+            _auto_discover_state.update({'active': False, 'phase': 'done', 'error': 'discarded'})
+            _auto_discover_state.pop('result', None)
+    if _confirm_lock is None:
+        _confirm_lock = threading.Lock()
+    with _confirm_lock:
+        if _confirm_state:
+            _confirm_state.update({'active': False, 'phase': 'done', 'error': 'discarded'})
     _disc_log('discarded pending discover result', '[confirm]')
     return {'code': 0, 'message': '已丢弃'}
 
