@@ -163,8 +163,15 @@ body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-cont
 .toast-success{background:var(--success)}.toast-error{background:var(--danger)}.toast-warn{background:var(--warn)}
 @keyframes fadeDown{from{transform:translateX(-50%) translateY(-16px);opacity:0}to{transform:translateX(-50%) translateY(0);opacity:1}}
 .tp{position:relative;display:inline-flex;align-items:center;cursor:pointer;color:var(--gray-disabled);font-size:13px;margin-left:4px}
+.tp::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a2332;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;white-space:nowrap;max-width:300px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.25);font-weight:400;line-height:1.5}
+.tp::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a2332;opacity:0;transition:opacity .15s;z-index:9999;pointer-events:none}
+.tp:hover::after,.tp:focus::after{opacity:1}
+.tp:hover::before,.tp:focus::before{opacity:1}
 .pill-tip{position:relative;display:inline-flex;align-items:center;cursor:default}
-.tp:hover::after{opacity:1}
+.pill-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a2332;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;white-space:nowrap;max-width:360px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.25);font-weight:400;line-height:1.5}
+.pill-tip::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a2332;opacity:0;transition:opacity .15s;z-index:9999;pointer-events:none}
+.pill-tip:hover::after{opacity:1}
+.pill-tip:hover::before{opacity:1}
 .hidden{display:none!important}
 .step{display:flex;align-items:center;padding:10px 14px;background:var(--gray-bg);border-radius:8px;margin-bottom:6px;font-size:13px;gap:10px;border:1px solid var(--border)}
 .step-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
