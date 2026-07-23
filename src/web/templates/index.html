@@ -4982,7 +4982,7 @@ async function products(){
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-sm" id="disc-btn" style="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" onclick="_handleDiscBtn()">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
-        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 没找到自己想要的产品时全量扫描(\u{1F50D})或单产品刷新(\u{1F504}) / 定期每周刷新\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
+        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 没找到自己想要的产品时全量扫描(\u{1F50D})或单产品刷新(\u{1F504})\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:后台已配置自动 cycle,无需手动定期刷;立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
         <button class="btn btn-sm" style="background:#eef4ff;border:1px solid var(--primary-light);color:var(--primary-text)" onclick="showProductForm()">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有/内部测试)\n• 建议:绿盟标准产品 — 用「自动发现」批量加\n• 不推荐:已有同名产品(去重检查会失败)\n• 下一步:保存后弹窗问是否立即刷新包类型">ⓘ</span>
       </div>
@@ -5966,8 +5966,10 @@ async function _handleDiscBtn(){
                &nbsp;&nbsp;◦ 绿盟上线新产品,要纳入订阅<br>
                &nbsp;&nbsp;◦ <b>没找到自己想要关注的产品 / 包类型时</b> — 用「<span style="color:#7c3aed">🔍 自动发现</span>」全量扫描
                  或在产品列表点 <span style="color:#7c3aed">🔄 刷新</span> 重采单个产品<br>
-               &nbsp;&nbsp;◦ 定期每周刷新,跟住绿盟内容更新<br>
-             • <b>耗时:</b>长任务,后台跑,可中途停止
+             • <b>耗时:</b>长任务,后台跑,可中途停止<br>
+             <small style="color:var(--gray-disabled);display:block;margin-top:6px">
+               💡 后台已配置自动 cycle(quick + full),无需手动定期刷新 — 见「系统配置」调节采集间隔
+             </small>
            </div>
          </div>
        </div>
