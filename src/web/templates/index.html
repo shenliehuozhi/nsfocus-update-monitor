@@ -2931,11 +2931,14 @@ async function resendTargeted(sid,cid,custid,btn){
 const SES_PURPOSE={'discover':'发现','collect':'采集'};
 const SES_MODE={'standard':'标品','vm':'虚拟化'};
 
-// ── 浮动日志窗口统一工厂(discover / confirm / refresh-pkg 共用) ──
+// 浮动日志窗口统一工厂(discover / confirm / refresh-pkg 共用)
 // 4 处原本分散硬编码(z-index 9999/2000, max-height 200/180px, 关闭按钮样式各异),
 // 抽取后改样式只动这一处。refresh-pkg 单独用 .log-body class (updateRing 用 querySelector 拿),
 // 其他 3 处用 ${id}-body id(2 处兼容旧引用)。
-const FLOAT_LOG_CSS = 'position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid var(--gray-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
+// 边框用浅紫 #c4b5fd(violet-300)替代默认 --gray-border(#e2e7ee),在浅蓝灰
+// 环境(--bg:#f1f4f8)上能看出边界。disc/confirm/refresh-pkg 都是采集任务,
+// 用同主题色统一。
+const FLOAT_LOG_CSS = 'position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #c4b5fd;border-radius:10px;box-shadow:0 8px 32px rgba(124,58,237,0.18);z-index:9999;display:none';
 function _createFloatLog(logId, title, opts){
   // opts.bodyClass: 'class' (refresh-pkg 用) | undefined (默认 id=${logId}-body)
   const bodyClass = opts && opts.bodyClass;
@@ -5014,9 +5017,15 @@ function _reopenDiscModal(){
 // Floating modal shell
 function _showModal(id){
   closeModal(id); // 防止重复创建
+  // disc 弹窗用紫色主题(背景白+边框浅紫+紫色阴影)在浅蓝灰环境上才看得清
+  // 其他 modal(pkgtype/pform)保持默认
+  const isDisc = (id === 'disc');
+  const boxStyle = isDisc
+    ? `background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`
+    : `background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`;
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div id="${id}-overlay" onclick="if(event.target===this)closeModal('${id}')" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">`+
-    `<div id="${id}-box" style="background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto"></div>`+
+    `<div id="${id}-box" style="${boxStyle}"></div>`+
     `</div>`);
 }
 function closeModal(id){
