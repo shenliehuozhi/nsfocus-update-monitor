@@ -1107,10 +1107,23 @@ def refresh_pkg_type_single(source_id: int, session_cookie: str):
 
         if types_dict and types_dict.get('types'):
             pkg_json = json.dumps(types_dict)
+
+            # 检测 chain 集合是否变化 — 变化则标 package_type_changed=1
+            # 否则链失效检测不会触发(订阅管理/产品页 ⚠️ 角标依赖此标志)
+            # 之前硬编码 0 是隐藏 bug:用户刷新后即使路径变了,前端也看不到 ⚠️ 提示
+            try:
+                old_pkg = json.loads(src.get('package_type') or '{}') if isinstance(src.get('package_type'), str) else (src.get('package_type') or {})
+            except (json.JSONDecodeError, TypeError):
+                old_pkg = {}
+            old_chains = {tuple(p.get('chain') or []) for p in old_pkg.get('paths', [])}
+            new_chains = {tuple(p.get('chain') or []) for p in types_dict.get('paths', [])}
+            has_chain_change = old_chains != new_chains
+
             update_source(source_id, package_type=pkg_json,
                            package_type_discovered=pkg_json,
-                           package_type_changed=0)
-            log_fn(f'✅ 已保存，共 {len(types_dict["types"])} 种包类型，{len(types_dict["paths"])} 条路径')
+                           package_type_changed=1 if has_chain_change else 0)
+            chain_change_note = '(chain 有变化)' if has_chain_change else '(chain 无变化)'
+            log_fn(f'✅ 已保存，共 {len(types_dict["types"])} 种包类型，{len(types_dict["paths"])} 条路径 {chain_change_note}')
             with _pkg_refresh_lock:
                 _pkg_refresh_state['phase'] = 'done'
             update_source_health(source_id, 'ok', datetime.utcnow().isoformat())
