@@ -69,6 +69,10 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',san
 .nav a{color:#cbd5e1;text-decoration:none;padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;transition:.15s;white-space:nowrap;flex-shrink:0}
 .nav a:hover{color:#ffffff;background:rgba(67,97,238,0.25)}
 .nav a.active{color:#fff;background:var(--primary);box-shadow:0 2px 4px rgba(0,0,0,0.2)}
+.nav a{position:relative}  /* 让 .nav-badge 可以 absolute 定位到右上角 */
+.nav-badge{display:none;background:var(--danger);color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:8px;margin-left:4px;vertical-align:top;line-height:1.2;animation:nav-badge-pulse 2s ease-in-out infinite}
+.nav-badge.show{display:inline-block}
+@keyframes nav-badge-pulse{0%,100%{box-shadow:0 0 0 0 rgba(229,72,77,0.6)}50%{box-shadow:0 0 0 4px rgba(229,72,77,0)}}
 .user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:#cbd5e1}
 .user button{background:transparent;color:#e2e8f0;border:1px solid #475569;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
 .user button:hover{background:rgba(255,255,255,0.08);border-color:#64748b;color:#ffffff}
@@ -357,7 +361,7 @@ tr[data-sid]{cursor:pointer}
     <a href="#" data-page="data">采集数据</a>
     <a href="#" data-page="history">推送历史</a>
     <a href="#" data-page="settings">系统配置</a>
-    <a href="#" data-page="products">产品管理</a>
+    <a href="#" data-page="products">产品管理<span id="nav-pending-badge" class="nav-badge" title="有待确认的自动发现结果">待确认</span></a>
     <a href="#" data-page="logs">系统日志</a>
     <a href="#" data-page="tools">🛠️ 其他工具</a>
   </nav>
@@ -386,6 +390,16 @@ let T=localStorage.getItem('token'),U=null;
 
 function toast(m,s='success'){
   const e=document.createElement('div');e.className=`toast toast-${s}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),4000);
+}
+
+// showRichToast(html, level) — 与 toast() 同视觉,支持内嵌 HTML(用于嵌入链接/按钮)。
+// 8s 显示时长(比普通 toast 长,因为可能含交互元素)。
+function showRichToast(html, level='success'){
+  const e=document.createElement('div');
+  e.className=`toast toast-${level}`;
+  e.innerHTML=html;
+  document.body.appendChild(e);
+  setTimeout(()=>e.remove(),8000);
 }
 
 // confirmAct(msg, asyncFn) — shows modal, calls asyncFn() on confirm
@@ -469,6 +483,18 @@ function showPage(n){
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
   const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,tools:toolsPage};
   if(pages[n])pages[n]();
+  // 切页时检查 pending disc 状态,刷新导航栏角标
+  api('/system/products/discover/status').then(s=>{
+    if(s.code===0 && s.data?.phase==='done' && s.data?.result && !s.data?.active){
+      if(!window._pendingDiscResult){
+        window._pendingDiscResult=s.data.result;
+        window._pendingDiscStale=!!s.data.is_stale;
+        updateNavPendingBadge();
+      }
+    }else if(window._pendingDiscResult && s.data?.active){
+      // 正在发现中(后续会再写 _pendingDiscResult),保持现有状态
+    }
+  }).catch(()=>{});
 }
 
 function typeCN(t){const m={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试'};return m[t]||t;}
@@ -2904,6 +2930,77 @@ async function resendTargeted(sid,cid,custid,btn){
 // ── Sessions ──
 const SES_PURPOSE={'discover':'发现','collect':'采集'};
 const SES_MODE={'standard':'标品','vm':'虚拟化'};
+
+// ── 浮动日志窗口统一工厂(discover / confirm / refresh-pkg 共用) ──
+// 4 处原本分散硬编码(z-index 9999/2000, max-height 200/180px, 关闭按钮样式各异),
+// 抽取后改样式只动这一处。refresh-pkg 单独用 .log-body class (updateRing 用 querySelector 拿),
+// 其他 3 处用 ${id}-body id(2 处兼容旧引用)。
+const FLOAT_LOG_CSS = 'position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid var(--gray-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
+function _createFloatLog(logId, title, opts){
+  // opts.bodyClass: 'class' (refresh-pkg 用) | undefined (默认 id=${logId}-body)
+  const bodyClass = opts && opts.bodyClass;
+  const bodyAttrs = bodyClass
+    ? `class="${bodyClass}"`
+    : `id="${logId}-body"`;
+  const el = document.createElement('div');
+  el.id = logId;
+  el.style.cssText = FLOAT_LOG_CSS;
+  el.innerHTML = `<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span style="flex:1">${title}</span><button onclick="document.getElementById('${logId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div ${bodyAttrs} style="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+  return el;
+}
+
+// formatDiscPhase(state) — 统一 4 处 phase 文案(banner / modal / confirm)。
+// 后端并发跑 Stage 2,progress 是"已完成数",running_products 是当前并发做的产品名列表。
+// 输出示例:
+//   scanning_products      → "🔍 扫描产品列表…"
+//   discovering_pkg_types  → "📦 发现包类型 (5/73) · 正在并发:A, B, C"
+//   done                   → "✅ 发现完成"
+//   error                  → "❌ 发现出错"
+// 不含 ETA — ETA 由调用方决定是否拼接。
+function formatDiscPhase(state){
+  const base={
+    'scanning_products':'🔍 扫描产品列表…',
+    'discovering_pkg_types':'',
+    'done':'✅ 发现完成',
+    'error':'❌ 发现出错',
+  }[state.phase]||state.phase||'';
+  if(state.phase==='discovering_pkg_types' && state.total){
+    const prog=state.progress||0;
+    let txt=`📦 发现包类型 (${prog}/${state.total})`;
+    const running=state.running_products||[];
+    if(running.length>0){
+      // 截断显示前 3 个,过长省略
+      const shown=running.length<=3?running:running.slice(0,3);
+      const suffix=running.length>3?` 等 ${running.length} 个`:'';
+      txt+=` · 正在并发:${shown.join(', ')}${suffix}`;
+    }
+    return txt;
+  }
+  return base;
+}
+
+// 顶部导航栏「产品管理」右侧的待确认角标
+// 单一数据源是 window._pendingDiscResult(_checkDiscBanner / products() / confirmDiscoverResult() 写)。
+// _pendingDiscStale 只用于决定弹窗文案,不影响角标显示 — 有 pending 就有角标。
+function updateNavPendingBadge(){
+  const badge=document.getElementById('nav-pending-badge');
+  if(!badge) return;
+  if(window._pendingDiscResult){badge.classList.add('show');}
+  else{badge.classList.remove('show');}
+}
+
+// _cancelDisc() — 用户点 banner/modal 上的 ⏹ 按钮 → 调后端 cancel,等后端返回 cancelled 后刷新 UI。
+// 后端策略:取消后已 submit 的 worker 会跑完(网络请求无法中断),但主线程不再收新结果;
+// 本次所有产品结果丢弃,不写 pending,不进入 confirm 流程。
+async function _cancelDisc(){
+  const r=await api('/system/products/discover/cancel',{method:'POST'});
+  if(r.code===0){
+    toast('取消请求已提交,正在停止…','warn');
+    // 后端 worker pool 5-15s 自然结束后 phase 切 cancelled,UI 自动响应
+  }else{
+    toast('取消失败: '+r.message,'error');
+  }
+}
 function sesBadge(p,m){
   if(p==='discover')return'<span class="badge" style="background:#7c3aed;color:#fff">发现</span>';
   if(m==='vm')return'<span class="badge" style="background:#0891b2;color:#fff">采集-虚拟化</span>';
@@ -4678,6 +4775,7 @@ function _checkDiscBanner(){
         // 服务重启恢复：保存结果到内存，按钮变为待确认状态，等用户点击按钮再显示弹窗
         window._pendingDiscResult=s.data.result;
         window._pendingDiscStale=true;
+        updateNavPendingBadge();
       } else if(window._discLastDone){
         showDiscoverResult(window._discLastDone);
       }
@@ -4705,31 +4803,31 @@ function _hideDiscBanner(){
 function _showDiscBanner(state){
   const existing=document.getElementById('disc-banner');
   if(existing) existing.remove();
-  const phaseNames={
-    'scanning_products':'🔍 扫描产品列表…',
-    'discovering_pkg_types':`📦 发现包类型 (${state.progress||0}/${state.total||0})…`,
-    'done':'✅ 发现完成',
-    'error':'❌ 发现出错',
-  };
-  const pct=state.phase==='scanning_products'?30:
+  // phase 文案统一走 formatDiscPhase(支持并发 running_products 显示)
+  const pct=state.phase==='done'?100:
+    state.phase==='scanning_products'?5:
     state.phase==='discovering_pkg_types' && state.total?
-      Math.round((state.progress/state.total)*65)+30:0;
+      5+Math.round((state.progress/state.total)*90):0;
   const banner=document.createElement('div');
   banner.id='disc-banner';
   banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:10px;padding:10px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:320px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px';
   banner.innerHTML=`
     <div style="flex:1">
       <div style="font-weight:600;margin-bottom:4px">🔍 自动发现任务进行中</div>
-      <div id="disc-banner-phase" style="opacity:0.9;font-size:12px">${phaseNames[state.phase]||state.phase||''}</div>
+      <div id="disc-banner-phase" style="opacity:0.9;font-size:12px">${formatDiscPhase(state)}</div>
       <div style="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="disc-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
     <div onclick="event.stopPropagation();_showDiscLogFloat()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">📋 日志</div>
     <div onclick="event.stopPropagation();_reopenDiscModal()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">查看</div>
+    <div onclick="event.stopPropagation();_cancelDisc()" style="background:rgba(255,255,255,0.25);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer" title="停止自动发现(已完成产品丢弃)">⏹ 停止</div>
     <div onclick="event.stopPropagation();_hideDiscBanner()" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
   banner.onclick=_reopenDiscModal;
   document.body.appendChild(banner);
+
+  // ETA tracking — single timestamp shared with polling closure
+  window._discStartTs = Date.now();
 
   let done=false;
   window._discTimer=setInterval(async()=>{
@@ -4738,11 +4836,25 @@ function _showDiscBanner(state){
     if(s.code===0){
       const phase=document.getElementById('disc-banner-phase');
       const bar=document.getElementById('disc-banner-bar');
-      if(phase) phase.textContent=phaseNames[s.data.phase]||s.data.phase||'';
+      // Phase text + ETA suffix (estimated time remaining)
+      let phaseText = formatDiscPhase(s.data);
+      if(s.data.phase==='discovering_pkg_types' && s.data.total && s.data.progress){
+        const elapsedSec = (Date.now() - (window._discStartTs||Date.now())) / 1000;
+        const ratio = s.data.progress / s.data.total;
+        // Skip ETA in first 5s to avoid divide-by-tiny
+        if(elapsedSec > 5 && ratio > 0.05){
+          const remainSec = Math.round(elapsedSec * (1 - ratio) / ratio);
+          if(remainSec > 0 && remainSec < 3600){
+            phaseText += ` · 约剩 ${remainSec<60?remainSec+'秒':Math.round(remainSec/60)+'分钟'}`;
+          }
+        }
+      }
+      if(phase) phase.textContent=phaseText;
       if(bar){
-        const p=s.data.phase==='scanning_products'?30:
+        const p=s.data.phase==='done'?100:
+          s.data.phase==='scanning_products'?5:
           s.data.phase==='discovering_pkg_types' && s.data.total?
-            Math.round((s.data.progress/s.data.total)*65)+30:100;
+            5+Math.round((s.data.progress/s.data.total)*90):0;
         bar.style.width=p+'%';
       }
       // 更新浮窗日志（如果已创建）
@@ -4769,12 +4881,19 @@ function _showDiscBanner(state){
         window._discLastDone=s.data.result;
         const mini=document.getElementById('disc-mini-btn');if(mini)mini.remove();
         setTimeout(()=>{const b=document.getElementById('disc-banner');if(b)b.remove();_reopenDiscModal();},500);
+      } else if(s.data.phase==='cancelled'){
+        done=true;clearInterval(window._discTimer);
+        toast('自动发现已取消','warn');
+        const b=document.getElementById('disc-banner');if(b)b.remove();
+        const mini=document.getElementById('disc-mini-btn');if(mini)mini.remove();
       } else if(s.data.phase==='error'){
         done=true;clearInterval(window._discTimer);
-        toast('自动发现失败: '+(s.data.result?.error||''),'error');
+        toast('自动发现失败: '+(s.data.result?.error_message||s.data.result?.error||''),'error');
         const b=document.getElementById('disc-banner');if(b)b.remove();
         const mini=document.getElementById('disc-mini-btn');if(mini)mini.remove();
       }
+      // 跨 tab 广播:任一终态通知其他 tab 刷新 UI
+      if(done){try{localStorage.setItem('nsm_disc_status_update', String(Date.now()));}catch(e){}}
     }
   },2000);
 }
@@ -4792,6 +4911,7 @@ async function products(){
       pendingDiscStale = !!s.data.is_stale;
       window._pendingDiscResult = s.data.result;
       window._pendingDiscStale = !!s.data.is_stale;
+      updateNavPendingBadge();
     }
   } catch(e){ console.log('[products] discover status error:', e); }
   const r=await api('/system/products');
@@ -4862,10 +4982,7 @@ function _showDiscLogFloat(){
   let el=document.getElementById(discLogId);
   if(!el){
     // 动态创建（banner显示时disc-float-log可能还不存在）
-    el=document.createElement('div');
-    el.id=discLogId;
-    el.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid var(--gray-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
-    el.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span style="flex:1">📋 自动发现日志</span><button onclick="document.getElementById('${discLogId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div id="${discLogId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+    el=_createFloatLog(discLogId, '📋 自动发现日志');
     document.body.appendChild(el);
     window.__discLogId=discLogId;
   }
@@ -4879,11 +4996,10 @@ function _reopenDiscModal(){
   api('/system/products/discover/status').then(s=>{
     if(s.code===0 && (s.data.active||s.data.phase==='done')){
       _showModal('disc');
-      const phaseNames={'scanning_products':'🔍 扫描产品列表…','discovering_pkg_types':`📦 发现包类型 (${s.data.progress||0}/${s.data.total||0})…`,'done':'✅ 发现完成','error':'❌ 发现出错'};
       const logId=window.__discLogId||'disc-float-log';
       modalBody('disc',`<div style="padding:24px;text-align:center;position:relative">
         <div style="position:absolute;top:12px;right:16px;cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1" onclick="closeModal('disc')">×</div>
-        <div style="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${phaseNames[s.data.phase]||s.data.phase||''}</div>
+        <div style="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${formatDiscPhase(s.data)}</div>
         <div style="font-size:13px;color:var(--gray-muted);margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
         <div style="margin-top:10px"><button class="btn" onclick="document.getElementById('${logId}').style.display='block'" style="background:none;border:1px solid var(--gray-border);border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button></div>
         ${s.data.phase==='done'?'<div style="margin-top:12px"><button class="btn btn-primary" onclick="closeModal(\'disc\');showDiscoverResult(window._discLastDone||{}, !!s.data.is_stale)">查看结果</button></div>':''}
@@ -5630,10 +5746,7 @@ async function refreshPkgType(id){
   // 预建立日志窗口（隐藏）
   const logId=`rlog-${id}`;
   if(!document.getElementById(logId)){
-    const logDiv=document.createElement('div');
-    logDiv.id=logId;
-    logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid var(--gray-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:2000;display:none';
-    logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled)"><span style="flex:1">📋 包类型刷新日志</span><span onclick="document.getElementById('${logId}').style.display='none'" style="cursor:pointer;color:var(--gray-disabled);font-size:16px;line-height:1;margin-left:8px">×</span></div><div class="log-body" style="padding:10px 14px;max-height:180px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+    const logDiv=_createFloatLog(logId, '📋 包类型刷新日志', {bodyClass: 'log-body'});
     document.body.appendChild(logDiv);
   }
 
@@ -5674,11 +5787,28 @@ async function refreshPkgType(id){
     if(state.phase==='done'||state.phase==='error'||!state.active){
       done=true;
       if(pollTimer){clearInterval(pollTimer);pollTimer=null;}
+      const isError = state.phase==='error';
+      // 终态视觉:成功保留绿色 ✓,失败切红色 ✗ + 添加 tooltip
+      if(isError && arc && txt){
+        arc.setAttribute('stroke', 'var(--danger)');
+        txt.setAttribute('fill', 'var(--danger)');
+      }
+      // 提取最后一条错误日志做 tooltip(失败时);成功时用路径数
+      const lastLog = (state.log_lines && state.log_lines.length)
+        ? state.log_lines[state.log_lines.length-1] : '';
+      ring.title = isError
+        ? `✗ 刷新失败:${lastLog||'未知错误'}`
+        : `✓ 刷新成功,点击查看日志`;
+      // 失败时显示 toast(单行简短提示)
+      if(isError){
+        toast('包类型刷新失败:'+(lastLog||'未知错误'),'error');
+      }
+      // 保留 3s 让用户看到结果,然后移除 + 刷新产品表
       setTimeout(async()=>{
         ring.remove();
         btn.style.display='';
         await products();
-      },1000);
+      },3000);
     }
   }
 
@@ -5755,6 +5885,7 @@ async function _handleDiscBtn(){
     if(s.code===0 && s.data?.phase==='done' && s.data?.result && !s.data?.active){
       window._pendingDiscResult=s.data.result;
       window._pendingDiscStale=!!s.data.is_stale;
+      updateNavPendingBadge();
       showDiscoverResult(window._pendingDiscResult, window._pendingDiscStale);
       return;
     }
@@ -5762,28 +5893,56 @@ async function _handleDiscBtn(){
   discoverProducts();
 }
 
-// ── 渲染带颜色的日志行（全局，discover 和 confirm 共用）────────────
-  function renderLogLine(l){
-    const txt=escHtml(l);
-    if(l.startsWith('🔍')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--primary)">${txt}</div>`;
-    if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed;font-weight:600">${txt}</div>`;
-    if(l.startsWith('  →')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#0891b2">${txt}</div>`;
-    if(l.startsWith('✅')||l.startsWith('✔')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text);font-weight:600">${txt}</div>`;
-    if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)">${txt}</div>`;
-    if(l.startsWith('[')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)">${txt}</div>`;
-    return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-muted)">${txt}</div>`;
+// ── 渲染带颜色的日志行(全局,discover 和 confirm 共用)────────────
+// 兼容 2 种格式:旧 string(confirm 流程用)+ 新 entry{ts,level,product,msg}(discover 流程用)。
+// 按 entry.level 着色,product 标记小角标。fallback 走 emoji 前缀推断(向后兼容 confirm)。
+const _LOG_LEVEL_COLOR = {
+  info: 'var(--gray-muted)',
+  success: 'var(--success-text)',
+  warn: '#f59e0b',
+  error: 'var(--danger)',
+};
+function renderLogLine(l){
+  // 兼容 entry 对象(后端结构化日志)
+  if(l && typeof l === 'object' && 'msg' in l){
+    const color = _LOG_LEVEL_COLOR[l.level] || 'var(--gray-muted)';
+    const productBadge = l.product
+      ? `<span style="background:#7c3aed20;color:#7c3aed;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px;vertical-align:middle">${escHtml(l.product)}</span>`
+      : '';
+    const ts = l.ts ? `<span style="color:var(--gray-disabled);font-size:10px;margin-right:4px">${escHtml(l.ts.split('T')[1]?.slice(0,8)||'')}</span>` : '';
+    return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:${color}${l.level==='error'||l.level==='success'?';font-weight:600':''}">${ts}${escHtml(l.msg)}${productBadge}</div>`;
   }
+  // 兼容旧 string(confirm 流程暂未结构化)
+  const txt = escHtml(String(l));
+  if(txt.startsWith('🔍')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--primary)">${txt}</div>`;
+  if(txt.startsWith('📦')&&txt.includes('发现包类型')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed;font-weight:600">${txt}</div>`;
+  if(txt.startsWith('  →')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#0891b2">${txt}</div>`;
+  if(txt.startsWith('✅')||txt.startsWith('✔')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text);font-weight:600">${txt}</div>`;
+  if(txt.startsWith('❌')||txt.startsWith('⚠️')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)">${txt}</div>`;
+  if(txt.startsWith('[')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)">${txt}</div>`;
+  return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-muted)">${txt}</div>`;
+}
 
 async function discoverProducts(){
   // 清除隐藏状态，新任务开始
   window._discBannerHidden=false;
+  // 跨 tab 同步:监听 storage 事件,其他 tab 状态变化时刷新本 tab 的 UI
+  // 单 tab 不会触发 storage 事件,所以不会有重复刷新
+  if(!window._discStorageListener){
+    window._discStorageListener = true;
+    window.addEventListener('storage', e=>{
+      if(e.key === 'nsm_disc_status_update' && e.newValue){
+        // 其他 tab 状态变化(phase/result),强制刷一次 _checkDiscBanner
+        _checkDiscBanner();
+      }
+    });
+  }
+  // 记录模态框启动时间(用于 ETA 估算)
+  window._discModalStartTs = Date.now();
   // 预建立日志窗口（隐藏，点击按钮显示）
   const discLogId='disc-float-log';
   if(!document.getElementById(discLogId)){
-    const logDiv=document.createElement('div');
-    logDiv.id=discLogId;
-    logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid var(--gray-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
-    logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span style="flex:1">📋 自动发现日志</span><button onclick="document.getElementById('${discLogId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div id="${discLogId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+    const logDiv=_createFloatLog(discLogId, '📋 自动发现日志');
     document.body.appendChild(logDiv);
     window.__discLogId=discLogId; // expose globally for confirmDiscoverResult
   }
@@ -5792,16 +5951,27 @@ async function discoverProducts(){
   modalBody('disc',`<div style="padding:24px;text-align:center">
     <div class="spin"></div>
     <div id="disc-phase" style="margin-top:12px;color:var(--gray-muted);font-size:14px">正在启动自动发现…</div>
-    <div style="margin-top:10px">
+    <div style="margin:12px auto 0;width:80%;max-width:320px;height:6px;background:var(--gray-bg);border-radius:3px;overflow:hidden">
+      <div id="disc-modal-bar" style="height:100%;background:#7c3aed;border-radius:3px;transition:width 0.4s;width:0%"></div>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <button onclick="document.getElementById('${discLogId}').style.display='block'" style="background:none;border:1px solid var(--gray-border);border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button>
+      <button onclick="_cancelDisc()" style="background:none;border:1px solid var(--danger);border-radius:6px;cursor:pointer;font-size:12px;color:var(--danger);padding:4px 12px">⏹ 停止</button>
     </div>
   </div>`);
 
   const r=await api('/system/products/discover',{method:'POST'});
   if(r.code===409){
     // 已经在运行中——直接拉起进度 UI，不重复启动
-    const s=await api('/system/products/discover/status');
-    if(s.code===0 && s.data?.active){
+    // tab B 重复点按钮时可能 tab A 刚启动后端 _auto_discover_state 还没完全初始化(竞态),
+    // 短暂查 status 拿到 active=false → 走"似乎已结束"分支,体验差。最多重试 3 次 200ms 间隔。
+    let active=false;
+    for(let i=0;i<3 && !active;i++){
+      const s=await api('/system/products/discover/status');
+      if(s.code===0 && s.data?.active){active=true;break;}
+      if(i<2) await new Promise(r=>setTimeout(r,200));
+    }
+    if(active){
       // 直接进入轮询渲染
     } else {
       modalBody('disc',`<div style="padding:24px;text-align:center">
@@ -5820,21 +5990,36 @@ async function discoverProducts(){
   let done=false;
   let pollTimer=null;
   function renderProgress(state){
-    const phaseNames={
-      'scanning_products':'🔍 扫描产品列表…',
-      'discovering_pkg_types':`📦 发现包类型 (${state.progress||0}/${state.total||0})…`,
-      'done':'✅ 发现完成',
-      'error':'❌ 发现出错',
-    };
     const phaseEl=document.getElementById('disc-phase');
-    if(phaseEl) phaseEl.textContent=phaseNames[state.phase]||state.phase||'';
+    // Phase text + ETA suffix (modal 进度条与 banner 一致)
+    let phaseText = formatDiscPhase(state);
+    if(state.phase==='discovering_pkg_types' && state.total && state.progress){
+      const elapsedSec = (Date.now() - (window._discModalStartTs||Date.now())) / 1000;
+      const ratio = state.progress / state.total;
+      if(elapsedSec > 5 && ratio > 0.05){
+        const remainSec = Math.round(elapsedSec * (1 - ratio) / ratio);
+        if(remainSec > 0 && remainSec < 3600){
+          phaseText += ` · 约剩 ${remainSec<60?remainSec+'秒':Math.round(remainSec/60)+'分钟'}`;
+        }
+      }
+    }
+    if(phaseEl) phaseEl.textContent=phaseText;
+    // Progress bar (跟 banner 用同一公式)
+    const barEl=document.getElementById('disc-modal-bar');
+    if(barEl){
+      const p=state.phase==='done'?100:
+        state.phase==='scanning_products'?5:
+        state.phase==='discovering_pkg_types' && state.total?
+          5+Math.round((state.progress/state.total)*90):0;
+      barEl.style.width=p+'%';
+    }
     // Feed floating log window
     const logBody=document.getElementById(discLogId+'-body');
     if(logBody && state.log_lines?.length){
       logBody.innerHTML=state.log_lines.map(renderLogLine).join('');
       logBody.scrollTop=logBody.scrollHeight;
     }
-    return state.phase==='done'||state.phase==='error'||!state.active;
+    return state.phase==='done'||state.phase==='error'||state.phase==='cancelled'||!state.active;
   }
 
   async function poll(){
@@ -5845,6 +6030,7 @@ async function discoverProducts(){
       if(done){
         clearInterval(pollTimer);
         if(s.data.phase==='done') showDiscoverResult(s.data.result);
+        else if(s.data.phase==='cancelled'){toast('自动发现已取消','warn');closeModal('disc');}
       }
     }
   }
@@ -5928,7 +6114,22 @@ function showDiscoverResult(result, isStale){
         <td colspan="3" style="padding:8px 12px;font-size:12px">
           ${addedCount?`<div style="margin-bottom:4px"><span style="color:var(--success-text);font-weight:600">+ 新增路径</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.added_paths.map(p=>`<li style="word-break:break-all"><span class="mono" style="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
           ${delCount?`<div style="margin-bottom:4px"><span style="color:var(--danger);font-weight:600">- 删除路径</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.deleted_paths.map(p=>`<li style="word-break:break-all"><span class="mono" style="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
-          ${modCount?`<div><span style="color:#f59e0b;font-weight:600">± 修改类型</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.modified_paths.map(p=>`<li style="word-break:break-all"><span class="mono" style="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span> <span style="color:#f59e0b">${escHtml(p.old_types?.join(','))} → ${escHtml(p.new_types?.join(','))}</span></li>`).join('')}</ul></div>`:''}
+          ${modCount?`<div><span style="color:#f59e0b;font-weight:600">± 修改类型</span><ul style="margin:2px 0 4px 16px;padding-left:0">${change.modified_paths.map(p=>{
+            // 多字段 diff:chain / url / types(后端目前只对比 types,所以 chain/url 通常不变)
+            // 前端从 entry 自身推老值(chain 从 chain 数组隐含,url 从当前 entry)
+            const urlChanged = p.url && p.old_url && p.url !== p.old_url;
+            const typesChanged = JSON.stringify(p.old_types||[]) !== JSON.stringify(p.new_types||[]);
+            const diffs = [];
+            if(urlChanged) diffs.push(`URL: <span style="color:var(--danger)">${escHtml(p.old_url||'—')}</span> → <span style="color:var(--success-text)">${escHtml(p.url)}</span>`);
+            if(typesChanged) diffs.push(`类型: <span style="color:var(--danger)">${escHtml((p.old_types||[]).join(','))}</span> → <span style="color:var(--success-text)">${escHtml((p.new_types||[]).join(','))}</span>`);
+            // chain 长度变化(commit 8c41709 砍 sec 段后常见)
+            const oldChainLen = p.old_chain_len;
+            const chainLenChanged = oldChainLen != null && oldChainLen !== (p.chain?.length||0);
+            if(chainLenChanged) diffs.push(`chain 长度: <span style="color:var(--danger)">${oldChainLen}</span> → <span style="color:var(--success-text)">${p.chain?.length||0}</span>`);
+            if(diffs.length === 0) diffs.push(`类型: ${escHtml((p.old_types||[]).join(','))} → ${escHtml((p.new_types||[]).join(','))}`);
+            const warn = urlChanged ? '<span style="color:var(--danger);font-weight:700" title="URL 变化属于重大变更,确认前请核对">⚠️</span> ' : '';
+            return `<li style="word-break:break-all">${warn}<span class="mono" style="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span> — ${diffs.join('; ')}</li>`;
+          }).join('')}</ul></div>`:''}
         </td>
       </tr>`;
     }
@@ -6000,10 +6201,7 @@ async function confirmDiscoverResult(){
     let logId=window.__discLogId||'disc-float-log';
     let logBody=document.getElementById(logId+'-body');
     if(!logBody){
-      const logDiv=document.createElement('div');
-      logDiv.id=logId;
-      logDiv.style.cssText='position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid var(--gray-border);border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:9999;display:none';
-      logDiv.innerHTML=`<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span style="flex:1">📋 应用日志</span><button onclick="document.getElementById('${logId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div id="${logId}-body" style="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+      const logDiv=_createFloatLog(logId, '📋 应用日志');
       document.body.appendChild(logDiv);
       logBody=document.getElementById(logId+'-body');
       window.__discLogId=logId;
@@ -6013,6 +6211,39 @@ async function confirmDiscoverResult(){
 
     let done=false;
     let pollTimer=null;
+    let pollSSEAbort=null;  // SSE AbortController,失败兜底时主动关 SSE 流
+
+    // 终态收尾(单一收口) — 任何渠道发现 done/error 都走这里,确保按钮文字恢复一致
+    function finalize(state){
+      done=true;
+      if(pollTimer)clearInterval(pollTimer);
+      if(pollSSEAbort)pollSSEAbort.abort();
+      if(state.phase==='done'){
+        const d=state.result||{};
+        // 成功 toast 含受影响订阅数(后端 confirm 已算好 affected_subscriptions),
+        // 数字本身即告知用户"哪些订阅可能需要复查",不直接跳页避免越界改动订阅管理页。
+        const aff=d.affected_subscriptions||[];
+        const totalAffCount=aff.reduce((n,x)=>n+(x.count||0),0);
+        const affMsg = totalAffCount>0
+          ? `,${totalAffCount} 个订阅规则引用了被变更的产品(可能需要复查)`
+          : '';
+        showRichToast(`已应用:产品新增 ${d.saved?.length||0} 删除 ${d.deleted?.length||0},包类型更新 ${d.pkg_updated?.length||0}${affMsg}`, 'success');
+        window._discoverResult=null;
+        window._pendingDiscResult=null;
+        window._pendingDiscStale=null;
+        updateNavPendingBadge();
+        closeModal('disc');
+        products();
+      }else if(state.phase==='error'){
+        toast('应用出错: '+((state.error_message && state.error_category!=='session')?(state.error_message):(state.error||'未知错误')),'error');
+        if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
+      }else{
+        // 非 done/error(超时/异常),按钮恢复 + 提示
+        toast('应用未完成，请刷新页面查看状态','warn');
+        if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
+      }
+    }
+
     function renderConfirmProgress(state){
       const phaseNames={
         'applying':'💾 正在应用变更…',
@@ -6029,48 +6260,35 @@ async function confirmDiscoverResult(){
       return state.phase==='done'||state.phase==='error'||!state.active;
     }
 
+    // HTTP 轮询(主,SSE 是加速器) — fetch 加 timeout,超时即视为本轮失败
     async function pollConfirm(){
       if(done) return;
       try{
-        const s=await api('/system/products/discover/confirm/status');
+        const controller=new AbortController();
+        const tid=setTimeout(()=>controller.abort(),8000);
+        const s=await api('/system/products/discover/confirm/status',{signal:controller.signal});
+        clearTimeout(tid);
         if(s.code===0){
-          done=renderConfirmProgress(s.data);
-          if(done){
-            clearInterval(pollTimer);
-            if(s.data.phase==='done'){
-              const d=s.data.result||{};
-              toast(`已应用：产品新增${d.saved?.length||0} 删除${d.deleted?.length||0}，包类型更新${d.pkg_updated?.length||0}`,'success');
-              window._discoverResult=null;
-              window._pendingDiscResult=null;
-              window._pendingDiscStale=null;
-              closeModal('disc');
-              await products();
-            }else if(s.data.phase==='error'){
-              toast('应用出错: '+(s.data.error||'未知错误'),'error');
-              if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
-            }
-          }
+          const isFinal=renderConfirmProgress(s.data);
+          if(isFinal)finalize(s.data);
         }
       }catch(e){}
     }
     pollConfirm();  // first poll immediately
     pollTimer=setInterval(pollConfirm, 2000);
-    setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);toast('应用超时，请重试','error');if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}}},300000);
 
-    // ── SSE stream reader via fetch + ReadableStream ──
-    // Parses SSE "data: {...}" lines and drives renderConfirmProgress.
-    // Runs in parallel with pollTimer HTTP fallback; both set the same `done`
-    // flag so they cooperate safely.
+    // SSE 流(加速器,失败/超时主动 abort)
     async function pollSSE(){
       if(done) return;
       try{
+        pollSSEAbort=new AbortController();
         const h={'Authorization':'Bearer '+T,'Accept':'text/event-stream'};
-        const r=await fetch(API+'/system/products/discover/confirm/status',{headers:h,cache:'no-store'});
-        if(!r.ok) return;  // fallback to pollTimer continues
+        const r=await fetch(API+'/system/products/discover/confirm/status',{headers:h,cache:'no-store',signal:pollSSEAbort.signal});
+        if(!r.ok){return;}  // fallback HTTP 轮询继续
         const reader=r.body.getReader();
         const dec=new TextDecoder();
         let buf='';
-        while(true){
+        while(!done){
           const {value, done: eos}=await reader.read();
           if(eos) break;
           buf+=dec.decode(value,{stream:true});
@@ -6081,19 +6299,35 @@ async function confirmDiscoverResult(){
             if(colonIdx>=0){
               try{
                 const s=JSON.parse(line.slice(colonIdx+1));
-                done=renderConfirmProgress(s);
-                if(done){
-                  clearInterval(pollTimer);
-                  clearInterval(pollTimer2);
-                  return;
-                }
+                renderConfirmProgress(s);
+                if(s.phase==='done'||s.phase==='error'||!s.active){finalize(s);return;}
               }catch(e){}
             }
           }
         }
       }catch(e){}
+      // SSE 正常关闭或失败 → 立刻 HTTP 兜底查一次状态,确保不漏掉终态
+      if(!done){pollConfirm();}
     }
-    const pollTimer2=setTimeout(pollSSE, 500);
+    setTimeout(pollSSE, 500);
+
+    // 统一 watchdog:5min 后强制兜底查一次 + finalize,避免任一渠道卡住导致按钮永久 disabled
+    setTimeout(async ()=>{
+      if(done)return;
+      try{
+        const controller=new AbortController();
+        const tid=setTimeout(()=>controller.abort(),5000);
+        const s=await api('/system/products/discover/confirm/status',{signal:controller.signal});
+        clearTimeout(tid);
+        if(s.code===0 && (s.data.phase==='done'||s.data.phase==='error'||!s.data.active)){
+          finalize(s.data);
+        }else{
+          finalize({phase:'unknown'});  // 触发 finalize 的"非 done/error"分支,按钮恢复
+        }
+      }catch(e){
+        finalize({phase:'unknown'});
+      }
+    },300000);
   }else{
     toast('启动失败: '+r.message,'error');
     if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
@@ -6102,7 +6336,7 @@ async function confirmDiscoverResult(){
 }
 
 async function discardDiscoverResult(){
-  await confirmAct('确定丢弃当前发现结果？', async ()=>{window._pendingDiscResult=null;window._pendingDiscStale=null;window._discoverResult=null;try{await api('/system/products/discover/confirm',{method:'DELETE'});}catch(e){}toast('已丢弃');}, '🗑️', '确认丢弃');
+  await confirmAct('确定丢弃当前发现结果？', async ()=>{window._pendingDiscResult=null;window._pendingDiscStale=null;window._discoverResult=null;updateNavPendingBadge();try{await api('/system/products/discover/confirm',{method:'DELETE'});}catch(e){}toast('已丢弃');}, '🗑️', '确认丢弃');
 }
 
 // 旧函数保留兼容（不再调用）
