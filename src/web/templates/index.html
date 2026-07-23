@@ -414,7 +414,7 @@ function showRichToast(html, level='success'){
 // 闭包不再通过字符串序列化传递，改用全局回调表（避免某些 WebView 环境下闭包上下文丢失）
 window._confirmCBs = {};
 window._confirmCtr = 0;
-function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=false) {
+function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=false, bodyHtml='') {
   const id = '_confirmBox';
   const existing = document.getElementById(id);
   if (existing) existing.remove();
@@ -432,6 +432,7 @@ function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=fal
   overlay.innerHTML = `<div class="confirm-box">
     <div class="confirm-icon">${icon}</div>
     <div class="confirm-title">${msg}</div>
+    ${bodyHtml}
     <div class="confirm-btns">
       <button class="confirm-btn-cancel" onclick="document.getElementById('${id}').remove()">取消</button>
       <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="
@@ -5906,12 +5907,17 @@ async function _handleDiscBtn(){
       return;
     }
   } catch(e){}
-  // 启动新发现任务 — 二次确认:80 产品约 9 分钟,用户知道点的是长任务
-  // 弹模态(modal + spinner)已经被砍,因为 banner 浮动条 + mini-btn 已经
-  // 显示同一条进度,再多一处只是噪音。直接走 banner 路径。
-  confirmAct('⚠️ 自动发现将立即开始\n\n这会立刻抓取 update.nsfocus.com 全站 + 对每个产品爬目录树。\n\n• 80 产品约 9 分钟(3 worker 并发,2026-07-23 实测)\n• 期间网络会被 3 个并发请求占用\n• 可中途停止(模态关闭不影响后台)\n• 注意:发现 Session 必须有效\n\n是否继续?', async ()=>{
-    discoverProductsBanner();
-  }, '🗂️', '启动发现', true);
+  // 启动新发现任务 — 二次确认文案要短,详细信息用 info-bar 风格而非大段堆砌
+  confirmAct(
+    '即将开始自动发现',
+    async ()=>{ discoverProductsBanner(); },
+    '🗂️', '启动发现', true,
+    `<div style="text-align:left;font-size:13px;color:var(--muted);line-height:1.7;margin:8px 0 0">
+       这会立刻抓取 <span class="mono">update.nsfocus.com</span> 全站 + 对每个产品爬目录树。<br>
+       80 产品约 <b>9 分钟</b>(3 worker 并发,2026-07-23 实测)。<br>
+       <span style="color:var(--warn)">⚠</span> 发现 Session 必须有效,可中途停止。
+     </div>`
+  );
 }
 
 // discoverProductsBanner() — 不弹模态,直接走 banner 浮动条路径
