@@ -5968,7 +5968,8 @@ async function _handleDiscBtn(){
                  或在产品列表点 <span style="color:#7c3aed">🔄 刷新</span> 重采单个产品<br>
              • <b>耗时:</b>长任务,后台跑,可中途停止<br>
              <small style="color:var(--gray-disabled);display:block;margin-top:6px">
-               💡 后台已配置自动 quick cycle(默认每 4 小时,见「系统配置」可调),无需手动定期刷新
+               💡 后台每 4 小时自动轮询已发现产品(quick cycle,见「系统配置」可调)。<br>
+               全量目录重爬(full scan)目前不自动跑 — 需要时手动点「🔍 自动发现」
              </small>
            </div>
          </div>

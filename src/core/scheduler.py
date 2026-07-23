@@ -904,17 +904,34 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
 
 
 def is_full_scan_due() -> bool:
-    """Return True if full scan is due (not called for > full_scan_interval hours).
+    """Check if full scan is due based on FULL_SCAN_INTERVAL.
 
-    Temporarily disabled: full scan always returns False via system setting.
-    Re-enable by setting system_settings.full_scan_enabled = '1'.
+    Persists last full scan time to DB so it survives restarts.
+
+    ----
+    状态(2026-07-23,pending re-evaluation):**显式禁用**
+
+    本系统当前**不自动触发** full scan。`_smart_collect` 总是走
+    `run_now(mode='quick')`(_collect_quick)路径。
+
+    触发原因:full mode 通过 `_collect_full` 重爬产品目录树覆盖
+    `_collect_quick` 工作(功能高度重叠),但网络压力翻倍 —
+    用户已通过「🔍 自动发现」按钮 + 系统每 4h 自动 quick cycle 覆盖
+    需求,无需再开 full。
+
+    历史:commit `29ceefc`(2026-05-27,2026-05-27 20:21:39)"暂时禁用全量扫
+    描自动触发"。2 个月内未重新评估,代码保留 kill-switch 入口以备
+    未来启用。
+
+    重新启用方式(三选一):
+      1) 直接把整个 `return False` 块替换为:
+         return elapsed >= interval   (参考 29ceefc^ 上一版的实现)
+      2) DB: `UPDATE system_settings SET value='1' WHERE key='full_scan_enabled'`
+         (本实现 line 915 会先拦截,需配合方案 1)
+      3) 加 UI 入口(目前系统设置页未暴露 full_scan_interval)
+    ----
     """
-    # Check master kill-switch
-    from src.models.database import query
-    rows = query("SELECT value FROM system_settings WHERE key = 'full_scan_enabled'")
-    if rows and rows[0]['value'] == '0':
-        return False
-    return False  # full scan disabled pending re-evaluation
+    return False  # explicit disable — 见函数 docstring,2026-07-23 决策
 
 
 def _load_last_full_scan() -> Optional[datetime]:
