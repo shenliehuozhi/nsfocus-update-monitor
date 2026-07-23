@@ -387,16 +387,18 @@ def health_check():
     # ── 2. 调度器状态 ───────────────────────────────────────
     sch = sched_status()
 
-    # last_collection_at 从 content_sources 表读取（不依赖内存，重启后仍准确）
-    last_row = query("SELECT MAX(last_collected_at) as m FROM content_sources WHERE last_collected_at IS NOT NULL")
-    last_collection_at = last_row[0]['m'] if last_row and last_row[0]['m'] else None
+    # last_run = 最近一次 cycle 完成时间(quick 优先,full 兜底)
+    # 注意:不再从 content_sources.last_collected_at 取,那是"任意产品最近被采集时间",
+    # 采集中会被当前产品刷新,会让用户误以为"刚刚跑完了一次 cycle"
+    # 采集中时(sch.is_running=true 且没完成)= None → 前端 dashboard() 显示"采集中…"
 
     scheduler = {
         'enabled': sch.get('enabled', False),
         'is_running': sch.get('is_running', False),
         'current_mode': sch.get('current_mode', ''),
-        'last_run': last_collection_at,
+        'last_run': sch.get('last_run'),  # None if never ran OR collection in progress
         'last_full_run': sch.get('last_full_run'),
+        'last_quick_run': sch.get('last_quick_run'),
         'next_run': sch.get('next_run'),
         'interval_hours': sch.get('interval_hours', 4),
     }

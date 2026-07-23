@@ -346,6 +346,7 @@ HEALTH_URL = _get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys')
 
 _collector = NsfocusCollector()
 _last_full_run: Optional[datetime] = None
+_last_quick_run: Optional[datetime] = None  # 最近一次 quick cycle 完成时间(采集中时仍为上轮值)
 _is_running = False
 _startup_complete = False  # Set True after startup finishes to prevent premature job execution
 
@@ -413,6 +414,8 @@ def get_status() -> dict:
 
     return {
         'last_full_run': _last_full_run.isoformat() if _last_full_run else None,
+        'last_quick_run': _last_quick_run.isoformat() if _last_quick_run else None,
+        'last_run': (_last_quick_run or _last_full_run).isoformat() if (_last_quick_run or _last_full_run) else None,
         'is_running': _is_running and _progress.get('active', False),  # True only when collection is actually in progress
         'current_mode': _progress.get('mode', ''),
         'interval_hours': interval_hours,
@@ -430,7 +433,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         mode: 'delta' (fast, list pages only) or 'full' (deep traversal)
         progress_callback: optional callable(phase, detail) for progress updates
     """
-    global _last_full_run, _is_running, _progress
+    global _last_full_run, _last_quick_run, _is_running, _progress
 
     # Prevent concurrent collection across process restarts
     if mode in ('quick', 'delta', 'full'):
@@ -570,6 +573,9 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             if mode == 'full':
                 _last_full_run = datetime.utcnow()
                 _save_last_full_scan()
+            elif mode in ('quick', 'delta'):
+                _last_quick_run = datetime.utcnow()
+                _save_last_quick_scan()
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
@@ -685,6 +691,9 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _last_full_run = datetime.utcnow()
             _save_last_full_scan()
             _check_package_types_fresh(existing_sources, cookie, _emit)
+        elif mode in ('quick', 'delta'):
+            _last_quick_run = datetime.utcnow()
+            _save_last_quick_scan()
 
         # WAL checkpoint removed — was failing silently with TRUNCATE (requires exclusive lock).
         # Replaced by a daemon thread doing PASSIVE checkpoint every 5 minutes (no lock needed).
@@ -958,6 +967,19 @@ def _save_last_full_scan():
         ts = _last_full_run.isoformat() if _last_full_run else ''
         execute(
             "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_full_scan_at', ?, datetime('now'))",
+            (ts,)
+        )
+    except Exception:
+        pass
+
+
+def _save_last_quick_scan():
+    """Persist last quick scan timestamp to DB (仪表盘 last_run 用,采集中不刷新,避免误导)."""
+    try:
+        from src.models.database import execute
+        ts = _last_quick_run.isoformat() if _last_quick_run else ''
+        execute(
+            "INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES ('last_quick_scan_at', ?, datetime('now'))",
             (ts,)
         )
     except Exception:
