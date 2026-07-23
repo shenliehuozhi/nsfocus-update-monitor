@@ -4940,11 +4940,11 @@ async function products(){
         🏭 产品管理
         <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
       </div>
-      <div style="display:flex;align-items:center;gap:6px">
+      <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-sm" id="disc-btn" style="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" onclick="_handleDiscBtn()">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
-        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:绿盟上架新产品 / 定期每周刷新\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),后台跑可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
-        <button class="btn btn-sm btn-outline" onclick="showProductForm()">+ 手动添加</button>
-        <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有)\n• 场景:绿盟有但不在导航树 / 内部测试产品\n• 不建议:标准绿盟产品(用自动发现)\n• 保存后可立即刷新包类型">ⓘ</span>
+        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 建议:每周刷新 / 绿盟上线新产品时\n• 不推荐:自定义/灰度/内部产品(用「手动添加」)\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
+        <button class="btn btn-sm" style="background:#eef4ff;border:1px solid var(--primary-light);color:var(--primary-text)" onclick="showProductForm()">+ 手动添加</button>
+        <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有/内部测试)\n• 建议:绿盟标准产品 — 用「自动发现」批量加\n• 不推荐:已有同名产品(去重检查会失败)\n• 下一步:保存后弹窗问是否立即刷新包类型">ⓘ</span>
       </div>
     </div>
     <div class="card-bd">
@@ -5907,16 +5907,25 @@ async function _handleDiscBtn(){
       return;
     }
   } catch(e){}
-  // 启动新发现任务 — 二次确认文案要短,详细信息用 info-bar 风格而非大段堆砌
+  // 二次确认文案:用 .info-bar(跟手动添加表单一致)+ 简短下方说明,
+  // 视觉统一两个流程的提示风格
   confirmAct(
     '即将开始自动发现',
     async ()=>{ discoverProductsBanner(); },
     '🗂️', '启动发现', true,
-    `<div style="text-align:left;font-size:13px;color:var(--muted);line-height:1.7;margin:8px 0 0">
-       这会立刻抓取 <span class="mono">update.nsfocus.com</span> 全站 + 对每个产品爬目录树。<br>
-       长任务(数分钟到十几分钟,跟现有产品数相关)。<br>
-       <small style="color:var(--gray-disabled)">后台跑,可中途停止</small>。<br>
-       <span style="color:var(--warn)">⚠</span> 发现 Session 必须有效。
+    `<div class="info-bar">
+       <div style="display:flex;align-items:flex-start;gap:8px">
+         <span style="font-size:16px;line-height:1">🔍</span>
+         <div style="flex:1">
+           <div style="font-weight:600;margin-bottom:4px">什么时候用自动发现?</div>
+           <div style="line-height:1.7">
+             • <b>用途:</b>绿盟标准产品(已上架,出现在导航树)<br>
+             • <b>建议:</b>每周刷新 / 绿盟上线新产品时<br>
+             • <b>不推荐:</b>自定义 / 灰度 / 内部产品(用手动添加)<br>
+             • <b>耗时:</b>长任务,后台跑,可中途停止
+           </div>
+         </div>
+       </div>
      </div>`
   );
 }
@@ -6425,8 +6434,9 @@ function showProductForm(p){
           <div style="font-weight:600;margin-bottom:4px">什么时候用手动添加?</div>
           <div style="line-height:1.7">
             • <b>用途:</b>自动发现没扫到的产品(自定义 / 灰度 / 私有 / 内部测试)<br>
-            • <b>建议:</b>绿盟官网已上架的标准产品 — 用「自动发现」批量加<br>
-            • <b>下一步:</b>保存后会自动弹窗,问你是否立即刷新包类型
+            • <b>建议:</b>绿盟标准产品 — 用「自动发现」批量加<br>
+            • <b>不推荐:</b>已有同名产品(去重检查会失败)<br>
+            • <b>下一步:</b>保存后弹窗问是否立即刷新包类型
           </div>
         </div>
       </div>
