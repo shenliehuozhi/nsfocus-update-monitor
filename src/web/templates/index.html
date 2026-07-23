@@ -448,6 +448,46 @@ function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=fal
   overlay.querySelector('.confirm-btn-cancel').focus();
 }
 
+// discConfirmAct() — 跟 confirmAct() 同语义,但用 _showModal 弹窗(580px 紫边框),
+// 跟手动添加弹窗视觉一致。两个弹窗都"产品管理"操作的入口,放一起合理。
+// icon/title/bodyHtml 参数语义跟 confirmAct 一样。
+function discConfirmAct(msg, asyncFn, icon='🗂️', okLabel='确认', bodyHtml='') {
+  const id = '_discConfirmBox';
+  const existing = document.getElementById(id);
+  if (existing) existing.remove();
+  const ctr = window._confirmCtr++;
+  window._confirmCBs[ctr] = asyncFn;
+  // 复用 _showModal 的 disc 主题样式
+  document.getElementById('app').insertAdjacentHTML('beforeend',
+    `<div id="${id}-overlay" onclick="if(event.target===this)closeDiscConfirm()" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">
+       <div id="${id}-box" style="background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto;padding:24px">
+         <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+           <div style="font-size:36px;line-height:1;flex-shrink:0">${icon}</div>
+           <div style="flex:1">
+             <div style="font-size:16px;font-weight:700;color:#1a2332;margin-bottom:6px">${msg}</div>
+           </div>
+           <div onclick="closeDiscConfirm()" style="cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1">×</div>
+         </div>
+         ${bodyHtml}
+         <div style="display:flex;gap:10px;margin-top:20px">
+           <button class="btn" onclick="closeDiscConfirm()" style="flex:1;background:var(--gray-bg);color:var(--text);border:1px solid var(--gray-border)">取消</button>
+           <button class="btn" onclick="
+             var b=event.currentTarget; b.disabled=true; b.textContent='处理中...';
+             closeDiscConfirm();
+             var fn=window._confirmCBs[${ctr}];
+             if(fn){delete window._confirmCBs[${ctr}];fn();}
+           " style="flex:1;background:#7c3aed;color:#fff;border:none;font-weight:600">${okLabel}</button>
+         </div>
+       </div>
+     </div>`);
+}
+function closeDiscConfirm(){
+  const o=document.getElementById('_discConfirmBox-overlay');
+  const b=document.getElementById('_discConfirmBox-box');
+  if(o)o.remove();
+  if(b)b.remove();
+}
+
 // ── Login Background Rotation ──
 const _bgImages=['wallhaven-6d1336_compressed.jpg','wallhaven-85w8xj_compressed.jpg','wallhaven-eyqeyl_compressed.jpg'];
 let _bgIdx=0,_bgTimer=null;
@@ -4942,7 +4982,7 @@ async function products(){
       </div>
       <div style="display:flex;align-items:center;gap:8px">
         <button class="btn btn-sm" id="disc-btn" style="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" onclick="_handleDiscBtn()">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
-        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 定期每周刷新订阅内容\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
+        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 没找到自己想要的产品时全量扫描(\u{1F50D})或单产品刷新(\u{1F504}) / 定期每周刷新\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
         <button class="btn btn-sm" style="background:#eef4ff;border:1px solid var(--primary-light);color:var(--primary-text)" onclick="showProductForm()">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有/内部测试)\n• 建议:绿盟标准产品 — 用「自动发现」批量加\n• 不推荐:已有同名产品(去重检查会失败)\n• 下一步:保存后弹窗问是否立即刷新包类型">ⓘ</span>
       </div>
@@ -5908,11 +5948,12 @@ async function _handleDiscBtn(){
     }
   } catch(e){}
   // 二次确认文案:用 .info-bar(跟手动添加表单一致)+ 简短下方说明,
-  // 视觉统一两个流程的提示风格
-  confirmAct(
+  // 视觉统一两个流程的提示风格。弹窗用 discConfirmAct (580px 紫边框),
+  // 跟手动添加弹窗宽度一致。
+  discConfirmAct(
     '即将开始自动发现',
     async ()=>{ discoverProductsBanner(); },
-    '🗂️', '启动发现', true,
+    '🗂️', '启动发现',
     `<div class="info-bar">
        <div style="display:flex;align-items:flex-start;gap:8px">
          <span style="font-size:16px;line-height:1">🔍</span>
@@ -5920,7 +5961,12 @@ async function _handleDiscBtn(){
            <div style="font-weight:600;margin-bottom:4px">什么时候用自动发现?</div>
            <div style="line-height:1.7">
              • <b>用途:</b>扫描绿盟更新站点,自动发现新增/下线产品 + 重新发现每个产品的包类型路径<br>
-             • <b>场景:</b>首次接入系统 / 绿盟上线新产品 / 定期每周刷新订阅内容<br>
+             • <b>场景:</b><br>
+               &nbsp;&nbsp;◦ 首次接入系统初始化产品库<br>
+               &nbsp;&nbsp;◦ 绿盟上线新产品,要纳入订阅<br>
+               &nbsp;&nbsp;◦ <b>没找到自己想要关注的产品 / 包类型时</b> — 用「<span style="color:#7c3aed">🔍 自动发现</span>」全量扫描
+                 或在产品列表点 <span style="color:#7c3aed">🔄 刷新</span> 重采单个产品<br>
+               &nbsp;&nbsp;◦ 定期每周刷新,跟住绿盟内容更新<br>
              • <b>耗时:</b>长任务,后台跑,可中途停止
            </div>
          </div>
