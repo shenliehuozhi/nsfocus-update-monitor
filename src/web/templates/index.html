@@ -4942,7 +4942,7 @@ async function products(){
       </div>
       <div style="display:flex;align-items:center;gap:6px">
         <button class="btn btn-sm" id="disc-btn" style="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" onclick="_handleDiscBtn()">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
-        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:绿盟上架新产品 / 定期每周刷新\n• 耗时:80 产品约 9 分钟(3 worker 并发),可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
+        <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:绿盟上架新产品 / 定期每周刷新\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),后台跑可中途取消\n• 注意:立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
         <button class="btn btn-sm btn-outline" onclick="showProductForm()">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有)\n• 场景:绿盟有但不在导航树 / 内部测试产品\n• 不建议:标准绿盟产品(用自动发现)\n• 保存后可立即刷新包类型">ⓘ</span>
       </div>
@@ -5914,8 +5914,9 @@ async function _handleDiscBtn(){
     '🗂️', '启动发现', true,
     `<div style="text-align:left;font-size:13px;color:var(--muted);line-height:1.7;margin:8px 0 0">
        这会立刻抓取 <span class="mono">update.nsfocus.com</span> 全站 + 对每个产品爬目录树。<br>
-       80 产品约 <b>9 分钟</b>(3 worker 并发,2026-07-23 实测)。<br>
-       <span style="color:var(--warn)">⚠</span> 发现 Session 必须有效,可中途停止。
+       长任务(数分钟到十几分钟,跟现有产品数相关)。<br>
+       <small style="color:var(--gray-disabled)">后台跑,可中途停止</small>。<br>
+       <span style="color:var(--warn)">⚠</span> 发现 Session 必须有效。
      </div>`
   );
 }
