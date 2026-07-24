@@ -12,6 +12,8 @@ a = Analysis(
         ('data/initial_sources.json', 'data'),
         ('src/web/templates', 'src/web/templates'),
         ('src/web/static', 'src/web/static'),
+        # 2026-07-24: 升级时启动期自动跑 snapshots 迁移,脚本必须进 exe 包
+        ('scripts/migrate_snapshots_to_url_based.py', 'scripts'),
     ],
     hiddenimports=[
         'flask', 'flask_cors', 'flask_compress', 'apscheduler', 'requests',

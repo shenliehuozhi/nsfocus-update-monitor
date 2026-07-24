@@ -25,9 +25,40 @@ CREATE TABLE IF NOT EXISTS subscription_rules (
     customer_emails TEXT DEFAULT '',
     attachment_max_mb INTEGER DEFAULT 0,
     window_config TEXT DEFAULT '{}',
+    template TEXT DEFAULT 'full',
     created_at TEXT DEFAULT (datetime('now'))
 )
 """
+
+# Schema-sync source-of-truth for subscription_rules.
+# Keep this in sync with INSERT/UPDATE field usage in create_rule / update_rule
+# below. The startup sync (sync_table_columns in create_tables) will ALTER
+# existing DBs to add any columns listed here that are missing.
+# Format: (column_name, sqlite_type, default_sql). default_sql empty → no DEFAULT.
+EXPECTED_SUBSCRIPTION_RULES_COLUMNS = [
+    ('user_id', 'INTEGER', "0"),
+    ('name', 'TEXT', "''"),
+    ('enabled', 'INTEGER', '1'),
+    ('filter_conditions', 'TEXT', "'{}'"),
+    ('delay_days', 'INTEGER', '0'),
+    ('delay_strategy', 'TEXT', "'reset'"),
+    ('min_interval_hours', 'INTEGER', '0'),
+    ('digest_mode', 'TEXT', "''"),
+    ('digest_config', 'TEXT', "'{}'"),
+    ('customer_id', 'INTEGER', '0'),
+    ('valid_until', 'TEXT', "''"),
+    ('quiet_start', 'TEXT', "''"),
+    ('quiet_end', 'TEXT', "''"),
+    ('notify_rollback', 'INTEGER', '1'),
+    ('customer_emails', 'TEXT', "''"),
+    ('window_config', 'TEXT', "'{}'"),
+    ('template', 'TEXT', "'full'"),
+    # digest_last_sent — never INSERTed but UPDATEd via kwargs in
+    # mark_digest_sent() et al. Sync keeps old DBs from breaking writes.
+    ('digest_last_sent', 'TEXT', "''"),
+    # attachment_max_mb deliberately omitted — deprecated; readers use customers.attachment_max_mb.
+    # id / created_at — never altered (auto-increment / row-creation default).
+]
 
 
 def create_rule(user_id: int, **kwargs) -> int:
@@ -346,9 +377,29 @@ CREATE TABLE IF NOT EXISTS delivery_log (
     delivery_status TEXT DEFAULT 'pending' CHECK(delivery_status IN ('pending', 'sent', 'failed')),
     error_message TEXT DEFAULT '',
     sent_at TEXT,
-    retry_count INTEGER DEFAULT 0
-, recipient TEXT DEFAULT '');
+    retry_count INTEGER DEFAULT 0,
+    recipient TEXT DEFAULT '',
+    sender TEXT DEFAULT ''
+)
 """
+# Schema-sync for delivery_log. Keep in sync with INSERT/UPDATE used by
+# log_delivery / update_delivery / get_history.
+EXPECTED_DELIVERY_LOG_COLUMNS = [
+    ('snapshot_id', 'INTEGER', '0'),
+    ('rule_id', 'INTEGER', '0'),
+    ('channel_id', 'INTEGER', '0'),
+    ('channel_type', 'TEXT', "''"),
+    ('channel_name', 'TEXT', "''"),
+    ('customer_id', 'INTEGER', '0'),
+    ('delivery_status', 'TEXT', "'pending'"),
+    ('error_message', 'TEXT', "''"),
+    ('recipient', 'TEXT', "''"),
+    ('sender', 'TEXT', "''"),
+    # sent_at — auto-stamped by app when status='sent', DEFAULT '' if not set
+    ('sent_at', 'TEXT', "''"),
+    # retry_count — DEFAULT 0, but only UPDATEd via update_delivery
+    ('retry_count', 'INTEGER', '0'),
+]
 # ── Delivery Log ────────────────────────────────────────────
 
 # 2026-07-11 channel_name 改造: 写入时拼上客户名
@@ -584,53 +635,33 @@ CREATE TABLE IF NOT EXISTS schema_version (
 
 
 def create_tables(db):
+    # 全新部署走 CREATE TABLE IF NOT EXISTS (带 DEFAULT),老 DB 不动 schema
     db.execute(SCHEMA_SUBSCRIPTION)
     db.execute(SCHEMA_RULE_CHANNELS)
     db.execute(SCHEMA_DELIVERY_LOG)
     db.execute(SCHEMA_DELAYED_QUEUE)
     db.execute(SCHEMA_DIGEST_QUEUE)
     db.execute(SCHEMA_VERSION)
-    # Migrations for existing DBs
+
+    # 老 DB 自动补列 — sync 取代之前一长串 try/except ALTER TABLE。
+    # 这样以后再加列,只需要在 EXPECTED_* 列表里加一行,启动期自动 ALTER。
+    from src.models.database import sync_table_columns
+    sync_table_columns(db, 'subscription_rules', EXPECTED_SUBSCRIPTION_RULES_COLUMNS)
+    sync_table_columns(db, 'delivery_log', EXPECTED_DELIVERY_LOG_COLUMNS)
+
+    # 历史数据迁移: delay_hours → delay_days (小时/24)
+    # 仅对老 DB 里有 delay_hours 列的起作用;新 DB 没这列 → 异常被吞。
+    # 一次性的:迁移完所有行的 delay_days 都不为 0 后,这段代码可删。
     try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN digest_mode TEXT DEFAULT ''")
+        cols = {r[1] for r in db.execute("PRAGMA table_info(subscription_rules)").fetchall()}
+        if 'delay_hours' in cols:
+            db.execute(
+                "UPDATE subscription_rules SET delay_days = CAST(delay_hours AS INTEGER) / 24 "
+                "WHERE delay_days = 0 AND delay_hours > 0"
+            )
     except Exception:
         pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN digest_last_sent TEXT DEFAULT ''")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN digest_config TEXT DEFAULT '{}'")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN window_config TEXT DEFAULT '{}'")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN delay_days INTEGER DEFAULT 0")
-    except Exception:
-        pass
-    try:
-        db.execute("UPDATE subscription_rules SET delay_days = CAST(delay_hours AS INTEGER) / 24 WHERE delay_days = 0 AND delay_hours > 0")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN customer_id INTEGER REFERENCES customers(id)")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN valid_until TEXT DEFAULT ''")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN customer_emails TEXT DEFAULT ''")
-    except Exception:
-        pass
-    try:
-        db.execute("ALTER TABLE subscription_rules ADD COLUMN attachment_max_mb INTEGER DEFAULT 0")
-    except Exception:
-        pass
+
     # 2026-07-11: rule_channels per-channel 字段 (4 列)
     _migrate_rule_channels_per_channel(db)
 

@@ -166,3 +166,63 @@ def executemany(sql: str, params_list: list) -> None:
     with _write_lock:
         db = get_db()
         db.executemany(sql, params_list)
+
+
+def sync_table_columns(db, table: str, expected: list[tuple[str, str, str]]) -> None:
+    """Auto-migrate an existing table: add any columns the code expects but the DB lacks.
+
+    Used at startup to handle the "升级后老 DB 缺列 / 初次部署 CREATE TABLE IF NOT EXISTS
+    错过了新增列" 场景。 配合 `CREATE TABLE IF NOT EXISTS` 使用:
+      - 全新部署: CREATE TABLE 建表 → sync 找到 0 缺失 → no-op
+      - 老 DB 升级: CREATE TABLE IF NOT EXISTS 不动老 schema → sync 补上缺的列
+
+    Args:
+        db: open sqlite3 connection (use get_db() or the per-thread connection).
+        table: table name to inspect.
+        expected: list of (column_name, sqlite_type, default_sql) tuples
+                  representing what the running code expects to find. Order does not matter.
+                  default_sql is the full `DEFAULT ...` clause WITHOUT leading space,
+                  e.g. "''", "'{}'", "'full'", "'INFO'", "0", "" (empty → no DEFAULT).
+                  Use "" for nullable columns with no default.
+
+    Notes:
+        - Only ADD COLUMN is supported. Drops/renames/type-changes must be done manually.
+        - DEFAULT values are baked into existing rows at ALTER time, so existing data
+          stays intact (SQLite 3.x supports this for all simple types we use).
+        - Safe to call repeatedly: existing columns are skipped.
+        - The `_expected_cols_log` module-level dict accumulates a one-shot log per
+          (table, column) so we don't spam the same "added X to Y" line on every restart.
+    """
+    global _expected_cols_log
+    try:
+        existing = {row[1] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    except sqlite3.OperationalError as e:
+        # Table doesn't exist yet — CREATE TABLE IF NOT EXISTS in create_tables()
+        # should have run first. If it really doesn't, log and skip.
+        logger.warning(f'sync_table_columns: {table} missing (PRAGMA failed: {e}); skipping')
+        return
+
+    added_any = False
+    for col, sqltype, default_sql in expected:
+        if col in existing:
+            continue
+        default_clause = f' DEFAULT {default_sql}' if default_sql else ''
+        sql = f'ALTER TABLE {table} ADD COLUMN {col} {sqltype}{default_clause}'
+        try:
+            db.execute(sql)
+            added_any = True
+            key = f'{table}.{col}'
+            if key not in _expected_cols_log:
+                logger.info(f'schema sync: added {col} {sqltype}{default_clause} to {table}')
+                _expected_cols_log.add(key)
+        except sqlite3.OperationalError as e:
+            # Race / pre-existing via different DDL — log and move on
+            logger.warning(f'schema sync: failed to add {col} to {table}: {e}')
+
+    if added_any:
+        logger.info(f'schema sync: {table} is now in sync (added {len([c for c,_,_ in expected if c not in existing])} column(s))')
+
+
+# Tracks columns we've already announced to the logger (in-process only).
+# Reset on every process restart, so each fresh start logs once per addition.
+_expected_cols_log: set[str] = set()

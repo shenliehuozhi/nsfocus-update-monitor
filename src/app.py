@@ -1,5 +1,6 @@
 """Flask Application Factory"""
 import os
+import sys
 import time
 import logging
 import logging.handlers
@@ -54,6 +55,150 @@ def _migrate_email_channel_to_list():
         logger.info(f"email channel to_list migration: cleared {migrated} channel(s)")
     else:
         logger.debug("email channel to_list migration: nothing to do")
+
+
+def _migrate_snapshots_url_based_if_needed():
+    """One-time migration: snapshots.path_id 改成纯 URL hash + 部分 UNIQUE INDEX。
+
+    背景:2026-07-16 前 snapshots.path_id 用
+    MD5(source_url + JSON(chain))[:12],collector chain 文本一变就
+    重新打 key,导致假 NEW / 假 WITHDRAWN 通知(IPS/IDS 实测 982 假 DELETED + 1019 假 NEW)。
+
+    新算法:MD5(source_url)[:12](只看物理 URL,稳定)。
+    UNIQUE INDEX 改为 (source_id, source_url, path_id, file_name, md5_hash)
+    WHERE status='active' 部分唯一 — 撤回/历史可共存。
+
+    升级时启动一次,跑完写 system_settings.snapshots_migration_v3='1'。
+    已经迁移过(marker 已存在)→ noop。
+
+    启动期跑迁移的风险:
+      - 数据量大时启动会慢(扫 snapshots 全表 + 重建 INDEX)
+      - 进程异常退出时部分状态可能不一致 — 但迁移脚本本身在一个事务里,
+        SQLite 失败会回滚,且原始 row 不变
+      - 用户数据:迁移不删 source_url='' 的孤立行,只删按
+        (source_id, path_id, file, md5) 算出来的"同一物理包不同 chain"的副本
+    """
+    from src.core.logger import get_logger
+    logger = get_logger('migration')
+
+    # 1. 检查 marker — 已经迁移过就直接返回
+    try:
+        from src.models.database import query
+        rows = query("SELECT value FROM system_settings WHERE key='snapshots_migration_v3'")
+        if rows and rows[0].get('value') == '1':
+            logger.debug("snapshots URL-based migration: already done (marker present)")
+            return
+    except Exception as e:
+        logger.warning(f"snapshots URL-based migration: marker check skipped: {e}")
+        return
+
+    # 2. 导入迁移模块 — 失败不阻塞启动
+    try:
+        from scripts.migrate_snapshots_to_url_based import (
+            plan as plan_migration,
+            apply as apply_migration,
+            already_migrated,
+        )
+        from src.models.database import get_db
+    except ImportError:
+        # PyInstaller onefile 兜底:脚本在 sys._MEIPASS/scripts/ 下,需要先把
+        # 该路径加入 sys.path 才能 import。常规开发环境 / python3 run.py
+        # 直接走默认 import 即可。
+        import importlib.util as _ilu
+        _meipass = getattr(sys, '_MEIPASS', None)
+        _candidates = []
+        if _meipass:
+            _candidates.append(os.path.join(_meipass, 'scripts', 'migrate_snapshots_to_url_based.py'))
+        _candidates.append(os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                        '..', 'scripts', 'migrate_snapshots_to_url_based.py'))
+        _loaded = False
+        for _p in _candidates:
+            if os.path.exists(_p):
+                _spec = _ilu.spec_from_file_location(
+                    'scripts.migrate_snapshots_to_url_based', _p
+                )
+                _mod = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_mod)
+                plan_migration = _mod.plan
+                apply_migration = _mod.apply
+                already_migrated = _mod.already_migrated
+                _loaded = True
+                break
+        if not _loaded:
+            logger.warning("snapshots URL-based migration: module not found, skipping")
+            return
+        from src.models.database import get_db
+    except Exception as e:
+        logger.warning(f"snapshots URL-based migration: import failed: {e}")
+        return
+
+    # 3. 准备进度 logger — 用户在 app.log 里能看到分阶段输出
+    progress = get_logger('migration.progress')
+    progress.info('=' * 70)
+    progress.info('⏳ 检测到旧版 snapshots schema,启动迁移:')
+    progress.info('   目的:消除"假通知"问题(path_id 因 chain 文本抖动被重算)')
+    progress.info('   改动:path_id 改为 MD5(source_url)[:12],UNIQUE INDEX 改为')
+    progress.info('        (source_id, source_url, path_id, file_name, md5_hash) 部分唯一')
+    progress.info('   范围:仅当 system_settings.snapshots_migration_v3 缺失时执行,已迁移 noop')
+    progress.info('=' * 70)
+
+    db = get_db()
+
+    # 4. 双重确认 marker(并发场景:另一个进程可能刚跑完)
+    if already_migrated(db):
+        progress.info('snapshots URL-based migration: marker appeared mid-check, skip')
+        return
+
+    # 5. dry-run 拿 plan
+    t0 = time.time()
+    try:
+        plan_data = plan_migration(db)
+    except Exception as e:
+        progress.error(f'snapshots URL-based migration: plan() failed: {e}')
+        logger.error(f'snapshots URL-based migration: plan() failed: {e}')
+        return
+
+    elapsed_plan = time.time() - t0
+    n_rows = plan_data['row_total']
+    n_dups = len(plan_data['delete_rows'])
+    n_pid = len(plan_data['pathid_updates'])
+    need_idx = plan_data['needs_index_rebuild']
+
+    progress.info(f'📊 迁移计划 (dry-run,扫 {n_rows} 行,耗时 {elapsed_plan:.1f}s):')
+    progress.info(f'   - 不同物理包数 (source_id, path_id, file, md5): {plan_data["row_unique"]}')
+    progress.info(f'   - 需删除的重复行(同物理包不同 chain path_id): {n_dups}')
+    progress.info(f'   - 需重算 path_id 的行: {n_pid}')
+    progress.info(f'   - UNIQUE INDEX 需重建: {need_idx}')
+
+    # 6. 应用迁移
+    progress.info('⏳ 开始应用迁移...')
+    t1 = time.time()
+    try:
+        result = apply_migration(db, plan_data)
+    except Exception as e:
+        elapsed_apply = time.time() - t1
+        progress.error(f'❌ snapshots URL-based migration: apply() failed after {elapsed_apply:.1f}s: {e}')
+        logger.error(f'snapshots URL-based migration: apply() failed after {elapsed_apply:.1f}s: {e}')
+        return
+
+    elapsed_apply = time.time() - t1
+    progress.info('=' * 70)
+    progress.info('✅ snapshots URL-based migration 完成:')
+    progress.info(f'   - 删除重复行: {result["deleted"]}')
+    progress.info(f'   - 引用改指(delivery_log/delayed_queue/digest_queue): {result["references_repointed"]}')
+    progress.info(f'   - path_id 重算: {result["pathid_updated"]}')
+    progress.info(f'   - UNIQUE INDEX 重建: {result["unique_index_rebuilt"]}')
+    progress.info(f'   - 写 marker: system_settings.snapshots_migration_v3=1')
+    progress.info(f'   - 总耗时: {elapsed_apply:.1f}s')
+    progress.info('=' * 70)
+    # summary logger 也打一行,方便监控聚合
+    logger.info(
+        f'snapshots URL-based migration: deleted={result["deleted"]} '
+        f'repointed={result["references_repointed"]} '
+        f'pathid_updated={result["pathid_updated"]} '
+        f'index_rebuilt={result["unique_index_rebuilt"]} '
+        f'took={elapsed_apply:.1f}s'
+    )
 
 
 def create_app(config_path=None):
@@ -132,6 +277,14 @@ def create_app(config_path=None):
     except Exception as e:
         from src.core.logger import get_logger
         get_logger('migration').warning(f'email channel to_list migration skipped: {e}')
+
+    # One-time migration: snapshots.path_id 改为纯 URL hash (消除假通知)
+    # 升级后第一次启动跑,marker 写入 system_settings.snapshots_migration_v3 后 noop
+    try:
+        _migrate_snapshots_url_based_if_needed()
+    except Exception as e:
+        from src.core.logger import get_logger
+        get_logger('migration').warning(f'snapshots URL-based migration skipped: {e}')
 
     # Hook Flask's own logger into our file handler so uncaught exceptions
     # and werkzeug messages appear in app.log

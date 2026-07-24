@@ -39,12 +39,44 @@ CREATE TABLE IF NOT EXISTS system_event_config (
 )
 """
 
+# Schema-sync source-of-truth for system_event_log / system_event_config.
+# Keep these in sync with INSERT/UPDATE usage in log_event / get_config /
+# update_config below.  Startup sync ALTERs existing DBs to add any missing
+# columns.
+EXPECTED_SYSTEM_EVENT_LOG_COLUMNS = [
+    ('event_type', 'TEXT', "''"),
+    ('severity', 'TEXT', "'INFO'"),
+    ('product_name', 'TEXT', "''"),
+    ('source_url', 'TEXT', "''"),
+    ('rule_id', 'INTEGER', '0'),
+    ('channel_id', 'INTEGER', '0'),
+    ('channel_type', 'TEXT', "''"),
+    ('customer_id', 'INTEGER', '0'),
+    ('is_rollback', 'INTEGER', '0'),
+    ('message', 'TEXT', "''"),
+    # created_at — DEFAULT applied by SQLite via CURRENT_TIMESTAMP; sync no-op
+]
+
+EXPECTED_SYSTEM_EVENT_CONFIG_COLUMNS = [
+    ('enabled', 'INTEGER', '0'),
+    ('channel_id', 'INTEGER', '0'),
+    ('event_types', 'TEXT', "'[]'"),
+    ('created_at', 'TEXT', "''"),
+    ('updated_at', 'TEXT', "''"),
+]
+
+
 # ── Table Init ─────────────────────────────────────────────
 
 def create_tables(db):
     """Create system event tables."""
     db.execute(SCHEMA_SYSTEM_EVENT_LOG)
     db.execute(SCHEMA_SYSTEM_EVENT_CONFIG)
+
+    # 老 DB 自动补列。 全新部署两个表已带所有列,sync no-op。
+    from src.models.database import sync_table_columns
+    sync_table_columns(db, 'system_event_log', EXPECTED_SYSTEM_EVENT_LOG_COLUMNS)
+    sync_table_columns(db, 'system_event_config', EXPECTED_SYSTEM_EVENT_CONFIG_COLUMNS)
 
 def get_config() -> dict:
     """获取系统事件通知配置，不存在则创建默认空配置"""
