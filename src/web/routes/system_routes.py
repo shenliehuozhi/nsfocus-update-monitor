@@ -363,6 +363,27 @@ def reset_rate_limit():
         return {'code': 0, 'message': f'已重置全部频率限制 ({affected} 条)'}
 
 
+@bp.route('/version', methods=['GET'])
+@require_auth
+def version_info():
+    """Return version/build identification for the running process.
+
+    返回的数据足够唯一标识当前实例:
+    - git commit + branch + dirty 标志(开发环境)
+    - 或 exe mtime/size hash + 路径(PyInstaller onefile 兜底)
+    - Python version / platform / frozen 标志 / data_dir / 进程启动时间
+
+    前端"关于"按钮消费此端点。
+    """
+    from flask import current_app
+    info = current_app.config.get('VERSION_INFO') or {}
+    if not info:
+        # Fallback if app.config wasn't populated (shouldn't happen in normal boot)
+        from src.core.version import get_version_info
+        info = get_version_info()
+    return {'code': 0, 'data': info}
+
+
 @bp.route('/health', methods=['GET'])
 @require_auth
 def health_check():

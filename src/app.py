@@ -293,6 +293,22 @@ def create_app(config_path=None):
     app.logger.handlers = monitor_logger.handlers  # inherit our handlers
     app.logger.setLevel(logging.DEBUG)
 
+    # Compute version info once and cache in app.config so /api/system/version
+    # and the about-button can read it without recomputing.
+    try:
+        from src.core.version import get_version_info, short_version
+        app.config['VERSION_INFO'] = get_version_info()
+        app.config['VERSION_SHORT'] = short_version(app.config['VERSION_INFO'])
+        monitor_logger.info(
+            f"nsfocus-monitor starting: {app.config['VERSION_SHORT']} "
+            f"(source={app.config['VERSION_INFO'].get('source')}, "
+            f"frozen={app.config['VERSION_INFO'].get('frozen')})"
+        )
+    except Exception as e:
+        monitor_logger.warning(f'version detection failed: {e}')
+        app.config['VERSION_INFO'] = {'app_name': 'nsfocus-monitor', 'commit': 'unknown'}
+        app.config['VERSION_SHORT'] = 'unknown'
+
     # Also capture werkzeug access logs (suppress duplicate since we have access.log)
     werkzeug_logger = logging.getLogger('werkzeug')
     werkzeug_logger.handlers = monitor_logger.handlers
