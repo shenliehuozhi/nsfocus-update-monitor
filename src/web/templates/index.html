@@ -372,9 +372,9 @@ tr[data-sid]{cursor:pointer}
     <a href="#" data-page="logs">系统日志</a>
     <a href="#" data-page="tools">🛠️ 其他工具</a>
   </nav>
-  <div class="user" style="display:flex;align-items:center;gap:8px">
-    <span id="versionBadge" onclick="showAboutModal()" title="点击查看版本信息" style="cursor:pointer;font-family:monospace;font-size:11px;color:#94a3b8;padding:2px 6px;border-radius:4px;background:rgba(255,255,255,0.06);transition:.12s;user-select:none">…</span>
-    <button onclick="showAboutModal()" title="关于 / 版本信息" style="background:transparent;color:#cbd5e1;border:1px solid rgba(203,213,225,0.3);padding:4px 8px;border-radius:4px;cursor:pointer;font-size:13px;line-height:1">ⓘ</button>
+  <div class="user" style="display:flex;align-items:center;gap:6px;height:100%">
+    <span id="versionBadge" onclick="showAboutModal()" title="点击查看版本信息" style="display:inline-flex;align-items:center;cursor:pointer;font-family:monospace;font-size:11px;font-weight:600;color:#ffffff;padding:2px 7px;border-radius:4px;background:#4f46e5;border:1px solid #6366f1;line-height:1.4;white-space:nowrap;user-select:none">…</span>
+    <button onclick="showAboutModal()" title="关于 / 版本信息" style="background:#2563eb;color:#ffffff;border:none;padding:0;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;line-height:1;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3);font-family:Arial,sans-serif">i</button>
     <span id="uname"></span><button onclick="showPwdModal()">改密</button><button onclick="logout()">退出</button>
   </div>
 </header>
@@ -6932,7 +6932,11 @@ async function showAboutModal(){
       </div>`;
     document.body.appendChild(m);
   }
-  if(m.style.display!=='none') m.style.display='';
+  // Bug fix: 之前写 `if(m.style.display!=='none') m.style.display=''` 是反逻辑,
+  // 导致第一次关闭后 m.style.display='none',第二次点击时 if 条件命中(已经是 none
+  // 之外的别的?) 实际语义是 "如果不是 none 才显示" → 永远不显示。改成无条件
+  // 强制 display=''(跟 showPwdModal 同款)。
+  m.style.display='';
   // 每次打开都拉一次(防止服务重启后 info 变)
   try{
     const r=await api('/system/version');

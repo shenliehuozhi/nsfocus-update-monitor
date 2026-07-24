@@ -1,0 +1,28 @@
+{
+  "saved_at_utc": "2026-07-23T16:10:22.062314Z",
+  "prod_added_count": 0,
+  "prod_removed_count": 0,
+  "pkg_changes_count": 1,
+  "content_sources": [
+    {
+      "id": 166,
+      "name": "防病毒网关(NAVG)",
+      "source_type": "nsfocus",
+      "category": "security",
+      "config": "{}",
+      "is_active": 1,
+      "created_by": 1,
+      "last_collected_at": "2026-07-23T12:25:24.655603",
+      "health_status": "ok",
+      "created_at": "2026-07-13 10:45:45",
+      "entry_url": "/update/navgIndex",
+      "strategy": "standard",
+      "display_name": "防病毒网关(NAVG)",
+      "is_manual": 0,
+      "package_type": "{\"types\": [\"URL分类库升级包\", \"启发式病毒库升级包\", \"启发式病毒库升级包v2\", \"地理信息库升级包\", \"引擎升级包\", \"情报升级包-V5.6R11F00版本\", \"情报升级包-V5.6R11F01版本及以上\", \"流式病毒库升级包\", \"规则库升级包-V5.6R11F00版本\", \"规则库升级包-V5.6R11F01版本及以上\"], \"paths\": [{\"chain\": [\"防病毒网关(NAVG)\", \"流式病毒库升级包\"], \"types\": [\"流式病毒库升级包\"], \"url\": \"/update/listNewnavgDetail/v/av5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"地理信息库升级包\"], \"types\": [\"地理信息库升级包\"], \"url\": \"/update/listNewnavgDetail/v/location5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"URL分类库升级包\"], \"types\": [\"URL分类库升级包\"], \"url\": \"/update/listNewnavgDetail/v/newurllib\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"系统规则库升级包\", \"规则库升级包-V5.6R11F00版本\"], \"types\": [\"规则库升级包-V5.6R11F00版本\"], \"url\": \"/update/listNewnavgDetail/v/rule5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"启发式病毒库升级包\", \"启发式病毒库升级包\"], \"types\": [\"启发式病毒库升级包\"], \"url\": \"/update/listNewnavgDetail/v/av7.0.0\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"引擎升级包\"], \"types\": [\"引擎升级包\"], \"url\": \"/update/listNewnavgDetail/v/engine5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"威胁情报升级包\", \"情报升级包-V5.6R11F01版本及以上\"], \"types\": [\"情报升级包-V5.6R11F01版本及以上\"], \"url\": null, \"vm\": true}, {\"chain\": [\"防病毒网关(NAVG)\", \"威胁情报升级包\", \"情报升级包-V5.6R11F00版本\"], \"types\": [\"情报升级包-V5.6R11F00版本\"], \"url\": \"/update/listNewnavgDetail/v/nti5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"启发式病毒库升级包\", \"启发式病毒库升级包v2\"], \"types\": [\"启发式病毒库升级包v2\"], \"url\": \"/update/listNewnavgDetail/v/av8.0.0\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"系统规则库升级包\", \"规则库升级包-V5.6R11F01版本及以上\"], \"types\": [\"规则库升级包-V5.6R11F01版本及以上\"], \"url\": \"/update/listNewnavgDetail/v/rule5.6.11_v2\"}], \"modes\": {\"引擎升级包\": \"auto\", \"规则库升级包-V5.6R11F00版本\": \"auto\", \"规则库升级包-V5.6R11F01版本及以上\": \"auto\", \"URL分类库升级包\": \"auto\", \"流式病毒库升级包\": \"auto\", \"地理信息库升级包\": \"auto\", \"情报升级包-V5.6R11F00版本\": \"auto\", \"情报升级包-V5.6R11F01版本及以上\": \"auto\", \"启发式病毒库升级包\": \"auto\", \"启发式病毒库升级包v2\": \"auto\"}}",
+      "force_type": null,
+      "package_type_discovered": "{\"types\": [\"URL分类库升级包\", \"启发式病毒库升级包\", \"启发式病毒库升级包v2\", \"地理信息库升级包\", \"引擎升级包\", \"情报升级包-V5.6R11F00版本\", \"情报升级包-V5.6R11F01版本及以上\", \"流式病毒库升级包\", \"规则库升级包-V5.6R11F00版本\", \"规则库升级包-V5.6R11F01版本及以上\"], \"paths\": [{\"chain\": [\"防病毒网关(NAVG)\", \"流式病毒库升级包\"], \"types\": [\"流式病毒库升级包\"], \"url\": \"/update/listNewnavgDetail/v/av5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"地理信息库升级包\"], \"types\": [\"地理信息库升级包\"], \"url\": \"/update/listNewnavgDetail/v/location5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"URL分类库升级包\"], \"types\": [\"URL分类库升级包\"], \"url\": \"/update/listNewnavgDetail/v/newurllib\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"系统规则库升级包\", \"规则库升级包-V5.6R11F00版本\"], \"types\": [\"规则库升级包-V5.6R11F00版本\"], \"url\": \"/update/listNewnavgDetail/v/rule5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"启发式病毒库升级包\", \"启发式病毒库升级包\"], \"types\": [\"启发式病毒库升级包\"], \"url\": \"/update/listNewnavgDetail/v/av7.0.0\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"引擎升级包\"], \"types\": [\"引擎升级包\"], \"url\": \"/update/listNewnavgDetail/v/engine5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"威胁情报升级包\", \"情报升级包-V5.6R11F01版本及以上\"], \"types\": [\"情报升级包-V5.6R11F01版本及以上\"], \"url\": null, \"vm\": true}, {\"chain\": [\"防病毒网关(NAVG)\", \"威胁情报升级包\", \"情报升级包-V5.6R11F00版本\"], \"types\": [\"情报升级包-V5.6R11F00版本\"], \"url\": \"/update/listNewnavgDetail/v/nti5.6.11\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"启发式病毒库升级包\", \"启发式病毒库升级包v2\"], \"types\": [\"启发式病毒库升级包v2\"], \"url\": \"/update/listNewnavgDetail/v/av8.0.0\"}, {\"chain\": [\"防病毒网关(NAVG)\", \"系统规则库升级包\", \"规则库升级包-V5.6R11F01版本及以上\"], \"types\": [\"规则库升级包-V5.6R11F01版本及以上\"], \"url\": \"/update/listNewnavgDetail/v/rule5.6.11_v2\"}], \"modes\": {\"引擎升级包\": \"auto\", \"规则库升级包-V5.6R11F00版本\": \"auto\", \"规则库升级包-V5.6R11F01版本及以上\": \"auto\", \"URL分类库升级包\": \"auto\", \"流式病毒库升级包\": \"auto\", \"地理信息库升级包\": \"auto\", \"情报升级包-V5.6R11F00版本\": \"auto\", \"情报升级包-V5.6R11F01版本及以上\": \"auto\", \"启发式病毒库升级包\": \"auto\", \"启发式病毒库升级包v2\": \"auto\"}}",
+      "package_type_changed": 1
+    }
+  ]
+}
