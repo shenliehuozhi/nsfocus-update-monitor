@@ -7004,15 +7004,44 @@ function fmtAboutUTC(iso){
 async function copyAboutToClipboard(){
   if(!_aboutInfo) return;
   const text = Object.entries(_aboutInfo).map(([k,v])=>`${k}: ${v}`).join('\n');
+  // 兜底 textarea 要先准备好,不论走哪条路都保证清理
+  let _ta = null;
   try{
     await navigator.clipboard.writeText(`nsfocus-monitor version info\n${'='.repeat(40)}\n${text}\n`);
     showToast('已复制到剪贴板', 'success');
+    return;
   }catch(e){
-    // 兜底:用 textarea + execCommand
-    const ta=document.createElement('textarea');
-    ta.value=text;document.body.appendChild(ta);ta.select();
-    try{document.execCommand('copy');showToast('已复制', 'success');}catch{showToast('复制失败', 'error');}
-    document.body.removeChild(ta);
+    // HTTP 页面下 navigator.clipboard.writeText 抛 NotAllowedError,走兜底
+    _ta = document.createElement('textarea');
+    _ta.value = text;
+    // 关键: 必须把 textarea 放在屏幕外 + 不可见,避免出现"左下角嵌入文本框"残留
+    _ta.style.position = 'fixed';
+    _ta.style.top = '0';
+    _ta.style.left = '0';
+    _ta.style.width = '1px';
+    _ta.style.height = '1px';
+    _ta.style.opacity = '0';
+    _ta.style.pointerEvents = 'none';
+    _ta.setAttribute('readonly', '');
+    document.body.appendChild(_ta);
+    _ta.select();
+    try{
+      const ok = document.execCommand('copy');
+      if (ok) showToast('已复制', 'success');
+      else showToast('复制失败: 浏览器拒绝', 'error');
+    }catch(copyErr){
+      showToast('复制失败: ' + copyErr.message, 'error');
+    }
+  } finally {
+    // Bug fix: 之前在 catch 块外用 document.body.removeChild(ta),但 ta 是 catch 块
+    // 内 const 声明的 — 实际作用域没问题。但旧实现里 catch 内 execCommand 异常被
+    // 直接吞掉 → 后续 removeChild 在异常栈下还能执行,理论上应该清掉。
+    // 现实是: 某些浏览器(HTTP + iframe)下 appendChild 之后 ta 被自动绑到 viewport
+    // 之外的位置,removeChild 找得到但 timing 出问题导致残留。改用 finally + ta 引用
+    // 提前到外层 + 防御性 removeChild,保证不留 DOM 垃圾。
+    if (_ta && _ta.parentNode) {
+      try { _ta.parentNode.removeChild(_ta); } catch (_) { /* ignore */ }
+    }
   }
 }
 
