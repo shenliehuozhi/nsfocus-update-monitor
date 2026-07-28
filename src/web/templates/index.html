@@ -1233,7 +1233,7 @@ async function dataPage() {
     <div class="data-toolbar">
       <div class="data-search-wrap">
         <span class="data-search-icon">🔍</span>
-        <input class="data-search" id="dataSearch" placeholder="搜索产品名 / 版本号 / 文件名 / 包类型…" value="${escHtml(_dataQuery)}" oninput="dataSearch(this.value)">
+        <input class="data-search" id="dataSearch" placeholder="搜索产品名 / 版本号 / 文件名 / 包类型…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
         ${_dataQuery ? '<span class="data-search-clear" onclick="dataSearch(\'\')">×</span>' : ''}
       </div>
       <div class="data-filters">
@@ -1390,6 +1390,20 @@ function dataSearch(v) {
   _dataPage = 1;
   dataRenderLeft();
   dataRenderRight();
+}
+
+// Debounce wrapper: 输入时延迟 250ms 才调 dataSearch,
+// 避免每个按键都 re-render 80 个 card + 2200 行 feed row。
+// 2026-07-28: 用户原始问题 - 输入搜索框时实时渲染 2200+ 行 feed,卡顿。
+// fix(P0-C): 输入框 oninput 加 250ms debounce。
+// clear (×) 按钮保持 immediate 调用 dataSearch('') — 用户期望即时响应。
+let _dataSearchTimer = null;
+function dataSearchDebounced(v) {
+  if (_dataSearchTimer) clearTimeout(_dataSearchTimer);
+  _dataSearchTimer = setTimeout(() => {
+    _dataSearchTimer = null;
+    dataSearch(v);
+  }, 250);
 }
 
 function dataToggleFilter(key) {
