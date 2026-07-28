@@ -297,7 +297,6 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 
 .data-detail-k{color:var(--muted);font-weight:600;white-space:nowrap}
 .data-rpager{display:flex;align-items:center;gap:6px;justify-content:center;margin-top:10px}
-.data-prod-selected{border-color:var(--primary);box-shadow:0 0 0 2px rgba(67,97,238,.15)}
 tr[data-sid]{cursor:pointer}
 .data-detail-grid{display:grid;grid-template-columns:auto 1fr;gap:6px 12px;padding:12px 16px;align-items:start}
 .data-detail-k{color:var(--muted);font-weight:600;white-space:nowrap}
@@ -1133,7 +1132,6 @@ const PAGE_SIZE = 20;
 let _dataQuery = '';
 let _dataFilters = { has_new: false, has_rb: false, empty: false };
 let _lastScheduler = null; // cached scheduler for header display across polls
-let _dataExpanded = new Set();
 let _dataPage = 1;
 let _dataAll = {};
 // Chain prefix cache: keyed by 'sid|chain.join("/")', value = precomputed prefixSegCount[]
@@ -1155,7 +1153,6 @@ let _srcUrlChainMap = {};
 let _srcUrlPathIdMap = {};
 
 async function dataPage() {
-  _dataExpanded.clear();
   _dataPage = 1;
   _dataSelectedSid = null;
   _dataSelectedChain = null;
@@ -2388,7 +2385,6 @@ function dataRightToggleRow(rowId) {
 
 function dataRightGoto(sid, chainJson) {
   _dataSelectedSid = sid;
-  _dataExpanded.add(sid);
   let targetChain = null;
   try { targetChain = JSON.parse(chainJson); } catch(e) { targetChain = []; }
   _dataSelectedChain = targetChain;
@@ -2499,7 +2495,6 @@ function dataClearFilter() {
   _dataSelectedVerHint = null;
   _dataSelectedPkgHint = null;
   _lastSelectedNode = null;
-  _dataExpanded.clear();
   document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
   document.querySelectorAll('.tree-node-selected').forEach(el => el.classList.remove('tree-node-selected'));
   _dataFeedPage = 1;
