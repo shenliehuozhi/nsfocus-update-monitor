@@ -75,59 +75,16 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
             logger.error(f'Failed to save snapshot: {e}')
             result.errors.append(str(e))
 
-    # Step 2: Mark missing items as rollback_pending (only in full-scan mode)
-    if check_rollback:
-        snap_db.mark_rollback_pending(seen_ids, source_id)
-
-    # Step 3: Confirm rollbacks (only in full-scan mode)
-    if check_rollback:
-        confirmed = _confirm_rollbacks(source_id, rollback_confirm)
-        result.rollback_items = confirmed
-
-    # 2026-07-22 改动 3: 撤回通知 — 把 collector 报告的刚标 withdrawn 行加入 rollback_items
-    # 这些行通过 route_notifications(is_rollback=True) 推送 ⚠️ 撤回 消息
+    # 2026-07-27: 删除 mark_rollback_pending + _confirm_rollbacks 跨 cycle 累积确认路径
+    # (ad203e5 设计意图保留,但因为 seen_ids 错位 + DB 永远没真写过 rollback 状态,
+    #  全部提交给 status='withdrawn' 通过 collector 当场识别路径处理)
+    # withdrawn_items 唯一保留: collector 现场报告 withdrawn 的行 → 走 ⚠️ 撤回通知
     if withdrawn_items:
-        result.rollback_items.extend(withdrawn_items)
+        result.rollback_items.extend([(d['id'], d) for d in withdrawn_items])
         logger.info(f'Source {source_id}: {len(withdrawn_items)} withdrawn item(s) '
                     f'reported by collector, queued for rollback push')
 
     return result
-
-
-def _confirm_rollbacks(source_id: int, confirm_count: int) -> list:
-    """Confirm rollback for snapshots that have been pending for N consecutive cycles.
-
-    Only snapshots with rollback_cycles >= confirm_count are confirmed.
-    Pending snapshots with fewer cycles stay pending for the next check.
-    """
-    from src.models.database import query, execute
-
-    # Only confirm snapshots that have reached the threshold
-    pending = query(
-        """SELECT id FROM snapshots
-           WHERE source_id = ? AND status = 'rollback_pending'
-           AND rollback_cycles >= ?""",
-        (source_id, confirm_count)
-    )
-
-    if not pending:
-        return []
-
-    confirmed = []
-    for row in pending:
-        sid = row['id']
-        snap = snap_db.get_snapshot(sid)
-        if snap:
-            execute(
-                "UPDATE snapshots SET status = 'rollback', rollback_confirmed_at = datetime('now') "
-                "WHERE id = ?",
-                (sid,)
-            )
-            confirmed.append((sid, dict(snap)))
-            logger.info(f'ROLLBACK confirmed (cycles={snap.get("rollback_cycles",0)}/{confirm_count}): '
-                       f'{snap.get("product_name")} {snap.get("file_name")}')
-
-    return confirmed
 
 
 # ── Subscription rule matching ──────────────────────────────────────────────

@@ -386,13 +386,14 @@ def save_snapshot(snap: dict) -> int:
         ))
         return sid
 
-    # ── 第二查: superseded/withdrawn/rollback (只第一查没命中时) ─────
+    # ── 第二查: superseded/withdrawn (第一查没命中时) ─────
     # 处理: 老 superseded 冒泡(场景 1) + 撤回撤销(同 md5 又挂上)
+    # 2026-07-27: 移除 rollback (跨 cycle 累积确认分支已删除,见 change.py A 方案)
     existing_other = query(
         """SELECT id, status, first_seen_at FROM snapshots
            WHERE source_id = ? AND source_url = ? AND path_id = ?
              AND file_name = ? AND md5_hash = ?
-             AND status IN ('superseded','withdrawn','rollback')""",
+             AND status IN ('superseded','withdrawn')""",
         (snap.get('source_id', 0), snap.get('source_url', ''), snap.get('path_id', ''),
          snap.get('file_name', ''), snap['md5_hash'])
     )
@@ -401,11 +402,8 @@ def save_snapshot(snap: dict) -> int:
         sid = existing_other[0]['id']
         old_status = existing_other[0]['status']
         # superseded → active (本次重现,复活为最新)
-        # withdrawn/rollback → 保持 (撤回不复活)
-        if old_status == 'superseded':
-            new_status = 'active'
-        else:
-            new_status = old_status
+        # withdrawn → 保持 withdrawn (撤回不复活)
+        new_status = 'active' if old_status == 'superseded' else 'withdrawn'
         execute("""
             UPDATE snapshots SET
                 version_branch = ?, package_type = ?,
@@ -474,61 +472,9 @@ def save_snapshot(snap: dict) -> int:
         ))
 
 
-def mark_rollback_pending(seen_ids: set, source_id: int):
-    """Mark snapshots not in seen_ids as rollback_pending.
-
-    Uses rollback_cycles to track consecutive misses.
-    First miss: status='rollback_pending', rollback_cycles=1
-    Subsequent miss: rollback_cycles += 1
-    Confirmation only when rollback_cycles >= ROLLBACK_CONFIRM.
-
-    Also cancels any pending push/digest entries so rolled-back packages
-    are never accidentally sent (P1-2 fix).
-    """
-    from src.models.database import execute, query
-
-    active = query(
-        "SELECT id FROM snapshots WHERE source_id = ? AND status = 'active'",
-        (source_id,)
-    )
-    missing_sids = [row['id'] for row in active if row['id'] not in seen_ids]
-
-    pending = query(
-        "SELECT id FROM snapshots WHERE source_id = ? AND status = 'rollback_pending'",
-        (source_id,)
-    )
-    pending_sids = [row['id'] for row in pending if row['id'] not in seen_ids]
-
-    if missing_sids:
-        # Cancel pending push entries in bulk (both queues)
-        placeholders = ','.join(['?'] * len(missing_sids))
-        # Cancel delayed_queue entries
-        execute(
-            f"UPDATE delayed_queue SET status = 'cancelled', cancelled_reason = 'rollback_pending' "
-            f"WHERE snapshot_id IN ({placeholders}) AND status = 'pending'",
-            tuple(missing_sids)
-        )
-        # Cancel digest_queue entries
-        execute(
-            f"UPDATE digest_queue SET status = 'cancelled', cancelled_reason = 'rollback_pending' "
-            f"WHERE snapshot_id IN ({placeholders}) AND status = 'pending'",
-            tuple(missing_sids)
-        )
-        # Batch update snapshots status
-        execute(
-            f"UPDATE snapshots SET status = 'rollback_pending', rollback_cycles = 1 "
-            f"WHERE id IN ({placeholders})",
-            tuple(missing_sids)
-        )
-
-    # Increment rollback_cycles for already-pending snapshots (still missing) — batch
-    if pending_sids:
-        placeholders = ','.join(['?'] * len(pending_sids))
-        execute(
-            f"UPDATE snapshots SET rollback_cycles = rollback_cycles + 1 "
-            f"WHERE id IN ({placeholders})",
-            tuple(pending_sids)
-        )
+# 2026-07-27: 删除 mark_rollback_pending 跨 cycle 累积确认分支
+# (ad203e5 设计意图保留,但 seen_ids 错位 + DB 永远没真写过 rollback 状态;
+#  撤回事件统一改走 collector 当场识别 → status='withdrawn' 路径)
 
 
 def get_active_snapshots(source_id: int) -> list:

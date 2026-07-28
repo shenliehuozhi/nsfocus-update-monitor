@@ -399,12 +399,14 @@ class NsfocusCollector(BaseCollector):
                 pass
 
         # ── Step 2: fallback — also check snapshots.source_url for legacy data ──
+        # 2026-07-27: rollback/rollback_pending 已删除(A 方案),只查 active + withdrawn
+        # (withdrawn 行保留下来以防绿盟撤销后还要复查该 URL)
         snap_urls = []
         rows = snap_query(
             """SELECT DISTINCT source_url, version_branch, package_type
                FROM snapshots
                WHERE source_id = ? AND source_url != ''
-                 AND status IN ('active', 'rollback', 'rollback_pending')
+                 AND status IN ('active', 'withdrawn')
                ORDER BY source_url""",
             (source_id,)
         )
