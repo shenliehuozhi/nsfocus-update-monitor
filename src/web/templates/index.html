@@ -1782,7 +1782,6 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
       _dataSelectedVerHint = newVer;
       _dataSelectedPkgHint = null;
       _lastSelectedNode = null;
-      _dataExpanded.delete(sid);
       _dataFeedPage = 1;
       dataRenderLeft();
       // 2026-07-28: set selection 时才会加 .card-selected,
@@ -1790,10 +1789,24 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
       // 重新渲染后用 sid 找新 card DOM 标 selected,
       // 否则用户感觉"再点节点回到默认" (实际 chain 退了一层,视觉上 + 状态都丢了)。
       // 注意: dataRenderLeft 后原 node 引用已 stale, 必须用 dpc_<sid> 重新找。
+      // 2026-07-28 进一步: card 标 selected 后, 上一层对应的 tree-node 也加高亮,
+      // 让用户清楚看到"现在选中的是哪一层", 跟 set selection 视觉对齐 (line 1838-1840)。
       const newCard = document.getElementById('dpc_' + sid);
       if (newCard) {
         document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+        document.querySelectorAll('.tree-node-selected').forEach(el => el.classList.remove('tree-node-selected'));
         newCard.classList.add('card-selected');
+        // 找 chain 倒数第二个 (上一层) 对应的 tree-node
+        const newChain = _dataSelectedChain;
+        if (newChain && newChain.length >= 2) {
+          const parentChain = newChain.slice(0, -1);
+          const parentChainJson = JSON.stringify(parentChain);
+          // data-chain 是 HTML attribute, 需要 escape 双引号 → 用 querySelector attribute match
+          const parentNode = newCard.querySelector(
+            '[data-action="treeNode"][data-chain="' + parentChainJson.replace(/"/g, '\\"') + '"]'
+          );
+          if (parentNode) parentNode.classList.add('tree-node-selected');
+        }
       }
       dataRenderRight();
       return;
@@ -1806,7 +1819,6 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
     _dataSelectedPkgHint = null;
     _dataSelectedPathId = null;
     _lastSelectedNode = null;
-    _dataExpanded.clear();
     document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
     _dataFeedPage = 1;
     dataRenderLeft();
