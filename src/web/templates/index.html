@@ -1779,64 +1779,20 @@ function productCardToggle(bodyId) {
 let _lastSelectedNode = null; // track last clicked tree node for toggle-off
 
 function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint, pathId) {
-  // Toggle off 同一 node:
-  //   - chain.length > 1 → 退回上一层(从 chain 切掉最后一截,沿用选择)
-  //   - chain.length <= 1 → 退回根状态(清掉所有选择,显示全部产品)
-  // 2026-07-28: 修复"点击同节点直接清空回到初始状态"反模式(用户原话:多点击恢复成初始状态)。
-  // 改为逐层退出,符合 Windows Explorer 树行为。
-  if (_lastSelectedNode === node) {
-    if (_dataSelectedChain && _dataSelectedChain.length > 1) {
-      // 退回上一层(去掉最后一个 chain segment)
-      _dataSelectedChain = _dataSelectedChain.slice(0, -1);
-      // 上一层是中间节点: 用 ver/pkg hint 过滤 (没有 pathId/url)
-      // 找出倒二 chain 段作为 ver hint
-      const newVer = _dataSelectedChain.length > 1 ? _dataSelectedChain[_dataSelectedChain.length - 1] : null;
-      _dataSelectedUrl = null;
-      _dataSelectedPathId = null;
-      _dataSelectedVerHint = newVer;
-      _dataSelectedPkgHint = null;
-      _lastSelectedNode = null;
-      _dataFeedPage = 1;
-      dataRenderLeft();
-      // 2026-07-28: set selection 时才会加 .card-selected,
-      // 但 toggle off 走这个分支(原代码会清掉高亮但没有重新加)。
-      // 重新渲染后用 sid 找新 card DOM 标 selected,
-      // 否则用户感觉"再点节点回到默认" (实际 chain 退了一层,视觉上 + 状态都丢了)。
-      // 注意: dataRenderLeft 后原 node 引用已 stale, 必须用 dpc_<sid> 重新找。
-      // 2026-07-28 进一步: card 标 selected 后, 上一层对应的 tree-node 也加高亮,
-      // 让用户清楚看到"现在选中的是哪一层", 跟 set selection 视觉对齐 (line 1838-1840)。
-      const newCard = document.getElementById('dpc_' + sid);
-      if (newCard) {
-        document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
-        document.querySelectorAll('.tree-node-selected').forEach(el => el.classList.remove('tree-node-selected'));
-        newCard.classList.add('card-selected');
-        // 找 chain 倒数第二个 (上一层) 对应的 tree-node
-        const newChain = _dataSelectedChain;
-        if (newChain && newChain.length >= 2) {
-          const parentChain = newChain.slice(0, -1);
-          const parentChainJson = JSON.stringify(parentChain);
-          // data-chain 是 HTML attribute, 需要 escape 双引号 → 用 querySelector attribute match
-          const parentNode = newCard.querySelector(
-            '[data-action="treeNode"][data-chain="' + parentChainJson.replace(/"/g, '\\"') + '"]'
-          );
-          if (parentNode) parentNode.classList.add('tree-node-selected');
-        }
-      }
-      dataRenderRight();
-      return;
-    }
-    // chain 长度为 0 或 1 → 完全退到根
-    _dataSelectedSid = null;
-    _dataSelectedChain = null;
-    _dataSelectedUrl = null;
-    _dataSelectedVerHint = null;
-    _dataSelectedPkgHint = null;
-    _dataSelectedPathId = null;
-    _lastSelectedNode = null;
-    document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
-    _dataFeedPage = 1;
-    dataRenderLeft();
-    dataRenderRight();
+  // Toggle off 同一 node: 直接 return, 不做任何操作。
+  //
+  // 2026-07-29: 用户原始反馈:
+  //   "点同节点应该只是把节点下方的目录收起来, 不是整个产品一起收起"
+  //   "链式状态退到上一层反模式让我没法识别当前选中的是哪一层"
+  //
+  // 改语义:
+  //   - 折叠 children = 点击节点的箭头 (独立 span, 走 treeToggleById, 已存在)
+  //   - 改变选中 = 点其他节点
+  //   - 完全清空 = 点重置筛选按钮 (dataClearFilter, 在右 header)
+  //
+  // 点击同一节点 = 选中保持不变 (避免误触清空)
+  if (_lastSelectedNode === node && _dataSelectedSid === sid) {
+    // No-op: 保持当前选中, 不清空、不退 chain
     return;
   }
 
