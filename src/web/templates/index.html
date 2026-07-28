@@ -287,6 +287,7 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .feed-row{display:flex;align-items:center;border-bottom:1px solid var(--gray-border);padding:0;min-height:38px;background:#fff}
 .feed-row.rollback{background:rgba(229,72,77,0.04)}
 .feed-row.new{background:rgba(59,130,246,0.04)}
+.feed-row-selected{background:rgba(124,58,237,0.08);border-left:3px solid #7c3aed;box-shadow:inset 0 0 0 1px rgba(124,58,237,0.25)}
 .feed-cell{flex-shrink:0;font-size:12px}
 .feed-arrow{width:24px;text-align:center;color:var(--muted);cursor:pointer;font-size:11px;flex-shrink:0;padding:6px 4px}
 .feed-row:hover{background:var(--gray-bg)}
@@ -2101,6 +2102,11 @@ function dataRenderRight(sch, p, info) {
   document.getElementById('dataRight').innerHTML = html;
   _dataRightBuilt = true;
 
+  // 联动左侧 path 选中: 给匹配行加 .feed-row-selected 类,并滚动到第一个
+  // 2026-07-28: 修复"左侧选 path 右侧看不到对应行"反模式
+  // 匹配逻辑: _dataSelectedSid/_dataSelectedPathId/_dataSelectedUrl/_dataSelectedVerHint/_dataSelectedPkgHint
+  dataHighlightPathMatches();
+
   const tp2 = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
   if (tp2 > 1) {
     const pg = _dataFeedPage;
@@ -2118,6 +2124,55 @@ function dataRenderRight(sch, p, info) {
   } else {
     document.getElementById('dataPager').innerHTML = '';
   }
+}
+
+// 联动高亮: 给匹配当前左侧 path 选择的 feed-row 加 .feed-row-selected,
+//            并滚动到第一个匹配行。配合 dataRenderRight() 在末尾调用。
+// 2026-07-28: 修复"左侧选 path 右侧看不到对应行"反模式 — 用户原始问题:
+// 选了 path 节点,右侧表格看上去跟没选一样,不告诉用户"已生效"。
+// 复用 dataBuildFeed 的过滤规则(1930-1945),但绕过 _dataFilters.has_new 等,
+// 只对 path 匹配生效。
+// 注: 仅在精确选中 (path_id 或 url) 时高亮整批匹配;
+//     中间节点的 ver/pkg hint (说明 "选了某个产品下某个版本的所有包")
+//     因为该版本下所有包都合理显示,不高亮反而避免视觉污染。
+function dataHighlightPathMatches() {
+  const dr = document.getElementById('dataRight');
+  if (!dr) return;
+  dr.querySelectorAll('.feed-row-selected').forEach(el => el.classList.remove('feed-row-selected'));
+  // 没选任何 → 不高亮,也不滚动
+  if (!_dataSelectedSid) return;
+  // 仅精确匹配才高亮 (path_id / url),中间节点 hint 不过滤
+  const isExact = !!( _dataSelectedPathId || _dataSelectedUrl );
+  if (!isExact) return;
+  // 用与右侧已渲染的 feed-row DOM 一致的方式判定
+  const rows = dr.querySelectorAll('.feed-row[data-snap-id]');
+  let firstMatch = null;
+  rows.forEach(row => {
+    const sid = row.dataset.sid;
+    const srcObj = _dataAll[sid];
+    if (!srcObj) return;
+    const snap = (srcObj.snapshots || []).find(s => String(s.id) === String(row.dataset.snapId));
+    if (!snap) return;
+    // 复用 dataBuildFeed 的 path 过滤链 (line 1929-1945)
+    let match = true;
+    if (_dataSelectedPathId) {
+      if (snap.path_id !== _dataSelectedPathId) match = false;
+    } else if (_dataSelectedUrl) {
+      const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
+      const normSnap = '/' + stripSlashes(snap.source_url || '');
+      const normSel = '/' + stripSlashes(_dataSelectedUrl);
+      if (normSnap !== normSel) match = false;
+    } else if (_dataSelectedVerHint || _dataSelectedPkgHint) {
+      if (_dataSelectedVerHint && (snap.version_branch || '') !== _dataSelectedVerHint) match = false;
+      if (_dataSelectedPkgHint && (snap.package_type || '') !== _dataSelectedPkgHint) match = false;
+    }
+    if (match) {
+      row.classList.add('feed-row-selected');
+      if (!firstMatch) firstMatch = row;
+    }
+  });
+  // 滚动到第一个匹配行
+  if (firstMatch) firstMatch.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
 
 function dataFeedGoPage(p) {
