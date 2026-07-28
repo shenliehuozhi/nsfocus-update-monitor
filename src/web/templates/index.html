@@ -1392,7 +1392,16 @@ function dataSearch(v) {
 }
 
 function dataToggleFilter(key) {
-  _dataFilters[key] = !_dataFilters[key];
+  // 互斥单选 (radio-style toggle): 点击同一 key (已开) → 关掉,显示所有产品;
+  // 点击另一个 key → 关掉其他 chip,只开这个。
+  // 2026-07-28: 修复 3-chip AND 累积导致"未找到匹配条件的产品"反模式
+  // (用户原话:多点击恢复成初始状态/清空筛选)。3 chip 是 chip group,互斥。
+  // urgency 由 dataUrgencyChange 单独处理。
+  const wasOn = !!_dataFilters[key];
+  // 先关所有 chip key
+  ['has_new', 'has_rb', 'empty'].forEach(k => { _dataFilters[k] = false; });
+  // 若之前是关的,这次打开;否则保持全关(显示所有)
+  if (!wasOn) _dataFilters[key] = true;
   _dataPage = 1;
   dataRenderLeft();
   dataRenderRight();
@@ -1755,8 +1764,30 @@ function productCardToggle(bodyId) {
 let _lastSelectedNode = null; // track last clicked tree node for toggle-off
 
 function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgHint, pathId) {
-  // Toggle off if same node clicked again
+  // Toggle off 同一 node:
+  //   - chain.length > 1 → 退回上一层(从 chain 切掉最后一截,沿用选择)
+  //   - chain.length <= 1 → 退回根状态(清掉所有选择,显示全部产品)
+  // 2026-07-28: 修复"点击同节点直接清空回到初始状态"反模式(用户原话:多点击恢复成初始状态)。
+  // 改为逐层退出,符合 Windows Explorer 树行为。
   if (_lastSelectedNode === node) {
+    if (_dataSelectedChain && _dataSelectedChain.length > 1) {
+      // 退回上一层(去掉最后一个 chain segment)
+      _dataSelectedChain = _dataSelectedChain.slice(0, -1);
+      // 上一层是中间节点: 用 ver/pkg hint 过滤 (没有 pathId/url)
+      // 找出倒二 chain 段作为 ver hint
+      const newVer = _dataSelectedChain.length > 1 ? _dataSelectedChain[_dataSelectedChain.length - 1] : null;
+      _dataSelectedUrl = null;
+      _dataSelectedPathId = null;
+      _dataSelectedVerHint = newVer;
+      _dataSelectedPkgHint = null;
+      _lastSelectedNode = null;
+      _dataExpanded.delete(sid);
+      _dataFeedPage = 1;
+      dataRenderLeft();
+      dataRenderRight();
+      return;
+    }
+    // chain 长度为 0 或 1 → 完全退到根
     _dataSelectedSid = null;
     _dataSelectedChain = null;
     _dataSelectedUrl = null;
@@ -7008,7 +7039,7 @@ async function copyAboutToClipboard(){
   let _ta = null;
   try{
     await navigator.clipboard.writeText(`nsfocus-monitor version info\n${'='.repeat(40)}\n${text}\n`);
-    showToast('已复制到剪贴板', 'success');
+    toast('已复制到剪贴板', 'success');
     return;
   }catch(e){
     // HTTP 页面下 navigator.clipboard.writeText 抛 NotAllowedError,走兜底
@@ -7027,10 +7058,10 @@ async function copyAboutToClipboard(){
     _ta.select();
     try{
       const ok = document.execCommand('copy');
-      if (ok) showToast('已复制', 'success');
-      else showToast('复制失败: 浏览器拒绝', 'error');
+      if (ok) toast('已复制', 'success');
+      else toast('复制失败: 浏览器拒绝', 'error');
     }catch(copyErr){
-      showToast('复制失败: ' + copyErr.message, 'error');
+      toast('复制失败: ' + copyErr.message, 'error');
     }
   } finally {
     // Bug fix: 之前在 catch 块外用 document.body.removeChild(ta),但 ta 是 catch 块
