@@ -5468,9 +5468,13 @@ function attach(node) {
 
   // Phase 2: Propagate version_branch, package_type hints and freshness from leaves up.
   function propagateHints(node) {
+    const nodeChain = node.__chain || [];
+    const nodeDepth = nodeChain.length;
+
     if (node.__isPkg) {
       const snaps = node.__snapshots || [];
       if (snaps.length > 0) {
+        // Leaf: 仍然从 snap 取具体 ver / pkg hint (数据是叶子,跟中间节点不同)
         const verHint = snaps[0].version_branch || '';
         const pkgHint = snaps[0].package_type || '';
         const now = Date.now();
@@ -5491,21 +5495,41 @@ function attach(node) {
       return null;
     }
     if (!node.__children) return null;
-    let verSet = new Set(), pkgSet = new Set();
+
+    // 2026-07-29: 重写 hint 推导逻辑
+    // 之前从 children snap 取 ver/pkg → 但 children 是子节点名 (e.g. "5.6.8 升级包列表"),
+    //   snap.version_branch 又是基础字段 ("网络入侵检测系统 5.6.3") → 跟节点层级名不对应,
+    //   导致 chain 2 层以上时 verHint 经常是错的值。
+    // 新规则 (用节点名 = chain[nodeDepth-1] 作 hint):
+    //   - 中间节点 verHint = chain 末段(节点自己的名字)
+    //     原因: snap.version_branch 字段常包含节点名 substring
+    //           (例如 5.6.8 节点的子叶子会有 ver="网络入侵检测系统 5.6.8" 包含 "5.6.8")。
+    //           节点级过滤 = "本节点 + 本节点所有 descendants" 收敛。
+    //   - pkgHint = children 第一个 pkg 子节点名 (e.g. "URL分类升级包"),
+    //     仅在所有 children pkg 一致时设,否则空(避免错过滤)
+    //   - 仍收集 children freshness
+    const verHint = nodeDepth >= 1 ? nodeChain[nodeDepth - 1] : '';
+
+    // pkgHint: 仅当 children 子节点 pkg 名全一致时设
+    const childPkgNames = Object.entries(node.__children)
+      .filter(([, c]) => c.__isPkg)
+      .map(([n]) => n);
+    const uniquePkgName = childPkgNames.length > 0 && childPkgNames.every(n => n === childPkgNames[0])
+      ? childPkgNames[0] : '';
+    const pkgHint = uniquePkgName;
+
     let childFreshness = 'idle';
     for (const [, child] of Object.entries(node.__children)) {
       const childHints = propagateHints(child);
+      // Don't recurse through children's snap-derived verHint, but USE its freshness
       if (!childHints) continue;
-      if (childHints.ver) verSet.add(childHints.ver);
-      if (childHints.pkg) pkgSet.add(childHints.pkg);
-      // Highest priority: new > lowfreq > idle
       if (childHints.freshness === 'new') childFreshness = 'new';
       else if (childHints.freshness === 'lowfreq' && childFreshness !== 'new') childFreshness = 'lowfreq';
     }
-    if (verSet.size === 1) node.__verHint = [...verSet][0];
-    if (pkgSet.size === 1) node.__pkgHint = [...pkgSet][0];
+    node.__verHint = verHint;
+    node.__pkgHint = pkgHint;
     node.__freshness = childFreshness;
-    return { ver: verSet.size === 1 ? [...verSet][0] : '', pkg: pkgSet.size === 1 ? [...pkgSet][0] : '', freshness: childFreshness };
+    return { ver: verHint, pkg: pkgHint, freshness: childFreshness };
   }
   propagateHints(root);
 
