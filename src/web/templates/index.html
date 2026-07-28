@@ -1785,6 +1785,16 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
       _dataExpanded.delete(sid);
       _dataFeedPage = 1;
       dataRenderLeft();
+      // 2026-07-28: set selection 时才会加 .card-selected,
+      // 但 toggle off 走这个分支(原代码会清掉高亮但没有重新加)。
+      // 重新渲染后用 sid 找新 card DOM 标 selected,
+      // 否则用户感觉"再点节点回到默认" (实际 chain 退了一层,视觉上 + 状态都丢了)。
+      // 注意: dataRenderLeft 后原 node 引用已 stale, 必须用 dpc_<sid> 重新找。
+      const newCard = document.getElementById('dpc_' + sid);
+      if (newCard) {
+        document.querySelectorAll('.card-selected').forEach(el => el.classList.remove('card-selected'));
+        newCard.classList.add('card-selected');
+      }
       dataRenderRight();
       return;
     }
