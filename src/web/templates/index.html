@@ -272,7 +272,7 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-hist-expanded{background:var(--primary-light)}
 .data-layout{display:flex;gap:10px;align-items:stretch;height:calc(100vh - 120px)}
 #dataLeft{width:400px;flex-shrink:0;overflow-y:auto}
-.data-right-wrap{display:flex;flex-direction:column;flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);overflow:hidden}
+.data-right-wrap{display:flex;flex-direction:column;flex:1;min-width:0;background:var(--card);border-radius:10px;border:1px solid var(--border);box-shadow:0 1px 3px rgba(0,0,0,.04);overflow-x:auto;overflow-y:hidden}
 #dataRightHd{position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--border);padding:12px 0 8px;display:flex;align-items:center;gap:8px}
 .data-right-body{flex:1;overflow-y:auto;padding:0 16px}
 .data-right-hd-sub{font-weight:400;font-size:12px;color:var(--muted)}
@@ -1221,7 +1221,7 @@ async function dataPage() {
 
   const totalActive = Object.values(_dataAll).filter(s => s.is_active).length;
   const filterHtml = [
-    dataChipHtml('has_new', '有活跃'),
+    dataChipHtml('has_new', '近 30 天发包'),
     dataChipHtml('has_rb', '含撤回'),
     dataChipHtml('empty', '空数据'),
   ].join('');
@@ -2052,10 +2052,10 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:80px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
   <div class="feed-cell" style="width:68px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
   <div class="feed-cell" style="width:56px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
-  <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">产品名称</div>
-  <div class="feed-cell" style="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px">版本</div>
-  <div class="feed-cell" style="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600">文件</div>
-  <div class="feed-cell" style="width:100px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">发布时间</div>
+  <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">产品名称</div>
+  <div class="feed-cell" style="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">版本</div>
+  <div class="feed-cell" style="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">文件</div>
+  <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发布时间</div>
   <div class="feed-cell" style="width:136px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
 </div>`;
 
@@ -2074,10 +2074,10 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:80px;flex-shrink:0" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></div>
   <div class="feed-cell" style="width:68px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
   <div class="feed-cell" style="width:60px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
-  <div class="feed-cell" style="width:180px;flex-shrink:0" title="${escHtml(r._srcName)}">${r._srcName}</div>
-  <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
-  <div class="feed-cell" style="flex:1;min-width:200px" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
-  <div class="feed-cell" style="width:100px;flex-shrink:0;font-size:12px;overflow:hidden">${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell" style="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
+  <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
+  <div class="feed-cell" style="flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
+  <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
