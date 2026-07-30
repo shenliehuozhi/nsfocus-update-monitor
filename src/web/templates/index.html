@@ -643,8 +643,8 @@ async function dashboard(range){
       <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
         ${h.product_health&&h.product_health.length>0?`<div style="min-width:200px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">采集</div>
-          <div style="display:flex;flex-direction:column;gap:3px">
-            ${h.product_health.slice(0,4).map(p=>{
+          <div style="display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto">
+            ${h.product_health.slice(0,8).map(p=>{
               const statusColor={'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[p.health_status||'未知']||'var(--gray-muted)';
               const statusIcon=(p.health_status==='ok'||p.health_status==='正常')?'💚':p.health_status&&p.health_status!=='未知'&&p.health_status!=='ok'?'❌':'⚪';
               const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
@@ -679,7 +679,7 @@ async function dashboard(range){
         </div>`:''}
         ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div style="min-width:160px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">限流</div>
-          <div style="display:flex;flex-direction:column;gap:3px">
+          <div style="display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto">
             ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
@@ -867,9 +867,27 @@ function _renderTimelineChart(canvasId, data, days, visible){
     ctx.fillText('请点击上方产品标签显示曲线', W/2, H/2); return;
   }
 
-  const COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
+  // 调色板: d3.schemeTableau10 风格,高对比度 + 视觉友好
+  // 原 10 色 (#4363e8 etc.) 饱和度过高,80 产品共用必然撞色难辨
+  // 现用 d3 default 风格, 蓝绿紫橘搭配, 后续产品用 HSL 调色互补
+  const PALETTE_SIZE = 24;  // 预生成 24 色, 超过 24 用 HSL 旋转
+  const PALETTE = [
+    '#4c78a8', '#f58518', '#54a24b', '#e45756', '#72b7b2',
+    '#e0a584', '#b07aa1', '#ff9da6', '#9d755d', '#bab0ac',
+    '#5e81ac', '#d47e93', '#a3be8b', '#b48ead', '#d08770',
+    '#729ece', '#ff9e6c', '#a4c969', '#6cc3d5', '#dba1bc',
+    '#cf9c5e', '#7eb0d5', '#d28b9b', '#9bc995'
+  ];
   const prodColor = {};
-  allProducts.forEach((p,i) => { prodColor[p] = COLORS[i % COLORS.length]; });
+  allProducts.forEach((p, i) => {
+    if (i < PALETTE_SIZE) {
+      prodColor[p] = PALETTE[i];
+    } else {
+      // 超过 PALETTE_SIZE 用 HSL 旋转, 与 palette 区分明显
+      const hue = (i * 137.508) % 360;  // 黄金角
+      prodColor[p] = `hsl(${hue}, 55%, 50%)`;
+    }
+  });
 
   // 填充日期空洞
   const today=new Date();
@@ -1111,9 +1129,24 @@ function _hideChartTooltip(e, canvas){
 function _renderTlLegend(allProducts, visible){
   const container = document.getElementById('tlLegend');
   if(!container) return;
-  const COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
+  // 调色板: d3.schemeTableau10 + 24 色扩展 + HSL 黄金角 (跟 chart 一致)
+  const PALETTE_SIZE = 24;
+  const PALETTE = [
+    '#4c78a8', '#f58518', '#54a24b', '#e45756', '#72b7b2',
+    '#e0a584', '#b07aa1', '#ff9da6', '#9d755d', '#bab0ac',
+    '#5e81ac', '#d47e93', '#a3be8b', '#b48ead', '#d08770',
+    '#729ece', '#ff9e6c', '#a4c969', '#6cc3d5', '#dba1bc',
+    '#cf9c5e', '#7eb0d5', '#d28b9b', '#9bc995'
+  ];
   const prodColor = {};
-  allProducts.forEach((p,i) => { prodColor[p] = COLORS[i % COLORS.length]; });
+  allProducts.forEach((p, i) => {
+    if (i < PALETTE_SIZE) {
+      prodColor[p] = PALETTE[i];
+    } else {
+      const hue = (i * 137.508) % 360;
+      prodColor[p] = `hsl(${hue}, 55%, 50%)`;
+    }
+  });
 
   container.innerHTML = allProducts.map((p,i) => {
     const on = visible[p];
