@@ -273,12 +273,7 @@ a{color:var(--primary);text-decoration:none;font-weight:500}
 .data-layout{display:flex;gap:10px;align-items:stretch;height:calc(100vh - 120px)}
 #dataLeft{width:400px;flex-shrink:0;overflow-y:auto}
 .data-right-wrap{display:flex;flex-direction:column;flex:1;min-width:0;background:transparent;border-radius:0;border:none;box-shadow:none;overflow-x:auto;overflow-y:hidden}
-#dataRightHd{position:sticky;top:0;z-index:3;background:var(--card);border-bottom:1px solid var(--border);padding:12px 0 8px 16px;display:flex;align-items:center;gap:8px}
 .data-right-body{flex:1;overflow-y:auto;padding:0 16px}
-.data-right-hd-sub{font-weight:400;font-size:12px;color:var(--muted)}
-.data-right-hd{font-weight:700;font-size:14px}
-.data-hd-path-seg{cursor:pointer;color:var(--text);font-weight:400}
-.data-hd-path-seg:hover{color:var(--primary)}
 .data-right-empty{padding:40px 0;text-align:center;color:var(--muted);font-size:13px}
 .data-right-actions{display:flex;gap:5px;align-items:center}
 .data-right-detail{padding:10px 12px;background:var(--success-light);border-bottom:1px solid var(--border)}
@@ -1285,7 +1280,6 @@ async function dataPage() {
     <div class="data-layout">
       <div id="dataLeft"></div>
       <div class="data-right-wrap">
-        <div class="data-right-hd" id="dataRightHd"></div>
         <div class="data-right-body" id="dataRight"></div>
         <div class="feed-pager" id="dataPager"></div>
       </div>
@@ -1310,32 +1304,7 @@ async function dataPage() {
           _collectRunning = false; clearInterval(_collectPollTimer); _collectPollTimer = null;
           return;
         }
-        // Update header only — do NOT re-render the whole feed list (would collapse expanded rows)
-        if (document.getElementById('dataRightHd') && _lastScheduler) {
-          const pct2 = (p2.products_total && p2.products_total > 0) ? Math.round(p2.products_done / p2.products_total * 100) : 0;
-          const isR2 = !!p2.active;
-          const s2 = pr.data?.scheduler || _lastScheduler;
-          const mode_label = { quick: '⚡Quick', full: '🔍Full', '': '' };
-          const lastMode2 = mode_label[s2.last_mode] || '';
-          const nextMode2 = mode_label[s2.next_mode] || '';
-          const lastText2 = s2.last_run ? fmtTZ(s2.last_run, true) : '—';
-          let nextText2 = '—';
-          if (s2.last_run) {
-            const d = new Date(s2.last_run + 'Z');
-            d.setUTCHours(d.getUTCHours() + (s2.interval_hours || 24));
-            nextText2 = fmtTZ(d.toISOString().substring(0, 19), true);
-          }
-          const ph2 = isR2 ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct2}% ${p2.current_product || ''} (${p2.products_done||0}/${p2.products_total||0})</span>` : '';
-          const hdrRight = `<div class="hdr-right" style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
-  <span style="color:var(--muted)">上次</span><span>${lastText2}${lastMode2 ? ' [' + lastMode2 + ']' : ''}</span>
-  <span style="color:var(--border)">|</span>
-  <span style="color:var(--muted)">下次</span><span>${nextText2}${nextMode2 ? ' [' + nextMode2 + ']' : ''}</span>
-  ${ph2}
-  <button class="btn btn-xs" style="background:var(--primary);color:#fff" onclick="triggerCollect()">🔄 手动采集</button>
-</div>`;
-          document.getElementById('dataRightHd').querySelector('.hdr-right')?.remove();
-          document.getElementById('dataRightHd').insertAdjacentHTML('beforeend', hdrRight);
-        }
+        // Header removed — do NOT re-render. Feed list below auto-updates via /latest/snapshots.
       } catch(e) {}
     }, 3000);
   } else {
@@ -2073,14 +2042,12 @@ function dataRenderRight(sch, p, info) {
   </div>`;
 
   if (rows.length === 0) {
-    document.getElementById('dataRightHd').innerHTML = `<div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">📦 <span class="data-right-hd">${hdLabel}</span></div>${hdrRight}`;
     document.getElementById('dataRight').innerHTML = `<div class="data-right-empty">暂无数据</div>`;
     document.getElementById('dataPager').innerHTML = '';
     return;
   }
 
   const colStyle = 'style="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
-  document.getElementById('dataRightHd').innerHTML = `<div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">📦 <span class="data-right-hd">${hdLabel}</span> <span class="data-right-hd-sub">（${rows.length} 条）</span></div>${hdrRight}`;
   let html = `<div class="feed-list">
 <div class="feed-hd">
   <div class="feed-cell feed-arrow-hd" style="width:28px;flex-shrink:0"></div>
