@@ -5438,10 +5438,14 @@ function attach(node) {
           // to match. Only attach snaps to the leaf whose __backendPathId is
           // in the snap array; other leaves leave __snapshots as [].
           // Note: with one URL key, attach is called once and walks the tree.
+          // Match ALL snap rows for this leaf's path_id (cross-status: active+superseded+withdrawn),
+          // not just the first one. Vendor URLs list all historical packages on the same page;
+          // the tree-leaf "1包" badge must reflect total count, not the latest.
           const leafPid = node.__backendPathId;
-          const matchedSnap = leafPid && snaps.find(s => s.path_id === leafPid);
-          if (matchedSnap) {
-            node.__snapshots = [matchedSnap];
+          const matchedSnaps = leafPid ? snaps.filter(s => s.path_id === leafPid) : [];
+          if (matchedSnaps.length > 0) {
+            // Keep stable order: latest published first
+            node.__snapshots = matchedSnaps.slice().sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
           } else if (!leafPid) {
             // No path_id on the leaf (legacy) — fall back to first matching
             // (ver, pkg) snap in the array.
