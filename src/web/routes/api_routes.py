@@ -1175,11 +1175,10 @@ def get_latest_snapshots():
             rec = dict(r)
             rec['last_delivered_at'] = r.get('last_sent') or None
             # Strip heavy detail-only fields from list response
-            # description_raw kept truncated to first 200 chars for frontend search
-            # (covers ~70% of CVE/漏洞 keyword occurrences per snapshot_stats)
-            # See nsfocus-monitor commit history for search-head200 reasoning.
-            desc_raw = rec.pop('description_raw', None) or ''
-            rec['description_head'] = desc_raw[:200]
+            # description_raw kept on backend only; data page search calls
+            # dedicated /api/data/search endpoint to avoid 2.4MB payload on
+            # /latest/snapshots list response.
+            rec.pop('description_raw', None)
             rec.pop('md5_hash', None)
             rec.pop('page_hash', None)
             rec.pop('description_parsed', None)
