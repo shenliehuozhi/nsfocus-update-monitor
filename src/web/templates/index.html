@@ -1177,6 +1177,10 @@ function _toggleTlProd(p){
 const PAGE_SIZE = 20;
 let _dataQuery = '';
 let _dataFilters = { has_new: false, has_rb: false, empty: false };
+// Set of snap ids that match the current /api/latest/search?q=
+// null = search not active or not yet returned (frontend falls back to local match).
+// Set = backend returned hits; frontend shows ONLY those (full-text incl. description_raw).
+let _dataSearchHitIds = null;
 let _lastScheduler = null; // cached scheduler for header display across polls
 let _dataPage = 1;
 let _dataAll = {};
@@ -1405,8 +1409,31 @@ function dataChipHtml(key, label) {
 function dataSearch(v) {
   _dataQuery = v.trim();
   _dataPage = 1;
+  if (!_dataQuery || _dataQuery.length < 2) {
+    _dataSearchHitIds = null;  // 清空: 进入本地匹配模式
+    dataRenderLeft();
+    dataRenderRight();
+    return;
+  }
+  // 异步调 /api/latest/search?q=... 后端查 description_raw 全字段 (整段,无截断)
+  // 同步先按本地匹配显示 (degrade), 等后端回来再覆盖
+  _dataSearchHitIds = null;
   dataRenderLeft();
   dataRenderRight();
+  api('/latest/search?q=' + encodeURIComponent(_dataQuery) + '&limit=200')
+    .then(r => {
+      const hits = (r.data && r.data.snapshots) || [];
+      // 仅在用户还没敲出别的 query 时覆盖 (避免乱跳)
+      if (_dataQuery === v.trim()) {
+        _dataSearchHitIds = new Set(hits.map(h => h.id));
+        dataRenderLeft();
+        dataRenderRight();
+      }
+    })
+    .catch(() => {
+      // 后端失败 → 保持本地匹配
+      _dataSearchHitIds = null;
+    });
 }
 
 // Debounce wrapper: 输入时延迟 250ms 才调 dataSearch,
@@ -1480,8 +1507,7 @@ function dataFilteredSources() {
       const verMatch = (src.snapshots || []).some(s =>
         (s.version_branch || '').toLowerCase().includes(q) ||
         (s.package_type || '').toLowerCase().includes(q) ||
-        (s.file_name || '').toLowerCase().includes(q) ||
-        (s.description_head || '').toLowerCase().includes(q)
+        (s.file_name || '').toLowerCase().includes(q)
       );
       if (!nameMatch && !verMatch) return false;
     }
@@ -1990,12 +2016,20 @@ function dataBuildFeed() {
   let filtered = rows;
   if (_dataQuery && !_dataSelectedPathId) {
     const q = _dataQuery.toLowerCase();
-    filtered = filtered.filter(r =>
+    const localMatch = r =>
         (r.file_name || '').toLowerCase().includes(q) ||
         (r.version_branch || '').toLowerCase().includes(q) ||
-        (r.package_type || '').toLowerCase().includes(q) ||
-        (r.description_head || '').toLowerCase().includes(q)
-    );
+        (r.package_type || '').toLowerCase().includes(q);
+    if (_dataSearchHitIds) {
+      // 后端已搜过 (含 description 全字段) — 命中集合优先
+      filtered = filtered.filter(r => _dataSearchHitIds.has(r.id));
+    } else if (q.length >= 2) {
+      // 后端还没回 (debounce 后立即调, 用户可能敲到 1 个字符)
+      // 这时仅本地匹配, 描述搜不到 — 但等下后端回来会刷新
+      filtered = filtered.filter(localMatch);
+    } else {
+      filtered = filtered.filter(localMatch);
+    }
   }
   if (_dataFilters.urgency) {
     filtered = filtered.filter(r => r.urgency === _dataFilters.urgency && r.status === 'active');
