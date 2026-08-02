@@ -1085,10 +1085,26 @@ function _renderTimelineChart_Redraw(d, mx, e){
     const buildCol = (prods) => prods.map(p => {
       const val = pt.counts[p] || 0;
       const color = prodColor[p];
-      return `<div style="display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.5">
-        <span style="width:8px;height:2px;background:${color};display:inline-block;flex-shrink:0"></span>
-        <span style="color:var(--gray-disabled);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px" title="${p}">${p}</span>
-        <span style="margin-left:auto;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums">${val}</span>
+      const isHovered = window._tlHover && window._tlHover === p;
+      const isDimmed  = window._tlHover && window._tlHover !== p;
+      // Highlight: 当前 hover 的产品加粗 + 名字加产品色 + 数字大
+      // 其他产品变淡 (透明度 0.45)
+      const wrapStyle = isHovered
+        ? 'display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;background:var(--primary-light);border-radius:4px;padding:2px 4px;margin:-2px -4px'
+        : `display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.5;opacity:${isDimmed ? '0.45' : '1'}`;
+      const dotStyle = isHovered
+        ? `width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;box-shadow:0 0 0 2px #fff,0 0 0 3px ${color}`
+        : `width:8px;height:2px;background:${color};display:inline-block;flex-shrink:0`;
+      const nameStyle = isHovered
+        ? `color:var(--primary);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px`
+        : `color:var(--gray-disabled);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px`;
+      const valStyle = isHovered
+        ? 'margin-left:auto;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums'
+        : 'margin-left:auto;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums';
+      return `<div style="${wrapStyle}">
+        <span style="${dotStyle}"></span>
+        <span style="${nameStyle}" title="${p}">${p}</span>
+        <span style="${valStyle}">${val}</span>
       </div>`;
     }).join('');
 
