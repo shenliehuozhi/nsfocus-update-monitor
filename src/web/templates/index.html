@@ -1276,7 +1276,7 @@ async function dataPage() {
     <div class="data-toolbar">
       <div class="data-search-wrap">
         <span class="data-search-icon">🔍</span>
-        <input class="data-search" id="dataSearch" placeholder="搜索产品名 / 版本号 / 文件名 / 包类型…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
+        <input class="data-search" id="dataSearch" placeholder="搜索产品名 / 版本号 / 文件名 / 包类型 / 描述…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
         ${_dataQuery ? '<span class="data-search-clear" onclick="dataSearch(\'\')">×</span>' : ''}
       </div>
       <div class="data-filters">
@@ -1480,7 +1480,8 @@ function dataFilteredSources() {
       const verMatch = (src.snapshots || []).some(s =>
         (s.version_branch || '').toLowerCase().includes(q) ||
         (s.package_type || '').toLowerCase().includes(q) ||
-        (s.file_name || '').toLowerCase().includes(q)
+        (s.file_name || '').toLowerCase().includes(q) ||
+        (s.description_head || '').toLowerCase().includes(q)
       );
       if (!nameMatch && !verMatch) return false;
     }
@@ -1992,9 +1993,10 @@ function dataBuildFeed() {
     filtered = filtered.filter(r =>
         (r.file_name || '').toLowerCase().includes(q) ||
         (r.version_branch || '').toLowerCase().includes(q) ||
-        (r.package_type || '').toLowerCase().includes(q)
+        (r.package_type || '').toLowerCase().includes(q) ||
+        (r.description_head || '').toLowerCase().includes(q)
     );
-}
+  }
   if (_dataFilters.urgency) {
     filtered = filtered.filter(r => r.urgency === _dataFilters.urgency && r.status === 'active');
   }
