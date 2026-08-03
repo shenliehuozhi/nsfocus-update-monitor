@@ -1177,6 +1177,10 @@ function _toggleTlProd(p){
 const PAGE_SIZE = 20;
 let _dataQuery = '';
 let _dataFilters = { has_new: false, has_rb: false, empty: false };
+// 搜索字段 (由 select 决定):
+//   'description'  → 后端 search 端点 (整段 description_raw LIKE) — hit ids 入 _dataSearchHitIds
+//   其他字段       → 前端本地匹配对应单字段
+let _dataSearchField = 'description';
 // Set of snap ids that match the current /api/latest/search?q=
 // null = search not active or not yet returned (frontend falls back to local match).
 // Set = backend returned hits; frontend shows ONLY those (full-text incl. description_raw).
@@ -1278,9 +1282,16 @@ async function dataPage() {
 
   let h = `<div class="data-page">
     <div class="data-toolbar">
-      <div class="data-search-wrap">
+<div class="data-search-wrap">
         <span class="data-search-icon">🔍</span>
-        <input class="data-search" id="dataSearch" placeholder="搜索产品名 / 版本号 / 文件名 / 包类型 / 描述…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
+        <input class="data-search" id="dataSearch" placeholder="按所选字段搜索…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
+        <select id="dataSearchField" onchange="dataSearchFieldChange()" style="margin-left:6px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer">
+          <option value="description" selected>描述</option>
+          <option value="product_name">产品名</option>
+          <option value="version_branch">版本号</option>
+          <option value="file_name">文件名</option>
+          <option value="package_type">包类型</option>
+        </select>
         ${_dataQuery ? '<span class="data-search-clear" onclick="dataSearch(\'\')">×</span>' : ''}
       </div>
       <div class="data-filters">
@@ -1406,6 +1417,16 @@ function dataChipHtml(key, label) {
   return `<button class="data-chip ${active}" onclick="dataToggleFilter('${key}')">${label}</button>`;
 }
 
+function dataSearchFieldChange() {
+  const sel = document.getElementById('dataSearchField');
+  if (!sel) return;
+  _dataSearchField = sel.value;
+  // 字段切换 → 立即重新匹配 (用现有 query)
+  if (_dataQuery) {
+    dataSearch(_dataQuery);
+  }
+}
+
 function dataSearch(v) {
   _dataQuery = v.trim();
   _dataPage = 1;
@@ -1415,25 +1436,30 @@ function dataSearch(v) {
     dataRenderRight();
     return;
   }
-  // 异步调 /api/latest/search?q=... 后端查 description_raw 全字段 (整段,无截断)
-  // 同步先按本地匹配显示 (degrade), 等后端回来再覆盖
-  _dataSearchHitIds = null;
-  dataRenderLeft();
-  dataRenderRight();
-  api('/latest/search?q=' + encodeURIComponent(_dataQuery) + '&limit=200')
-    .then(r => {
-      const hits = (r.data && r.data.snapshots) || [];
-      // 仅在用户还没敲出别的 query 时覆盖 (避免乱跳)
-      if (_dataQuery === v.trim()) {
-        _dataSearchHitIds = new Set(hits.map(h => h.id));
-        dataRenderLeft();
-        dataRenderRight();
-      }
-    })
-    .catch(() => {
-      // 后端失败 → 保持本地匹配
-      _dataSearchHitIds = null;
-    });
+  if (_dataSearchField === 'description') {
+    // 后端搜描述 (整段 description_raw, 无截断)
+    _dataSearchHitIds = null;
+    dataRenderLeft();
+    dataRenderRight();
+    api('/latest/search?q=' + encodeURIComponent(_dataQuery) + '&field=description&limit=200')
+      .then(r => {
+        const hits = (r.data && r.data.snapshots) || [];
+        // 仅在用户没改 query 时覆盖
+        if (_dataQuery === v.trim()) {
+          _dataSearchHitIds = new Set(hits.map(h => h.id));
+          dataRenderLeft();
+          dataRenderRight();
+        }
+      })
+      .catch(() => {
+        _dataSearchHitIds = null;
+      });
+  } else {
+    // 其他字段: 纯前端本地匹配, 不走后端
+    _dataSearchHitIds = null;
+    dataRenderLeft();
+    dataRenderRight();
+  }
 }
 
 // Debounce wrapper: 输入时延迟 250ms 才调 dataSearch,
@@ -1503,12 +1529,20 @@ function dataFilteredSources() {
     if (!src.is_active) return false;
     if (_dataQuery) {
       const q = _dataQuery.toLowerCase();
+      const matchSnap = (s) => {
+        switch (_dataSearchField) {
+          case 'product_name':   return (s.file_name || '').toLowerCase().includes(q) || (s.package_type || '').toLowerCase().includes(q);  // product_name 在 src 级处理
+          case 'version_branch': return (s.version_branch || '').toLowerCase().includes(q);
+          case 'file_name':      return (s.file_name || '').toLowerCase().includes(q);
+          case 'package_type':   return (s.package_type || '').toLowerCase().includes(q);
+          case 'description':
+          default:
+            // 后端已查过 (或尚未返回) — 这里本地 fallback 用 file_name 兜底
+            return (s.file_name || '').toLowerCase().includes(q);
+        }
+      };
       const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
-      const verMatch = (src.snapshots || []).some(s =>
-        (s.version_branch || '').toLowerCase().includes(q) ||
-        (s.package_type || '').toLowerCase().includes(q) ||
-        (s.file_name || '').toLowerCase().includes(q)
-      );
+      const verMatch = (src.snapshots || []).some(matchSnap);
       if (!nameMatch && !verMatch) return false;
     }
     const { hasRb, freshness, isEmpty } = dataSourceFlags(src);
@@ -2016,18 +2050,23 @@ function dataBuildFeed() {
   let filtered = rows;
   if (_dataQuery && !_dataSelectedPathId) {
     const q = _dataQuery.toLowerCase();
-    const localMatch = r =>
-        (r.file_name || '').toLowerCase().includes(q) ||
-        (r.version_branch || '').toLowerCase().includes(q) ||
-        (r.package_type || '').toLowerCase().includes(q);
-    if (_dataSearchHitIds) {
-      // 后端已搜过 (含 description 全字段) — 命中集合优先
+    const localMatch = r => {
+      switch (_dataSearchField) {
+        case 'product_name':   return false;  // product_name 不参与 snap 级过滤
+        case 'version_branch': return (r.version_branch || '').toLowerCase().includes(q);
+        case 'file_name':      return (r.file_name || '').toLowerCase().includes(q);
+        case 'package_type':   return (r.package_type || '').toLowerCase().includes(q);
+        case 'description':
+        default:
+          // description: 后端走 /latest/search, 这里用 file_name 做 fallback (避免空显示)
+          return (r.file_name || '').toLowerCase().includes(q);
+      }
+    };
+    if (_dataSearchField === 'description' && _dataSearchHitIds) {
+      // 后端已返回: 命中集合优先
       filtered = filtered.filter(r => _dataSearchHitIds.has(r.id));
-    } else if (q.length >= 2) {
-      // 后端还没回 (debounce 后立即调, 用户可能敲到 1 个字符)
-      // 这时仅本地匹配, 描述搜不到 — 但等下后端回来会刷新
-      filtered = filtered.filter(localMatch);
     } else {
+      // 其他字段/后端未回: 本地单字段匹配
       filtered = filtered.filter(localMatch);
     }
   }
