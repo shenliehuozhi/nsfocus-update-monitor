@@ -1529,21 +1529,27 @@ function dataFilteredSources() {
     if (!src.is_active) return false;
     if (_dataQuery) {
       const q = _dataQuery.toLowerCase();
-      const matchSnap = (s) => {
-        switch (_dataSearchField) {
-          case 'product_name':   return (s.file_name || '').toLowerCase().includes(q) || (s.package_type || '').toLowerCase().includes(q);  // product_name 在 src 级处理
-          case 'version_branch': return (s.version_branch || '').toLowerCase().includes(q);
-          case 'file_name':      return (s.file_name || '').toLowerCase().includes(q);
-          case 'package_type':   return (s.package_type || '').toLowerCase().includes(q);
-          case 'description':
-          default:
-            // 后端已查过 (或尚未返回) — 这里本地 fallback 用 file_name 兜底
-            return (s.file_name || '').toLowerCase().includes(q);
-        }
-      };
-      const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
-      const verMatch = (src.snapshots || []).some(matchSnap);
-      if (!nameMatch && !verMatch) return false;
+      // description 字段: 后端已查过 — 检查 src.snapshots 是否至少有一个 id 在 _dataSearchHitIds
+      if (_dataSearchField === 'description' && _dataSearchHitIds) {
+        const srcHasHit = (src.snapshots || []).some(s => _dataSearchHitIds.has(s.id));
+        const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
+        if (!nameMatch && !srcHasHit) return false;
+      } else {
+        const matchSnap = (s) => {
+          switch (_dataSearchField) {
+            case 'product_name':   return (s.file_name || '').toLowerCase().includes(q) || (s.package_type || '').toLowerCase().includes(q);
+            case 'version_branch': return (s.version_branch || '').toLowerCase().includes(q);
+            case 'file_name':      return (s.file_name || '').toLowerCase().includes(q);
+            case 'package_type':   return (s.package_type || '').toLowerCase().includes(q);
+            case 'description':
+            default:
+              return (s.file_name || '').toLowerCase().includes(q);  // 后端尚未返回时的 fallback
+          }
+        };
+        const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
+        const verMatch = (src.snapshots || []).some(matchSnap);
+        if (!nameMatch && !verMatch) return false;
+      }
     }
     const { hasRb, freshness, isEmpty } = dataSourceFlags(src);
     if (_dataFilters.has_new && freshness !== 'new') return false;
