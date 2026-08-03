@@ -1208,29 +1208,56 @@ def get_latest_snapshots():
 # truncation) so users can match CVE / 漏洞 / 规则号 keywords regardless of
 # where they appear in the description. Performance: SQLite LIKE on 2.3k
 # description rows averages ~14ms (measured 2026-08-01).
+#
+# Query params:
+#   q      (required, min 2 chars): search keyword
+#   field  (optional, default 'all'): one of
+#             description, product_name, version_branch, package_type, file_name, all
+#   limit  (optional, default 50, max 200)
+ALLOWED_SEARCH_FIELDS = {
+    'description', 'product_name', 'version_branch', 'package_type', 'file_name', 'all'
+}
+
 @bp_latest.route('/search', methods=['GET'])
 @require_auth
 def search_snapshots():
     from src.models.database import query
     q = (request.args.get('q') or '').strip()
+    field = (request.args.get('field') or 'all').strip()
     limit = min(int(request.args.get('limit') or 50), 200)
+    if field not in ALLOWED_SEARCH_FIELDS:
+        return jsonify({'code': 1, 'message': f'invalid field: {field}'}), 400
     if not q or len(q) < 2:
-        return jsonify({'code': 0, 'data': {'snapshots': [], 'query': q, 'truncated': False}})
+        return jsonify({'code': 0, 'data': {'snapshots': [], 'query': q, 'field': field, 'truncated': False}})
     like_q = f'%{q}%'
-    rows = query(
-        """SELECT s.id, s.source_id, s.product_name, s.version_branch,
-                  s.package_type, s.file_name, s.published_at,
-                  s.status, s.urgency, s.source_url
-           FROM snapshots s
-           WHERE s.description_raw LIKE ?
-              OR s.file_name        LIKE ?
-              OR s.version_branch   LIKE ?
-              OR s.package_type     LIKE ?
-              OR s.product_name     LIKE ?
-           ORDER BY s.published_at DESC
-           LIMIT ?""",
-        (like_q, like_q, like_q, like_q, like_q, limit)
-    )
+    if field == 'all':
+        # 5 字段全查 (description_raw + 4 个结构字段)
+        rows = query(
+            """SELECT s.id, s.source_id, s.product_name, s.version_branch,
+                      s.package_type, s.file_name, s.published_at,
+                      s.status, s.urgency, s.source_url
+               FROM snapshots s
+               WHERE s.description_raw LIKE ?
+                  OR s.file_name        LIKE ?
+                  OR s.version_branch   LIKE ?
+                  OR s.package_type     LIKE ?
+                  OR s.product_name     LIKE ?
+               ORDER BY s.published_at DESC
+               LIMIT ?""",
+            (like_q, like_q, like_q, like_q, like_q, limit)
+        )
+    else:
+        # 单字段精确查询
+        rows = query(
+            f"""SELECT s.id, s.source_id, s.product_name, s.version_branch,
+                       s.package_type, s.file_name, s.published_at,
+                       s.status, s.urgency, s.source_url
+                FROM snapshots s
+                WHERE s.{field} LIKE ?
+                ORDER BY s.published_at DESC
+                LIMIT ?""",
+            (like_q, limit)
+        )
     snapshots = []
     for r in rows:
         rec = dict(r)
@@ -1241,6 +1268,7 @@ def search_snapshots():
     return jsonify({'code': 0, 'data': {
         'snapshots': snapshots,
         'query': q,
+        'field': field,
         'count': len(snapshots),
         'truncated': len(snapshots) >= limit
     }})
