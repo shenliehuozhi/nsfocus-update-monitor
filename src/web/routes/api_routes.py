@@ -1265,15 +1265,17 @@ def search_snapshots():
                 (like_q, limit)
             )
         elif field == 'version_branch':
+            # 'version_branch' UI 标签是"版本号", 但 SQL 实际列是 package_version (包版本号)
+            # version_branch 是产品线名 (如 "网络入侵防护系统 5.6.8"), 不是用户预期的"版本号"
             rows = query(
                 """SELECT s.id, s.source_id, s.product_name, s.version_branch,
                           s.package_type, s.file_name, s.published_at,
                           s.status, s.urgency, s.source_url
                  FROM snapshots s
-                 WHERE s.version_branch LIKE ? OR s.package_version LIKE ?
+                 WHERE s.package_version LIKE ?
                  ORDER BY s.published_at DESC
                  LIMIT ?""",
-                (like_q, like_q, limit)
+                (like_q, limit)
             )
         else:
             actual_col = field
