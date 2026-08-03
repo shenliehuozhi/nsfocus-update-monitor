@@ -1231,35 +1231,62 @@ def search_snapshots():
         return jsonify({'code': 0, 'data': {'snapshots': [], 'query': q, 'field': field, 'truncated': False}})
     like_q = f'%{q}%'
     if field == 'all':
-        # 5 字段全查 (description_raw + 4 个结构字段)
+        # 6 字段全查 (description_raw + 5 个结构字段, 含 package_version)
+        # version_branch + package_version 都查是因为 "版本号" 可能是产品线或包版本
         rows = query(
             """SELECT s.id, s.source_id, s.product_name, s.version_branch,
-                      s.package_type, s.file_name, s.published_at,
+                      s.package_type, s.package_version, s.file_name, s.published_at,
                       s.status, s.urgency, s.source_url
                FROM snapshots s
                WHERE s.description_raw LIKE ?
                   OR s.file_name        LIKE ?
                   OR s.version_branch   LIKE ?
+                  OR s.package_version  LIKE ?
                   OR s.package_type     LIKE ?
                   OR s.product_name     LIKE ?
                ORDER BY s.published_at DESC
                LIMIT ?""",
-            (like_q, like_q, like_q, like_q, like_q, limit)
+            (like_q, like_q, like_q, like_q, like_q, like_q, limit)
         )
     else:
         # 单字段精确查询
         # 'description' 字段实际列名为 description_raw, 映射到真实列
-        actual_col = 'description_raw' if field == 'description' else field
-        rows = query(
-            f"""SELECT s.id, s.source_id, s.product_name, s.version_branch,
-                       s.package_type, s.file_name, s.published_at,
-                       s.status, s.urgency, s.source_url
-                FROM snapshots s
-                WHERE s.{actual_col} LIKE ?
-                ORDER BY s.published_at DESC
-                LIMIT ?""",
-            (like_q, limit)
-        )
+        # 'version_branch' 字段 OR package_version — 用户搜"版本号"时, 实际意图可能是产品系列 (version_branch) 或包版本号 (package_version)
+        if field == 'description':
+            actual_col = 'description_raw'
+            rows = query(
+                f"""SELECT s.id, s.source_id, s.product_name, s.version_branch,
+                           s.package_type, s.file_name, s.published_at,
+                           s.status, s.urgency, s.source_url
+                    FROM snapshots s
+                    WHERE s.{actual_col} LIKE ?
+                    ORDER BY s.published_at DESC
+                    LIMIT ?""",
+                (like_q, limit)
+            )
+        elif field == 'version_branch':
+            rows = query(
+                """SELECT s.id, s.source_id, s.product_name, s.version_branch,
+                          s.package_type, s.file_name, s.published_at,
+                          s.status, s.urgency, s.source_url
+                 FROM snapshots s
+                 WHERE s.version_branch LIKE ? OR s.package_version LIKE ?
+                 ORDER BY s.published_at DESC
+                 LIMIT ?""",
+                (like_q, like_q, limit)
+            )
+        else:
+            actual_col = field
+            rows = query(
+                f"""SELECT s.id, s.source_id, s.product_name, s.version_branch,
+                           s.package_type, s.file_name, s.published_at,
+                           s.status, s.urgency, s.source_url
+                    FROM snapshots s
+                    WHERE s.{actual_col} LIKE ?
+                    ORDER BY s.published_at DESC
+                    LIMIT ?""",
+                (like_q, limit)
+            )
     snapshots = []
     for r in rows:
         rec = dict(r)
