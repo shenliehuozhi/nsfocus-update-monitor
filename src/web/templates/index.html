@@ -1538,8 +1538,7 @@ function dataFilteredSources() {
         const matchSnap = (s) => {
           switch (_dataSearchField) {
             case 'product_name':   return (s.file_name || '').toLowerCase().includes(q) || (s.package_type || '').toLowerCase().includes(q);
-            case 'version_branch': return (s.version_branch || '').toLowerCase().includes(q) ||
-                                        (s.package_version || '').toLowerCase().includes(q);
+            case 'version_branch': return (s.package_version || '').toLowerCase().includes(q);
             case 'file_name':      return (s.file_name || '').toLowerCase().includes(q);
             case 'package_type':   return (s.package_type || '').toLowerCase().includes(q);
             case 'description':
@@ -2060,8 +2059,7 @@ function dataBuildFeed() {
     const localMatch = r => {
       switch (_dataSearchField) {
         case 'product_name':   return (r._srcName || '').toLowerCase().includes(q);
-        case 'version_branch': return (r.version_branch || '').toLowerCase().includes(q) ||
-                                    (r.package_version || '').toLowerCase().includes(q);
+        case 'version_branch': return (r.package_version || '').toLowerCase().includes(q);
         case 'file_name':      return (r.file_name || '').toLowerCase().includes(q);
         case 'package_type':   return (r.package_type || '').toLowerCase().includes(q);
         case 'description':
