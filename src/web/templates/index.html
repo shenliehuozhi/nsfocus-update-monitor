@@ -369,7 +369,16 @@ tr[data-sid]{cursor:pointer}
   <div class="user" style="display:flex;align-items:center;gap:6px;height:100%">
     <span id="versionBadge" onclick="showAboutModal()" title="点击查看版本信息" style="display:inline-flex;align-items:center;cursor:pointer;font-family:monospace;font-size:11px;font-weight:600;color:#ffffff;padding:2px 7px;border-radius:4px;background:#4f46e5;border:1px solid #6366f1;line-height:1.4;white-space:nowrap;user-select:none">…</span>
     <button onclick="showAboutModal()" title="关于 / 版本信息" style="background:#2563eb;color:#ffffff;border:none;padding:0;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;line-height:1;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3);font-family:Arial,sans-serif">i</button>
-    <span id="uname" style="font-size:11px;color:#cbd5e1;opacity:.85"></span><button onclick="showPwdModal()">改密</button><button onclick="logout()">退出</button>
+    <div id="userMenu" style="position:relative;display:inline-block">
+      <span id="uname" onclick="toggleUserMenu(event)" title="点击打开用户菜单" style="font-size:11px;color:#cbd5e1;opacity:.85;cursor:pointer;user-select:none;padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px">
+        <span id="unameText"></span>
+        <span style="font-size:10px;opacity:.7">▾</span>
+      </span>
+      <div id="userDropdown" style="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1e293b;border:1px solid #334155;border-radius:6px;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9999;overflow:hidden">
+        <div onclick="showPwdModal();closeUserMenu()" style="padding:9px 14px;cursor:pointer;color:#e2e8f0;font-size:12px" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='transparent'">🔒 修改密码</div>
+        <div onclick="logout();closeUserMenu()" style="padding:9px 14px;cursor:pointer;color:#e2e8f0;font-size:12px;border-top:1px solid #334155" onmouseover="this.style.background='#334155'" onmouseout="this.style.background='transparent'">🚪 退出登录</div>
+      </div>
+    </div>
   </div>
 </header>
 <div class="main" id="app"></div>
@@ -516,13 +525,33 @@ function showLoginForm(){
 }
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
-  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
+  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
 }
 function logout(){
   if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
   T=null;U=null;localStorage.removeItem('token');renderLogin();
 }
+
+// ── User dropdown menu (header right corner) ─────────────
+function toggleUserMenu(e){
+  e && e.stopPropagation();
+  const dd = document.getElementById('userDropdown');
+  if(!dd) return;
+  dd.style.display = dd.style.display === 'none' || dd.style.display === '' ? 'block' : 'none';
+}
+function closeUserMenu(){
+  const dd = document.getElementById('userDropdown');
+  if(dd) dd.style.display = 'none';
+}
+// Click outside the user menu closes it
+document.addEventListener('click', (e) => {
+  const menu = document.getElementById('userMenu');
+  const dd = document.getElementById('userDropdown');
+  if(!menu || !dd) return;
+  if(dd.style.display === 'none' || dd.style.display === '') return;
+  if(!menu.contains(e.target)) dd.style.display = 'none';
+});
 
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
@@ -7108,7 +7137,7 @@ function toggleAutoRefresh(){
 
 // Init
 document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();showPage(a.dataset.page);}));
-if(T){api('/auth/me').then(r=>{if(r.code===0){U=r.data;document.getElementById('uname').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else{T=null;renderLogin();}});}else renderLogin();
+if(T){api('/auth/me').then(r=>{if(r.code===0){U=r.data;document.getElementById('unameText').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else{T=null;renderLogin();}});}else renderLogin();
 
 // ── About Modal — version identification ──
 let _aboutInfo = null;
