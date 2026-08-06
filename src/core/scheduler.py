@@ -943,7 +943,7 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
 
     try:
         # ── 拿 cookie ──
-        collect_sessions = _collect_sessions()
+        collect_sessions = get_active_collect_sessions()
         if not collect_sessions:
             return {'status': 'error', 'reason': 'no active session cookie'}
 
