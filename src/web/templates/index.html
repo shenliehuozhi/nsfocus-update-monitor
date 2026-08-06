@@ -1832,6 +1832,7 @@ function dataRenderLeft() {
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge}
         <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
+        <button class="btn btn-xs" style="margin-left:auto;background:var(--primary);color:#fff;font-size:10px;padding:2px 8px" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escHtml(src.name || sid)}')" title="立即采集此产品">🔄</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
         <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
@@ -6863,6 +6864,13 @@ async function delProduct(id,name){
 async function collectProduct(id,mode){
   const r=await api(`/system/products/${id}/collect`,{method:'POST',body:JSON.stringify({mode})});
   toast(r.message||'已触发','success');
+}
+
+// Card-level trigger (data page): single product quick collection
+async function dataCollectProduct(sid, name){
+  const r=await api(`/system/products/${sid}/collect`,{method:'POST',body:JSON.stringify({mode:'quick'})});
+  if(r.code===0){toast(`「${name}」采集已触发`,'success');}
+  else{toast(r.message||'触发失败','error');}
 }
 
 async function handleSchedulerToggle(cb){
