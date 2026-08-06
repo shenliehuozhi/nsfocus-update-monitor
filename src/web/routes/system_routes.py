@@ -1671,7 +1671,7 @@ def collect_single_product(source_id: int):
     this source_id (not the full system).
     """
     from src.models.snapshot import get_source
-    from src.core.scheduler import run_for_source
+    from src.core.scheduler import run_for_source, _single_product_state, _single_product_lock
 
     src = get_source(source_id)
     if not src:
@@ -1681,6 +1681,11 @@ def collect_single_product(source_id: int):
     mode = body.get('mode', 'quick')
     if mode not in ('quick', 'full'):
         return {'code': 400, 'message': 'mode must be quick or full'}, 400
+
+    # Reject if a single-product collection is already running for ANY source
+    with _single_product_lock:
+        if _single_product_state.get('active'):
+            return {'code': 409, 'message': '已有单产品采集中，请等待完成'}, 409
 
     # Run in background — just trigger and return
     def _bg():
@@ -1696,6 +1701,24 @@ def collect_single_product(source_id: int):
         'message': f'「{src["name"]}」采集已触发 ({mode})',
         'data': {'source_id': source_id, 'mode': mode},
     }
+
+
+@bp.route('/products/<int:source_id>/collect-status', methods=['GET'])
+@require_auth
+def get_collect_status(source_id: int):
+    """Return current single-product collection progress for polling."""
+    from src.core.scheduler import get_single_product_progress
+    state = get_single_product_progress()
+    # Only return if the state matches the requested source_id (or stale)
+    if state.get('source_id') and state.get('source_id') != source_id:
+        # Different source — return idle state for caller
+        return {'code': 0, 'data': {
+            'active': False, 'source_id': source_id,
+            'phase': 'idle', 'log_lines': [],
+            'items': 0, 'duration_s': 0,
+            'started_at': None, 'finished_at': None,
+        }}
+    return {'code': 0, 'data': state}
 
 
 def _product_safe(p: dict) -> dict:
