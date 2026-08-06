@@ -165,16 +165,20 @@ def list_log_files():
 @require_auth
 def tail_logs():
     """Tail the last N lines of a log file, optionally filtered by level.
-    
+
     Query params:
-        file   - log file name (default: app.log)
-        lines  - number of lines (default: 200, max: 1000)
-        level  - filter level: DEBUG, INFO, WARNING, ERROR (default: all)
+        file      - log file name (default: app.log)
+        lines     - number of lines (default: 200, max: 1000)
+        level     - filter level: DEBUG, INFO, WARNING, ERROR (default: all)
+        since_ts  - ISO timestamp; only return lines after this (for incremental polling)
+        source_id - if set, only return lines mentioning this source_id (for single-product banner)
     """
     from src.core.logger import get_log_dir
     filename = request.args.get('file', 'app.log')
-    n = min(int(request.args.get('lines', 200)), 1000)
+    n = min(int(request.args.get('lines', 200)), 5000)
     level_filter = request.args.get('level', '').upper()
+    since_ts = request.args.get('since_ts', '').strip()
+    source_id = request.args.get('source_id', '').strip()
 
     # Security: only allow *.log files
     if not filename.endswith('.log') or '..' in filename or '/' in filename:
@@ -190,6 +194,33 @@ def tail_logs():
     # Filter by level if requested
     if level_filter in ('DEBUG', 'INFO', 'WARNING', 'ERROR'):
         lines = [l for l in lines if f'[{level_filter}]' in l]
+
+    # Filter by source_id (only keep lines mentioning the product's name or sid)
+    # Match patterns: collector logs use 【产品名】 (no `name=` prefix).
+    if source_id:
+        sid_filter = f'source_id={source_id}'
+        # Also fetch product name for fuzzy match
+        name_filter = ''
+        try:
+            from src.models.snapshot import get_source
+            src = get_source(int(source_id))
+            if src:
+                # collector logs embed name as 【<name>】 — wrap with 【】 for exact substring match
+                name_filter = f"【{src['name']}】"
+        except Exception:
+            pass
+        filtered = []
+        for l in lines:
+            if sid_filter in l or (name_filter and name_filter in l):
+                filtered.append(l)
+            # Also keep scheduler-level lines about the source (no source_id but in window)
+            elif 'Single product' in l and source_id in l:
+                filtered.append(l)
+        lines = filtered
+
+    # Filter by since_ts (incremental: only lines with timestamp > since_ts)
+    if since_ts:
+        lines = [l for l in lines if l[:19] > since_ts]
 
     # Newest first for display
     lines.reverse()
@@ -207,6 +238,8 @@ def tail_logs():
             'requested': n,
             'level': level_filter or 'ALL',
             'current_log_level': current_level,
+            'source_id': source_id or None,
+            'since_ts': since_ts or None,
         }
     }
 
