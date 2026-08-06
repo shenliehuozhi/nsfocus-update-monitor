@@ -1666,10 +1666,12 @@ def _auto_detect_strategy(entry_url: str) -> str:
 def collect_single_product(source_id: int):
     """Trigger collection for a single product (runs in background).
 
-    Body: {"mode": "quick"}  — mode: quick or full
+    Body: {"mode": "quick"}  — only quick mode is supported.
+    Delegates to scheduler.run_for_source() which actually only collects
+    this source_id (not the full system).
     """
     from src.models.snapshot import get_source
-    from src.core.scheduler import run_now
+    from src.core.scheduler import run_for_source
 
     src = get_source(source_id)
     if not src:
@@ -1682,7 +1684,7 @@ def collect_single_product(source_id: int):
 
     # Run in background — just trigger and return
     def _bg():
-        run_now(mode=mode)
+        run_for_source(source_id, mode=mode)
 
     import threading
     t = threading.Thread(target=_bg, daemon=True)
