@@ -6899,27 +6899,38 @@ function _renderSingleBanner(state){
   const existing=document.getElementById('single-collect-banner');
   if(existing) existing.remove();
   const phaseOrder = ['starting','collecting','detecting','notifying','done'];
-  const pct = state.phase==='done'?100 :
+  // Phase-based percentage (slow background), with log_count-based overlay (rapid feedback)
+  const phasePct = state.phase==='done'?100 :
               state.phase==='error'?0 :
               state.phase==='idle'?10 :
               Math.round((phaseOrder.indexOf(state.phase)+1)/phaseOrder.length*100);
+  // Log-count overlay: rolling 0-100% based on last 50 lines (rapid visual feedback)
+  const tailLines = state._tail_lines || state.log_lines || [];
+  const logPct = tailLines.length > 0 ? Math.min(100, (tailLines.length % 50) / 50 * 100) : 0;
+  // Use logPct as the primary progress (rapid feedback); phasePct as max
+  const pct = state.phase === 'done' ? 100 : Math.max(logPct, phasePct * 0.5);
   const banner=document.createElement('div');
   banner.id='single-collect-banner';
   banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:420px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
   const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
   const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
+  // Latest tail line (for inline display in progress bar)
+  const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
+  // Truncate long lines for inline display
+  const latestShort = latestLine.length > 80 ? latestLine.slice(0, 80) + '…' : latestLine;
   banner.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px">
       <div style="font-size:15px">${phaseIcon}</div>
       <div style="flex:1">
         <div style="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
-        <div style="opacity:0.9;font-size:12px">${phaseLabel} · 提取 ${state.items||0} 个文件 · 耗时 ${state.duration_s||0}s</div>
+        <div style="opacity:0.9;font-size:12px">${phaseLabel} · ${tailLines.length} 条日志 · 耗时 ${state.duration_s||0}s</div>
       </div>
       <div id="single-banner-log-btn" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
       <div id="single-banner-close" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
     </div>
-    <div style="height:4px;background:rgba(255,255,255,0.25);border-radius:4px">
-      <div id="single-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+    <div style="position:relative;height:18px;background:rgba(255,255,255,0.18);border-radius:4px;overflow:hidden">
+      <div id="single-banner-bar" style="position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,0.7);border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+      <div id="single-banner-latest" style="position:absolute;left:0;top:0;height:100%;width:100%;display:flex;align-items:center;padding:0 8px;font-size:11px;font-family:monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#1e293b;font-weight:600">${escHtml(latestShort)}</div>
     </div>
     <div id="single-banner-log" style="display:none;max-height:260px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
   `;
