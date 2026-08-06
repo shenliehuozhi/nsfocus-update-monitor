@@ -389,6 +389,29 @@ _pkg_refresh_state = {
 _pkg_refresh_lock = threading.Lock()
 
 
+# ── Single product collection state (mirrors pkg_refresh pattern) ─────
+# Shared between background thread (run_for_source) and HTTP polling endpoint.
+# Phase: 'idle' | 'starting' | 'collecting' | 'detecting' | 'notifying' | 'done' | 'error' | 'skipped'
+_single_product_state: dict = {
+    'active': False,
+    'source_id': None,
+    'source_name': '',
+    'phase': '',
+    'log_lines': [],
+    'items': 0,
+    'duration_s': 0,
+    'started_at': None,
+    'finished_at': None,
+}
+_single_product_lock = threading.Lock()
+
+
+def get_single_product_progress() -> dict:
+    """Return current single product collection state (for HTTP polling)."""
+    with _single_product_lock:
+        return dict(_single_product_state)
+
+
 def get_pkg_refresh_progress() -> dict:
     with _pkg_refresh_lock:
         return dict(_pkg_refresh_state)
@@ -918,6 +941,8 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
     与 run_now() 区别: 只跑一个 source_id, 不遍历所有产品.
     与全局采集互斥 (共用 _is_running lock).
     mode: 仅 'quick' 支持 (full mode 已被显式禁用, 见 is_full_scan_due).
+
+    进度通过 _single_product_state 全局状态发布,HTTP endpoint 暴露给前端轮询.
     """
     global _is_running
 
@@ -937,7 +962,30 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
         return {'status': 'error', 'reason': 'source not active'}
 
     _is_running = True
+
+    # ── 初始化进度状态 ──
+    from datetime import datetime as _dt
+    started_iso = _dt.utcnow().isoformat()
+    with _single_product_lock:
+        _single_product_state.update({
+            'active': True, 'source_id': source_id, 'source_name': src['name'],
+            'phase': 'starting', 'log_lines': [], 'items': 0, 'duration_s': 0,
+            'started_at': started_iso, 'finished_at': None,
+        })
+
+    def _push_log(line: str):
+        with _single_product_lock:
+            _single_product_state['log_lines'].append(line)
+            # Keep last 100 lines to avoid unbounded growth
+            if len(_single_product_state['log_lines']) > 100:
+                _single_product_state['log_lines'] = _single_product_state['log_lines'][-100:]
+
+    def _set_phase(phase: str):
+        with _single_product_lock:
+            _single_product_state['phase'] = phase
+
     logger.info(f'Single product collection starting: source_id={source_id} name={src["name"]} mode={mode}')
+    _push_log(f'开始采集: {src["name"]} (source_id={source_id})')
     start = time.time()
     cycle_withdrawn_by_src: dict = {}
 
@@ -945,14 +993,18 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
         # ── 拿 cookie ──
         collect_sessions = get_active_collect_sessions()
         if not collect_sessions:
+            _set_phase('error')
+            _push_log('❌ 无 active session cookie')
             return {'status': 'error', 'reason': 'no active session cookie'}
 
-        # Use the first valid collect session
         valid_session = list(collect_sessions.values())[0]
         cookie = valid_session['cookie_value']
         _collector._set_cookie(cookie)
+        _push_log(f'✓ session 已就绪')
 
         # ── 单产品采集 ──
+        _set_phase('collecting')
+        _push_log(f'🔍 采集阶段: 抓取已知 URL 并比对 page_hash...')
         per_src_withdrawn: list = []
         items, zhash = _collector._collect_quick(
             source_id, src['name'],
@@ -962,11 +1014,15 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
             out_withdrawn=per_src_withdrawn)
         if per_src_withdrawn:
             cycle_withdrawn_by_src[source_id] = per_src_withdrawn
-
         logger.info(f'Single product collection done: source_id={source_id} items={len(items)}')
+        _push_log(f'✓ 采集完成: 提取 {len(items)} 个文件')
+        with _single_product_lock:
+            _single_product_state['items'] = len(items)
 
         # ── run_detection: 检测新增/撤回 ──
         if items:
+            _set_phase('detecting')
+            _push_log(f'🔬 检测阶段: 比对 DB 历史快照...')
             from src.models.database import query as _db_q
             before_snaps = _db_q(
                 """SELECT id, file_name, md5_hash FROM snapshots
@@ -978,25 +1034,36 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
                                   seen_ids={s['id'] for s in before_snaps},
                                   withdrawn_items=cycle_withdrawn_by_src.get(source_id))
             logger.info(f'Single product detection: new={len(result.new_items)} rollback={len(result.rollback_items)}')
+            _push_log(f'✓ 检测完成: 新增 {len(result.new_items)} | 回滚 {len(result.rollback_items)}')
 
             # ── route_notifications: 推送新包 ──
             if result.new_items:
+                _set_phase('notifying')
+                _push_log(f'📤 推送阶段: {len(result.new_items)} 个新包...')
                 rules = get_enabled_rules()
+                push_count = 0
                 for rule in rules:
                     matched = get_new_for_subscription(rule, result.new_items)
                     for sid, snap in matched:
                         route_notifications(sid, rule['id'])
+                        push_count += 1
+                _push_log(f'✓ 推送触发: {push_count} 条订阅匹配')
 
             # ── rollback 推送 ──
-            for sid, snap in result.rollback_items:
-                rules = get_enabled_rules()
-                for rule in rules:
-                    if not rule.get('notify_rollback', 1):
-                        continue
-                    matched = get_new_for_subscription(rule, [(sid, snap)])
-                    if not matched:
-                        continue
-                    route_notifications(sid, rule['id'], is_rollback=True)
+            if result.rollback_items:
+                rb_push_count = 0
+                for sid, snap in result.rollback_items:
+                    rules = get_enabled_rules()
+                    for rule in rules:
+                        if not rule.get('notify_rollback', 1):
+                            continue
+                        matched = get_new_for_subscription(rule, [(sid, snap)])
+                        if not matched:
+                            continue
+                        route_notifications(sid, rule['id'], is_rollback=True)
+                        rb_push_count += 1
+                if rb_push_count:
+                    _push_log(f'✓ 回滚推送: {rb_push_count} 条')
 
         # ── 延迟队列处理 ──
         process_delayed_queue()
@@ -1007,6 +1074,8 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
         touch_active_snapshots([source_id])
 
         duration = int(time.time() - start)
+        _set_phase('done')
+        _push_log(f'🎉 完成 · 耗时 {duration}s')
         return {
             'status': 'ok',
             'source_id': source_id,
@@ -1016,10 +1085,18 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
         }
     except Exception as e:
         logger.error(f'Single product collection failed: source_id={source_id} error={e}')
+        _set_phase('error')
+        _push_log(f'❌ 失败: {str(e)[:150]}')
         update_source_health(source_id, 'error')
         return {'status': 'error', 'reason': str(e)[:200], 'source_id': source_id}
     finally:
         _is_running = False
+        duration_final = int(time.time() - start)
+        finished_iso = datetime.utcnow().isoformat()
+        with _single_product_lock:
+            _single_product_state['active'] = False
+            _single_product_state['finished_at'] = finished_iso
+            _single_product_state['duration_s'] = duration_final
 
 
 def is_full_scan_due() -> bool:
