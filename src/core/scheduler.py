@@ -912,6 +912,116 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
     return all_items, cycle_withdrawn_by_src
 
 
+def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) -> dict:
+    """手动按产品采集 — 对单一 source 跑 quick 采集+检测+推送.
+
+    与 run_now() 区别: 只跑一个 source_id, 不遍历所有产品.
+    与全局采集互斥 (共用 _is_running lock).
+    mode: 仅 'quick' 支持 (full mode 已被显式禁用, 见 is_full_scan_due).
+    """
+    global _is_running
+
+    # 全系统采集在跑 → skip, 让用户等
+    if _is_running:
+        return {'status': 'skipped', 'reason': 'global collection running'}
+
+    # stale check (跟 run_now 一致)
+    if _check_concurrent_stale():
+        return {'status': 'skipped', 'reason': 'Previous collection still running'}
+
+    from src.models.snapshot import get_source
+    src = get_source(source_id)
+    if not src:
+        return {'status': 'error', 'reason': f'source_id {source_id} not found'}
+    if not src.get('is_active'):
+        return {'status': 'error', 'reason': 'source not active'}
+
+    _is_running = True
+    logger.info(f'Single product collection starting: source_id={source_id} name={src["name"]} mode={mode}')
+    start = time.time()
+    cycle_withdrawn_by_src: dict = {}
+
+    try:
+        # ── 拿 cookie ──
+        collect_sessions = _collect_sessions()
+        if not collect_sessions:
+            return {'status': 'error', 'reason': 'no active session cookie'}
+
+        # Use the first valid collect session
+        valid_session = list(collect_sessions.values())[0]
+        cookie = valid_session['cookie_value']
+        _collector._set_cookie(cookie)
+
+        # ── 单产品采集 ──
+        per_src_withdrawn: list = []
+        items, zhash = _collector._collect_quick(
+            source_id, src['name'],
+            shared_url_cache={},
+            shared_url_sids={},
+            shared_stats={'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0},
+            out_withdrawn=per_src_withdrawn)
+        if per_src_withdrawn:
+            cycle_withdrawn_by_src[source_id] = per_src_withdrawn
+
+        logger.info(f'Single product collection done: source_id={source_id} items={len(items)}')
+
+        # ── run_detection: 检测新增/撤回 ──
+        if items:
+            from src.models.database import query as _db_q
+            before_snaps = _db_q(
+                """SELECT id, file_name, md5_hash FROM snapshots
+                   WHERE source_id=? AND status IN ('active','rollback','rollback_pending')""",
+                (source_id,)
+            )
+            result = run_detection(source_id, items, ROLLBACK_CONFIRM,
+                                  check_rollback=True,
+                                  seen_ids={s['id'] for s in before_snaps},
+                                  withdrawn_items=cycle_withdrawn_by_src.get(source_id))
+            logger.info(f'Single product detection: new={len(result.new_items)} rollback={len(result.rollback_items)}')
+
+            # ── route_notifications: 推送新包 ──
+            if result.new_items:
+                rules = get_enabled_rules()
+                for rule in rules:
+                    matched = get_new_for_subscription(rule, result.new_items)
+                    for sid, snap in matched:
+                        route_notifications(sid, rule['id'])
+
+            # ── rollback 推送 ──
+            for sid, snap in result.rollback_items:
+                rules = get_enabled_rules()
+                for rule in rules:
+                    if not rule.get('notify_rollback', 1):
+                        continue
+                    matched = get_new_for_subscription(rule, [(sid, snap)])
+                    if not matched:
+                        continue
+                    route_notifications(sid, rule['id'], is_rollback=True)
+
+        # ── 延迟队列处理 ──
+        process_delayed_queue()
+
+        # ── update health ──
+        update_source_health(source_id, 'ok', datetime.utcnow().isoformat())
+        from src.models.snapshot import touch_active_snapshots
+        touch_active_snapshots([source_id])
+
+        duration = int(time.time() - start)
+        return {
+            'status': 'ok',
+            'source_id': source_id,
+            'name': src['name'],
+            'items': len(items),
+            'duration_s': duration,
+        }
+    except Exception as e:
+        logger.error(f'Single product collection failed: source_id={source_id} error={e}')
+        update_source_health(source_id, 'error')
+        return {'status': 'error', 'reason': str(e)[:200], 'source_id': source_id}
+    finally:
+        _is_running = False
+
+
 def is_full_scan_due() -> bool:
     """Check if full scan is due based on FULL_SCAN_INTERVAL.
 
