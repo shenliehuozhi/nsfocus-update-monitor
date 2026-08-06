@@ -6869,8 +6869,112 @@ async function collectProduct(id,mode){
 // Card-level trigger (data page): single product quick collection
 async function dataCollectProduct(sid, name){
   const r=await api(`/system/products/${sid}/collect`,{method:'POST',body:JSON.stringify({mode:'quick'})});
-  if(r.code===0){toast(`「${name}」采集已触发`,'success');}
+  if(r.code===0){toast(`「${name}」采集已触发`,'success');showSingleCollectBanner(sid, name);}
+  else if(r.code===409){toast(r.message||'已有单产品采集中','warn');}
   else{toast(r.message||'触发失败','error');}
+}
+
+// ── Single-product collection banner (mirrors _showDiscBanner pattern) ──────
+// Persistent purple banner at bottom showing phase + log_lines for the running
+// single-product collection. Polls /system/products/<sid>/collect-status every 2s.
+let _singleCollTimer = null;
+function showSingleCollectBanner(sid, name){
+  // Reuse one-shot probe (sid=0 sentinel) — endpoint returns current state if active.
+  api('/system/products/0/collect-status').then(r => {
+    if(r && r.data && r.data.active) _renderSingleBanner(r.data);
+    else _renderSingleBanner(_initialSingleState(sid, name));
+  });
+}
+function _initialSingleState(sid, name){
+  return {active:true, source_id:sid, source_name:name, phase:'starting', log_lines:['⏳ 启动中...'], items:0, duration_s:0};
+}
+function _renderSingleBanner(state){
+  const existing=document.getElementById('single-collect-banner');
+  if(existing) existing.remove();
+  // Phase → progress percentage mapping
+  const phaseOrder = ['starting','collecting','detecting','notifying','done'];
+  const pct = state.phase==='done'?100 :
+              state.phase==='error'?0 :
+              Math.round((phaseOrder.indexOf(state.phase)+1)/phaseOrder.length*100);
+  const banner=document.createElement('div');
+  banner.id='single-collect-banner';
+  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:380px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
+  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️'}[state.phase]||'⏳';
+  const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'完成',error:'失败',skipped:'已跳过'}[state.phase]||state.phase;
+  banner.innerHTML=`
+    <div style="display:flex;align-items:center;gap:10px">
+      <div style="font-size:15px">${phaseIcon}</div>
+      <div style="flex:1">
+        <div style="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
+        <div style="opacity:0.9;font-size:12px">${phaseLabel} · 提取 ${state.items||0} 个文件 · 耗时 ${state.duration_s||0}s</div>
+      </div>
+      <div id="single-banner-log-btn" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
+      <div id="single-banner-close" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
+    </div>
+    <div style="height:4px;background:rgba(255,255,255,0.25);border-radius:4px">
+      <div id="single-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+    </div>
+    <div id="single-banner-log" style="display:none;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
+  `;
+  banner.querySelector('#single-banner-log-btn').onclick=(ev)=>{
+    ev.stopPropagation();
+    const log=document.getElementById('single-banner-log');
+    log.style.display = log.style.display==='none'?'block':'none';
+    if(log.style.display==='block') _renderSingleLog(state);
+  };
+  banner.querySelector('#single-banner-close').onclick=(ev)=>{
+    ev.stopPropagation();
+    _hideSingleBanner();
+  };
+  document.body.appendChild(banner);
+  if(state.log_lines && state.log_lines.length){
+    const log=document.getElementById('single-banner-log');
+    if(log && log.style.display!=='none') _renderSingleLog(state);
+  }
+  // Start polling
+  if(_singleCollTimer) clearInterval(_singleCollTimer);
+  _singleCollTimer = setInterval(()=>_pollSingleCollect(), 2000);
+}
+function _renderSingleLog(state){
+  const log=document.getElementById('single-banner-log');
+  if(!log) return;
+  log.innerHTML = (state.log_lines||[]).map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+  log.scrollTop = log.scrollHeight;
+}
+async function _pollSingleCollect(){
+  const r = await api('/system/products/0/collect-status');
+  if(!r || !r.data) return;
+  const s = r.data;
+  if(!s.active){
+    _hideSingleBanner();
+    return;
+  }
+  const bar=document.getElementById('single-banner-bar');
+  const phase=document.getElementById('single-banner-phase');
+  const phaseOrder = ['starting','collecting','detecting','notifying','done'];
+  const pct = s.phase==='done'?100 :
+              s.phase==='error'?0 :
+              Math.round((phaseOrder.indexOf(s.phase)+1)/phaseOrder.length*100);
+  if(bar) bar.style.width = pct + '%';
+  // Re-render full banner to update phase label and log lines
+  const banner = document.getElementById('single-collect-banner');
+  if(banner){
+    const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️'}[s.phase]||'⏳';
+    const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'完成',error:'失败',skipped:'已跳过'}[s.phase]||s.phase;
+    const meta = banner.querySelector('div[style*="opacity:0.9"]');
+    if(meta) meta.textContent = `${phaseLabel} · 提取 ${s.items||0} 个文件 · 耗时 ${s.duration_s||0}s`;
+    const title = banner.querySelector('div[style*="font-weight:600"]');
+    if(title){
+      const icon = title.firstChild;
+      if(icon) icon.textContent = phaseIcon;
+    }
+    const log=document.getElementById('single-banner-log');
+    if(log && log.style.display!=='none') _renderSingleLog(s);
+  }
+}
+function _hideSingleBanner(){
+  if(_singleCollTimer){clearInterval(_singleCollTimer);_singleCollTimer=null;}
+  const b=document.getElementById('single-collect-banner'); if(b) b.remove();
 }
 
 async function handleSchedulerToggle(cb){
