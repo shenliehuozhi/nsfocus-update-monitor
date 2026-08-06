@@ -6874,32 +6874,40 @@ async function dataCollectProduct(sid, name){
 }
 
 // ── Single-product collection banner (mirrors _showDiscBanner pattern) ──────
-// Persistent purple banner at bottom showing phase + log_lines for the running
-// single-product collection. Polls /system/products/<sid>/collect-status every 2s.
+// Persistent purple banner at bottom showing phase + app.log tail lines for
+// the running single-product collection. Polls every 2s; stays visible until
+// user clicks × (does not auto-hide on completion).
 let _singleCollTimer = null;
+let _singleLogTailSince = null;  // ISO timestamp cursor for incremental log poll
 function showSingleCollectBanner(sid, name){
-  // Reuse one-shot probe (sid=0 sentinel) — endpoint returns current state if active.
+  // Reset tail cursor when showing new banner
+  _singleLogTailSince = null;
+  // Probe current status first
   api('/system/products/0/collect-status').then(r => {
-    if(r && r.data && r.data.active) _renderSingleBanner(r.data);
-    else _renderSingleBanner(_initialSingleState(sid, name));
+    if(r && r.data && r.data.active) {
+      _renderSingleBanner(r.data);
+      _startSingleLogTail(sid);
+    } else {
+      // No active single-product collect — show historical banner using current
+      // scheduler state as fallback (recently completed)
+      _renderSingleBanner({active:false, source_id:sid, source_name:name, phase:'idle', log_lines:['⏳ 启动中...'], items:0, duration_s:0});
+      _startSingleLogTail(sid);
+    }
   });
-}
-function _initialSingleState(sid, name){
-  return {active:true, source_id:sid, source_name:name, phase:'starting', log_lines:['⏳ 启动中...'], items:0, duration_s:0};
 }
 function _renderSingleBanner(state){
   const existing=document.getElementById('single-collect-banner');
   if(existing) existing.remove();
-  // Phase → progress percentage mapping
   const phaseOrder = ['starting','collecting','detecting','notifying','done'];
   const pct = state.phase==='done'?100 :
               state.phase==='error'?0 :
+              state.phase==='idle'?10 :
               Math.round((phaseOrder.indexOf(state.phase)+1)/phaseOrder.length*100);
   const banner=document.createElement('div');
   banner.id='single-collect-banner';
-  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:380px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
-  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️'}[state.phase]||'⏳';
-  const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'完成',error:'失败',skipped:'已跳过'}[state.phase]||state.phase;
+  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:420px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
+  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
+  const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
   banner.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px">
       <div style="font-size:15px">${phaseIcon}</div>
@@ -6913,8 +6921,9 @@ function _renderSingleBanner(state){
     <div style="height:4px;background:rgba(255,255,255,0.25);border-radius:4px">
       <div id="single-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
     </div>
-    <div id="single-banner-log" style="display:none;max-height:200px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
+    <div id="single-banner-log" style="display:none;max-height:260px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
   `;
+  // Toggle log viewer
   banner.querySelector('#single-banner-log-btn').onclick=(ev)=>{
     ev.stopPropagation();
     const log=document.getElementById('single-banner-log');
@@ -6926,50 +6935,57 @@ function _renderSingleBanner(state){
     _hideSingleBanner();
   };
   document.body.appendChild(banner);
-  if(state.log_lines && state.log_lines.length){
-    const log=document.getElementById('single-banner-log');
-    if(log && log.style.display!=='none') _renderSingleLog(state);
-  }
-  // Start polling
-  if(_singleCollTimer) clearInterval(_singleCollTimer);
-  _singleCollTimer = setInterval(()=>_pollSingleCollect(), 2000);
 }
 function _renderSingleLog(state){
   const log=document.getElementById('single-banner-log');
   if(!log) return;
-  log.innerHTML = (state.log_lines||[]).map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+  // Prefer tail lines if state has them (set by _startSingleLogTail)
+  const lines = state._tail_lines || state.log_lines || [];
+  log.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
   log.scrollTop = log.scrollHeight;
 }
-async function _pollSingleCollect(){
-  const r = await api('/system/products/0/collect-status');
-  if(!r || !r.data) return;
-  const s = r.data;
-  if(!s.active){
-    _hideSingleBanner();
-    return;
-  }
-  const bar=document.getElementById('single-banner-bar');
-  const phase=document.getElementById('single-banner-phase');
-  const phaseOrder = ['starting','collecting','detecting','notifying','done'];
-  const pct = s.phase==='done'?100 :
-              s.phase==='error'?0 :
-              Math.round((phaseOrder.indexOf(s.phase)+1)/phaseOrder.length*100);
-  if(bar) bar.style.width = pct + '%';
-  // Re-render full banner to update phase label and log lines
-  const banner = document.getElementById('single-collect-banner');
-  if(banner){
-    const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️'}[s.phase]||'⏳';
-    const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'完成',error:'失败',skipped:'已跳过'}[s.phase]||s.phase;
-    const meta = banner.querySelector('div[style*="opacity:0.9"]');
-    if(meta) meta.textContent = `${phaseLabel} · 提取 ${s.items||0} 个文件 · 耗时 ${s.duration_s||0}s`;
-    const title = banner.querySelector('div[style*="font-weight:600"]');
-    if(title){
-      const icon = title.firstChild;
-      if(icon) icon.textContent = phaseIcon;
-    }
-    const log=document.getElementById('single-banner-log');
-    if(log && log.style.display!=='none') _renderSingleLog(s);
-  }
+// Poll app.log for new lines related to this source_id
+function _startSingleLogTail(sid){
+  if(_singleCollTimer){clearInterval(_singleCollTimer);_singleCollTimer=null;}
+  const tick = async () => {
+    try {
+      // 1) Update phase from collect-status
+      const r = await api('/system/products/0/collect-status');
+      if(!r || !r.data) return;
+      const s = r.data;
+      // 2) Get tail lines from app.log
+      const params = new URLSearchParams({file:'app.log', lines:2000, source_id:String(sid)});
+      if(_singleLogTailSince) params.set('since_ts', _singleLogTailSince);
+      const logR = await api('/system/logs?' + params.toString());
+      let tailLines = (logR && logR.data && logR.data.lines) || [];
+      // Bump cursor to last line's timestamp (or current time)
+      if(tailLines.length > 0){
+        const lastLine = tailLines[tailLines.length-1];
+        const m = lastLine.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+        if(m) _singleLogTailSince = m[1];
+      }
+      // Reverse: backend returns newest first; we want display order oldest → newest
+      tailLines.reverse();
+      // Update banner with phase + tail lines
+      s._tail_lines = tailLines;
+      // Refresh banner (preserve expanded log if open)
+      const logEl = document.getElementById('single-banner-log');
+      const wasOpen = logEl && logEl.style.display !== 'none';
+      _renderSingleBanner(s);
+      if(wasOpen){
+        const log2 = document.getElementById('single-banner-log');
+        if(log2) log2.style.display = 'block';
+        _renderSingleLog(s);
+      }
+      // Stop polling after 30s of inactivity to avoid leaking timer
+      if(!s.active && s.phase === 'done'){
+        // Keep banner visible — user must click × to close
+      }
+    } catch(e) { /* swallow transient errors */ }
+  };
+  // Initial fetch + every 2s
+  tick();
+  _singleCollTimer = setInterval(tick, 2000);
 }
 function _hideSingleBanner(){
   if(_singleCollTimer){clearInterval(_singleCollTimer);_singleCollTimer=null;}
