@@ -1828,7 +1828,6 @@ function dataRenderLeft() {
     const treeBodyId = cardId + '_body';
     html += `<div class="card" id="${cardId}" style="margin-bottom:10px">
       <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
-        <span class="tree-arrow" style="cursor:pointer;color:var(--gray-disabled);font-size:13px;user-select:none;flex-shrink:0;margin-right:6px">&#9658;</span>
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge}
         <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
