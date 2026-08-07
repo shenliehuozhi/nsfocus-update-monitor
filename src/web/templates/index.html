@@ -6915,10 +6915,11 @@ function _renderSingleBanner(state){
   banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:600px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
   const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
   const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
-  // Latest log line (live tail) — visible in banner; tail_lines used for 📋 viewer.
+  // Latest log line: prefer scheduler summary (state.log_lines) over raw app.log tail.
   const tailLines = state._tail_lines || [];
-  const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
-  const latestClean = latestLine.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
+  const logLines = state.log_lines || [];
+  const src = logLines.length > 0 ? logLines[logLines.length - 1] : (tailLines.length > 0 ? tailLines[tailLines.length - 1] : '');
+  const latestClean = src.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
   const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
   banner.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px">
@@ -6943,14 +6944,19 @@ function _renderSingleBanner(state){
     const opening = log.style.display==='none';
     log.style.display = opening?'block':'none';
     if(opening){
-      // Force a fresh tail fetch (state._tail_lines may be stale or empty)
+      // Prefer scheduler summary (log_lines) — it's already populated by collect-status.
+      // Fall back to a fresh app.log tail fetch if state.log_lines is empty.
+      const logLines = state.log_lines || [];
+      if(logLines.length > 0){
+        _renderSingleLog(state);
+        return;
+      }
+      log.innerHTML = '<div style="opacity:0.6">⏳ 加载日志...</div>';
       const sid = state.source_id;
       const params = new URLSearchParams({file:'app.log', lines:2000});
       if(sid) params.set('source_id', String(sid));
-      log.innerHTML = '<div style="opacity:0.6">⏳ 加载日志...</div>';
       api('/system/logs?' + params.toString()).then(r => {
         const fresh = (r && r.data && r.data.lines) || [];
-        // tail_lines is newest-first; reverse to oldest-first for display
         state._tail_lines = fresh.slice().reverse();
         _renderSingleLog(state);
       }).catch(()=>{
@@ -6968,9 +6974,12 @@ function _renderSingleBanner(state){
 function _renderSingleLog(state){
   const log=document.getElementById('single-banner-log');
   if(!log) return;
-  // Prefer tail lines (live app.log content for this source_id) — user wants
-  // to see real log lines from app.log filtered by source_id.
-  const lines = state._tail_lines && state._tail_lines.length > 0 ? state._tail_lines : (state.log_lines || []);
+  // Prefer scheduler summary (state.log_lines) — clean structured milestones like
+  // "✓ 采集完成: 144 个文件". Only fall back to raw app.log tail (state._tail_lines)
+  // if no summary lines exist yet.
+  const logLines = state.log_lines || [];
+  const tailLines = state._tail_lines || [];
+  const lines = logLines.length > 0 ? logLines : tailLines;
   log.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
   log.scrollTop = log.scrollHeight;
 }
@@ -6986,7 +6995,7 @@ function _updateSingleBannerInPlace(state){
               state.phase==='error'?0 :
               state.phase==='idle'?10 :
               Math.round((phaseOrder.indexOf(state.phase)+1)/phaseOrder.length*100);
-  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'ⳳ';
+  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
   const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
   // Find rows by data attribute (more robust than positional selectors)
   const iconEl = banner.querySelector('[data-banner-role="phase-icon"]');
@@ -6998,15 +7007,16 @@ function _updateSingleBannerInPlace(state){
   // Update progress bar width
   const bar = document.getElementById('single-banner-bar');
   if(bar) bar.style.width = phasePct + '%';
-  // Update latest log line (only when log viewer is closed)
+  // Update latest log line: prefer scheduler summary (log_lines) over raw app.log noise
   const logEl = document.getElementById('single-banner-log');
   const logOpen = logEl && logEl.style.display !== 'none';
   const latestWrap = document.getElementById('single-banner-latest-wrap');
+  const logLines = state.log_lines || [];
   const tailLines = state._tail_lines || [];
   if(!logOpen){
-    // Closed: show latest line (live)
-    const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
-    const latestClean = latestLine.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
+    // Closed: show latest line (scheduler summary wins; fall back to app.log tail)
+    const src = logLines.length > 0 ? logLines[logLines.length - 1] : (tailLines.length > 0 ? tailLines[tailLines.length - 1] : '');
+    const latestClean = src.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
     const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
     if(latestWrap){
       latestWrap.textContent = latestShort ? '▶ ' + latestShort : '';
@@ -7020,7 +7030,8 @@ function _updateSingleBannerInPlace(state){
   // If log viewer is open, refresh its content
   if(logOpen){
     const wasScrollBottom = (logEl.scrollTop + logEl.clientHeight) >= logEl.scrollHeight - 5;
-    const lines = state._tail_lines && state._tail_lines.length > 0 ? state._tail_lines : (state.log_lines || []);
+    // Prefer scheduler summary (log_lines); fall back to app.log tail
+    const lines = logLines.length > 0 ? logLines : tailLines;
     logEl.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
     if(wasScrollBottom) logEl.scrollTop = logEl.scrollHeight;
   }
