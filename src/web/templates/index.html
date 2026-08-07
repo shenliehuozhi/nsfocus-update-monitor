@@ -6882,15 +6882,15 @@ let _singleLogTailSince = null;  // ISO timestamp cursor for incremental log pol
 function showSingleCollectBanner(sid, name){
   // Reset tail cursor when showing new banner
   _singleLogTailSince = null;
-  // Probe current status first
+  // Probe current status first; only show banner when active.
   api('/system/products/0/collect-status').then(r => {
-    if(r && r.data && r.data.active) {
-      _renderSingleBanner(r.data);
+    if(r && r.data && r.data.active){
+      // Decorate active state with caller-provided name (in case state lost it)
+      const s = Object.assign({}, r.data, {source_name: r.data.source_name || name, source_id: r.data.source_id || sid});
+      _renderSingleBanner(s);
       _startSingleLogTail(sid);
     } else {
-      // No active single-product collect — show historical banner using current
-      // scheduler state as fallback (recently completed)
-      _renderSingleBanner({active:false, source_id:sid, source_name:name, phase:'idle', log_lines:['⏳ 启动中...'], items:0, duration_s:0});
+      // Not active yet — start polling; banner will appear once active=true arrives.
       _startSingleLogTail(sid);
     }
   });
@@ -6911,13 +6911,15 @@ function _renderSingleBanner(state){
   const pct = state.phase === 'done' ? 100 : Math.max(logPct, phasePct * 0.5);
   const banner=document.createElement('div');
   banner.id='single-collect-banner';
-  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:420px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
+  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:600px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
   const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
   const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
   // Latest tail line (for inline display in progress bar)
   const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
-  // Truncate long lines for inline display
-  const latestShort = latestLine.length > 80 ? latestLine.slice(0, 80) + '…' : latestLine;
+  // Strip log timestamp prefix for readability (format: "2026-08-07 07:25:00 [INFO] monitor.x: ...")
+  const latestClean = latestLine.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
+  // Truncate to ~120 chars (banner is wide enough now)
+  const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
   banner.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px">
       <div style="font-size:15px">${phaseIcon}</div>
@@ -6928,10 +6930,10 @@ function _renderSingleBanner(state){
       <div id="single-banner-log-btn" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
       <div id="single-banner-close" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
     </div>
-    <div style="position:relative;height:18px;background:rgba(255,255,255,0.18);border-radius:4px;overflow:hidden">
-      <div id="single-banner-bar" style="position:absolute;left:0;top:0;height:100%;background:rgba(255,255,255,0.7);border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
-      <div id="single-banner-latest" style="position:absolute;left:0;top:0;height:100%;width:100%;display:flex;align-items:center;padding:0 8px;font-size:11px;font-family:monospace;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#1e293b;font-weight:600">${escHtml(latestShort)}</div>
+    <div style="height:6px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden">
+      <div id="single-banner-bar" style="height:100%;background:rgba(255,255,255,0.85);border-radius:3px;transition:width 0.4s;width:${pct}%"></div>
     </div>
+    <div id="single-banner-latest-wrap" style="display:${latestShort ? 'block' : 'none'};font-family:monospace;font-size:11.5px;background:rgba(0,0,0,0.18);border-radius:4px;padding:4px 8px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
     <div id="single-banner-log" style="display:none;max-height:260px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
   `;
   // Toggle log viewer
@@ -6979,15 +6981,23 @@ function _startSingleLogTail(sid){
       tailLines.reverse();
       // Update banner with phase + tail lines
       s._tail_lines = tailLines;
-      // Refresh banner (preserve expanded log if open)
-      const logEl = document.getElementById('single-banner-log');
-      const wasOpen = logEl && logEl.style.display !== 'none';
-      _renderSingleBanner(s);
-      if(wasOpen){
-        const log2 = document.getElementById('single-banner-log');
-        if(log2) log2.style.display = 'block';
-        _renderSingleLog(s);
+      // Decorate with caller-provided sid if state lost it
+      if(!s.source_name) s.source_name = `sid=${s.source_id||sid}`;
+      if(!s.source_id) s.source_id = sid;
+      // Only render/update banner if active OR banner already exists (so user can close it).
+      // This prevents showing a "sid=null" idle banner before collection actually starts.
+      const existing = document.getElementById('single-collect-banner');
+      if(s.active || existing){
+        const logEl = document.getElementById('single-banner-log');
+        const wasOpen = logEl && logEl.style.display !== 'none';
+        _renderSingleBanner(s);
+        if(wasOpen){
+          const log2 = document.getElementById('single-banner-log');
+          if(log2) log2.style.display = 'block';
+          _renderSingleLog(s);
+        }
       }
+      // If not active and no banner exists, do nothing — banner stays hidden until active arrives.
       // Stop polling after 30s of inactivity to avoid leaking timer
       if(!s.active && s.phase === 'done'){
         // Keep banner visible — user must click × to close
