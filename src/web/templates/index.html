@@ -6929,14 +6929,29 @@ function _renderSingleBanner(state){
       <div id="single-banner-bar" style="height:100%;background:rgba(255,255,255,0.85);border-radius:3px;transition:width 0.4s;width:${pct}%"></div>
     </div>
     <div id="single-banner-latest-wrap" style="display:${latestShort ? 'block' : 'none'};font-family:monospace;font-size:11.5px;background:rgba(0,0,0,0.18);border-radius:4px;padding:4px 8px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
-    <div id="single-banner-log" style="display:none;max-height:260px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
+    <div id="single-banner-log" style="display:none;max-height:500px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
   `;
   // Toggle log viewer
   banner.querySelector('#single-banner-log-btn').onclick=(ev)=>{
     ev.stopPropagation();
     const log=document.getElementById('single-banner-log');
-    log.style.display = log.style.display==='none'?'block':'none';
-    if(log.style.display==='block') _renderSingleLog(state);
+    const opening = log.style.display==='none';
+    log.style.display = opening?'block':'none';
+    if(opening){
+      // Force a fresh tail fetch (state._tail_lines may be stale or empty)
+      const sid = state.source_id;
+      const params = new URLSearchParams({file:'app.log', lines:2000});
+      if(sid) params.set('source_id', String(sid));
+      log.innerHTML = '<div style="opacity:0.6">⏳ 加载日志...</div>';
+      api('/system/logs?' + params.toString()).then(r => {
+        const fresh = (r && r.data && r.data.lines) || [];
+        // tail_lines is newest-first; reverse to oldest-first for display
+        state._tail_lines = fresh.slice().reverse();
+        _renderSingleLog(state);
+      }).catch(()=>{
+        _renderSingleLog(state);
+      });
+    }
   };
   banner.querySelector('#single-banner-close').onclick=(ev)=>{
     ev.stopPropagation();
