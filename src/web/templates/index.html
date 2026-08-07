@@ -6971,16 +6971,15 @@ function _startSingleLogTail(sid){
       if(_singleLogTailSince) params.set('since_ts', _singleLogTailSince);
       const logR = await api('/system/logs?' + params.toString());
       let tailLines = (logR && logR.data && logR.data.lines) || [];
-      // Bump cursor to last line's timestamp (or current time)
+      // Bump cursor to newest line's timestamp (we want future polls to fetch
+      // strictly newer lines; backend tail returns newest-first so [0] is newest).
       if(tailLines.length > 0){
-        const lastLine = tailLines[tailLines.length-1];
-        const m = lastLine.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
+        const newestLine = tailLines[0];
+        const m = newestLine.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})/);
         if(m) _singleLogTailSince = m[1];
       }
-      // Reverse: backend returns newest first; we want display order oldest → newest
-      tailLines.reverse();
-      // Update banner with phase + tail lines
-      s._tail_lines = tailLines;
+      // Reverse for display: banner wants oldest-first ordering.
+      s._tail_lines = tailLines.slice().reverse();
       // Decorate with caller-provided sid if state lost it
       if(!s.source_name) s.source_name = `sid=${s.source_id||sid}`;
       if(!s.source_id) s.source_id = sid;
