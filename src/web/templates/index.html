@@ -6968,6 +6968,53 @@ function _renderSingleLog(state){
   log.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
   log.scrollTop = log.scrollHeight;
 }
+
+// In-place banner update — keeps DOM intact so expanded log viewer stays open.
+// Updates phase icon+label, progress bar width, sub-title, latest log line.
+// Does NOT touch #single-banner-log div (preserves user's open/close state).
+function _updateSingleBannerInPlace(state){
+  const banner = document.getElementById('single-collect-banner');
+  if(!banner) return;
+  const phaseOrder = ['starting','collecting','detecting','notifying','done'];
+  const phasePct = state.phase==='done'?100 :
+              state.phase==='error'?0 :
+              state.phase==='idle'?10 :
+              Math.round((phaseOrder.indexOf(state.phase)+1)/phaseOrder.length*100);
+  const pct = phasePct;
+  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
+  const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
+  // Update phase icon (first icon span inside the top row)
+  const titleRow = banner.querySelector('div[style*="display:flex;align-items:center;gap:10px"]');
+  if(titleRow){
+    const iconEl = titleRow.querySelector('div');
+    if(iconEl) iconEl.textContent = phaseIcon;
+    // Sub-title line: "phaseLabel · 耗时 Ns"
+    const subTitle = titleRow.querySelector('div[style*="opacity:0.9"]');
+    if(subTitle) subTitle.textContent = `${phaseLabel} · 耗时 ${state.duration_s||0}s`;
+  }
+  // Update progress bar width
+  const bar = document.getElementById('single-banner-bar');
+  if(bar) bar.style.width = pct + '%';
+  // Update latest log line
+  const tailLines = state._tail_lines || [];
+  const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
+  const latestClean = latestLine.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
+  const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
+  const latestWrap = document.getElementById('single-banner-latest-wrap');
+  if(latestWrap){
+    latestWrap.textContent = latestShort ? '▶ ' + latestShort : '';
+    latestWrap.title = latestClean;
+    latestWrap.style.display = latestShort ? 'block' : 'none';
+  }
+  // If log viewer is open, refresh its content with latest tail
+  const logEl = document.getElementById('single-banner-log');
+  if(logEl && logEl.style.display !== 'none'){
+    const wasScrollBottom = (logEl.scrollTop + logEl.clientHeight) >= logEl.scrollHeight - 5;
+    const lines = state._tail_lines && state._tail_lines.length > 0 ? state._tail_lines : (state.log_lines || []);
+    logEl.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+    if(wasScrollBottom) logEl.scrollTop = logEl.scrollHeight;  // stick to bottom only if user was already at bottom
+  }
+}
 // Poll app.log for new lines related to this source_id
 function _startSingleLogTail(sid){
   if(_singleCollTimer){clearInterval(_singleCollTimer);_singleCollTimer=null;}
@@ -6997,15 +7044,12 @@ function _startSingleLogTail(sid){
       // Only render/update banner if active OR banner already exists (so user can close it).
       // This prevents showing a "sid=null" idle banner before collection actually starts.
       const existing = document.getElementById('single-collect-banner');
-      if(s.active || existing){
-        const logEl = document.getElementById('single-banner-log');
-        const wasOpen = logEl && logEl.style.display !== 'none';
+      if(!existing){
+        // First-time show
         _renderSingleBanner(s);
-        if(wasOpen){
-          const log2 = document.getElementById('single-banner-log');
-          if(log2) log2.style.display = 'block';
-          _renderSingleLog(s);
-        }
+      } else {
+        // Update in-place: keep DOM intact so expanded log viewer stays open.
+        _updateSingleBannerInPlace(s);
       }
       // If not active and no banner exists, do nothing — banner stays hidden until active arrives.
       // Stop polling after 30s of inactivity to avoid leaking timer
