@@ -6947,10 +6947,9 @@ function _renderSingleBanner(state){
 function _renderSingleLog(state){
   const log=document.getElementById('single-banner-log');
   if(!log) return;
-  // Prefer scheduler summary lines (log_lines) — they're the structured high-level
-  // milestones ("✓ 采集完成: 105 个文件", "✓ 检测完成: 新增 0 | 回滚 0"), much cleaner than
-  // raw app.log tail which is full of low-level FETCH/UNCHANGED noise.
-  const lines = state.log_lines && state.log_lines.length > 0 ? state.log_lines : (state._tail_lines || []);
+  // Prefer tail lines (live app.log content for this source_id) — user wants
+  // to see real log lines from app.log filtered by source_id.
+  const lines = state._tail_lines && state._tail_lines.length > 0 ? state._tail_lines : (state.log_lines || []);
   log.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
   log.scrollTop = log.scrollHeight;
 }
