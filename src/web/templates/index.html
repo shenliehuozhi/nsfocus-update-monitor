@@ -6896,11 +6896,13 @@ function showSingleCollectBanner(sid, name){
   });
 }
 function _renderSingleBanner(state){
-  // First-render only: remove any stale banner. Subsequent updates must use
-  // _updateSingleBannerInPlace() to preserve DOM + click handlers + log open state.
+  // Idempotent: if banner already exists (whether or not _initialized), update it
+  // in-place. Only do a full innerHTML rebuild on the very first render.
   const existing=document.getElementById('single-collect-banner');
-  if(existing && !existing._initialized) existing.remove();
-  if(existing && existing._initialized) return;  // already rendered — skip full rebuild
+  if(existing){
+    _updateSingleBannerInPlace(state);
+    return;
+  }
   const phaseOrder = ['starting','collecting','detecting','notifying','done'];
   // Phase-only progress (single-product has no real % — just show phase progression).
   const phasePct = state.phase==='done'?100 :
@@ -7052,12 +7054,10 @@ function _startSingleLogTail(sid){
       // Only render/update banner if active OR banner already exists (so user can close it).
       // This prevents showing a "sid=null" idle banner before collection actually starts.
       const existing = document.getElementById('single-collect-banner');
-      if(!existing){
-        // First-time show
+      if(s.active || existing){
+        // _renderSingleBanner is now idempotent — first render builds DOM, subsequent
+        // calls update in-place. Both paths preserve #single-banner-log open state.
         _renderSingleBanner(s);
-      } else {
-        // Update in-place: keep DOM intact so expanded log viewer stays open.
-        _updateSingleBannerInPlace(s);
       }
       // If not active and no banner exists, do nothing — banner stays hidden until active arrives.
       // Stop polling after 30s of inactivity to avoid leaking timer
