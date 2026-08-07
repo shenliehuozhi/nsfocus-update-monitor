@@ -1831,7 +1831,7 @@ function dataRenderLeft() {
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge}
         <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
-        <button style="margin-left:auto;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;border:none;font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s" onmouseenter="this.style.background='var(--primary-deep)'" onmouseleave="this.style.background='var(--primary)'" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escHtml(src.name || sid)}')" title="立即采集此产品">采</button>
+        <button style="margin-left:auto;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" onmouseenter="this.style.background='var(--primary)';this.style.color='#fff'" onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escHtml(src.name || sid)}')" title="立即采集此产品">采</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
         <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
