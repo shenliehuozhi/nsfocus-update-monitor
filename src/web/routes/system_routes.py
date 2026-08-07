@@ -1739,19 +1739,13 @@ def collect_single_product(source_id: int):
 @bp.route('/products/<int:source_id>/collect-status', methods=['GET'])
 @require_auth
 def get_collect_status(source_id: int):
-    """Return current single-product collection progress for polling."""
+    """Return current single-product collection progress for polling.
+
+    Always returns the actual single_product_state (no fake idle masking).
+    Caller distinguishes: active=True → show banner; active=False → hide banner.
+    """
     from src.core.scheduler import get_single_product_progress
-    state = get_single_product_progress()
-    # Only return if the state matches the requested source_id (or stale)
-    if state.get('source_id') and state.get('source_id') != source_id:
-        # Different source — return idle state for caller
-        return {'code': 0, 'data': {
-            'active': False, 'source_id': source_id,
-            'phase': 'idle', 'log_lines': [],
-            'items': 0, 'duration_s': 0,
-            'started_at': None, 'finished_at': None,
-        }}
-    return {'code': 0, 'data': state}
+    return {'code': 0, 'data': get_single_product_progress()}
 
 
 def _product_safe(p: dict) -> dict:
