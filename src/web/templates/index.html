@@ -6917,10 +6917,10 @@ function _renderSingleBanner(state){
   const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
   banner.innerHTML=`
     <div style="display:flex;align-items:center;gap:10px">
-      <div style="font-size:15px">${phaseIcon}</div>
+      <div data-banner-role="phase-icon" style="font-size:15px">${phaseIcon}</div>
       <div style="flex:1">
-        <div style="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
-        <div style="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
+        <div data-banner-role="title" style="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
+        <div data-banner-role="sub-title" style="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
       </div>
       <div id="single-banner-log-btn" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
       <div id="single-banner-close" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
@@ -6980,39 +6980,43 @@ function _updateSingleBannerInPlace(state){
               state.phase==='error'?0 :
               state.phase==='idle'?10 :
               Math.round((phaseOrder.indexOf(state.phase)+1)/phaseOrder.length*100);
-  const pct = phasePct;
-  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
+  const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'ⳳ';
   const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
-  // Update phase icon (first icon span inside the top row)
-  const titleRow = banner.querySelector('div[style*="display:flex;align-items:center;gap:10px"]');
-  if(titleRow){
-    const iconEl = titleRow.querySelector('div');
-    if(iconEl) iconEl.textContent = phaseIcon;
-    // Sub-title line: "phaseLabel · 耗时 Ns"
-    const subTitle = titleRow.querySelector('div[style*="opacity:0.9"]');
-    if(subTitle) subTitle.textContent = `${phaseLabel} · 耗时 ${state.duration_s||0}s`;
-  }
+  // Find rows by data attribute (more robust than positional selectors)
+  const iconEl = banner.querySelector('[data-banner-role="phase-icon"]');
+  if(iconEl) iconEl.textContent = phaseIcon;
+  const subTitleEl = banner.querySelector('[data-banner-role="sub-title"]');
+  if(subTitleEl) subTitleEl.textContent = `${phaseLabel} · 耗时 ${state.duration_s||0}s`;
+  const titleEl = banner.querySelector('[data-banner-role="title"]');
+  if(titleEl) titleEl.textContent = `🔄 单产品采集 · ${state.source_name||('sid='+state.source_id)}`;
   // Update progress bar width
   const bar = document.getElementById('single-banner-bar');
-  if(bar) bar.style.width = pct + '%';
-  // Update latest log line
-  const tailLines = state._tail_lines || [];
-  const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
-  const latestClean = latestLine.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
-  const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
-  const latestWrap = document.getElementById('single-banner-latest-wrap');
-  if(latestWrap){
-    latestWrap.textContent = latestShort ? '▶ ' + latestShort : '';
-    latestWrap.title = latestClean;
-    latestWrap.style.display = latestShort ? 'block' : 'none';
-  }
-  // If log viewer is open, refresh its content with latest tail
+  if(bar) bar.style.width = phasePct + '%';
+  // Update latest log line (only when log viewer is closed)
   const logEl = document.getElementById('single-banner-log');
-  if(logEl && logEl.style.display !== 'none'){
+  const logOpen = logEl && logEl.style.display !== 'none';
+  const latestWrap = document.getElementById('single-banner-latest-wrap');
+  const tailLines = state._tail_lines || [];
+  if(!logOpen){
+    // Closed: show latest line (live)
+    const latestLine = tailLines.length > 0 ? tailLines[tailLines.length - 1] : '';
+    const latestClean = latestLine.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
+    const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
+    if(latestWrap){
+      latestWrap.textContent = latestShort ? '▶ ' + latestShort : '';
+      latestWrap.title = latestClean;
+      latestWrap.style.display = latestShort ? 'block' : 'none';
+    }
+  } else {
+    // Open: hide latest line (avoid duplication with log viewer)
+    if(latestWrap) latestWrap.style.display = 'none';
+  }
+  // If log viewer is open, refresh its content
+  if(logOpen){
     const wasScrollBottom = (logEl.scrollTop + logEl.clientHeight) >= logEl.scrollHeight - 5;
     const lines = state._tail_lines && state._tail_lines.length > 0 ? state._tail_lines : (state.log_lines || []);
     logEl.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
-    if(wasScrollBottom) logEl.scrollTop = logEl.scrollHeight;  // stick to bottom only if user was already at bottom
+    if(wasScrollBottom) logEl.scrollTop = logEl.scrollHeight;
   }
 }
 // Poll app.log for new lines related to this source_id
