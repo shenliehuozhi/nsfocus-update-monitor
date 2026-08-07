@@ -6896,8 +6896,11 @@ function showSingleCollectBanner(sid, name){
   });
 }
 function _renderSingleBanner(state){
+  // First-render only: remove any stale banner. Subsequent updates must use
+  // _updateSingleBannerInPlace() to preserve DOM + click handlers + log open state.
   const existing=document.getElementById('single-collect-banner');
-  if(existing) existing.remove();
+  if(existing && !existing._initialized) existing.remove();
+  if(existing && existing._initialized) return;  // already rendered — skip full rebuild
   const phaseOrder = ['starting','collecting','detecting','notifying','done'];
   // Phase-only progress (single-product has no real % — just show phase progression).
   const phasePct = state.phase==='done'?100 :
@@ -6958,6 +6961,7 @@ function _renderSingleBanner(state){
     _hideSingleBanner();
   };
   document.body.appendChild(banner);
+  banner._initialized = true;  // marker: prevent _renderSingleBanner from re-rendering this banner
 }
 function _renderSingleLog(state){
   const log=document.getElementById('single-banner-log');
