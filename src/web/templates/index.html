@@ -1831,7 +1831,7 @@ function dataRenderLeft() {
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge}
         <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
-        <button class="btn btn-xs" style="margin-left:auto;background:var(--primary);color:#fff;font-size:10px;padding:2px 8px" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escHtml(src.name || sid)}')" title="立即采集此产品">🔄</button>
+        <button class="btn btn-xs" style="margin-left:auto;background:transparent;color:var(--primary);border:1px solid var(--primary);font-size:11px;padding:3px 10px;border-radius:5px;display:inline-flex;align-items:center;gap:4px;transition:background .15s" onmouseenter="this.style.background='var(--primary-light)'" onmouseleave="this.style.background='transparent'" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escHtml(src.name || sid)}')" title="立即采集此产品">🔄 采集</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
         <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
