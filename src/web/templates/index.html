@@ -2385,8 +2385,18 @@ function dataRightToggleRow(rowId) {
   const entryUrl = src.entry_url || '';
   // Match path by snap.path_id (exact, distinguishes multi-chain shared URLs).
   // Fall back to URL match only for legacy rows that have no path_id.
+  // 2026-08-08: 如果用户选了某个 leaf (_dataSelectedChain),优先匹配同 chain
+  // 的 path (URL-only path_id 在多 chain 共享时会被 paths.find 返回第一条,
+  // 不一定是用户点的 chain)。这样层级路径渲染对得上用户点击的 leaf。
   let matchedPath = null;
-  if (snap.path_id) {
+  if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+    matchedPath = paths.find(p =>
+      Array.isArray(p.chain) &&
+      p.chain.length === _dataSelectedChain.length &&
+      p.chain.every((seg, i) => seg === _dataSelectedChain[i])
+    );
+  }
+  if (!matchedPath && snap.path_id) {
     matchedPath = paths.find(p => p.path_id === snap.path_id);
   }
   if (!matchedPath && snap.source_url) {
@@ -2452,13 +2462,19 @@ function dataRightToggleRow(rowId) {
   const t4 = performance.now();
   rowEl.classList.add('feed-expanded');
   const arrow = rowEl.querySelector('.feed-arrow');
+  // 2026-08-08: 类型字段用 chain 派生,不读 snap.package_type(URL 去重后
+  // snap 行被互相覆盖,snap.package_type 脏)。matchedPath 来自上方按
+  // snap.path_id 在 paths[] 里 find,拿到 chain 后 chain[-1] 即为 pkg_type。
+  const matchedPathPkg = (matchedPath && matchedPath.chain && matchedPath.chain.length > 0)
+    ? matchedPath.chain[matchedPath.chain.length - 1]
+    : '';
   if (arrow) arrow.textContent = '▼';
 
   const detailHtml = `<div class="feed-detail" id="snap-detail-${snapId}">
   <div class="detail-inner">
     <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
-    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || '')}</span>
-    <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[snap.package_type] || snap.package_type || ''}</span>
+    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || (matchedPath && matchedPath.chain && matchedPath.chain.length >= 2 ? matchedPath.chain[matchedPath.chain.length - 2] : '') || '')}</span>
+    <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[matchedPathPkg] || matchedPathPkg || ''}</span>
     <span class="data-detail-k">紧急度</span><span style="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${snap.urgency || ''}</span></span>
     <span class="data-detail-k">文件大小</span><span style="font-size:12.5px" id="snap-fs-${snapId}">—</span>
     <span class="data-detail-k">发布时间</span><span style="font-size:12.5px">${fmtTZ(snap.published_at, true)}</span>
@@ -2541,8 +2557,10 @@ function dataRightGoto(sid, chainJson) {
           ? (src.snapshots || []).find(s => s.path_id === targetPathId)
           : null;
         if (snap) {
-          verHint = snap.version_branch || null;
-          pkgHint = snap.package_type || null;
+          // 2026-08-08: ver/pkg 从 chain 派生,不读 snap 行(URL 去重后
+          // snap 行被互相覆盖,snap.version_branch/snap.package_type 脏)
+          verHint = path.chain.length >= 2 ? path.chain[path.chain.length - 2] : null;
+          pkgHint = path.chain[path.chain.length - 1] || null;
         }
       }
     }

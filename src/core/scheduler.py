@@ -30,6 +30,7 @@ from src.models.snapshot import (
     upsert_source,
 )
 from src.models.subscription import get_enabled_rules
+from src.notifiers.base import resolve_chain_pkg
 
 logger = get_logger('scheduler')
 
@@ -642,7 +643,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             summary['products'][name]['new'] = len(result.new_items)
             by_type = {}
             for _, snap in result.new_items:
-                pt = snap.get('package_type') or 'other'
+                # 2026-08-08: 用 chain 派生 pkg_type,不读 snap 行
+                pt = resolve_chain_pkg(snap) or 'other'
                 by_type[pt] = by_type.get(pt, 0) + 1
             summary['products'][name]['by_type'] = by_type
 

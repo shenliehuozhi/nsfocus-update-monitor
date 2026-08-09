@@ -5,7 +5,7 @@ import time
 from datetime import datetime, timezone
 
 from src.core.logger import get_logger
-from src.notifiers.base import NotificationMessage, DeliveryResult, TEMPLATE_NAMES, DEFAULT_TEMPLATE_BY_CHANNEL
+from src.notifiers.base import NotificationMessage, DeliveryResult, TEMPLATE_NAMES, DEFAULT_TEMPLATE_BY_CHANNEL, resolve_chain_pkg as _resolve_pkg_from_chain
 from src.notifiers.wecom import WecomNotifier
 from src.notifiers.dingtalk import DingtalkNotifier
 from src.notifiers.feishu import FeishuNotifier
@@ -339,7 +339,11 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
         accum['items'].append({
             'file_name': snap.get('file_name', ''),
             'product_name': snap.get('product_name', ''),
-            'package_type': snap.get('package_type', ''),
+            # 2026-08-08: 从 chain 派生 package_type,不读 snap.package_type
+            # (URL 去重后 save_snapshot UPDATE 会把 snap.package_type
+            # 互相覆盖,数据脏)。content_sources.package_type.paths[].chain
+            # 才是真相源。
+            'package_type': _resolve_pkg_from_chain(snap),
             'success': result.success,
             'error': result.error_message or '',
             'pushed_at': datetime.now(timezone.utc).isoformat(),
@@ -599,7 +603,9 @@ def _is_full_package(snap: dict) -> bool:
     config = _load_classification_config()
 
     product = snap.get('product_name', '')
-    pkg_type = snap.get('package_type', '')
+    # 2026-08-08: pkg_type 用 chain 派生,不读 snap.package_type
+    # (URL 去重后 save_snapshot UPDATE 互相覆盖,snap.package_type 脏)。
+    pkg_type = _resolve_pkg_from_chain(snap)
     override_key = f'{product}|{pkg_type}'
 
     # 1. Check explicit overrides first

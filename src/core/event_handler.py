@@ -22,7 +22,7 @@ from src.core.logger import get_logger
 from src.models.event_log import (
     log_event, get_config, get_notify_channel, is_event_enabled
 )
-from src.notifiers.base import _utc_to_cst_display
+from src.notifiers.base import _utc_to_cst_display, resolve_chain_pkg, resolve_chain_ver
 
 logger = get_logger('event_handler')
 
@@ -59,8 +59,9 @@ def _build_push_message(snap: dict, rule: dict, success: bool,
     if success:
         # 产品概述
         product_name = snap.get('product_name', '')
-        version_branch = snap.get('version_branch', '')
-        package_type = snap.get('package_type', '')
+        # 2026-08-08: 从 chain 派生 chain 元数据(URL 去重后 snap 行被互相覆盖)
+        package_type = resolve_chain_pkg(snap)
+        version_branch = resolve_chain_ver(snap)
         file_name = snap.get('file_name', '')
 
         if product_name:
@@ -114,8 +115,10 @@ def emit_push(snap: dict, rule: dict, success: bool, error: str = None,
             'is_rollback': is_rollback,
             'file_name': snap.get('file_name'),
             'product_name': snap.get('product_name'),
-            'version_branch': snap.get('version_branch'),
-            'package_type': snap.get('package_type'),
+            # 2026-08-08: chain 元数据从 chain 派生,不读 snap 行(URL 去重
+            # 后 snap 行被互相覆盖,数据脏)
+            'version_branch': resolve_chain_ver(snap),
+            'package_type': resolve_chain_pkg(snap),
         }
     )
 
@@ -127,8 +130,8 @@ def emit_push(snap: dict, rule: dict, success: bool, error: str = None,
         msg = NotificationMessage(
             title='绿盟监控 - 推送通知',
             product_name=snap.get('product_name', ''),
-            version_branch=snap.get('version_branch', ''),
-            package_type=snap.get('package_type', ''),
+            version_branch=resolve_chain_ver(snap),
+            package_type=resolve_chain_pkg(snap),
             file_name=snap.get('file_name', ''),
             package_version=snap.get('package_version', ''),
             md5_hash=snap.get('md5_hash', ''),

@@ -128,6 +128,56 @@ def _build_chain(msg: 'NotificationMessage', db_path: str | None = None) -> tupl
     return [], ''
 
 
+def _resolve_chain_for_snap(snap: dict, db_path: str | None = None) -> list[str]:
+    """Resolve chain list from content_sources.package_type.paths[].chain.
+
+    Internal helper for resolve_chain_pkg/resolve_chain_ver. Returns the
+    full chain list (empty list if not found).
+    """
+    class _Msg:
+        pass
+    msg = _Msg()
+    msg.source_id = int(snap.get('source_id') or 0)
+    msg.source_url = snap.get('source_url', '') or ''
+    chain, _ = _build_chain(msg, db_path=db_path)
+    return chain or []
+
+
+def resolve_chain_pkg(snap: dict, db_path: str | None = None) -> str:
+    """Look up package_type from content_sources.package_type.paths[].chain.
+
+    Snap rows are not authoritative for chain metadata because URL dedup
+    causes save_snapshot's UPDATE to overwrite version_branch/package_type
+    with whichever chain ran last (commit 2026-08-08 Bug #1 root cause).
+    Use content_sources.package_type.paths[].chain as the source of truth.
+
+    Args:
+      snap: dict with at minimum 'source_id' and 'source_url'.
+      db_path: optional path to the SQLite database (overrides default).
+
+    Returns:
+      The chain's last element (pkg_type), or snap.package_type as a
+      best-effort fallback when chain lookup fails. Returns '' if
+      snap has neither source_id/source_url nor package_type.
+    """
+    chain = _resolve_chain_for_snap(snap, db_path)
+    if chain:
+        return chain[-1]
+    return snap.get('package_type', '') or ''
+
+
+def resolve_chain_ver(snap: dict, db_path: str | None = None) -> str:
+    """Look up version_branch from content_sources.package_type.paths[].chain.
+
+    Returns chain[-2] (typically the version segment), with snap.version_branch
+    as fallback. Returns '' if neither source is available.
+    """
+    chain = _resolve_chain_for_snap(snap, db_path)
+    if len(chain) >= 2:
+        return chain[-2]
+    return snap.get('version_branch', '') or ''
+
+
 @dataclass
 class NotificationMessage:
     """Unified notification message format.
@@ -202,10 +252,10 @@ class NotificationMessage:
         dl_url = f'{download_base}{snap.get("download_id", "")}' if snap.get('download_id') else ''
 
         msg = cls(
-            title=f'{snap.get("product_name", "")} {snap.get("package_type", "")}',
+            title='',  # 暂留空,chain 解析后填
             product_name=snap.get('product_name', ''),
-            version_branch=snap.get('version_branch', ''),
-            package_type=snap.get('package_type', ''),
+            version_branch='',  # 暂留空,chain 解析后填
+            package_type='',  # 暂留空,chain 解析后填
             file_name=snap.get('file_name', ''),
             package_version=snap.get('package_version', ''),
             md5_hash=snap.get('md5_hash', ''),
@@ -222,7 +272,18 @@ class NotificationMessage:
             is_rollback=is_rollback,
             source_id=int(snap.get('source_id') or 0),
         )
+        # 2026-08-08: chain 元数据从 content_sources.package_type.paths[].chain 取,
+        # 不再读 snap.version_branch / snap.package_type(那些字段会被 URL 去重
+        # 后的 save_snapshot UPDATE 互相覆盖,数据脏)。chain 才是真相源。
         msg.chain, msg.chain_url = _build_chain(msg)
+        if msg.chain:
+            msg.version_branch = msg.chain[-2] if len(msg.chain) >= 2 else ''
+            msg.package_type = msg.chain[-1] if msg.chain else ''
+        else:
+            # 兜底:chain 解析失败时用 snap 字段(脏数据,但比空白好)
+            msg.version_branch = snap.get('version_branch', '')
+            msg.package_type = snap.get('package_type', '')
+        msg.title = f'{msg.product_name} {msg.package_type}'
         return msg
 
 
