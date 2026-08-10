@@ -2023,44 +2023,12 @@ function dataBuildFeed() {
     // Use cached urlChainMap from _srcUrlChainMap (built once in dataPage)
     const urlChainMap = _srcUrlChainMap[sid] || {};
 
-    snaps.forEach(s => {
-            // 2026-08-08: 给每个 snap 算 _chain (从 paths[] 反查),后续
-            // 过滤和分组都用 chain 派生,避免读 snap.version_branch /
-            // snap.package_type (URL 去重后被互相覆盖,数据脏)。
-            //
-            // 反查策略:不读 snap 行的 ver/pkg。
-            //  1) path_id 匹配 path.chain → 多 chain 共享 URL 时只能返第一条
-            //  2) URL 匹配 urlChainMap → 旧版兜底
-            // 反查到的 sChain 用于过滤和显示的"类型/版本/层级路径"反查 (不读 snap 行)。
-            // ⚠️ 之前在这里读 s.version_branch / s.package_type 反查 chain 是错的 — 用户
-            // 原话"不读数据库里的 version packageType,直接从 chain 构造"。
-            let sChain = null;
-            {
-              const allPaths = (src.package_type && src.package_type.paths) || [];
-              const matched = allPaths.find(p => p.path_id === s.path_id);
-              if (matched && matched.chain) sChain = matched.chain;
-            }
-            if (!sChain && s.source_url) {
-              const norm = ('/' + s.source_url).replace(/\/+$/, '');
-              sChain = urlChainMap[norm] || null;
-            }
-            const sChainVer = (sChain && sChain.length >= 2) ? sChain[sChain.length - 2] : '';
-            const sChainPkg = (sChain && sChain.length > 0) ? sChain[sChain.length - 1] : '';
-            // 中间节点过滤时用 snap chain 中与 _dataSelectedChain 长度对应的层
-            // (而不是 leaf 才用的 [-2]/[-1]):
-            //  - 用户点 leaf (chain 长度 = path chain 全长):用 [-2]/[-1] 即 ver/pkg
-            //  - 用户点中间节点 (chain 长度 < path chain 全长):用对应索引的 chain 节点名
-            //    作为 verHint,过滤时 snap chain 同位置的值才能匹配
-            // 例:点 "WEB应用防护系统(WAF)" (1 层 chain),verHint="WEB应用防护系统(WAF)";
-            //    WAF snap chain[0]="WEB应用防护系统(WAF)" 匹配,海光 chain[0] 也匹配
-            //    (需要更精细 chain 匹配)。但 snap chain[0] 不一定是 ver,只是同一层。
-            // 真正能区分 WAF/海光的判断靠 _dataSelectedChain 严格前缀匹配,
-            // 不只靠节点名 hint。
-            const sChainAtSelectedDepth = (sChain && _dataSelectedChain && sChain.length >= _dataSelectedChain.length)
-              ? sChain[_dataSelectedChain.length - 1]
-              : '';
-            const sChainVerForFilter = sChainAtSelectedDepth || sChainVer;
-            const sChainPkgForFilter = sChainPkg;
+    // 2026-08-08: snap 过滤:URL / path_id 匹配(URL 共享的多 chain 都看到同一组)。
+            // 不在 dataBuildFeed 算 sChain — 之前在这里读 s.version_branch /
+            // s.package_type 反查 chain 是错的(用户原话"不读数据库里的 version
+            // packageType,直接从 chain 构造")。chain 信息只用于显示字段
+            // (matchedPath/row typeLabel),在 row 详情展开时用 _dataSelectedChain 反查。
+            snaps.forEach(s => {
             // Filter by has_new: only active snapshots with no delivery record
             if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
             // Filter by has_rb: skip active ones when "含撤回" is active
@@ -2073,26 +2041,27 @@ function dataBuildFeed() {
             // 到 WAF 的历史 snap(2 条),看不到海光 chain 采到的 8703 active。
             // URL 去重本意:同 URL 同一组文件,所有 chain 看到的是同一份。
             // 每条 snap 详情展开的"类型/层级路径"才用 chain 数组反查(已修)。
+            //
+            // 2026-08-08 再次简化:中间节点 hint 过滤也去掉。
+            // 之前用 _dataSelectedVerHint 过滤 snap 的 ver,但 _dataSelectedVerHint
+            // 是 propagateHints 从 _dataSelectedChain 派生的(节点名),会与
+            // _dataSelectedChain[depth-1] 恒等,导致 filter 永远 pass (无效) 或
+            // 用脏 snap 行字段 (用户原话"不读数据库")。
+            // 正确做法:中间节点用 URL 匹配,看到该 URL 下所有 snap。
+            // leaf 用 path_id 匹配,看到该 URL 下所有 snap(URL-only path_id 多 chain
+            // 共享时返回所有 chain 的 snap,这是 URL 去重本意)。
+            // 区分 chain:在 row 详情展开时用 _dataSelectedChain 反查(已修)。
             if (_dataSelectedPathId) {
                 if (s.path_id !== _dataSelectedPathId) return;
+            } else if (_dataSelectedUrl) {
+                const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
+                const normSnap = '/' + stripSlashes(s.source_url || '');
+                const normSelected = '/' + stripSlashes(_dataSelectedUrl);
+                if (normSnap !== normSelected) return;
             } else {
-                // Filter by exact URL when a leaf node is selected
-                if (_dataSelectedUrl) {
-                    const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
-                    const normSnap = '/' + stripSlashes(s.source_url || '');
-                    const normSelected = '/' + stripSlashes(_dataSelectedUrl);
-                    if (normSnap !== normSelected) return;
-                }
-                // Filter by hints when an intermediate node is selected.
-                // Hint 来自 propagateHints (node.__verHint/__pkgHint),基于 node.__chain
-                // 派生 (不是 snap 行)。snap 端必须用 chain 派生比较,不能用脏 snap 行字段。
-                if (!_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint)) {
-                    // sChain[depth-1] 是 snap chain 在用户点的中间节点层的那一项
-                    const sChainAtSelectedDepth = (sChain && _dataSelectedChain && sChain.length >= _dataSelectedChain.length)
-                      ? sChain[_dataSelectedChain.length - 1] : '';
-                    if (_dataSelectedVerHint && sChainAtSelectedDepth !== _dataSelectedVerHint) return;
-                    if (_dataSelectedPkgHint && sChainPkg !== _dataSelectedPkgHint) return;
-                }
+                // 中间节点(无 _dataSelectedUrl 也无 _dataSelectedPathId):
+                // 不过滤 — 看到该 source 的所有 snap。
+                // 注:左侧选中一个 source card 也会到这里,显示该 source 全量。
             }
 
             // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
