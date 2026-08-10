@@ -2218,11 +2218,24 @@ function dataRenderRight(sch, p, info) {
 </div>`;
 
   pageSlice.forEach(r => {
-    // 2026-08-08: 类型/版本字段从 r._chain 派生,不读 r.package_type / r.version_branch
-    // (URL 去重后 snap 行被互相覆盖,数据脏)。_chain 是 dataBuildFeed
-    // 通过 path_id / source_url 反查 content_sources.package_type.paths[].chain 得到的。
-    const chainPkg = (r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : '';
-    const chainVer = (r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : '';
+    // 2026-08-08: 类型/版本字段用 snap 的 ver/pkg 反查 paths[].chain[-2:/-1]
+    // 找到这条 snap 真正归属的 chain(URL 去重后 path_id 反查会取第一条 WAF,
+    // 错的)。_rChain 是每个 row 算的,不用 dataBuildFeed 提前算的 r._chain。
+    const _srcObj = _dataAll[r._sid];
+    const _paths = (_srcObj && _srcObj.package_type && _srcObj.package_type.paths) || [];
+    let _rChain = null;
+    if (r.version_branch && r.package_type && _paths.length > 0) {
+      const vp = _paths.find(p =>
+        Array.isArray(p.chain) && p.chain.length >= 2 &&
+        p.chain[p.chain.length - 2] === r.version_branch &&
+        p.chain[p.chain.length - 1] === r.package_type
+      );
+      if (vp) _rChain = vp.chain;
+    }
+    // fallback: path_id 反查(legacy data 无 ver/pkg)
+    if (!_rChain && r._chain) _rChain = r._chain;
+    const chainPkg = (_rChain && _rChain.length > 0) ? _rChain[_rChain.length - 1] : '';
+    const chainVer = (_rChain && _rChain.length >= 2) ? _rChain[_rChain.length - 2] : '';
     const typeLabel = MAP[chainPkg] || chainPkg || r.package_type || '';
     const isRb = r.status === 'withdrawn';
     const rowClass = isRb ? 'rollback' : '';
