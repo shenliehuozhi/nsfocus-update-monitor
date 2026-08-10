@@ -2027,34 +2027,16 @@ function dataBuildFeed() {
     // Use cached urlChainMap from _srcUrlChainMap (built once in dataPage)
     const urlChainMap = _srcUrlChainMap[sid] || {};
 
-    // 2026-08-08: snap 过滤:URL / path_id 匹配(URL 共享的多 chain 都看到同一组)。
-            // 不在 dataBuildFeed 算 sChain — 之前在这里读 s.version_branch /
-            // s.package_type 反查 chain 是错的(用户原话"不读数据库里的 version
-            // packageType,直接从 chain 构造")。chain 信息只用于显示字段
-            // (matchedPath/row typeLabel),在 row 详情展开时用 _dataSelectedChain 反查。
-            snaps.forEach(s => {
-            // Filter by has_new: only active snapshots with no delivery record
-            if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
-            // Filter by has_rb: skip active ones when "含撤回" is active
-            if (_dataFilters.has_rb && s.status !== 'withdrawn') return;
-            // Filter by urgency
-            if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
+    snaps.forEach(s => {
+      // 基础状态过滤(has_new/has_rb/urgency)
+      if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
+      if (_dataFilters.has_rb && s.status !== 'withdrawn') return;
+      if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
 
-// ✅ 过滤按 URL / path_id (URL 共享的多 chain 都看到同一组 snap — 数据真相)
-            // 2026-08-08: 之前 _dataSelectedChain 严格匹配是错的 — 那会让 WAF leaf 只看
-            // 到 WAF 的历史 snap(2 条),看不到海光 chain 采到的 8703 active。
-            // URL 去重本意:同 URL 同一组文件,所有 chain 看到的是同一份。
-            // 每条 snap 详情展开的"类型/层级路径"才用 chain 数组反查(已修)。
-            //
-            // 2026-08-08 再次简化:中间节点 hint 过滤也去掉。
-            // 之前用 _dataSelectedVerHint 过滤 snap 的 ver,但 _dataSelectedVerHint
-            // 是 propagateHints 从 _dataSelectedChain 派生的(节点名),会与
-            // _dataSelectedChain[depth-1] 恒等,导致 filter 永远 pass (无效) 或
-            // 用脏 snap 行字段 (用户原话"不读数据库")。
-            // 正确做法:中间节点用 URL 匹配,看到该 URL 下所有 snap。
-            // leaf 用 path_id 匹配,看到该 URL 下所有 snap(URL-only path_id 多 chain
-            // 共享时返回所有 chain 的 snap,这是 URL 去重本意)。
-            // 区分 chain:在 row 详情展开时用 _dataSelectedChain 反查(已修)。
+      // 2026-08-08: snap 过滤:URL / path_id 匹配(URL 共享的多 chain 都看到同一组)。
+            // 中间节点(无 path_id / url):snap.source_url 必须匹配该节点子树
+            // 所有 path 的 url 之一 — 即"该节点子树所有 leaf 的所有 snap"。
+            // 数据来源:content_sources.package_type.paths[] (不读 snap 行)。
             if (_dataSelectedPathId) {
                 if (s.path_id !== _dataSelectedPathId) return;
             } else if (_dataSelectedUrl) {
@@ -2062,17 +2044,34 @@ function dataBuildFeed() {
                 const normSnap = '/' + stripSlashes(s.source_url || '');
                 const normSelected = '/' + stripSlashes(_dataSelectedUrl);
                 if (normSnap !== normSelected) return;
-            } else {
-                // 中间节点(无 _dataSelectedUrl 也无 _dataSelectedPathId):
-                // 不过滤 — 看到该 source 的所有 snap。
-                // 注:左侧选中一个 source card 也会到这里,显示该 source 全量。
+            } else if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+                // 中间节点:先找子树内所有 path 的 url 集合(前缀匹配 chain),
+                // 再看 snap.source_url 是否在集合内。
+                // 不能只用 chain prefix 反查 path_id (URL-only path_id 多 chain
+                // 共享时只能取第一条),会误过滤掉其他 chain 的 snap。
+                const allPaths = (src.package_type && src.package_type.paths) || [];
+                const selChain = _dataSelectedChain;
+                const inSubtreeUrls = new Set();
+                for (const p of allPaths) {
+                  if (!Array.isArray(p.chain) || p.chain.length < selChain.length) continue;
+                  let isPrefix = true;
+                  for (let i = 0; i < selChain.length; i++) {
+                    if (p.chain[i] !== selChain[i]) { isPrefix = false; break; }
+                  }
+                  if (isPrefix && p.url) {
+                    const full = p.url.startsWith('http') ? p.url :
+                      ('https://update.nsfocus.com' + (p.url.startsWith('/') ? p.url : '/' + p.url));
+                    inSubtreeUrls.add(full.replace(/\/+$/, ''));
+                  }
+                }
+                if (inSubtreeUrls.size === 0) return;
+                const snapUrl = (s.source_url || '').replace(/\/+$/, '');
+                if (!inSubtreeUrls.has(snapUrl)) return;
             }
+            // 左侧选中一个 source card (无 _dataSelectedChain):显示该 source 全量
 
             // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
-            // 2026-08-08: 仍用 path_id (URL-only) 作 group key — 同一 URL+chain 同一组。
-            // 不同 chain 的同 URL 因为 path_id 相同会归一组,这是 URL 去重的预期行为。
-            // 显示侧 typeLabel/版本用 chain 派生。
-            const k = (s.path_id || sChainVer + '|' + sChainPkg);
+            const k = s.path_id;
             if (!byKey[k]) byKey[k] = [];
             byKey[k].push(s);
         });
