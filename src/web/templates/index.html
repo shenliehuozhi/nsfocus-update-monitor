@@ -2034,25 +2034,11 @@ function dataBuildFeed() {
       if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
 
       // 2026-08-08: snap 过滤:URL / path_id 匹配(URL 共享的多 chain 都看到同一组)。
-            // 中间节点(无 path_id / url):snap.source_url 必须匹配该节点子树
-            // 所有 path 的 url 之一 — 即"该节点子树所有 leaf 的所有 snap"。
+            // 中间节点和 leaf 都按"点击节点 chain 路径下所有 path 的 url 集合"过滤
+            // — 即"该节点子树所有 leaf 的所有 snap",包括其他 chain 共享的。
             // 数据来源:content_sources.package_type.paths[] (不读 snap 行)。
-            if (_dataSelectedPathId) {
-                if (s.path_id !== _dataSelectedPathId) return;
-            } else if (_dataSelectedUrl) {
-                const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
-                const normSnap = '/' + stripSlashes(s.source_url || '');
-                const normSelected = '/' + stripSlashes(_dataSelectedUrl);
-                if (normSnap !== normSelected) return;
-            } else if (_dataSelectedChain && _dataSelectedChain.length > 0) {
-                // 中间节点:先找子树内所有 path 的 url 集合(前缀匹配 chain),
-                // 再看 snap.source_url 是否在集合内。
-                // 不能只用 chain prefix 反查 path_id (URL-only path_id 多 chain
-                // 共享时只能取第一条),会误过滤掉其他 chain 的 snap。
-                //
-                // 2026-08-08: s.source_url 在 /latest/snapshots API 中被规范化为
-                // 相对路径 (api_routes.py:1200 strip BASE_URL prefix),所以需要
-                // 把它展开成 full URL 再和 inSubtreeUrls 比对。
+            if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+                // 子树:chain prefix 匹配的所有 path 的 url 集合
                 const allPaths = (src.package_type && src.package_type.paths) || [];
                 const selChain = _dataSelectedChain;
                 const inSubtreeUrls = new Set();
@@ -2445,12 +2431,16 @@ function dataRightToggleRow(rowId) {
               );
               if (vp) matchedPath = vp;
             }
-            // fallback: 用户点的 chain 长度全等 (leaf 点击时)
+            // fallback: 用户点的 chain 是 _dataSelectedChain 的前缀 (中间节点 + leaf 都用)
+            //  - leaf (chain 长度 = path chain 全长)→ 严格等 → 找到精确 chain
+            //  - 中间节点 (chain 长度 < path chain 全长)→ 前缀匹配 → 找到该节点子树内的
+            //    path(可能是 leaf 的 chain,中间节点本身没有 path)
+            // 这样 leaf 仍精确区分 chain(8703 显示海光),中间节点不再 fallback 到 path_id 第一条
             if (!matchedPath && _dataSelectedChain && _dataSelectedChain.length > 0) {
               matchedPath = allPaths.find(p =>
                 Array.isArray(p.chain) &&
-                p.chain.length === _dataSelectedChain.length &&
-                p.chain.every((seg, i) => seg === _dataSelectedChain[i])
+                p.chain.length >= _dataSelectedChain.length &&
+                p.chain.slice(0, _dataSelectedChain.length).every((seg, i) => seg === _dataSelectedChain[i])
               );
             }
             if (!matchedPath && snap.path_id) {
