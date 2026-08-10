@@ -2062,12 +2062,22 @@ function dataBuildFeed() {
       }
     });
     Object.values(byKey).forEach(snapList => snapList.forEach(s => {
-      // Attach chain for goto precision: look up by path_id (preferred) so the
-      // snap's true chain is attached even when many chains share one URL.
-      // Fall back to urlChainMap (URL → chain single-value map) for legacy rows.
+      // Attach chain for goto precision: prefer user-selected chain
+      // (_dataSelectedChain) when set so multi-chain shared URLs show the
+      // correct chain context. Otherwise fall back to path_id reverse-lookup
+      // (which finds the first matching path — usually correct since users
+      // rarely hit the chain-attribution ambiguity when no leaf is selected).
       let _chain = null;
-      if (s.path_id) {
-        // Reverse-lookup: scan all source paths for one whose path_id matches.
+      if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+        const allPaths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
+        const matched = allPaths.find(p =>
+          Array.isArray(p.chain) &&
+          p.chain.length === _dataSelectedChain.length &&
+          p.chain.every((seg, i) => seg === _dataSelectedChain[i])
+        );
+        if (matched && matched.chain) _chain = matched.chain;
+      }
+      if (!_chain && s.path_id) {
         const allPaths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
         const matched = allPaths.find(p => p.path_id === s.path_id);
         if (matched && matched.chain) _chain = matched.chain;
@@ -2188,7 +2198,12 @@ function dataRenderRight(sch, p, info) {
 </div>`;
 
   pageSlice.forEach(r => {
-    const typeLabel = MAP[r.package_type] || r.package_type || '';
+    // 2026-08-08: 类型/版本字段从 r._chain 派生,不读 r.package_type / r.version_branch
+    // (URL 去重后 snap 行被互相覆盖,数据脏)。_chain 是 dataBuildFeed
+    // 通过 path_id / source_url 反查 content_sources.package_type.paths[].chain 得到的。
+    const chainPkg = (r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : '';
+    const chainVer = (r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : '';
+    const typeLabel = MAP[chainPkg] || chainPkg || r.package_type || '';
     const isRb = r.status === 'withdrawn';
     const rowClass = isRb ? 'rollback' : '';
     let urgencyBadge = '';
@@ -2202,13 +2217,13 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:68px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
   <div class="feed-cell" style="width:60px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
   <div class="feed-cell" style="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
-  <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || r.version_branch || '')}">${escHtml(r.package_version || r.version_branch || '')}</div>
+  <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || chainVer || '')}">${escHtml(r.package_version || chainVer || '')}</div>
   <div class="feed-cell" style="flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
   <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
+      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || chainVer)}', '${escHtml(chainPkg)}')">推送</button>
     </div>
   </div>
 </div>`;
@@ -5621,27 +5636,25 @@ function attach(node) {
     const nodeDepth = nodeChain.length;
 
     if (node.__isPkg) {
-      const snaps = node.__snapshots || [];
-      if (snaps.length > 0) {
-        // Leaf: 仍然从 snap 取具体 ver / pkg hint (数据是叶子,跟中间节点不同)
-        const verHint = snaps[0].version_branch || '';
-        const pkgHint = snaps[0].package_type || '';
-        const now = Date.now();
-        const latestPublished = snaps.reduce((max, s) => {
-          if (!s.published_at) return max;
-          const t = new Date(s.published_at).getTime();
-          return t > max ? t : max;
-        }, 0);
-        let freshness = 'idle';
-        if (latestPublished > 0) {
-          const days = (now - latestPublished) / 86400000;
-          if (days <= 30) freshness = 'new';
-          else if (days <= 365) freshness = 'lowfreq';
-        }
-        node.__freshness = freshness;
-        return { ver: verHint, pkg: pkgHint, freshness };
+      // 2026-08-08: leaf 的 hint 用 node.__chain 派生,不读 snaps[0].version_branch
+      // / package_type(URL 去重后 snap 行被互相覆盖,数据脏)。
+      // node.__chain 在 buildDataTreeHtml 阶段从 paths[].chain 取,稳定。
+      const verHint = (nodeChain.length >= 2) ? nodeChain[nodeChain.length - 2] : '';
+      const pkgHint = nodeChain.length > 0 ? nodeChain[nodeChain.length - 1] : '';
+      const now = Date.now();
+      const latestPublished = (node.__snapshots || []).reduce((max, s) => {
+        if (!s.published_at) return max;
+        const t = new Date(s.published_at).getTime();
+        return t > max ? t : max;
+      }, 0);
+      let freshness = 'idle';
+      if (latestPublished > 0) {
+        const days = (now - latestPublished) / 86400000;
+        if (days <= 30) freshness = 'new';
+        else if (days <= 365) freshness = 'lowfreq';
       }
-      return null;
+      node.__freshness = freshness;
+      return { ver: verHint, pkg: pkgHint, freshness };
     }
     if (!node.__children) return null;
 
