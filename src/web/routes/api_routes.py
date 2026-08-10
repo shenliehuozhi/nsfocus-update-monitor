@@ -1125,19 +1125,31 @@ def get_latest_snapshots():
         else:
             pt = None
         final_pt = pt or {'types': [], 'paths': [], 'modes': {}}
-        # Attach path_id to each path so the frontend can disambiguate multi-chain
-        # shared URLs (NSFocus real structure). path_id = MD5(url)[:12], matching
-        # scheduler._compute_path_id() (src/core/scheduler.py:53) and the value
-        # stored in snapshots.path_id by save_snapshot. The earlier MD5(url+chain)
-        # formula caused frontend path_id to mismatch DB path_id, breaking
-        # dataBuildFeed's path lookup (right feed showed no new packages).
+        # Attach two path_ids to each path so the frontend can distinguish
+        # multi-chain shared URLs without breaking URL dedup at the DB layer:
+        #   path_id        = MD5(full_url)[:12]       (URL-only, matches DB)
+        #   path_id_chain  = MD5(full_url + JSON(chain))[:12]  (chain-aware)
+        # The frontend uses path_id_chain to filter/group snaps to the
+        # specific chain leaf the user clicked; path_id stays as the URL-
+        # level identity for any code that still needs the URL-only key.
+        #
+        # path_id_chain is computed once here (server-side, from chain
+        # in content_sources.package_type.paths[]) and is stable —
+        # content_sources paths are user-managed, not vendor-controlled,
+        # so the chain text here doesn't drift like vendor chain labels.
         import hashlib as _hashlib
+        import json as _json
         for _p in final_pt.get('paths', []) or []:
             _u = _p.get('url') or ''
             if not _u:
                 continue
             _full = _u if _u.startswith('http') else (BASE_URL + _u if _u.startswith('/') else BASE_URL + '/' + _u)
             _p['path_id'] = _hashlib.md5(_full.encode()).hexdigest()[:12]
+            # Chain-aware id: include chain in the hash so two paths
+            # sharing the same URL get different path_id_chain values.
+            _chain = _p.get('chain') or []
+            _chain_key = _json.dumps(_chain, ensure_ascii=False, sort_keys=True)
+            _p['path_id_chain'] = _hashlib.md5((_full + _chain_key).encode()).hexdigest()[:12]
         source_map[s['id']] = {
             'id': s['id'],
             'name': s['name'],

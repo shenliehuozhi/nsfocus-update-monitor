@@ -2430,23 +2430,35 @@ function dataRightToggleRow(rowId) {
   const entryUrl = src.entry_url || '';
   // Match path by snap.path_id (exact, distinguishes multi-chain shared URLs).
   // Fall back to URL match only for legacy rows that have no path_id.
-  // 2026-08-08: 如果用户选了某个 leaf (_dataSelectedChain),优先匹配同 chain
-  // 的 path (URL-only path_id 在多 chain 共享时会被 paths.find 返回第一条,
-  // 不一定是用户点的 chain)。这样层级路径渲染对得上用户点击的 leaf。
-  let matchedPath = null;
-  if (_dataSelectedChain && _dataSelectedChain.length > 0) {
-    matchedPath = paths.find(p =>
-      Array.isArray(p.chain) &&
-      p.chain.length === _dataSelectedChain.length &&
-      p.chain.every((seg, i) => seg === _dataSelectedChain[i])
-    );
-  }
-  if (!matchedPath && snap.path_id) {
-    matchedPath = paths.find(p => p.path_id === snap.path_id);
-  }
-  if (!matchedPath && snap.source_url) {
-    matchedPath = paths.find(p => p.url === snap.source_url);
-  }
+// 2026-08-08: 反查 chain 归属时,先用 snap 的 version_branch + package_type 匹配 paths[].chain[-2:/-1]
+            //  (这条 snap 真正归属的 chain) — 因为 path_id 反查在多 chain 共享 URL
+            //  时只能取第一条(WAF),错误归属。这条 snap 行的 ver/pkg 反映最后采集的 chain,
+            //  即使是 URL 去重后被覆盖的"历史数据",也是最权威的 chain 归属标识。
+            // (显示字段仍用 chain 数组,不用 snap 的 ver/pkg。)
+            let matchedPath = null;
+            const allPaths = paths || [];
+            if (snap.version_branch && snap.package_type && allPaths.length > 0) {
+              const vp = allPaths.find(p =>
+                Array.isArray(p.chain) && p.chain.length >= 2 &&
+                p.chain[p.chain.length - 2] === snap.version_branch &&
+                p.chain[p.chain.length - 1] === snap.package_type
+              );
+              if (vp) matchedPath = vp;
+            }
+            // fallback: 用户点的 chain 长度全等 (leaf 点击时)
+            if (!matchedPath && _dataSelectedChain && _dataSelectedChain.length > 0) {
+              matchedPath = allPaths.find(p =>
+                Array.isArray(p.chain) &&
+                p.chain.length === _dataSelectedChain.length &&
+                p.chain.every((seg, i) => seg === _dataSelectedChain[i])
+              );
+            }
+            if (!matchedPath && snap.path_id) {
+              matchedPath = allPaths.find(p => p.path_id === snap.path_id);
+            }
+            if (!matchedPath && snap.source_url) {
+              matchedPath = allPaths.find(p => p.url === snap.source_url);
+            }
   if (matchedPath && matchedPath.chain && matchedPath.chain.length > 0) {
     const chain = matchedPath.chain;
     const leafUrl = matchedPath.url || '';
