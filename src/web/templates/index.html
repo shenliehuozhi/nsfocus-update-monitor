@@ -2036,36 +2036,38 @@ function dataBuildFeed() {
       if (_dataFilters.has_rb && s.status !== 'withdrawn') return;
       if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
 
-      // 2026-08-08: snap 过滤:用 _dataSelectedNode 的 descendants URL 集合
-            // (递归走左侧 tree 节点的 __children,收集所有 leaf 的 __pathId)。
-            // 这样 leaf 和 sub 节点点击都用同一种逻辑:
-            //  - 用户点 leaf:descendants 就是自己,1 个 URL
-            //  - 用户点 sub:descendants 是该节点下所有 leaf,可能多个 URL
-            // 数据来源:左侧 tree node 结构 (不读 snap 行,也不读 paths[] server 数据)。
-            if (_dataSelectedNode) {
-              const leafUrls = new Set();
-              function collectLeafUrls(n) {
-                if (!n) return;
-                if (n.__isPkg && n.__pathId) {
-                  const u = n.__pathId.startsWith('http') ? n.__pathId :
-                    ('https://update.nsfocus.com' + (n.__pathId.startsWith('/') ? n.__pathId : '/' + n.__pathId));
-                  leafUrls.add(u.replace(/\/+$/, ''));
+      // 2026-08-08: snap 过滤:用 _dataSelectedChain 找 src.package_type.paths[] 子树
+            // 的 url 集合(链前缀匹配),snap.source_url 必须在该集合内。
+            // - leaf click: chain 长度 = path chain 全长 → 严格匹配 → 1 个 path
+            // - 中间节点 click: chain 长度 < path chain 全长 → 前缀匹配 → 该节点
+            //   子树所有 leaf 的 path
+            // 数据来源:content_sources.package_type.paths[] (不读 snap 行)。
+            if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+                const allPaths = (src.package_type && src.package_type.paths) || [];
+                const selChain = _dataSelectedChain;
+                const inSubtreeUrls = new Set();
+                for (const p of allPaths) {
+                  if (!Array.isArray(p.chain) || p.chain.length < selChain.length) continue;
+                  let isPrefix = true;
+                  for (let i = 0; i < selChain.length; i++) {
+                    if (p.chain[i] !== selChain[i]) { isPrefix = false; break; }
+                  }
+                  if (isPrefix && p.url) {
+                    const full = p.url.startsWith('http') ? p.url :
+                      ('https://update.nsfocus.com' + (p.url.startsWith('/') ? p.url : '/' + p.url));
+                    inSubtreeUrls.add(full.replace(/\/+$/, ''));
+                  }
                 }
-                if (n.__children) {
-                  for (const [, child] of Object.entries(n.__children)) collectLeafUrls(child);
-                }
-              }
-              collectLeafUrls(_dataSelectedNode);
-              if (leafUrls.size === 0) return;
-              // 把 snap.source_url (相对路径) 展成 full URL
-              const srcUrl = s.source_url || '';
-              const snapFullUrl = srcUrl.startsWith('http')
-                ? srcUrl
-                : 'https://update.nsfocus.com' + (srcUrl.startsWith('/') ? srcUrl : '/' + srcUrl);
-              const snapUrl = snapFullUrl.replace(/\/+$/, '');
-              if (!leafUrls.has(snapUrl)) return;
+                if (inSubtreeUrls.size === 0) return;
+                // 把 snap.source_url (相对路径) 展成 full URL
+                const srcUrl = s.source_url || '';
+                const snapFullUrl = srcUrl.startsWith('http')
+                  ? srcUrl
+                  : 'https://update.nsfocus.com' + (srcUrl.startsWith('/') ? srcUrl : '/' + srcUrl);
+                const snapUrl = snapFullUrl.replace(/\/+$/, '');
+                if (!inSubtreeUrls.has(snapUrl)) return;
             }
-            // 左侧选中一个 source card (无 _dataSelectedNode):显示该 source 全量
+            // 左侧选中一个 source card (无 _dataSelectedChain):显示该 source 全量
 
             // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
             const k = s.path_id;
