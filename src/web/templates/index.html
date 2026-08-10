@@ -2028,25 +2028,17 @@ function dataBuildFeed() {
             // 过滤和分组都用 chain 派生,避免读 snap.version_branch /
             // snap.package_type (URL 去重后被互相覆盖,数据脏)。
             //
-            // 反查策略 (按优先级):
-            //  1) snap.ver + snap.pkg 匹配 chain[-2:] → 最精确 (匹配当前 snap
-            //     真正归属的 chain,例如 8703 历史归属海光 chain)
-            //  2) path_id 匹配 path.chain → 多 chain 共享 URL 时只能返第一条 (fallback)
-            //  3) URL 匹配 urlChainMap → 旧版兜底
+            // 反查策略:不读 snap 行的 ver/pkg。
+            //  1) path_id 匹配 path.chain → 多 chain 共享 URL 时只能返第一条
+            //  2) URL 匹配 urlChainMap → 旧版兜底
+            // 反查到的 sChain 用于过滤和显示的"类型/版本/层级路径"反查 (不读 snap 行)。
+            // ⚠️ 之前在这里读 s.version_branch / s.package_type 反查 chain 是错的 — 用户
+            // 原话"不读数据库里的 version packageType,直接从 chain 构造"。
             let sChain = null;
-            const sVer = s.version_branch || '';
-            const sPkg = s.package_type || '';
             {
               const allPaths = (src.package_type && src.package_type.paths) || [];
-              const verPkgMatch = allPaths.find(p =>
-                Array.isArray(p.chain) && p.chain.length >= 2 &&
-                p.chain[p.chain.length - 2] === sVer && p.chain[p.chain.length - 1] === sPkg
-              );
-              if (verPkgMatch) sChain = verPkgMatch.chain;
-              else {
-                const matched = allPaths.find(p => p.path_id === s.path_id);
-                if (matched && matched.chain) sChain = matched.chain;
-              }
+              const matched = allPaths.find(p => p.path_id === s.path_id);
+              if (matched && matched.chain) sChain = matched.chain;
             }
             if (!sChain && s.source_url) {
               const norm = ('/' + s.source_url).replace(/\/+$/, '');
@@ -2076,29 +2068,15 @@ function dataBuildFeed() {
             // Filter by urgency
             if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
 
-// ✅ 精确 chain 匹配(优先,用户点 leaf 时)
-            // 2026-08-08: 用户点 leaf 时,用 _dataSelectedChain 过滤 snap 的 chain。
-            // 这是因为 URL-only path_id 在多 chain 共享 URL 时返回所有 chain 的 snap,
-            // 不区分 chain。但用户实际只想要那个 chain 的 snap。
-            // 中间节点用 prefix match (snap chain 是 _dataSelectedChain 的前缀)。
-            if (_dataSelectedChain && _dataSelectedChain.length > 0) {
-              if (!sChain) return;
-              if (sChain.length < _dataSelectedChain.length) return;
-              for (let i = 0; i < _dataSelectedChain.length; i++) {
-                if (sChain[i] !== _dataSelectedChain[i]) return;
-              }
-              // 中间节点:链前缀匹配后还要用 ver/pkg hint 精过滤
-              // (例:"WEB应用防护系统(WAF)" 1 层 chain 会让所有 chain 前缀匹配
-              //  但 verHint="WEB应用防护系统(WAF)"(节点名)能区分"WAF" / "海光")
-              // 注意:叶子 chain 长度 ≥ 中间节点,叶子进入这里也只用前缀;
-              // leaf 的 hint (ver/pkg) 来自 propagateHints,通常是 chain[-2]/-1,
-              // 唯一性足够,不会误过滤。
-              if (_dataSelectedVerHint && sChainVerForFilter !== _dataSelectedVerHint) return;
-              if (_dataSelectedPkgHint && sChainPkgForFilter !== _dataSelectedPkgHint) return;
-            } else if (_dataSelectedPathId) {
+// ✅ 过滤按 URL / path_id (URL 共享的多 chain 都看到同一组 snap — 数据真相)
+            // 2026-08-08: 之前 _dataSelectedChain 严格匹配是错的 — 那会让 WAF leaf 只看
+            // 到 WAF 的历史 snap(2 条),看不到海光 chain 采到的 8703 active。
+            // URL 去重本意:同 URL 同一组文件,所有 chain 看到的是同一份。
+            // 每条 snap 详情展开的"类型/层级路径"才用 chain 数组反查(已修)。
+            if (_dataSelectedPathId) {
                 if (s.path_id !== _dataSelectedPathId) return;
             } else {
-                // Filter by exact URL when a leaf node is selected (legacy)
+                // Filter by exact URL when a leaf node is selected
                 if (_dataSelectedUrl) {
                     const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
                     const normSnap = '/' + stripSlashes(s.source_url || '');
@@ -2106,11 +2084,14 @@ function dataBuildFeed() {
                     if (normSnap !== normSelected) return;
                 }
                 // Filter by hints when an intermediate node is selected.
-                // Hint 由 propagateHints 从 chain 派生 (node.__verHint/__pkgHint),
-                // snap 端必须用 chain 派生比较,不能用脏 snap 行字段。
+                // Hint 来自 propagateHints (node.__verHint/__pkgHint),基于 node.__chain
+                // 派生 (不是 snap 行)。snap 端必须用 chain 派生比较,不能用脏 snap 行字段。
                 if (!_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint)) {
-                    if (_dataSelectedVerHint && sChainVerForFilter !== _dataSelectedVerHint) return;
-                    if (_dataSelectedPkgHint && sChainPkgForFilter !== _dataSelectedPkgHint) return;
+                    // sChain[depth-1] 是 snap chain 在用户点的中间节点层的那一项
+                    const sChainAtSelectedDepth = (sChain && _dataSelectedChain && sChain.length >= _dataSelectedChain.length)
+                      ? sChain[_dataSelectedChain.length - 1] : '';
+                    if (_dataSelectedVerHint && sChainAtSelectedDepth !== _dataSelectedVerHint) return;
+                    if (_dataSelectedPkgHint && sChainPkg !== _dataSelectedPkgHint) return;
                 }
             }
 
