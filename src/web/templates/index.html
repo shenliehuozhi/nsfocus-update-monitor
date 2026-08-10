@@ -1697,8 +1697,14 @@ function buildFlatVerTreeHtml(snapshots) {
   const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
   if (!snapshots || snapshots.length === 0) return '<div style="color:var(--muted);font-size:12px;padding:8px">暂无数据</div>';
   const byVer = {};
+  // 2026-08-08: 用 _dataSelectedChain 派生 group key,不读 snap.version_branch。
+  // 路径不空(走 buildFlatVerTreeHtml 通常意味着 paths 空)时 — group key 只能是
+  // snap 行字段,但推送按钮显示用 _dataSelectedChain 的 chain[-2](fallback)。
   snapshots.forEach(s => {
-    const v = s.version_branch || '?';
+    // 优先用 _dataSelectedChain[-2] (用户点的 chain 的版本层),fallback 到 s.version_branch
+    const v = (_dataSelectedChain && _dataSelectedChain.length >= 2)
+      ? _dataSelectedChain[_dataSelectedChain.length - 2]
+      : (s.version_branch || '?');
     if (!byVer[v]) byVer[v] = [];
     byVer[v].push(s);
   });
@@ -1707,6 +1713,12 @@ function buildFlatVerTreeHtml(snapshots) {
     if (!isNaN(na) && !isNaN(nb)) return nb - na;
     return b.localeCompare(a, 'zh');
   });
+
+  // 用于推送按钮 — 从 _dataSelectedChain 派生
+  const pushVer = (_dataSelectedChain && _dataSelectedChain.length >= 2)
+    ? _dataSelectedChain[_dataSelectedChain.length - 2] : '';
+  const pushPkg = (_dataSelectedChain && _dataSelectedChain.length > 0)
+    ? _dataSelectedChain[_dataSelectedChain.length - 1] : '';
   let html = '';
   vers.forEach(ver => {
     const snaps = byVer[ver];
@@ -1750,7 +1762,7 @@ function buildFlatVerTreeHtml(snapshots) {
         <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span style="font-size:11px;color:var(--muted)">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
-        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button>
+        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
       </div>
       <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
         <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
@@ -2732,20 +2744,45 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
   if (url) {
     snaps = snaps.filter(s => s.source_url === url);
   }
-  // Filter by hints when provided (intermediate node)
-  if (verHint) {
-    snaps = snaps.filter(s => (s.version_branch || '') === verHint);
-  }
-  if (pkgHint) {
-    snaps = snaps.filter(s => (s.package_type || '') === pkgHint);
+  // Filter by hints when provided (intermediate node).
+  // 2026-08-08: 不读 snap.version_branch / snap.package_type。改用 paths[] 找 chain
+  // 包含 (verHint, pkgHint) 的 path,snap.source_url 匹配该 path 的 url。
+  // 这样即使 URL 共享多 chain,ver/pkg hint 仍精确过滤。
+  if (verHint || pkgHint) {
+    const allPaths = (src.package_type && src.package_type.paths) || [];
+    const hintPath = allPaths.find(p =>
+      Array.isArray(p.chain) && p.chain.length >= 2 &&
+      (verHint ? p.chain[p.chain.length - 2] === verHint : true) &&
+      (pkgHint ? p.chain[p.chain.length - 1] === pkgHint : true)
+    );
+    if (hintPath && hintPath.url) {
+      const normHint = hintPath.url.startsWith('http') ? hintPath.url :
+        ('https://update.nsfocus.com' + (hintPath.url.startsWith('/') ? hintPath.url : '/' + hintPath.url));
+      snaps = snaps.filter(s => {
+        const sFull = s.source_url && (s.source_url.startsWith('http') ? s.source_url :
+          'https://update.nsfocus.com' + (s.source_url.startsWith('/') ? s.source_url : '/' + s.source_url));
+        return sFull && sFull.replace(/\/+$/, '') === normHint.replace(/\/+$/, '');
+      });
+    } else {
+      snaps = []; // 没匹配的 path → 空
+    }
   }
 
+  // 用 _dataSelectedChain[-2] 作 group key(用户点的 chain 的版本层),不读 snap.version_branch
   const byVer = {};
+  const verKeyHint = (_dataSelectedChain && _dataSelectedChain.length >= 2)
+    ? _dataSelectedChain[_dataSelectedChain.length - 2] : null;
   snaps.forEach(s => {
-    const v = s.version_branch || '?';
+    // 优先用 verKeyHint (group by chain layer),fallback 到 s.version_branch(legacy data)
+    const v = verKeyHint || s.version_branch || '?';
     if (!byVer[v]) byVer[v] = [];
     byVer[v].push(s);
   });
+
+  // 用于推送按钮 — 从 _dataSelectedChain 派生
+  const pushVer = verKeyHint || '';
+  const pushPkg = (_dataSelectedChain && _dataSelectedChain.length > 0)
+    ? _dataSelectedChain[_dataSelectedChain.length - 1] : '';
 
   const versions = Object.keys(byVer).sort((a, b) => {
     const na = parseFloat(a), nb = parseFloat(b);
@@ -2775,9 +2812,12 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     if (hasRb) verFlags.push('<span style="color:var(--danger);font-size:11px">含撤回</span>');
     if (hasNew) verFlags.push('<span style="color:var(--primary);font-size:11px">有未推送</span>');
 
+    // 用 _dataSelectedChain[-1] 作 pkgType group key(用户点的 chain 的最深层),不读 snap.package_type
     const byType = {};
+    const pkgKeyHint = (_dataSelectedChain && _dataSelectedChain.length > 0)
+      ? _dataSelectedChain[_dataSelectedChain.length - 1] : null;
     verSnaps.forEach(s => {
-      const t = s.package_type || '?';
+      const t = pkgKeyHint || s.package_type || '?';
       if (!byType[t]) byType[t] = [];
       byType[t].push(s);
     });
@@ -2819,7 +2859,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
+          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
@@ -2833,7 +2873,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
               <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
               ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
-              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
+              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}
