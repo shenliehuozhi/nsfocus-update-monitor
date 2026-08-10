@@ -1973,13 +1973,17 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
     }
   });
 
-  // If leaf node with snaps, auto-expand the corresponding row(s) in right panel
+  // If leaf node with snaps, auto-expand the LATEST snap row in right panel
+  // (snaps already sorted by published_at DESC, so [0] is the most recent).
+  // 2026-08-08: previously expanded every snap row in the leaf (snapIds.forEach),
+  // which ended up toggling each in sequence and landing on the last one —
+  // which is the OLDEST row, not the latest. Defaulting to latest.
   if (isLeaf && snapIds.length > 0) {
     setTimeout(() => {
-      snapIds.forEach(id => {
-        const row = document.getElementById('fr_' + String(id));
-        if (row) dataRightToggleRow('fr_' + String(id));
-      });
+      // snapIds[0] is the latest (snaps.map(s => s.id) preserves published_at DESC order)
+      const firstId = snapIds[0];
+      const row = document.getElementById('fr_' + String(firstId));
+      if (row) dataRightToggleRow('fr_' + String(firstId));
     }, 30);
   }
 }
