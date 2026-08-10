@@ -2082,24 +2082,35 @@ function dataBuildFeed() {
       }
     });
     Object.values(byKey).forEach(snapList => snapList.forEach(s => {
-      // Attach chain for goto precision: prefer user-selected chain
-      // (_dataSelectedChain) when set so multi-chain shared URLs show the
-      // correct chain context. Otherwise fall back to path_id reverse-lookup
-      // (which finds the first matching path — usually correct since users
-      // rarely hit the chain-attribution ambiguity when no leaf is selected).
+      // Attach chain for chain display in row: prefer the path whose chain
+      // 包含 _dataSelectedChain (用户点的 chain 是它前缀)。即 r._chain 反映用户
+      // 选中的 chain 上下文。
+      // - leaf click: _dataSelectedChain 是 leaf chain → 找精确 chain
+      // - 中间节点 click: _dataSelectedChain 是中间 chain → 找 chain 前缀匹配
+      //   (length >= _dataSelectedChain.length + first N match)
+      // 这样多 chain 共享 URL 时,row 类型按用户选中的 chain 上下文显示。
       let _chain = null;
+      const allPaths0 = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
       if (_dataSelectedChain && _dataSelectedChain.length > 0) {
-        const allPaths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
-        const matched = allPaths.find(p =>
+        // 优先精确 chain length 匹配 (leaf)
+        let matched = allPaths0.find(p =>
           Array.isArray(p.chain) &&
           p.chain.length === _dataSelectedChain.length &&
           p.chain.every((seg, i) => seg === _dataSelectedChain[i])
         );
+        // fallback: chain prefix 匹配 (中间节点)
+        if (!matched) {
+          matched = allPaths0.find(p =>
+            Array.isArray(p.chain) &&
+            p.chain.length >= _dataSelectedChain.length &&
+            p.chain.slice(0, _dataSelectedChain.length).every((seg, i) => seg === _dataSelectedChain[i])
+          );
+        }
         if (matched && matched.chain) _chain = matched.chain;
       }
+      // fallback: path_id 反查 (URL-only, 多 chain 共享时取第一条 — 不准但兜底)
       if (!_chain && s.path_id) {
-        const allPaths = (_dataAll[sid] && _dataAll[sid].package_type && _dataAll[sid].package_type.paths) || [];
-        const matched = allPaths.find(p => p.path_id === s.path_id);
+        const matched = allPaths0.find(p => p.path_id === s.path_id);
         if (matched && matched.chain) _chain = matched.chain;
       }
       if (!_chain && s.source_url) {
@@ -2218,24 +2229,16 @@ function dataRenderRight(sch, p, info) {
 </div>`;
 
   pageSlice.forEach(r => {
-    // 2026-08-08: 类型/版本字段用 snap 的 ver/pkg 反查 paths[].chain[-2:/-1]
-    // 找到这条 snap 真正归属的 chain(URL 去重后 path_id 反查会取第一条 WAF,
-    // 错的)。_rChain 是每个 row 算的,不用 dataBuildFeed 提前算的 r._chain。
-    const _srcObj = _dataAll[r._sid];
-    const _paths = (_srcObj && _srcObj.package_type && _srcObj.package_type.paths) || [];
-    let _rChain = null;
-    if (r.version_branch && r.package_type && _paths.length > 0) {
-      const vp = _paths.find(p =>
-        Array.isArray(p.chain) && p.chain.length >= 2 &&
-        p.chain[p.chain.length - 2] === r.version_branch &&
-        p.chain[p.chain.length - 1] === r.package_type
-      );
-      if (vp) _rChain = vp.chain;
-    }
-    // fallback: path_id 反查(legacy data 无 ver/pkg)
-    if (!_rChain && r._chain) _rChain = r._chain;
-    const chainPkg = (_rChain && _rChain.length > 0) ? _rChain[_rChain.length - 1] : '';
-    const chainVer = (_rChain && _rChain.length >= 2) ? _rChain[_rChain.length - 2] : '';
+    // 2026-08-08: 类型/版本字段用 _dataSelectedChain (用户点的 chain) 派生。
+    // 完全不读 snap.version_branch / snap.package_type。
+    // - 用户点 leaf (chain 是 leaf chain):_dataSelectedChain 反映该 chain
+    // - 用户点中间节点:_dataSelectedChain 是该节点 chain,row 列表混合
+    //   多个 leaf 的 snap(URL 去重共享),都按中间节点 chain 显示(数据真相)
+    // 注:URL 去重下,同 URL 的 snap (8703 海光 / 5419 WAF) 都按 _dataSelectedChain
+    // 显示。8703 的 ver/pkg 字段虽然"海光",但只用于 chain 归属识别(不读),
+    // 显示字段一律按 _dataSelectedChain 派生的 chain 数组 — 用户的核心需求。
+    const chainPkg = (r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : '';
+    const chainVer = (r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : '';
     const typeLabel = MAP[chainPkg] || chainPkg || r.package_type || '';
     const isRb = r.status === 'withdrawn';
     const rowClass = isRb ? 'rollback' : '';
