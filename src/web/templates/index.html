@@ -2024,6 +2024,51 @@ function dataBuildFeed() {
     const urlChainMap = _srcUrlChainMap[sid] || {};
 
     snaps.forEach(s => {
+            // 2026-08-08: 给每个 snap 算 _chain (从 paths[] 反查),后续
+            // 过滤和分组都用 chain 派生,避免读 snap.version_branch /
+            // snap.package_type (URL 去重后被互相覆盖,数据脏)。
+            //
+            // 反查策略 (按优先级):
+            //  1) snap.ver + snap.pkg 匹配 chain[-2:] → 最精确 (匹配当前 snap
+            //     真正归属的 chain,例如 8703 历史归属海光 chain)
+            //  2) path_id 匹配 path.chain → 多 chain 共享 URL 时只能返第一条 (fallback)
+            //  3) URL 匹配 urlChainMap → 旧版兜底
+            let sChain = null;
+            const sVer = s.version_branch || '';
+            const sPkg = s.package_type || '';
+            {
+              const allPaths = (src.package_type && src.package_type.paths) || [];
+              const verPkgMatch = allPaths.find(p =>
+                Array.isArray(p.chain) && p.chain.length >= 2 &&
+                p.chain[p.chain.length - 2] === sVer && p.chain[p.chain.length - 1] === sPkg
+              );
+              if (verPkgMatch) sChain = verPkgMatch.chain;
+              else {
+                const matched = allPaths.find(p => p.path_id === s.path_id);
+                if (matched && matched.chain) sChain = matched.chain;
+              }
+            }
+            if (!sChain && s.source_url) {
+              const norm = ('/' + s.source_url).replace(/\/+$/, '');
+              sChain = urlChainMap[norm] || null;
+            }
+            const sChainVer = (sChain && sChain.length >= 2) ? sChain[sChain.length - 2] : '';
+            const sChainPkg = (sChain && sChain.length > 0) ? sChain[sChain.length - 1] : '';
+            // 中间节点过滤时用 snap chain 中与 _dataSelectedChain 长度对应的层
+            // (而不是 leaf 才用的 [-2]/[-1]):
+            //  - 用户点 leaf (chain 长度 = path chain 全长):用 [-2]/[-1] 即 ver/pkg
+            //  - 用户点中间节点 (chain 长度 < path chain 全长):用对应索引的 chain 节点名
+            //    作为 verHint,过滤时 snap chain 同位置的值才能匹配
+            // 例:点 "WEB应用防护系统(WAF)" (1 层 chain),verHint="WEB应用防护系统(WAF)";
+            //    WAF snap chain[0]="WEB应用防护系统(WAF)" 匹配,海光 chain[0] 也匹配
+            //    (需要更精细 chain 匹配)。但 snap chain[0] 不一定是 ver,只是同一层。
+            // 真正能区分 WAF/海光的判断靠 _dataSelectedChain 严格前缀匹配,
+            // 不只靠节点名 hint。
+            const sChainAtSelectedDepth = (sChain && _dataSelectedChain && sChain.length >= _dataSelectedChain.length)
+              ? sChain[_dataSelectedChain.length - 1]
+              : '';
+            const sChainVerForFilter = sChainAtSelectedDepth || sChainVer;
+            const sChainPkgForFilter = sChainPkg;
             // Filter by has_new: only active snapshots with no delivery record
             if (_dataFilters.has_new && (s.status !== 'active' || s.last_delivered_at)) return;
             // Filter by has_rb: skip active ones when "含撤回" is active
@@ -2031,26 +2076,49 @@ function dataBuildFeed() {
             // Filter by urgency
             if (_dataFilters.urgency && (s.urgency !== _dataFilters.urgency || s.status !== 'active')) return;
 
-            // ✅ 精确 path_id 匹配（优先，对所有节点生效）
-            if (_dataSelectedPathId) {
+// ✅ 精确 chain 匹配(优先,用户点 leaf 时)
+            // 2026-08-08: 用户点 leaf 时,用 _dataSelectedChain 过滤 snap 的 chain。
+            // 这是因为 URL-only path_id 在多 chain 共享 URL 时返回所有 chain 的 snap,
+            // 不区分 chain。但用户实际只想要那个 chain 的 snap。
+            // 中间节点用 prefix match (snap chain 是 _dataSelectedChain 的前缀)。
+            if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+              if (!sChain) return;
+              if (sChain.length < _dataSelectedChain.length) return;
+              for (let i = 0; i < _dataSelectedChain.length; i++) {
+                if (sChain[i] !== _dataSelectedChain[i]) return;
+              }
+              // 中间节点:链前缀匹配后还要用 ver/pkg hint 精过滤
+              // (例:"WEB应用防护系统(WAF)" 1 层 chain 会让所有 chain 前缀匹配
+              //  但 verHint="WEB应用防护系统(WAF)"(节点名)能区分"WAF" / "海光")
+              // 注意:叶子 chain 长度 ≥ 中间节点,叶子进入这里也只用前缀;
+              // leaf 的 hint (ver/pkg) 来自 propagateHints,通常是 chain[-2]/-1,
+              // 唯一性足够,不会误过滤。
+              if (_dataSelectedVerHint && sChainVerForFilter !== _dataSelectedVerHint) return;
+              if (_dataSelectedPkgHint && sChainPkgForFilter !== _dataSelectedPkgHint) return;
+            } else if (_dataSelectedPathId) {
                 if (s.path_id !== _dataSelectedPathId) return;
             } else {
-                // Filter by exact URL when a leaf node is selected
+                // Filter by exact URL when a leaf node is selected (legacy)
                 if (_dataSelectedUrl) {
                     const stripSlashes = s => s.replace(/^\/+|\/+$/g, '');
                     const normSnap = '/' + stripSlashes(s.source_url || '');
                     const normSelected = '/' + stripSlashes(_dataSelectedUrl);
                     if (normSnap !== normSelected) return;
                 }
-                // Filter by hints when an intermediate node is selected
+                // Filter by hints when an intermediate node is selected.
+                // Hint 由 propagateHints 从 chain 派生 (node.__verHint/__pkgHint),
+                // snap 端必须用 chain 派生比较,不能用脏 snap 行字段。
                 if (!_dataSelectedUrl && (_dataSelectedVerHint || _dataSelectedPkgHint)) {
-                    if (_dataSelectedVerHint && (s.version_branch || '') !== _dataSelectedVerHint) return;
-                    if (_dataSelectedPkgHint && (s.package_type || '') !== _dataSelectedPkgHint) return;
+                    if (_dataSelectedVerHint && sChainVerForFilter !== _dataSelectedVerHint) return;
+                    if (_dataSelectedPkgHint && sChainPkgForFilter !== _dataSelectedPkgHint) return;
                 }
             }
 
             // Group by path_id (= MD5(url + chain)) instead of (version_branch, package_type).
-            const k = (s.path_id || (s.version_branch || '?') + '|' + (s.package_type || '?'));
+            // 2026-08-08: 仍用 path_id (URL-only) 作 group key — 同一 URL+chain 同一组。
+            // 不同 chain 的同 URL 因为 path_id 相同会归一组,这是 URL 去重的预期行为。
+            // 显示侧 typeLabel/版本用 chain 派生。
+            const k = (s.path_id || sChainVer + '|' + sChainPkg);
             if (!byKey[k]) byKey[k] = [];
             byKey[k].push(s);
         });
