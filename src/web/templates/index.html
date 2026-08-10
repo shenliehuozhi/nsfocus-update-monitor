@@ -2049,6 +2049,10 @@ function dataBuildFeed() {
                 // 再看 snap.source_url 是否在集合内。
                 // 不能只用 chain prefix 反查 path_id (URL-only path_id 多 chain
                 // 共享时只能取第一条),会误过滤掉其他 chain 的 snap。
+                //
+                // 2026-08-08: s.source_url 在 /latest/snapshots API 中被规范化为
+                // 相对路径 (api_routes.py:1200 strip BASE_URL prefix),所以需要
+                // 把它展开成 full URL 再和 inSubtreeUrls 比对。
                 const allPaths = (src.package_type && src.package_type.paths) || [];
                 const selChain = _dataSelectedChain;
                 const inSubtreeUrls = new Set();
@@ -2065,7 +2069,12 @@ function dataBuildFeed() {
                   }
                 }
                 if (inSubtreeUrls.size === 0) return;
-                const snapUrl = (s.source_url || '').replace(/\/+$/, '');
+                // 把 snap.source_url (相对路径) 展成 full URL
+                const srcUrl = s.source_url || '';
+                const snapFullUrl = srcUrl.startsWith('http')
+                  ? srcUrl
+                  : 'https://update.nsfocus.com' + (srcUrl.startsWith('/') ? srcUrl : '/' + srcUrl);
+                const snapUrl = snapFullUrl.replace(/\/+$/, '');
                 if (!inSubtreeUrls.has(snapUrl)) return;
             }
             // 左侧选中一个 source card (无 _dataSelectedChain):显示该 source 全量
