@@ -2448,39 +2448,35 @@ function dataRightToggleRow(rowId) {
   const entryUrl = src.entry_url || '';
   // Match path by snap.path_id (exact, distinguishes multi-chain shared URLs).
   // Fall back to URL match only for legacy rows that have no path_id.
-// 2026-08-08: 反查 chain 归属时,先用 snap 的 version_branch + package_type 匹配 paths[].chain[-2:/-1]
-            //  (这条 snap 真正归属的 chain) — 因为 path_id 反查在多 chain 共享 URL
-            //  时只能取第一条(WAF),错误归属。这条 snap 行的 ver/pkg 反映最后采集的 chain,
-            //  即使是 URL 去重后被覆盖的"历史数据",也是最权威的 chain 归属标识。
-            // (显示字段仍用 chain 数组,不用 snap 的 ver/pkg。)
-            let matchedPath = null;
-            const allPaths = paths || [];
-            if (snap.version_branch && snap.package_type && allPaths.length > 0) {
-              const vp = allPaths.find(p =>
-                Array.isArray(p.chain) && p.chain.length >= 2 &&
-                p.chain[p.chain.length - 2] === snap.version_branch &&
-                p.chain[p.chain.length - 1] === snap.package_type
-              );
-              if (vp) matchedPath = vp;
-            }
-            // fallback: 用户点的 chain 是 _dataSelectedChain 的前缀 (中间节点 + leaf 都用)
-            //  - leaf (chain 长度 = path chain 全长)→ 严格等 → 找到精确 chain
-            //  - 中间节点 (chain 长度 < path chain 全长)→ 前缀匹配 → 找到该节点子树内的
-            //    path(可能是 leaf 的 chain,中间节点本身没有 path)
-            // 这样 leaf 仍精确区分 chain(8703 显示海光),中间节点不再 fallback 到 path_id 第一条
-            if (!matchedPath && _dataSelectedChain && _dataSelectedChain.length > 0) {
-              matchedPath = allPaths.find(p =>
-                Array.isArray(p.chain) &&
-                p.chain.length >= _dataSelectedChain.length &&
-                p.chain.slice(0, _dataSelectedChain.length).every((seg, i) => seg === _dataSelectedChain[i])
-              );
-            }
-            if (!matchedPath && snap.path_id) {
-              matchedPath = allPaths.find(p => p.path_id === snap.path_id);
-            }
-            if (!matchedPath && snap.source_url) {
-              matchedPath = allPaths.find(p => p.url === snap.source_url);
-            }
+// 2026-08-08: matchedPath 反查只用 _dataSelectedChain(用户点的 chain 上下文)
+// + path_id / URL 反查 — 不读 snap.version_branch / snap.package_type。
+// 严格按你"不读数据库的 ver packageType,从 chain 构造"原则。
+// URL 去重下,8703 这种同 URL 多 chain 的 snap 反查总是取第一条(URL-only
+// path_id 区分不了 chain)— 这是 URL-only path_id 的固有限制。8703 用户点
+// WAF leaf 显示 WAF 元数据,点海光 leaf 显示海光元数据(用户意图主导)。
+let matchedPath = null;
+const allPaths = paths || [];
+if (_dataSelectedChain && _dataSelectedChain.length > 0) {
+  // 用户点的 chain:精确匹配优先(leaf),prefix 匹配 fallback(中间节点)
+  matchedPath = allPaths.find(p =>
+    Array.isArray(p.chain) &&
+    p.chain.length === _dataSelectedChain.length &&
+    p.chain.every((seg, i) => seg === _dataSelectedChain[i])
+  );
+  if (!matchedPath) {
+    matchedPath = allPaths.find(p =>
+      Array.isArray(p.chain) &&
+      p.chain.length >= _dataSelectedChain.length &&
+      p.chain.slice(0, _dataSelectedChain.length).every((seg, i) => seg === _dataSelectedChain[i])
+    );
+  }
+}
+if (!matchedPath && snap.path_id) {
+  matchedPath = allPaths.find(p => p.path_id === snap.path_id);
+}
+if (!matchedPath && snap.source_url) {
+  matchedPath = allPaths.find(p => p.url === snap.source_url);
+}
   if (matchedPath && matchedPath.chain && matchedPath.chain.length > 0) {
     const chain = matchedPath.chain;
     const leafUrl = matchedPath.url || '';
