@@ -1714,11 +1714,11 @@ function buildFlatVerTreeHtml(snapshots) {
     return b.localeCompare(a, 'zh');
   });
 
-  // 推送 modal title 用 snap 自己的 ver/pkg(URL 去重下"最后采集者"标识,反映
-  // 该 snap 真正归属的 chain)。不是反查,是直接显示。row 列表用 chain 数组
-  // (`chainPkg`/`chainVer`)确保类型列显示一致;推送 modal title 是给用户
-  // 预览用的,要让用户看到该 snap 实际是什么。
-  // 因此不定义 pushVer/pushPkg,推送按钮直接传 s.version_branch/s.package_type。
+  // 用于推送按钮 — 从 _dataSelectedChain 派生
+  const pushVer = (_dataSelectedChain && _dataSelectedChain.length >= 2)
+    ? _dataSelectedChain[_dataSelectedChain.length - 2] : '';
+  const pushPkg = (_dataSelectedChain && _dataSelectedChain.length > 0)
+    ? _dataSelectedChain[_dataSelectedChain.length - 1] : '';
   let html = '';
   vers.forEach(ver => {
     const snaps = byVer[ver];
@@ -1762,7 +1762,7 @@ function buildFlatVerTreeHtml(snapshots) {
         <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span style="font-size:11px;color:var(--muted)">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
-        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button>
+        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
       </div>
       <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
         <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
@@ -2271,7 +2271,7 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
+      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || chainVer)}', '${escHtml(chainPkg)}')">推送</button>
     </div>
   </div>
 </div>`;
@@ -2779,8 +2779,10 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     byVer[v].push(s);
   });
 
-  // 推送 modal title 用 snap 自己的 ver/pkg(URL 去重下"最后采集者"标识,
-  // 反映该 snap 真正归属的 chain)。不是反查,是直接显示。
+  // 用于推送按钮 — 从 _dataSelectedChain 派生
+  const pushVer = verKeyHint || '';
+  const pushPkg = (_dataSelectedChain && _dataSelectedChain.length > 0)
+    ? _dataSelectedChain[_dataSelectedChain.length - 1] : '';
 
   const versions = Object.keys(byVer).sort((a, b) => {
     const na = parseFloat(a), nb = parseFloat(b);
@@ -2857,7 +2859,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(latest.version_branch)}','${esc(latest.package_type)}')">推送</button>
+          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
@@ -2871,7 +2873,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
               <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
               ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
-              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button>
+              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}
