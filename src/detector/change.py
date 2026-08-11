@@ -198,14 +198,25 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
             matched = []
             for sid, snap in new_items:
                 logger.info(f'[订阅匹配] 检查包: {snap.get("file_name")}')
-                snap_chain = _get_chain(
+                # 2026-08-08: 同 URL 多 chain 共享时,get_chain 返回 list of chains,
+                # detector 对每条 chain 试 match,任一 match 即推送(URL 去重下 snap
+                # 跨所有共享 chain 都需要被订阅匹配考虑)。
+                snap_chains = _get_chain(
                     snap.get('source_id', 0),
                     snap.get('source_url', ''),
-                    snap.get('path_id'),  # 优先 path_id 精确匹配,解决同 URL 多 chain 共享
+                    snap.get('path_id'),
                 )
-                logger.info(f'[订阅匹配] snap_chain: {snap_chain}')
-                if not _chain_matches(snap_chain, chains):
-                    logger.info(f'[订阅匹配] ❌ chain 不匹配，跳过')
+                if not isinstance(snap_chains, list):
+                    snap_chains = [snap_chains]
+                logger.info(f'[订阅匹配] snap_chains: {snap_chains}')
+                # 任一 chain 匹配订阅条件即推送
+                chain_matched = False
+                for sc in snap_chains:
+                    if _chain_matches(sc, chains):
+                        chain_matched = True
+                        break
+                if not chain_matched:
+                    logger.info(f'[订阅匹配] ❌ chain 不匹配(所有 {len(snap_chains)} 个 chain 都不匹配订阅),跳过')
                     continue
 
                 # Chain 匹配通过后，再检查 urgency 和 keywords

@@ -76,6 +76,10 @@ def _build_url_chain_cache():
 
     snapshot 通过 source_url + path_id 在这里反查 chain，用于订阅规则链路径匹配。
     每次 scheduler 启动时重建（产品管理修改路径后下次调度自动刷新）。
+
+    2026-08-08: 改为同 URL 存所有 chain(共享 URL 时 NSFocus 返回同一组 snap,
+    不同 chain 都需要匹配订阅规则)。调用方 detector/change.py 用 snap 的
+    ver/pkg 进一步精确匹配(订阅链 match)。
     """
     global _url_chain_cache, _chain_cache_loaded
     import json as _json
@@ -88,28 +92,34 @@ def _build_url_chain_cache():
             pt = _json.loads(row['package_type'] or '{}')
         except Exception:
             pt = {}
-        url_map = {}
-        path_id_map = {}
+        # 同 URL 收集所有 chain(URL 去重下多 chain 共 URL,都该被订阅匹配考虑)
+        url_to_chains = {}
+        # 2026-08-08: path_id → list of chains。URL-only path_id 多 chain 共享,
+        # 存 list 让 detector 试每条 chain (订阅海光 leaf 时 path_id 取到 WAF chain,
+        # 继续试海光 chain 匹配)。
+        path_id_to_chains = {}
         for p in pt.get('paths', []):
             url = p.get('url')
             chain = p.get('chain')
             if not (url and chain and isinstance(chain, list)):
                 continue
-            # 标准化 URL 格式：去除尾部斜线，确保前导斜线
             norm = '/' + url.lstrip('/').rstrip('/')
-            url_map[norm] = chain
-            # 实时算 path_id (content_sources.package_type.paths[].path_id 字段未存)
+            if norm not in url_to_chains:
+                url_to_chains[norm] = []
+            url_to_chains[norm].append(chain)
             try:
                 pid = _compute_path_id(norm, chain)
-                path_id_map[pid] = chain
+                if pid not in path_id_to_chains:
+                    path_id_to_chains[pid] = []
+                path_id_to_chains[pid].append(chain)
             except Exception:
                 pass
         _url_chain_cache[row['id']] = {
-            'by_url': url_map,
-            'by_path_id': path_id_map,
+            'by_url': url_to_chains,        # list of chains (URL → 所有 chain)
+            'by_path_id': path_id_to_chains, # list of chains (path_id → 所有 chain)
         }
-
     _chain_cache_loaded = True
+    logger.debug(f'URL/path_id→Chain cache built: {len(_url_chain_cache)} sources')
     logger.debug(f'URL/path_id→Chain cache built: {len(_url_chain_cache)} sources')
 
 
@@ -201,29 +211,35 @@ def _scan_network_errors_from_log(started_at: str, finished_at: str) -> list:
 def _get_chain(source_id: int, source_url: str, path_id: str = None) -> list:
     """从缓存反查 snapshot 的完整 chain 路径。
 
-    优先 path_id 精确匹配（解决同 URL 多 chain 共享场景），
-    fallback URL 匹配（兼容 legacy snap 无 path_id 的旧行）。
+    返回 list of chains(URL 去重下多 chain 共享时,所有 chain 都返回):
+      - path_id 精确匹配:同 URL 多 chain 共享 path_id,返回匹配 path_id 的所有 chain
+        (URL-only path_id 实际只取第一条 — 但 detector 现在用 snap.ver/pkg 二次精确)
+      - URL fallback:返回该 URL 对应的所有 chain 列表
 
-    返回 chain 数组，如找不到返回空列表。
+    返回 list of chain 列表(每个 chain 是 list of str),detector 对任一 chain
+    做 _chain_matches 判定。
+
+    返回 [] 找不到。
     """
     if not _chain_cache_loaded:
         _build_url_chain_cache()
     cache = _url_chain_cache.get(source_id, {})
     if not isinstance(cache, dict):
-        # 防御:旧缓存结构意外残留 → 回退 URL 匹配
         cache = {'by_url': cache, 'by_path_id': {}}
-    # 1) path_id 精确匹配（推荐路径，同 URL 多 chain 时唯一区分）
+    # 1) path_id 精确匹配(URL-only,同 URL 多 chain 同 path_id → 返回所有 chain list)
     if path_id:
         by_path = cache.get('by_path_id') or {}
-        ch = by_path.get(path_id)
-        if ch:
-            return ch
-    # 2) URL fallback（兼容老 snap 无 path_id 或 path_id 算错的极端情况）
+        chs = by_path.get(path_id)
+        if chs:
+            # chs 是 list of chains,直接返回
+            return chs if isinstance(chs, list) else [chs]
+    # 2) URL fallback — 2026-08-08: 返回该 URL 对应的所有 chain 列表
     by_url = cache.get('by_url') or {}
     import re as _re
     m = _re.match(r'^https?://[^/]+(.*)', source_url or '')
     rel_path = '/' + m.group(1).lstrip('/').rstrip('/') if m else ('/' + source_url.lstrip('/').rstrip('/') if source_url else '/')
-    return by_url.get(rel_path, [])
+    chains_list = by_url.get(rel_path, [])
+    return chains_list if isinstance(chains_list, list) else ([chains_list] if chains_list else [])
 
 
 def invalidate_chain_cache():
