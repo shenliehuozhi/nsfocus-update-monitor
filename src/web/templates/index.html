@@ -2950,11 +2950,15 @@ async function showPushModal(sid, product, version, pkgType, chain){
   // chain 数组,URL-only path_id 反查第一条的固有限制)。from_snapshot 用这个
   // 构造推送消息内容,不读 snap 行反查。
   // chain 参数来自 JSON.stringify(r._chain) — 字符串格式,反序列化。
+  // onclick 是 HTML 属性,JSON 里 " 被 escHtml 转成 &quot;,这里反转回 "。
   let chainArr = [];
   if (Array.isArray(chain)) {
     chainArr = chain;
   } else if (typeof chain === 'string' && chain) {
-    try { chainArr = JSON.parse(chain); } catch (e) { chainArr = []; }
+    try {
+      const decoded = chain.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      chainArr = JSON.parse(decoded);
+    } catch (e) { chainArr = []; }
   }
   _pushChain = chainArr;
   _pushTab='email';
