@@ -2271,7 +2271,7 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', ${JSON.stringify(r._chain || [])})">推送</button>
+      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', '${escHtml(JSON.stringify(r._chain || []))}')">推送</button>
     </div>
   </div>
 </div>`;
@@ -2949,7 +2949,14 @@ async function showPushModal(sid, product, version, pkgType, chain){
   // 2026-08-08: 记下前端从 r._chain 传的 chain 数组(content_source 派生的
   // chain 数组,URL-only path_id 反查第一条的固有限制)。from_snapshot 用这个
   // 构造推送消息内容,不读 snap 行反查。
-  _pushChain = Array.isArray(chain) ? chain : [];
+  // chain 参数来自 JSON.stringify(r._chain) — 字符串格式,反序列化。
+  let chainArr = [];
+  if (Array.isArray(chain)) {
+    chainArr = chain;
+  } else if (typeof chain === 'string' && chain) {
+    try { chainArr = JSON.parse(chain); } catch (e) { chainArr = []; }
+  }
+  _pushChain = chainArr;
   _pushTab='email';
   _pushRecipientMode='customer';
   _pushSelectedCustomers.clear();
