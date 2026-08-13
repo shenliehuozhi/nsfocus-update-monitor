@@ -2271,7 +2271,7 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
       <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}')">推送</button>
+      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', ${JSON.stringify(r._chain || [])})">推送</button>
     </div>
   </div>
 </div>`;
@@ -2942,10 +2942,14 @@ function dataBackToAgg() {
 async function manualPush(sid) { await confirmAct('确认推送？', async ()=>{ const r = await api('/history/' + sid + '/resend', { method: 'POST' }); toast(r.code === 0 ? '已推送' : r.message || '失败', r.code === 0 ? 'success' : 'error'); }, '📤', '确认推送'); }
 
 // ── Push Modal (email send OR channel send) ──
-let _pushSid=0,_pushTab='email',_pushRecipientMode='customer',_pushSelectedCustomers=new Set(),_pushChannelId=0,_pushManualEmail='',_pushBotChannelId=0,_banTimer=null;
+let _pushSid=0,_pushTab='email',_pushRecipientMode='customer',_pushSelectedCustomers=new Set(),_pushChannelId=0,_pushManualEmail='',_pushBotChannelId=0,_banTimer=null,_pushChain=[];
 
-async function showPushModal(sid,product,version,pkgType){
-  _pushSid=sid;
+async function showPushModal(sid, product, version, pkgType, chain){
+  _pushSid = sid;
+  // 2026-08-08: 记下前端从 r._chain 传的 chain 数组(content_source 派生的
+  // chain 数组,URL-only path_id 反查第一条的固有限制)。from_snapshot 用这个
+  // 构造推送消息内容,不读 snap 行反查。
+  _pushChain = Array.isArray(chain) ? chain : [];
   _pushTab='email';
   _pushRecipientMode='customer';
   _pushSelectedCustomers.clear();
@@ -3172,10 +3176,10 @@ async function confirmPush(){
         try{localStorage.setItem('pushModalLastManualEmail', _pushManualEmail);}catch(e){}
       }
       const firstCustId = customerIds.length > 0 ? customerIds[0] : null;
-      r=await api('/history/'+_pushSid+'/email-push',{method:'POST',body:JSON.stringify({channel_id:_pushChannelId, recipients: recipients, customer_id: firstCustId})});
+      r=await api('/history/'+_pushSid+'/email-push',{method:'POST',body:JSON.stringify({channel_id:_pushChannelId, recipients: recipients, customer_id: firstCustId, user_chain: _pushChain})});
     }else{
       if(!_pushBotChannelId)return toast('请选择渠道','error');
-      r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify({mode:'channel', target_id:_pushBotChannelId})});
+      r=await api('/history/'+_pushSid+'/push',{method:'POST',body:JSON.stringify({mode:'channel', target_id:_pushBotChannelId, user_chain: _pushChain})});
     }
     if(r.code===0){
       showPushResult(r.data||{}, true);

@@ -93,6 +93,9 @@ def _build_chain(msg: 'NotificationMessage', db_path: str | None = None) -> tupl
     """Look up the chain for a notification message by matching source_url → relative path → paths chain.
 
     Returns (chain_list, full_detail_url). chain_list is empty if not found.
+
+    2026-08-08: 多 chain 共享 URL 时(8703 情况),返回第一个匹配(URL-only path_id
+    反查第一条)的 chain。从_snapshot() 仍可用 user_chain 参数覆盖(前端传 r._chain)。
     """
     import hashlib, json
     if db_path is None:
@@ -228,7 +231,8 @@ class NotificationMessage:
 
     @classmethod
     def from_snapshot(cls, snap: dict, is_rollback: bool = False,
-                      download_base: str = 'https://update.nsfocus.com/update/downloads/id/') -> 'NotificationMessage':
+                      download_base: str = 'https://update.nsfocus.com/update/downloads/id/',
+                      user_chain: list | None = None) -> 'NotificationMessage':
         parsed = snap.get('description_parsed', {})
         if isinstance(parsed, str):
             import json
@@ -275,7 +279,14 @@ class NotificationMessage:
         # 2026-08-08: chain 元数据从 content_sources.package_type.paths[].chain 取,
         # 不再读 snap.version_branch / snap.package_type(那些字段会被 URL 去重
         # 后的 save_snapshot UPDATE 互相覆盖,数据脏)。chain 才是真相源。
-        msg.chain, msg.chain_url = _build_chain(msg)
+        # 多 chain 共享 URL 时:前端推送按钮传 user_chain(从 r._chain 取,
+        # 已经是 content_source 派生的 chain 数组)— 用 user_chain 构造推送消息
+        # 内容,完全用 content_source,不读 snap 行反查。
+        if user_chain and isinstance(user_chain, list) and len(user_chain) > 0:
+            msg.chain = user_chain
+            msg.chain_url = ''
+        else:
+            msg.chain, msg.chain_url = _build_chain(msg)
         if msg.chain:
             msg.version_branch = msg.chain[-2] if len(msg.chain) >= 2 else ''
             msg.package_type = msg.chain[-1] if msg.chain else ''

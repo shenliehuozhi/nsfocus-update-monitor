@@ -565,7 +565,10 @@ def resend_targeted(sid: int):
     # ── 构造消息 ──
     # 标题前缀标记「重推至客户」: 旧版从 customers 表查 name,新版不查 customers (按用户要求纯走历史 recipient)
     # channel_name 已自动拼接客户名,推送历史展示够用;这里不再加 title 前缀
-    message = NotificationMessage.from_snapshot(snap)
+    # 2026-08-08: 接受前端传来的 user_chain(从 r._chain 取,content_source 派生),
+    # 避免 URL-only path_id 反查第一条的固有限制(8703 推送 WAF 元数据)。
+    user_chain = (data.get('user_chain') or []) if isinstance(data := request.get_json(silent=True) or {}, dict) else []
+    message = NotificationMessage.from_snapshot(snap, user_chain=user_chain)
 
     # ── 发送 ──
     from src.notifiers.router import NOTIFIERS
@@ -622,6 +625,9 @@ def push_by_mode(sid: int):
     mode = data.get('mode', '')
     target_id = data.get('target_id', 0)
     manual_emails = data.get('email', '')
+    # 2026-08-08: 接受前端传来的 user_chain(content_source 派生),
+    # 避免 URL-only path_id 反查第一条的固有限制。
+    user_chain = data.get('user_chain') or []
     # Issue #3: manual_email mode can pick which SMTP channel to send through.
     # Optional — when omitted, falls back to the first active email channel.
     manual_channel_id = int(data.get('channel_id') or 0)
@@ -644,7 +650,7 @@ def push_by_mode(sid: int):
     if not snap:
         return jsonify({'code': 40400, 'message': '快照不存在'}), 404
 
-    message = NotificationMessage.from_snapshot(snap)
+    message = NotificationMessage.from_snapshot(snap, user_chain=user_chain)
     results = []
 
     # ── Resolve target emails and rate-limit keys ──────────────
@@ -903,7 +909,10 @@ def push_email(sid: int):
         return jsonify({'code': 40001, 'message': 'email notifier unavailable'}), 400
 
     from src.notifiers.base import NotificationMessage
-    message = NotificationMessage.from_snapshot(snap)
+    # 2026-08-08: 接受前端传来的 user_chain(content_source 派生)
+    _data = request.get_json(silent=True) or {}
+    _user_chain = _data.get('user_chain') or []
+    message = NotificationMessage.from_snapshot(snap, user_chain=_user_chain)
 
     # Rate-limit key — single key for the whole send (one email goes to N recipients)
     rate_key = recipients[0] if len(recipients) == 1 else f'manual:{",".join(sorted(recipients))}'
