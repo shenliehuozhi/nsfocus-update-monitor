@@ -209,13 +209,14 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
                 if not isinstance(snap_chains, list):
                     snap_chains = [snap_chains]
                 logger.info(f'[订阅匹配] snap_chains: {snap_chains}')
-                # 任一 chain 匹配订阅条件即推送
-                chain_matched = False
+                # 任一 chain 匹配订阅条件即推送。记下匹配的那个 chain —
+                # 推送消息内容用订阅条件的 chain(用户选定的),不读 snap 行反查。
+                matched_chain = None
                 for sc in snap_chains:
                     if _chain_matches(sc, chains):
-                        chain_matched = True
+                        matched_chain = sc
                         break
-                if not chain_matched:
+                if not matched_chain:
                     logger.info(f'[订阅匹配] ❌ chain 不匹配(所有 {len(snap_chains)} 个 chain 都不匹配订阅),跳过')
                     continue
 
@@ -232,7 +233,7 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
                         logger.info(f'[订阅匹配] ❌ keywords 不匹配: {keywords} 不在描述中')
                         continue
                 logger.info(f'[订阅匹配] ✅ 全部条件匹配，加入结果')
-                matched.append((sid, snap))
+                matched.append((sid, snap, matched_chain))
             logger.info(f'[订阅匹配] 规则 {rule.get("name")} 匹配结果: {len(matched)} 个包')
             return matched
 

@@ -703,8 +703,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 rules = get_enabled_rules()
                 for rule in rules:
                     matched = get_new_for_subscription(rule, result.new_items)
-                    for sid, snap in matched:
-                        route_notifications(sid, rule['id'])
+                    for sid, snap, matched_chain in matched:
+                        route_notifications(sid, rule['id'], user_chain=matched_chain)
 
             # 6. Handle rollbacks (only for rules with notify_rollback enabled)
             for sid, snap in result.rollback_items:
@@ -1062,8 +1062,8 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
                 push_count = 0
                 for rule in rules:
                     matched = get_new_for_subscription(rule, result.new_items)
-                    for sid, snap in matched:
-                        route_notifications(sid, rule['id'])
+                    for sid, snap, matched_chain in matched:
+                        route_notifications(sid, rule['id'], user_chain=matched_chain)
                         push_count += 1
                 _push_log(f'✓ 推送触发: {push_count} 条订阅匹配')
 

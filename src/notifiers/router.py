@@ -68,10 +68,14 @@ def _is_maintenance_mode() -> bool:
         return False
 
 
-def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = False):
+def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = False,
+                          user_chain: list | None = None):
     """Route a snapshot through its matched channels.
 
     For delayed pushes, enqueue; for immediate (rollback or no delay), send now.
+
+    user_chain: 订阅条件里匹配到的 chain(从 get_new_for_subscription 返回),
+    推送消息内容用这个 chain 构造,不读 snap 行反查。
     """
     if _is_maintenance_mode():
         logger.info(f'Maintenance mode: suppressed notification for snapshot {snapshot_id}')
@@ -90,7 +94,7 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
 
     # Rollback notifications are always immediate
     if is_rollback:
-        _send_immediate(snap, rule, is_rollback=True)
+        _send_immediate(snap, rule, is_rollback=True, user_chain=user_chain)
         return
 
     # Digest mode: enqueue to digest queue instead of sending
@@ -147,7 +151,7 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
         return
 
     # No delay — send immediately
-    _send_immediate(snap, rule)
+    _send_immediate(snap, rule, user_chain=user_chain)
 
 
 def _get_email_rate_settings() -> dict:
@@ -163,9 +167,11 @@ def _get_email_rate_settings() -> dict:
     }
 
 
-def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False):
+def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False,
+                    user_chain: list | None = None):
     """Send notification immediately through all channels associated with the rule."""
-    message = NotificationMessage.from_snapshot(snap, is_rollback=is_rollback)
+    message = NotificationMessage.from_snapshot(snap, is_rollback=is_rollback,
+                                                user_chain=user_chain)
 
     bindings = get_rule_channels(rule['id'])
     if not bindings:
@@ -380,7 +386,7 @@ def process_delayed_queue():
         if is_window_time(rule) is False:
             logger.info(f'Skip delayed push {item["id"]}: outside window time')
             continue
-        _send_immediate(snap, rule, is_rollback=False)
+        _send_immediate(snap, rule, is_rollback=False, user_chain=user_chain)
         mark_pushed(item['id'])
 
 
