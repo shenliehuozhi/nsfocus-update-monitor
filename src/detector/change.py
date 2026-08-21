@@ -179,9 +179,25 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
             pass  # 格式错误视为不限制
 
     if not conditions:
-        return new_items  # 空条件 = 匹配全部
+        # 2026-08-08: 即使空条件(匹配全部)也用 _get_chain 拿 chain list,选第一条
+        # 作为 matched_chain,推送消息用这条 chain 构造。多 chain 共享 URL 时
+        # 第一条 path 通常是主目录链(WAF)。
+        from src.core.scheduler import _get_chain
+        matched = []
+        for sid, snap in new_items:
+            snap_chains = _get_chain(
+                snap.get('source_id', 0),
+                snap.get('source_url', ''),
+                snap.get('path_id'),
+            )
+            if not isinstance(snap_chains, list):
+                snap_chains = [snap_chains] if snap_chains else []
+            # 选第一条作为 matched_chain
+            matched_chain = snap_chains[0] if snap_chains else None
+            matched.append((sid, snap, matched_chain))
+        return matched
 
-    # ── 新结构：chains（链路径匹配）──────────────────────────────────────
+    # ── 新结构:chains(链路径匹配)──────────────────────────────────────
     chains = conditions.get('chains', [])
 
     if chains:

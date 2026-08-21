@@ -7,6 +7,7 @@ These tests target the historical bug surface:
   - urgency / keywords filters
   - path_id-based chain lookup precedence
 """
+import pytest
 from unittest.mock import patch
 from src.detector.change import (
     get_new_for_subscription,
@@ -16,6 +17,18 @@ from src.detector.change import (
     compute_next_window_push_time,
     compute_push_time,
 )
+
+
+@pytest.fixture(autouse=True)
+def _reset_chain_cache():
+    """Reset scheduler's chain cache between tests so pollution from
+    other modules' DB_PATH / cache mutations doesn't leak into detector
+    tests (where get_new_for_subscription's empty-conditions branch
+    now calls _get_chain, which would return cached real-DB data)."""
+    from src.core.scheduler import invalidate_chain_cache
+    invalidate_chain_cache()
+    yield
+    invalidate_chain_cache()
 
 
 def test_empty_conditions_matches_all(base_snap):
