@@ -657,13 +657,19 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
-            summary['products'][name]['new'] = len(push_items)
+            # 2026-08-21: products[name]['new'] 统计物理包数,不统计 chain 事件数。
+            # 同一物理文件 + 多 chain(例如 WAF V6.0.9 共享 URL)→ 1 个新文件而非 N 个。
+            summary['products'][name]['new'] = len(result.new_items)
             by_type = {}
-            for _, snap, chain in push_items:
+            for sid, snap, chain in push_items:
                 # 2026-08-08: 用 chain 派生 pkg_type,不读 snap 行
                 pt = (chain[-1] if chain else resolve_chain_pkg(snap)) or 'other'
-                by_type[pt] = by_type.get(pt, 0) + 1
-            summary['products'][name]['by_type'] = by_type
+                # 同一 snap 在同一 chain 末项下不应重复累加(detector 已经去重),
+                # 但用 dict-from-set 做一次保险
+                by_type.setdefault(pt, set()).add(sid)
+            summary['products'][name]['by_type'] = {
+                k: len(v) for k, v in by_type.items()
+            }
 
             # ── Detailed Chinese logging ──────────────────────────────
             after_files = before_files.copy()

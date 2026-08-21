@@ -3857,12 +3857,15 @@ async function history(){
         html+=`<tr style="background:#f8f8f8"><td></td><td>—</td><td>${h.product_name||''}</td><td>${h.version_branch||''}</td><td>${typeCN(h.package_type)}</td><td class="mono">${(h.file_name||'').substring(0,30)}</td><td class="mono">${(h.package_version||'').substring(0,15)}</td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td></tr>`;
       }else{
         dels.forEach(d=>{
+          // package_type: 同 chain-scoped 派生,d.derived_package_type 来自 delivery_log 的 chain_json 末项
+          // 老链路 chain_json='[]' 时 fallback 到 h.package_type
+          const pkgType = d.derived_package_type || h.package_type;
           html+=`<tr style="background:#f8f8f8">
             <td></td>
             <td>${d.customer_name||'—'}</td>
             <td>${h.product_name||''}</td>
             <td>${h.version_branch||''}</td>
-            <td>${typeCN(h.package_type)}</td>
+            <td>${typeCN(pkgType)}</td>
             <td class="mono">${(h.file_name||'').substring(0,30)}</td>
             <td class="mono">${(h.package_version||'').substring(0,15)}</td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
@@ -3886,11 +3889,14 @@ function _renderRecentDeliveries(deliveries,range){
   if(!deliveries||!deliveries.length)return '';
   const ranges={1:'1天',7:'7天',30:'1个月',365:'1年'};
   let btns=Object.entries(ranges).map(([v,l])=>`<button class="btn btn-xs ${range===v?'btn-primary':'btn-outline'}" onclick="dashboard('${v}')">${l}</button>`).join('');
-  // Aggregate: group by customer+product+type
+  // Aggregate: group by customer+product+chain-specific type
+  // derived_package_type 来自后端 CASE: chain_json 末项 OR snapshots.package_type fallback
+  // 同一物理 snap + 不同 chain_json 会分成两行 (e.g. WAF V6.0.9规则升级包 vs 海光 V6.0.9规则升级)
   let agg={};
   deliveries.forEach(d=>{
-    let key=`${d.customer_name||'—'}|${d.product_name}|${d.package_type}`;
-    if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:d.package_type,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
+    const pkgType = d.derived_package_type || d.package_type;
+    let key=`${d.customer_name||'—'}|${d.product_name}|${pkgType}`;
+    if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:pkgType,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
     agg[key].count++;
     agg[key].channels.add(d.channel_name||d.channel_type);
     if(d.sent_at>agg[key].last)agg[key].last=d.sent_at;

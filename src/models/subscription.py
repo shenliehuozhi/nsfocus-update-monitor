@@ -513,14 +513,24 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         tuple(params) + (limit, (page - 1) * limit)
     )
 
-    # For each snapshot, get the delivery details
+    # For each snapshot, get the delivery details.
+    # package_type 派生规则:
+    #   1. chain_json 非空(新链路写入)→ 取 chain_json 末项作为本次推送的 chain-specific package_type
+    #      (同一物理 snap 在不同 chain 下应该显示不同 package_type,例如 WAF V6.0.9 vs 海光 V6.0.9)
+    #   2. chain_json='[]'(旧链路 / 老历史记录)→ fallback 到 snapshots.package_type
     for row in rows:
         deliveries = query(
             """SELECT dl.channel_name, dl.channel_type, dl.delivery_status,
                       dl.error_message, dl.sent_at, dl.channel_id, dl.customer_id,
-                      dl.recipient, dl.sender,
-                      c.name as customer_name, c.company as customer_company
+                      dl.recipient, dl.sender, dl.chain_json,
+                      c.name as customer_name, c.company as customer_company,
+                      CASE
+                        WHEN dl.chain_json IS NOT NULL AND dl.chain_json != '[]'
+                          THEN json_extract(dl.chain_json, '$[#-1]')
+                        ELSE s.package_type
+                      END AS derived_package_type
                FROM delivery_log dl
+               JOIN snapshots s ON dl.snapshot_id = s.id
                LEFT JOIN customers c ON dl.customer_id = c.id
                WHERE dl.snapshot_id = ?
                ORDER BY dl.sent_at DESC""",

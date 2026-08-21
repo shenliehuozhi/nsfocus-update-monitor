@@ -71,11 +71,20 @@ def get_dashboard():
     range_map = {'1': '1', '7': '7', '30': '30', '90': '90', '365': '365'}
     days = range_map.get(range_days, '7')
 
+    # package_type 派生: 同 chain-scoped 历史查询
+    #   1. chain_json 非空 → 末项 (e.g. 海光 V6.0.9 规则升级 vs WAF V6.0.9 规则升级)
+    #   2. chain_json='[]' (旧链路) → snapshots.package_type fallback
     recent = query(
         f"""SELECT dl.sent_at, dl.channel_name, dl.channel_type, dl.delivery_status,
                    c.name as customer_name, s.product_name, s.version_branch,
                    s.package_type, s.file_name, s.package_version, s.urgency,
-                   dl.snapshot_id, dl.channel_id, dl.customer_id
+                   dl.snapshot_id, dl.channel_id, dl.customer_id,
+                   dl.chain_json,
+                   CASE
+                     WHEN dl.chain_json IS NOT NULL AND dl.chain_json != '[]'
+                       THEN json_extract(dl.chain_json, '$[#-1]')
+                     ELSE s.package_type
+                   END AS derived_package_type
             FROM delivery_log dl
             JOIN snapshots s ON dl.snapshot_id = s.id
             LEFT JOIN customers c ON dl.customer_id = c.id

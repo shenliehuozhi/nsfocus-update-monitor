@@ -4938,11 +4938,14 @@ async function history(){
         }
         // 收件人:email 渠道显示邮箱;机器人渠道没个人收件人,用 _chanName 替代,跟机器人名一致
         let recipient = d.recipient || _chanName || '—';
+        // package_type: 同 chain-scoped 派生,d.derived_package_type 来自 delivery_log 的 chain_json 末项
+        // 老链路 chain_json='[]' 时 fallback 到 h.package_type
+        const pkgType = d.derived_package_type || h.package_type;
         html += `<tr style="background:var(--gray-bg)">
             <td>${fmtTZ(d.sent_at||h.pushed_at||h.first_seen_at||'',true)}</td>
             <td>${_custName||d.customer_name||'—'}</td>
             <td>${h.product_name||''}</td>
-            <td>${typeCN(h.package_type)}</td>
+            <td>${typeCN(pkgType)}</td>
             <td title="${escHtml(h.file_name||'')}" style="max-width:380px"><span style="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
             <td>${channelDisp}</td>
@@ -4965,15 +4968,18 @@ function _renderRecentDeliveries(deliveries,range){
   if(!deliveries||!deliveries.length)return '';
   const ranges={1:'1天',7:'7天',30:'1个月',365:'1年'};
   let btns=Object.entries(ranges).map(([v,l])=>`<button class="btn btn-xs ${range===v?'btn-primary':'btn-outline'}" onclick="dashboard('${v}')">${l}</button>`).join('');
-  // Aggregate: group by customer+product+type
+  // Aggregate: group by customer+product+chain-specific type
+  // derived_package_type 来自后端 CASE: chain_json 末项 OR snapshots.package_type fallback
+  // 同一物理 snap + 不同 chain_json 会分成两行 (e.g. WAF V6.0.9规则升级包 vs 海光 V6.0.9规则升级)
   let agg={};
   deliveries.forEach(d=>{
     // 2026-07-11: channel_name 可能含客户名, split 出原渠道名再聚合,避免渠道列变长
     let _cn = d.channel_name || '';
     const _idx = _cn.indexOf('|Nsf0cus|');
     if (_idx >= 0) _cn = _cn.substring(0, _idx);
-    let key=`${d.customer_name||'—'}|${d.product_name}|${d.package_type}`;
-    if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:d.package_type,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
+    const pkgType = d.derived_package_type || d.package_type;
+    let key=`${d.customer_name||'—'}|${d.product_name}|${pkgType}`;
+    if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:pkgType,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
     agg[key].count++;
     agg[key].channels.add(_cn||d.channel_type);
     if(d.sent_at>agg[key].last)agg[key].last=d.sent_at;
