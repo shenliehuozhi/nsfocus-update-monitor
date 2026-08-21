@@ -717,13 +717,16 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                     matched = get_new_for_subscription(rule, [(sid, snap)])
                     if not matched:
                         continue
-                    _matched_sid, _matched_snap, matched_chain = matched[0]
-                    route_notifications(
-                        sid,
-                        rule['id'],
-                        is_rollback=True,
-                        user_chain=matched_chain,
-                    )
+                    # 2026-08-21: 同一物理 snap + 规则可能匹配多个 chain
+                    # (subtree root in WAF 顶层 → chain-A WAF V6.0.9 + chain-B 海光 V6.0.9 都匹配)。
+                    # 循环每条匹配事件,各自发一份回滚 (user_chain 区分)。
+                    for _matched_sid, _matched_snap, matched_chain in matched:
+                        route_notifications(
+                            sid,
+                            rule['id'],
+                            is_rollback=True,
+                            user_chain=matched_chain,
+                        )
 
         # 7. Process delayed queue
         process_delayed_queue()
@@ -1086,14 +1089,16 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
                         matched = get_new_for_subscription(rule, [(sid, snap)])
                         if not matched:
                             continue
-                        _matched_sid, _matched_snap, matched_chain = matched[0]
-                        route_notifications(
-                            sid,
-                            rule['id'],
-                            is_rollback=True,
-                            user_chain=matched_chain,
-                        )
-                        rb_push_count += 1
+                        # 2026-08-21: 同一物理 snap + 规则可能匹配多个 chain,
+                        # 循环每条事件分别发 (user_chain 区分 chain 维度)。
+                        for _matched_sid, _matched_snap, matched_chain in matched:
+                            route_notifications(
+                                sid,
+                                rule['id'],
+                                is_rollback=True,
+                                user_chain=matched_chain,
+                            )
+                            rb_push_count += 1
                 if rb_push_count:
                     _push_log(f'✓ 回滚推送: {rb_push_count} 条')
 
