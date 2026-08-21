@@ -1,6 +1,7 @@
 """Notification router — orchestrates sending notifications through matched channels."""
 
 import os
+import json
 import time
 from datetime import datetime, timezone
 
@@ -76,6 +77,8 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
 
     user_chain: 订阅条件里匹配到的 chain(从 get_new_for_subscription 返回),
     推送消息内容用这个 chain 构造,不读 snap 行反查。
+    chain_json (序列化后) 会被写入 delayed_queue / digest_queue /
+    delivery_log,作为同 chain 维度的去重 key。
     """
     if _is_maintenance_mode():
         logger.info(f'Maintenance mode: suppressed notification for snapshot {snapshot_id}')
@@ -91,6 +94,10 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
     if not rule:
         logger.warning(f'Rule {rule_id} not found')
         return
+
+    # 把 user_chain 序列化成 JSON,作为下游 enqueue / enqueue_digest /
+    # log_delivery / dedup 的 chain 维度 key。空 chain 用 '[]'。
+    chain_json = json.dumps(user_chain or [], ensure_ascii=False)
 
     # Rollback notifications are always immediate
     if is_rollback:
@@ -110,7 +117,7 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
             period_key = f"{now.year}-Q{(now.month - 1) // 3 + 1}"
 
         from src.models.subscription import enqueue_digest
-        enqueue_digest(rule_id, snapshot_id, period_key)
+        enqueue_digest(rule_id, snapshot_id, period_key, chain_json=chain_json)
         logger.info(f'Rule {rule["name"]}: enqueued for {digest_mode} digest ({period_key})')
         return
 
@@ -118,14 +125,14 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
     if is_quiet_time(rule):
         logger.info(f'Rule {rule["name"]}: in quiet time, delaying')
         push_after = compute_push_time(1)  # At least 1 hour
-        enqueue(snapshot_id, rule_id, push_after)
+        enqueue(snapshot_id, rule_id, push_after, chain_json=chain_json)
         return
 
     # Check min interval
     if not check_min_interval(rule, snap.get('product_name', '')):
         logger.info(f'Rule {rule["name"]}: min interval not met, delaying')
         push_after = compute_push_time(1)
-        enqueue(snapshot_id, rule_id, push_after)
+        enqueue(snapshot_id, rule_id, push_after, chain_json=chain_json)
         return
 
     # Apply delay strategy
@@ -138,7 +145,7 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
         # Window strategy: only send when inside time window
         if not is_window_time(rule):
             push_after = compute_next_window_push_time(rule)
-            enqueue(snapshot_id, rule_id, push_after)
+            enqueue(snapshot_id, rule_id, push_after, chain_json=chain_json)
             logger.info(f'Rule {rule["name"]}: outside window, enqueued for {push_after}')
             return
         # Fall through to send immediately when in window
@@ -146,7 +153,7 @@ def route_notifications(snapshot_id: int, rule_id: int, is_rollback: bool = Fals
     if delay_days > 0:
         # Each package has its own independent delay timer — no reset.
         push_after = compute_push_time(delay_days)
-        enqueue(snapshot_id, rule_id, push_after)
+        enqueue(snapshot_id, rule_id, push_after, chain_json=chain_json)
         logger.info(f'Rule {rule["name"]}: delayed {delay_days}d')
         return
 
@@ -170,6 +177,9 @@ def _get_email_rate_settings() -> dict:
 def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False,
                     user_chain: list | None = None):
     """Send notification immediately through all channels associated with the rule."""
+    # chain_json: dedup 维度 + log_delivery 持久化字段
+    chain_json = json.dumps(user_chain or [], ensure_ascii=False)
+
     message = NotificationMessage.from_snapshot(snap, is_rollback=is_rollback,
                                                 user_chain=user_chain)
 
@@ -190,22 +200,25 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False,
             continue
 
         # Deduplication: skip if THIS rule already pushed this snapshot through this
-        # channel successfully. Multiple rules sharing the same channel (e.g. ch_id=3
-        # bound to both rule 14 "邮箱推送" and rule 25 "华兴银行") must each push their
-        # own recipient list — to_list comes from rule.customer_emails, not channel,
-        # so cross-rule dedup incorrectly silences other rules' recipients.
+        # channel successfully for THIS chain. Multiple rules sharing the same channel
+        # (e.g. ch_id=3 bound to both rule 14 "邮箱推送" and rule 25 "华兴银行") must each
+        # push their own recipient list — to_list comes from rule.customer_emails, not
+        # channel, so cross-rule dedup incorrectly silences other rules' recipients.
+        # chain_json 维度:同一物理 snap + rule + channel,如果 chain-A 已经推送过,
+        # chain-B 仍可独立推送。同一 chain 重复才算重复。
         # (failed records don't block — rate-limit failures are transient)
         from src.models.database import query
         existing = query(
             """SELECT id FROM delivery_log
                WHERE snapshot_id = ? AND channel_id = ? AND rule_id = ?
+                     AND chain_json = ?
                      AND delivery_status = 'sent'
                LIMIT 1""",
-            (snap['id'], channel_id, rule['id'])
+            (snap['id'], channel_id, rule['id'], chain_json)
         )
         if existing:
             logger.info(f'Skip duplicate: snapshot {snap["id"]} already sent to '
-                        f'channel {channel_id} by rule {rule["id"]}')
+                        f'channel {channel_id} by rule {rule["id"]} (chain={chain_json})')
             continue
 
         notifier = NOTIFIERS.get(channel['type'])
@@ -322,10 +335,13 @@ def _send_immediate(snap: dict, rule: dict, is_rollback: bool = False,
             error=result.error_message,
             recipient=recipient_str,
             sender=getattr(result, 'sender', '') or '',
+            chain_json=chain_json,
         )
 
-        # Accumulate for push summary (replaces per-delivery emit_push)
-        key = (rule['id'], channel_id)
+        # Accumulate for push summary (replaces per-delivery emit_push).
+        # key 加 chain_json 维度:同一 rule + channel 下,chain-A 和 chain-B 的
+        # 推送汇总分开计数,避免跨 chain 混淆。
+        key = (rule['id'], channel_id, chain_json)
         if key not in _push_summary_accumulator:
             _push_summary_accumulator[key] = {
                 'total': 0, 'success': 0, 'failed': 0,
@@ -386,6 +402,16 @@ def process_delayed_queue():
         if is_window_time(rule) is False:
             logger.info(f'Skip delayed push {item["id"]}: outside window time')
             continue
+        # 2026-08-21: 从 delayed_queue 行恢复 user_chain,确保推送消息内容
+        # 用原始匹配 chain 派生(package_type 等),不重新查表。
+        # 空 / 异常 chain_json 回退到 None(legacy 兼容)。
+        try:
+            chain_json_raw = item.get('chain_json') or '[]'
+            user_chain = json.loads(chain_json_raw) if chain_json_raw else None
+            if not isinstance(user_chain, list):
+                user_chain = None
+        except (json.JSONDecodeError, TypeError):
+            user_chain = None
         _send_immediate(snap, rule, is_rollback=False, user_chain=user_chain)
         mark_pushed(item['id'])
 
@@ -550,6 +576,13 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list):
         # Log each snapshot delivery
         for snap in snaps:
             from src.models.subscription import log_delivery
+            # digest_queue 行带 chain_json (同 rule + period 下按 chain 分桶)。
+            # 单 snap 可能对应多条 digest_queue 行(多 chain),所以这里每条
+            # snap 记录一条 delivery_log,chain_json 各自。
+            try:
+                chain_json_raw = (snap.get('chain_json') or '[]') if isinstance(snap, dict) else '[]'
+            except Exception:
+                chain_json_raw = '[]'
             log_delivery(
                 snapshot_id=snap['snapshot_id'],
                 rule_id=rule['id'],
@@ -561,6 +594,7 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list):
                 status='sent',
                 # digest 是机器人渠道,recipient 留空,前端回退到 channel_name
                 recipient='',
+                chain_json=chain_json_raw,
             )
 
 

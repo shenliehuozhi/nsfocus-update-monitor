@@ -379,7 +379,8 @@ CREATE TABLE IF NOT EXISTS delivery_log (
     sent_at TEXT,
     retry_count INTEGER DEFAULT 0,
     recipient TEXT DEFAULT '',
-    sender TEXT DEFAULT ''
+    sender TEXT DEFAULT '',
+    chain_json TEXT DEFAULT '[]'
 )
 """
 # Schema-sync for delivery_log. Keep in sync with INSERT/UPDATE used by
@@ -395,6 +396,7 @@ EXPECTED_DELIVERY_LOG_COLUMNS = [
     ('error_message', 'TEXT', "''"),
     ('recipient', 'TEXT', "''"),
     ('sender', 'TEXT', "''"),
+    ('chain_json', 'TEXT', "'[]'"),
     # sent_at — auto-stamped by app when status='sent', DEFAULT '' if not set
     ('sent_at', 'TEXT', "''"),
     # retry_count — DEFAULT 0, but only UPDATEd via update_delivery
@@ -433,7 +435,8 @@ def _compose_channel_name(channel_name: str, customer_id) -> str:
 def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
                  channel_name: str = '', customer_id: int = None,
                  status: str = 'pending', error: str = '',
-                 rule_id: int = None, recipient: str = '', sender: str = '') -> int:
+                 rule_id: int = None, recipient: str = '', sender: str = '',
+                 chain_json: str = '[]') -> int:
     from src.models.database import execute
     # 2026-07-11: 写入时把客户名拼进 channel_name (详见 _compose_channel_name)
     channel_name = _compose_channel_name(channel_name, customer_id)
@@ -442,10 +445,11 @@ def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
         from datetime import datetime
         sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     return execute(
-        """INSERT INTO delivery_log (snapshot_id, rule_id, channel_id, channel_type, channel_name,
-           customer_id, delivery_status, error_message, sent_at, recipient, sender)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at, recipient, sender)
+        """INSERT INTO delivery_log
+           (snapshot_id, rule_id, channel_id, channel_type, channel_name,
+            customer_id, delivery_status, error_message, sent_at, recipient, sender, chain_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at, recipient, sender, chain_json or '[]')
     )
 
 
@@ -552,23 +556,28 @@ CREATE TABLE IF NOT EXISTS delayed_queue (
     created_at TEXT DEFAULT (datetime('now')),
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'cancelled', 'pushed')),
     cancelled_reason TEXT DEFAULT '',
-    pushed_at TEXT
+    pushed_at TEXT,
+    chain_json TEXT DEFAULT '[]'
 )
 """
 
 
-def enqueue(snapshot_id: int, rule_id: int, push_after: str) -> int:
+def enqueue(snapshot_id: int, rule_id: int, push_after: str, chain_json: str = '[]') -> int:
     from src.models.database import execute, query
-    # Dedup: same snapshot + rule shouldn't be enqueued twice
+    # Dedup by snapshot + rule + chain. A shared physical snapshot can have
+    # multiple chain events, so snapshot + rule is not sufficient.
     dup = query(
-        "SELECT id FROM delayed_queue WHERE snapshot_id = ? AND rule_id = ? AND status = 'pending'",
-        (snapshot_id, rule_id)
+        """SELECT id FROM delayed_queue
+           WHERE snapshot_id = ? AND rule_id = ? AND chain_json = ?
+             AND status = 'pending'""",
+        (snapshot_id, rule_id, chain_json or '[]')
     )
     if dup:
         return dup[0]['id']
     return execute(
-        "INSERT INTO delayed_queue (snapshot_id, rule_id, push_after) VALUES (?, ?, ?)",
-        (snapshot_id, rule_id, push_after)
+        """INSERT INTO delayed_queue
+           (snapshot_id, rule_id, push_after, chain_json) VALUES (?, ?, ?, ?)""",
+        (snapshot_id, rule_id, push_after, chain_json or '[]')
     )
 
 
@@ -648,6 +657,12 @@ def create_tables(db):
     from src.models.database import sync_table_columns
     sync_table_columns(db, 'subscription_rules', EXPECTED_SUBSCRIPTION_RULES_COLUMNS)
     sync_table_columns(db, 'delivery_log', EXPECTED_DELIVERY_LOG_COLUMNS)
+    sync_table_columns(db, 'delayed_queue', [
+        ('chain_json', 'TEXT', "'[]'"),
+    ])
+    sync_table_columns(db, 'digest_queue', [
+        ('chain_json', 'TEXT', "'[]'"),
+    ])
 
     # 历史数据迁移: delay_hours → delay_days (小时/24)
     # 仅对老 DB 里有 delay_hours 列的起作用;新 DB 没这列 → 异常被吞。
@@ -675,23 +690,32 @@ CREATE TABLE IF NOT EXISTS digest_queue (
     snapshot_id INTEGER NOT NULL REFERENCES snapshots(id),
     period_key TEXT NOT NULL,
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'cancelled')),
-    created_at TEXT DEFAULT (datetime('now'))
+    created_at TEXT DEFAULT (datetime('now')),
+    chain_json TEXT DEFAULT '[]'
 )
 """
 
 
-def enqueue_digest(rule_id: int, snapshot_id: int, period_key: str) -> int:
+def enqueue_digest(
+    rule_id: int,
+    snapshot_id: int,
+    period_key: str,
+    chain_json: str = '[]',
+) -> int:
     """Add a snapshot to a rule's digest queue."""
     from src.models.database import execute, query
     # Dedup
     dup = query(
-        "SELECT id FROM digest_queue WHERE rule_id=? AND snapshot_id=? AND status='pending'",
-        (rule_id, snapshot_id))
+        """SELECT id FROM digest_queue
+           WHERE rule_id=? AND snapshot_id=? AND chain_json=?
+             AND status='pending'""",
+        (rule_id, snapshot_id, chain_json or '[]'))
     if dup:
         return dup[0]['id']
     return execute(
-        "INSERT INTO digest_queue (rule_id, snapshot_id, period_key) VALUES (?, ?, ?)",
-        (rule_id, snapshot_id, period_key))
+        """INSERT INTO digest_queue
+           (rule_id, snapshot_id, period_key, chain_json) VALUES (?, ?, ?, ?)""",
+        (rule_id, snapshot_id, period_key, chain_json or '[]'))
 
 
 def get_digest_snapshots(rule_id: int = None, period_key: str = None) -> list:

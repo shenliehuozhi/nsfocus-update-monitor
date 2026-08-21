@@ -653,21 +653,22 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                                   check_rollback=True,
                                   seen_ids={s['id'] for s in before_snaps},
                                   withdrawn_items=cycle_withdrawn_by_src.get(src['id']))
+            push_items = result.new_chain_items or result.new_items
             summary['total_new'] += len(result.new_items)
             summary['total_rollback'] += len(result.rollback_items)
             summary['products'][name] = summary['products'].get(name, {})
-            summary['products'][name]['new'] = len(result.new_items)
+            summary['products'][name]['new'] = len(push_items)
             by_type = {}
-            for _, snap in result.new_items:
+            for _, snap, chain in push_items:
                 # 2026-08-08: 用 chain 派生 pkg_type,不读 snap 行
-                pt = resolve_chain_pkg(snap) or 'other'
+                pt = (chain[-1] if chain else resolve_chain_pkg(snap)) or 'other'
                 by_type[pt] = by_type.get(pt, 0) + 1
             summary['products'][name]['by_type'] = by_type
 
             # ── Detailed Chinese logging ──────────────────────────────
             after_files = before_files.copy()
             new_files = []
-            for sid, snap in result.new_items:
+            for sid, snap, _chain in push_items:
                 fname = snap.get('file_name', '')
                 after_files.add(fname)
                 new_files.append(fname)
@@ -698,11 +699,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                 _progress['total_rollback'] = summary['total_rollback']
 
             # 5. Route notifications for new items
-            if result.new_items:
+            if push_items:
                 _emit('notifying', product=name)
                 rules = get_enabled_rules()
                 for rule in rules:
-                    matched = get_new_for_subscription(rule, result.new_items)
+                    matched = get_new_for_subscription(rule, push_items)
                     for sid, snap, matched_chain in matched:
                         route_notifications(sid, rule['id'], user_chain=matched_chain)
 
@@ -716,7 +717,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
                     matched = get_new_for_subscription(rule, [(sid, snap)])
                     if not matched:
                         continue
-                    route_notifications(sid, rule['id'], is_rollback=True)
+                    _matched_sid, _matched_snap, matched_chain = matched[0]
+                    route_notifications(
+                        sid,
+                        rule['id'],
+                        is_rollback=True,
+                        user_chain=matched_chain,
+                    )
 
         # 7. Process delayed queue
         process_delayed_queue()
@@ -1051,17 +1058,18 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
                                   check_rollback=True,
                                   seen_ids={s['id'] for s in before_snaps},
                                   withdrawn_items=cycle_withdrawn_by_src.get(source_id))
+            push_items = result.new_chain_items or result.new_items
             logger.info(f'Single product detection: new={len(result.new_items)} rollback={len(result.rollback_items)}')
-            _push_log(f'✓ 检测完成: 新增 {len(result.new_items)} | 回滚 {len(result.rollback_items)}')
+            _push_log(f'✓ 检测完成: 新增 {len(push_items)} | 回滚 {len(result.rollback_items)}')
 
             # ── route_notifications: 推送新包 ──
-            if result.new_items:
-                _set_phase('notifying')
-                _push_log(f'📤 推送阶段: {len(result.new_items)} 个新包...')
+            if push_items:
+                _set_phase('notify')
+                _push_log(f'📤 推送阶段: {len(push_items)} 个新包...')
                 rules = get_enabled_rules()
                 push_count = 0
                 for rule in rules:
-                    matched = get_new_for_subscription(rule, result.new_items)
+                    matched = get_new_for_subscription(rule, push_items)
                     for sid, snap, matched_chain in matched:
                         route_notifications(sid, rule['id'], user_chain=matched_chain)
                         push_count += 1
@@ -1078,7 +1086,13 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
                         matched = get_new_for_subscription(rule, [(sid, snap)])
                         if not matched:
                             continue
-                        route_notifications(sid, rule['id'], is_rollback=True)
+                        _matched_sid, _matched_snap, matched_chain = matched[0]
+                        route_notifications(
+                            sid,
+                            rule['id'],
+                            is_rollback=True,
+                            user_chain=matched_chain,
+                        )
                         rb_push_count += 1
                 if rb_push_count:
                     _push_log(f'✓ 回滚推送: {rb_push_count} 条')

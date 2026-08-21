@@ -23,6 +23,7 @@ logger = get_logger('detector')
 class DetectionResult:
     source_id: int
     new_items: list = field(default_factory=list)       # (snapshot_id, snapshot_dict)
+    new_chain_items: list = field(default_factory=list)   # (snapshot_id, snapshot_dict, chain)
     rollback_items: list = field(default_factory=list)   # (snapshot_id, snapshot_dict)
     unchanged_items: list = field(default_factory=list)  # (snapshot_id, snapshot_dict)
     unchanged_count: int = 0
@@ -57,9 +58,20 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
         return result
 
     # Step 1: Save/update all collected items as snapshots
+    processed_physical_keys: set = set()
     for item in items:
         try:
             snap_dict = item.to_snapshot_dict()
+            physical_key = (
+                snap_dict.get('source_id', 0),
+                snap_dict.get('source_url', ''),
+                snap_dict.get('path_id', ''),
+                snap_dict.get('file_name', ''),
+                snap_dict.get('md5_hash', ''),
+            )
+            if physical_key in processed_physical_keys:
+                continue
+            processed_physical_keys.add(physical_key)
             sid = snap_db.save_snapshot(snap_dict)
             seen_ids.add(sid)
 
@@ -67,6 +79,26 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
             snap = snap_db.get_snapshot(sid)
             if snap and snap.get('first_seen_at') == snap.get('last_seen_at'):
                 result.new_items.append((sid, snap))
+
+                # A shared URL may belong to several chains. Keep the
+                # physical snapshot event, but expose one event per chain.
+                from src.core.scheduler import _get_chain
+                snap_chains = _get_chain(
+                    snap.get('source_id', 0),
+                    snap.get('source_url', ''),
+                    snap.get('path_id'),
+                )
+                if not isinstance(snap_chains, list):
+                    snap_chains = [snap_chains] if snap_chains else []
+                seen_chains = set()
+                for chain in snap_chains:
+                    if not isinstance(chain, list) or not chain:
+                        continue
+                    chain_key = tuple(chain)
+                    if chain_key in seen_chains:
+                        continue
+                    seen_chains.add(chain_key)
+                    result.new_chain_items.append((sid, snap, chain))
             else:
                 result.unchanged_count += 1
                 result.unchanged_items.append((sid, snap))
@@ -178,82 +210,96 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
         except (ValueError, TypeError):
             pass  # 格式错误视为不限制
 
+    # 3-tuple inputs already carry one chain event from the detector. Legacy
+    # 2-tuple inputs still need to resolve all chains from content_sources.
+    typed_items = []
+    for item in new_items:
+        if len(item) == 3:
+            sid, snap, chain = item
+            typed_items.append((sid, snap, chain))
+        elif len(item) == 2:
+            sid, snap = item
+            typed_items.append((sid, snap, None))
+        else:
+            logger.warning(f'[订阅匹配] 忽略非法 item 长度: {len(item)}')
+
+    try:
+        from src.core.scheduler import _get_chain as _resolve_chain
+    except (ImportError, Exception):
+        logger.warning('scheduler._get_chain not available, falling back to legacy filter')
+        _resolve_chain = None
+
+    def _chains_for(snap, pre_chain=None):
+        if isinstance(pre_chain, list) and pre_chain:
+            return [pre_chain]
+        if not _resolve_chain:
+            return []
+        chains = _resolve_chain(
+            snap.get('source_id', 0),
+            snap.get('source_url', ''),
+            snap.get('path_id'),
+        )
+        if not isinstance(chains, list):
+            return [chains] if chains else []
+        return chains
+
+    chains = conditions.get('chains', []) if isinstance(conditions, dict) else []
+    has_chain_conditions = isinstance(conditions, dict) and 'chains' in conditions
     if not conditions:
-        # 2026-08-08: 即使空条件(匹配全部)也用 _get_chain 拿 chain list,选第一条
-        # 作为 matched_chain,推送消息用这条 chain 构造。多 chain 共享 URL 时
-        # 第一条 path 通常是主目录链(WAF)。
-        from src.core.scheduler import _get_chain
+        # Empty conditions means match all, one event per resolved chain.
         matched = []
-        for sid, snap in new_items:
-            snap_chains = _get_chain(
-                snap.get('source_id', 0),
-                snap.get('source_url', ''),
-                snap.get('path_id'),
-            )
-            if not isinstance(snap_chains, list):
-                snap_chains = [snap_chains] if snap_chains else []
-            # 选第一条作为 matched_chain
-            matched_chain = snap_chains[0] if snap_chains else None
-            matched.append((sid, snap, matched_chain))
+        for sid, snap, pre_chain in typed_items:
+            resolved = _chains_for(snap, pre_chain)
+            if resolved:
+                matched.extend((sid, snap, chain) for chain in resolved)
+            else:
+                # Preserve the old fallback for legacy callers when no chain
+                # can be resolved; new events normally always have a chain.
+                matched.append((sid, snap, None))
         return matched
 
-    # ── 新结构:chains(链路径匹配)──────────────────────────────────────
-    chains = conditions.get('chains', [])
+    if not has_chain_conditions:
+        # Legacy conditions without a `chains` key remain unsupported. This
+        # preserves the existing products/versions/package_types behavior.
+        logger.info(f'[订阅匹配] 规则 {rule.get("name")} 无 chains 条件,不匹配任何包')
+        return []
 
     if chains:
-        # 从 scheduler 获取 chain 反查函数（延迟 import 避免循环，每次调用都重试）
-        _get_chain = None
-        try:
-            from src.core.scheduler import _get_chain as _resolve_chain
-            _get_chain = _resolve_chain
-        except (ImportError, Exception):
-            logger.warning('scheduler._get_chain not available, falling back to legacy filter')
-            _get_chain = None
+        urgency = conditions.get('urgency', [])
+        keywords = conditions.get('keywords', [])
+        matched = []
+        for sid, snap, pre_chain in typed_items:
+            logger.info(f'[订阅匹配] 检查包: {snap.get("file_name")}')
+            snap_chains = _chains_for(snap, pre_chain)
+            logger.info(f'[订阅匹配] snap_chains: {snap_chains}')
 
-        if _get_chain:
-            matched = []
-            for sid, snap in new_items:
-                logger.info(f'[订阅匹配] 检查包: {snap.get("file_name")}')
-                # 2026-08-08: 同 URL 多 chain 共享时,get_chain 返回 list of chains,
-                # detector 对每条 chain 试 match,任一 match 即推送(URL 去重下 snap
-                # 跨所有共享 chain 都需要被订阅匹配考虑)。
-                snap_chains = _get_chain(
-                    snap.get('source_id', 0),
-                    snap.get('source_url', ''),
-                    snap.get('path_id'),
-                )
-                if not isinstance(snap_chains, list):
-                    snap_chains = [snap_chains]
-                logger.info(f'[订阅匹配] snap_chains: {snap_chains}')
-                # 任一 chain 匹配订阅条件即推送。记下匹配的那个 chain —
-                # 推送消息内容用订阅条件的 chain(用户选定的),不读 snap 行反查。
-                matched_chain = None
-                for sc in snap_chains:
-                    if _chain_matches(sc, chains):
-                        matched_chain = sc
-                        break
-                if not matched_chain:
-                    logger.info(f'[订阅匹配] ❌ chain 不匹配(所有 {len(snap_chains)} 个 chain 都不匹配订阅),跳过')
+            # One physical snapshot may produce multiple matching chain
+            # events. A chain is emitted at most once per rule.
+            emitted = set()
+            for sc in snap_chains:
+                if not isinstance(sc, list) or not sc:
                     continue
+                if tuple(sc) in emitted or not _chain_matches(sc, chains):
+                    continue
+                emitted.add(tuple(sc))
 
-                # Chain 匹配通过后，再检查 urgency 和 keywords
-                urgency = conditions.get('urgency', [])
+                # Chain match first, then the shared package-level filters.
                 if urgency and snap.get('urgency') not in urgency:
                     logger.info(f'[订阅匹配] ❌ urgency 不匹配: {snap.get("urgency")} 不在 {urgency} 中')
                     continue
-
-                keywords = conditions.get('keywords', [])
                 if keywords:
                     desc = snap.get('description_raw', '')
                     if not any(kw.lower() in desc.lower() for kw in keywords):
-                        logger.info(f'[订阅匹配] ❌ keywords 不匹配: {keywords} 不在描述中')
+                        logger.info(f'[订阅匹配] ❌ keywords 不匹配: {keywords} 中')
                         continue
-                logger.info(f'[订阅匹配] ✅ 全部条件匹配，加入结果')
-                matched.append((sid, snap, matched_chain))
-            logger.info(f'[订阅匹配] 规则 {rule.get("name")} 匹配结果: {len(matched)} 个包')
-            return matched
 
-    # chains 字段为空/缺失时,不匹配任何 snap（"空条件匹配全部" 已在 line 206-207 处理）
+                logger.info(f'[订阅匹配] ✅ 全部条件匹配，加入结果')
+                matched.append((sid, snap, sc))
+
+        logger.info(f'[订阅匹配] 规则 {rule.get("name")} 匹配结果: {len(matched)} 个包')
+        return matched
+
+    # chains 字段为空/缺失时,旧格式不匹配任何新包；保留该兼容行为。
     logger.info(f'[订阅匹配] 规则 {rule.get("name")} 无 chains 条件,不匹配任何包')
     return []
 
