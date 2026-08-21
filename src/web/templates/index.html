@@ -314,9 +314,11 @@ tr[data-sid]{cursor:pointer}
 
 .rd-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:14px}
 .rd-toolbar input[type=text]{flex:1;min-width:280px;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:13px}
-.rd-toolbar button{padding:8px 16px;border:none;border-radius:6px;background:var(--primary);color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:filter .12s}
-.rd-toolbar button:hover{filter:brightness(1.08)}
-.rd-toolbar button:disabled{background:var(--gray-disabled);cursor:not-allowed}
+.rd-toolbar button.btn-primary{padding:8px 16px;border:none;border-radius:6px;background:var(--primary);color:#fff;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;transition:filter .12s}
+.rd-toolbar button.btn-primary:hover{filter:brightness(1.08)}
+.rd-toolbar button.btn-outline{padding:6px 14px;border:1px solid var(--border);border-radius:6px;background:#fff;color:var(--text);font-size:12.5px;font-weight:500;cursor:pointer;white-space:nowrap;transition:background .12s}
+.rd-toolbar button.btn-outline:hover{background:var(--gray-bg)}
+.rd-toolbar button:disabled{background:var(--gray-disabled);cursor:not-allowed;color:var(--gray-disabled)}
 .rd-toolbar .rd-status{font-size:12px;color:var(--muted)}
 
 .rd-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border-radius:10px;overflow:hidden}
