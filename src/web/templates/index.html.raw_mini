@@ -468,7 +468,7 @@ async function dashboard(range){
       </div>
     </div>
     <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
-      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近更新 <span style="font-weight:400">${d.recent_deliveries?.length||0}条</span></div>
+      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近更新</div>
       <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
         ${(d.recent_deliveries||[]).slice(0,8).map(r=>`
           <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid #f1f3f5;white-space:nowrap">
@@ -1362,8 +1362,7 @@ function dataRenderLeft() {
       <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span class="tree-arrow" style="cursor:pointer;color:#94a3b8;font-size:13px;user-select:none;flex-shrink:0;margin-right:6px">&#9658;</span>
         <span>${escHtml(src.display_name || src.name || sid)}</span>
-        ${rbBadge}${freshBadge}
-        <span style="font-size:11px;color:var(--muted);margin-left:8px">${src.snapshots ? src.snapshots.length : 0} 条记录</span>
+        ${rbBadge}${freshBadge && `<span style="margin-left:auto">${freshBadge}</span>`}
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
         <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
@@ -2148,7 +2147,6 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     <div class="data-drill-hd">
       <button class="btn btn-xs btn-outline" onclick="dataBackToAgg()">← 返回列表</button>
       <span class="data-drill-title">📦 ${src.display_name || src.name}</span>
-      <span style="color:var(--muted);font-size:12px;margin-left:12px">${snaps.length} 条记录 · ${versions.length} 个版本</span>
     </div>
     <div class="data-drill-body">`;
 
@@ -2182,7 +2180,6 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
       <div class="data-ver-hd" onclick="dataToggleVer(this, '${escHtml(verKey)}')">
         <span class="data-prod-arrow">${isHighlight ? '&#9660;' : '&#9658;'}</span>
         <span class="data-ver-label">${ver}</span>
-        <span style="color:var(--muted);font-size:11px;margin-left:8px">${verSnaps.length}条 / ${typeKeys.length}种类型</span>
         <div style="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
         <span style="color:var(--muted);font-size:11px;margin-left:8px">采集 ${latestCollected}</span>
       </div>
