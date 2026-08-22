@@ -542,6 +542,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
+                _progress['current_product'] = ''  # 2026-08-22: 清掉避免banner残留
+                _progress['current_version'] = ''
             return summary
 
         valid_session = None
@@ -576,6 +578,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
+                _progress['current_product'] = ''  # 2026-08-22: 清掉避免banner残留
+                _progress['current_version'] = ''
             return summary
 
         # Use the first valid collect session
@@ -619,6 +623,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             with _progress_lock:
                 _progress['active'] = False
                 _progress['phase'] = 'done'
+                _progress['current_product'] = ''  # 2026-08-22: 清掉避免banner残留
+                _progress['current_version'] = ''
                 _progress['duration_s'] = summary['duration_s']
                 _progress['finished_at'] = datetime.utcnow().isoformat()
             # 发送采集完成通知（即使无新包）
@@ -764,10 +770,12 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         with _progress_lock:
             _progress['active'] = False
             _progress['phase'] = 'done'
+            _progress['current_product'] = ''  # 2026-08-22: 清掉避免banner残留
+            _progress['current_version'] = ''
             _progress['duration_s'] = summary['duration_s']
             _progress['finished_at'] = datetime.utcnow().isoformat()
-            _progress['total_new'] = summary['total_new']
-            _progress['total_rollback'] = summary['total_rollback']
+        _progress['total_new'] = summary['total_new']
+        _progress['total_rollback'] = summary['total_rollback']
 
         # Emit collection summary event
         from src.core.event_handler import emit_collection_summary, emit_network_error
@@ -788,6 +796,8 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         with _progress_lock:
             _progress['active'] = False
             _progress['phase'] = 'done'
+            _progress['current_product'] = ''  # 2026-08-22: 清掉避免banner残留
+            _progress['current_version'] = ''
             _progress['errors'].append(str(e)[:200])
             _progress['duration_s'] = summary['duration_s']
             _progress['finished_at'] = datetime.utcnow().isoformat()
