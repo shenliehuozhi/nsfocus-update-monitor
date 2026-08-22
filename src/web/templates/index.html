@@ -5250,37 +5250,18 @@ function _collectPhaseText(state) {
 
 function _collectBannerHtml(state) {
   // 纯函数: state → HTML 字符串 (不含 DOM 操作)。
-  // pct 算法:phase 决定基础宽度 + progress/total 决定收集进度。
+  // pct 直接按 products_done / products_total 算 (0-100%), 不做 ETA 估算。
   const isDone = state.phase === 'done';
   const pct = isDone ? 100 :
-    state.phase === 'init' ? 5 :
     (state.products_total > 0 ?
-      5 + Math.round((state.products_done / state.products_total) * 90) : 0);
+      Math.min(100, Math.round((state.products_done / state.products_total) * 100)) : 0);
   const phaseText = _collectPhaseText(state);
-  // ETA 估算: 已耗时 / 进度 * 剩余进度
-  let etaSuffix = '';
-  if (state.started_at && state.products_total > 0 && state.products_done > 0 && !isDone) {
-    try {
-      const startMs = new Date(state.started_at + 'Z').getTime();
-      const elapsedSec = (Date.now() - startMs) / 1000;
-      if (elapsedSec > 3) {
-        const ratio = state.products_done / state.products_total;
-        const totalSec = elapsedSec / ratio;
-        const remainSec = Math.max(0, totalSec - elapsedSec);
-        if (remainSec < 60) etaSuffix = ` · 剩余 ${Math.round(remainSec)}s`;
-        else etaSuffix = ` · 剩余 ${Math.round(remainSec / 60)}min`;
-      }
-    } catch (e) { /* ignore */ }
-  }
   // 完成态用绿色渐变, 进行中用 primary 蓝渐变
-  const bgGrad = isDone
-    ? 'linear-gradient(135deg, var(--success), var(--success))'
-    : 'linear-gradient(135deg, var(--primary), var(--primary))';
   const titleText = isDone ? '✅ 采集完成' : '⏳ 采集中';
   return `
     <div style="flex:1;min-width:0">
       <div style="font-weight:600;margin-bottom:4px">${titleText}</div>
-      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px">${escHtml(phaseText)}${etaSuffix}</div>
+      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px">${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</div>
       <div style="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="collect-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
