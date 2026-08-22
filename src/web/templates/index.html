@@ -7484,13 +7484,16 @@ function pollProgress(){
   api('/system/collect/progress').then(pr=>{
     if(!pr.data){if(body)body.innerHTML='<p style="text-align:center;color:var(--muted)">无法获取进度</p>';return;}
     const p=pr.data.progress||{};
+    // 2026-08-21: 同时调 _showCollectBanner,让底部悬浮卡片在仪表盘也可见
+    if(p.phase){_showCollectBanner(p);}
     if(!p.active&&!p.phase){
       body.innerHTML='<p style="text-align:center;color:var(--muted)">当前无采集任务</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>';
       _collectRunning=false;
-      const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
+      _hideCollectBanner();
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
       return;
     }
+    if(p.phase==='done'){_collectRunning=false;_hideCollectBanner();if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}}
     let html='';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
@@ -7527,13 +7530,18 @@ async function pollDashProgress(){
     const el=document.getElementById('dashProgress');
     const lc=document.getElementById('lastColText');
     if(!el)return;
+    // 2026-08-21: 同时调 _showCollectBanner,让底部悬浮卡片在仪表盘页签也可见
+    // pollDashProgress 在仪表盘已注册 setInterval,每 3 秒轮询一次
+    if(p.phase){_showCollectBanner(p);}
     if(!p.active||p.phase==='done'){
       el.style.display='none';
       if(p.phase==='done'){
         if(lc)lc.textContent='已完成';
-        const runBar=document.getElementById('dashRunningBar');
-        if(runBar){runBar.style.display='none';document.body.classList.remove('warning-open');}
+        // 2026-08-21: 完成后保留 0.5s 让用户看到 100% 再隐藏
+        setTimeout(()=>_hideCollectBanner(), 600);
         if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
+      } else {
+        _hideCollectBanner();
       }
       return;
     }
