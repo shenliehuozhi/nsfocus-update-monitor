@@ -7440,15 +7440,13 @@ async function triggerCollect(){
   confirmAct('确认立即触发一次增量采集？', startCollect, '🔄', '确认采集', false);
 }
 async function startCollect(){
-  // Immediately show "launching" state on dashboard — user confirmed, request is going out
-  const dashTop = document.getElementById('dashRunningBar');
-  if(dashTop){dashTop.style.display='block';dashTop.className='collecting-warning';dashTop.innerHTML='<span class="warn-inner">🔄 正在启动增量采集，请稍候...</span>';document.body.classList.add('warning-open');}
+  // 2026-08-21: 改用底部悬浮 banner, 不用 dashRunningBar (已删除 DOM)
+  // 立即显示 "launching" 状态, 后续由 pollProgress 持续更新
+  _showCollectBanner({phase: 'init', products_done: 0, products_total: 0, started_at: new Date().toISOString().slice(0, 19)});
   const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
   if(r.code===409){toast('采集正在进行中','warn');location.reload();return;}
   if(r.code!==0){toast(r.message,'error');location.reload();return;}
   _collectRunning=true;
-  const runBar=document.getElementById('dashRunningBar');
-  if(runBar){runBar.style.display='block';runBar.className='collecting-warning';runBar.innerHTML='<span class="warn-inner">⚠️ 采集中，请勿增删改配置，待完成后再操作 ⚠️</span>';document.body.classList.add('warning-open');}
   if(_collectPollTimer)clearInterval(_collectPollTimer);
   _collectPollTimer=setInterval(pollProgress,2000);
 }
