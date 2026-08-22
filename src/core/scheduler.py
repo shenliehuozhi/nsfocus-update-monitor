@@ -1017,6 +1017,42 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
     def _set_phase(phase: str):
         with _single_product_lock:
             _single_product_state['phase'] = phase
+        # 2026-08-22: 同时同步到全局 _progress,让 dashboard 的 banner / 进度条
+        # 也能反映单产品采集。避免 banner 还显示上一次的残留数据(如 WAF)。
+        # banner 显示 phase + (products_done/products_total):
+        #   - starting → (0/4) [init 阶段]
+        #   - collecting → (1/4)
+        #   - detecting → (2/4)
+        #   - notifying → (3/4)
+        #   - done → (4/4)
+        # 这样 banner 进度条跟单产品子阶段对齐,用户看到平滑的 25% → 50% → 75% → 100%。
+        phase_step = {'starting': 0, 'collecting': 1, 'detecting': 2,
+                      'notify': 3, 'notifying': 3, 'done': 4,
+                      'error': 4, 'skipped': 4}
+        with _progress_lock:
+            _progress['phase'] = phase
+            _progress['current_product'] = src['name']
+            if phase == 'starting':
+                _progress['active'] = True
+                _progress['mode'] = mode
+                _progress['products_done'] = 0
+                _progress['products_total'] = 4
+                _progress['items_collected'] = 0
+                _progress['total_new'] = 0
+                _progress['total_rollback'] = 0
+                _progress['started_at'] = datetime.utcnow().isoformat()
+                _progress['finished_at'] = None
+            elif phase in ('collecting', 'detecting', 'notify', 'notifying'):
+                _progress['products_done'] = phase_step.get(phase, _progress['products_done'])
+                if _progress['products_total'] < 4:
+                    _progress['products_total'] = 4
+            elif phase == 'done':
+                _progress['products_done'] = 4
+                _progress['products_total'] = 4
+                _progress['active'] = False
+                _progress['finished_at'] = datetime.utcnow().isoformat()
+            elif phase in ('error', 'skipped'):
+                _progress['active'] = False
 
     logger.info(f'Single product collection starting: source_id={source_id} name={src["name"]} mode={mode}')
     _push_log(f'开始采集: {src["name"]} (source_id={source_id})')
