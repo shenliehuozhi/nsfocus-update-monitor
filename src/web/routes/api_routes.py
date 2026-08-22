@@ -8,6 +8,50 @@ logger = get_logger('api')
 BASE_URL = 'https://update.nsfocus.com'
 
 
+def _lookup_chains_for_url(source_id, source_url: str) -> list:
+    """Return all chains whose path.url matches `source_url` for this source.
+
+    Used by /api/data/search to attach chain-list per hit so the frontend
+    can render one row per chain (instead of collapsing N chains into 1
+    physical row).
+
+    Returns a list of chains (each chain = list of strings). Empty list
+    when the URL has no matching path (e.g. source_id is null or content
+    sources were not yet loaded).
+    """
+    if not source_id or not source_url:
+        return []
+    from src.models.database import query
+    # 兼容绝对/相对两种 URL:paths[*].url 存的是相对路径(/update/...)，
+    # 真实 search 端点会在循环里 if src_url.startswith(BASE_URL) 剥成相对
+    # 路径,但 helper 也允许直接收绝对路径做归一化。
+    norm_url = source_url.rstrip('/')
+    if norm_url.startswith(BASE_URL):
+        norm_url = norm_url[len(BASE_URL):].rstrip('/')
+    rows = query(
+        "SELECT package_type FROM content_sources WHERE id = ?",
+        (source_id,)
+    )
+    if not rows:
+        return []
+    import json as _json
+    try:
+        pt = _json.loads(rows[0]['package_type'] or '{}')
+    except Exception:
+        return []
+    paths = pt.get('paths') or []
+    out = []
+    for p in paths:
+        if not isinstance(p, dict):
+            continue
+        if (p.get('url') or '').rstrip('/') != norm_url:
+            continue
+        chain = p.get('chain')
+        if isinstance(chain, list) and chain:
+            out.append(list(chain))
+    return out
+
+
 def _audit(action: str, details: dict = None):
     """Log audit entry to file (best-effort)."""
     try:
@@ -1277,7 +1321,7 @@ def search_snapshots():
             actual_col = 'description_raw'
             rows = query(
                 f"""SELECT s.id, s.source_id, s.product_name, s.version_branch,
-                           s.package_type, s.file_name, s.published_at,
+                           s.package_type, s.package_version, s.file_name, s.published_at,
                            s.status, s.urgency, s.source_url
                     FROM snapshots s
                     WHERE s.{actual_col} LIKE ?
@@ -1290,7 +1334,7 @@ def search_snapshots():
             # version_branch 是产品线名 (如 "网络入侵防护系统 5.6.8"), 不是用户预期的"版本号"
             rows = query(
                 """SELECT s.id, s.source_id, s.product_name, s.version_branch,
-                          s.package_type, s.file_name, s.published_at,
+                          s.package_type, s.package_version, s.file_name, s.published_at,
                           s.status, s.urgency, s.source_url
                  FROM snapshots s
                  WHERE s.package_version LIKE ?
@@ -1302,7 +1346,7 @@ def search_snapshots():
             actual_col = field
             rows = query(
                 f"""SELECT s.id, s.source_id, s.product_name, s.version_branch,
-                           s.package_type, s.file_name, s.published_at,
+                           s.package_type, s.package_version, s.file_name, s.published_at,
                            s.status, s.urgency, s.source_url
                     FROM snapshots s
                     WHERE s.{actual_col} LIKE ?
@@ -1311,11 +1355,16 @@ def search_snapshots():
                 (like_q, limit)
             )
     snapshots = []
+    # 2026-08-21: 同同一物理文件 + 多 chain 共享 URL 时,后端按 source_url 反查
+    # content_sources.package_type.paths[] 的所有 chain,返回前端展开成 N 行。
+    # 不参与 search过滤,仅作为附加信息。
     for r in rows:
         rec = dict(r)
         src_url = rec.get('source_url') or ''
         if src_url.startswith(BASE_URL):
             rec['source_url'] = src_url[len(BASE_URL):]
+        # 反查该 URL 在 content_sources 里的所有 chain
+        rec['chains'] = _lookup_chains_for_url(rec.get('source_id'), src_url)
         snapshots.append(rec)
     return jsonify({'code': 0, 'data': {
         'snapshots': snapshots,
