@@ -1216,6 +1216,10 @@ let _dataSearchField = 'description';
 // null = search not active or not yet returned (frontend falls back to local match).
 // Set = backend returned hits; frontend shows ONLY those (full-text incl. description_raw).
 let _dataSearchHitIds = null;
+// Map<snap_id, list[chain]> 缓存后端 search 返回的 chain 列表,供 dataBuildFeed
+// 按 chain 展开 hit 行用。同物理文件 + N chain → N 行,前端可见。
+// null = search 未激活或未返回。
+let _dataSearchSnapChains = null;
 let _lastScheduler = null; // cached scheduler for header display across polls
 let _dataPage = 1;
 let _dataAll = {};
@@ -1469,30 +1473,37 @@ function dataSearch(v) {
     dataRenderRight();
     return;
   }
-  if (_dataSearchField === 'description') {
-    // 后端搜描述 (整段 description_raw, 无截断)
-    _dataSearchHitIds = null;
-    dataRenderLeft();
-    dataRenderRight();
-    api('/latest/search?q=' + encodeURIComponent(_dataQuery) + '&field=description&limit=200')
-      .then(r => {
-        const hits = (r.data && r.data.snapshots) || [];
-        // 仅在用户没改 query 时覆盖
-        if (_dataQuery === v.trim()) {
-          _dataSearchHitIds = new Set(hits.map(h => h.id));
-          dataRenderLeft();
-          dataRenderRight();
+  // 2026-08-21: 所有字段都走后端 /api/latest/search,统一获取每条 hit 的 chains
+  // (解决 chain 共享 URL 搜索漏命中问题)。后端已为每个 ALLOWED_SEARCH_FIELDS
+  // 实现对应 SQL 分支:description, product_name, version_branch,
+  // package_type, file_name, all。
+  _dataSearchHitIds = null;
+  _dataSearchSnapChains = null;
+  dataRenderLeft();
+  dataRenderRight();
+  const field = _dataSearchField || 'description';
+  api('/latest/search?q=' + encodeURIComponent(_dataQuery) + '&field=' + encodeURIComponent(field) + '&limit=200')
+    .then(r => {
+      const hits = (r.data && r.data.snapshots) || [];
+      // 仅在用户没改 query 时覆盖
+      if (_dataQuery === v.trim()) {
+        _dataSearchHitIds = new Set(hits.map(h => h.id));
+        // 2026-08-21: 缓存每条 hit 的 chains 列表,dataBuildFeed 用它按 chain 展开 N 行
+        const chainsBySnap = new Map();
+        for (const h of hits) {
+          if (Array.isArray(h.chains) && h.chains.length > 0) {
+            chainsBySnap.set(h.id, h.chains);
+          }
         }
-      })
-      .catch(() => {
-        _dataSearchHitIds = null;
-      });
-  } else {
-    // 其他字段: 纯前端本地匹配, 不走后端
-    _dataSearchHitIds = null;
-    dataRenderLeft();
-    dataRenderRight();
-  }
+        _dataSearchSnapChains = chainsBySnap;
+        dataRenderLeft();
+        dataRenderRight();
+      }
+    })
+    .catch(() => {
+      _dataSearchHitIds = null;
+      _dataSearchSnapChains = null;
+    });
 }
 
 // Debounce wrapper: 输入时延迟 250ms 才调 dataSearch,
@@ -1562,23 +1573,19 @@ function dataFilteredSources() {
     if (!src.is_active) return false;
     if (_dataQuery) {
       const q = _dataQuery.toLowerCase();
-      // description 字段: 后端已查过 — 检查 src.snapshots 是否至少有一个 id 在 _dataSearchHitIds
-      if (_dataSearchField === 'description' && _dataSearchHitIds) {
+      // 2026-08-21: 所有字段搜索都走后端 /api/latest/search,统一通过
+      // _dataSearchHitIds 判断 src 下是否有 snap 命中。
+      // 1) srcHasHit:src.snapshots 中任一在 _dataSearchHitIds 集合里
+      // 2) nameMatch:产品名匹配 (产品名不依赖后端搜索)
+      // 任一为真就保留 src。
+      if (_dataSearchHitIds) {
         const srcHasHit = (src.snapshots || []).some(s => _dataSearchHitIds.has(s.id));
         const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
         if (!nameMatch && !srcHasHit) return false;
       } else {
-        const matchSnap = (s) => {
-          switch (_dataSearchField) {
-            case 'product_name':   return (s.file_name || '').toLowerCase().includes(q) || (s.package_type || '').toLowerCase().includes(q);
-            case 'version_branch': return (s.package_version || '').toLowerCase().includes(q);
-            case 'file_name':      return (s.file_name || '').toLowerCase().includes(q);
-            case 'package_type':   return (s.package_type || '').toLowerCase().includes(q);
-            case 'description':
-            default:
-              return (s.file_name || '').toLowerCase().includes(q);  // 后端尚未返回时的 fallback
-          }
-        };
+        // 后端 search 还没返回 (异步),先按 file_name 粗略匹配,避免空挡
+        // 这是 search 后端返回前的 fallback。
+        const matchSnap = (s) => (s.file_name || '').toLowerCase().includes(q);
         const nameMatch = (src.display_name || src.name || '').toLowerCase().includes(q);
         const verMatch = (src.snapshots || []).some(matchSnap);
         if (!nameMatch && !verMatch) return false;
@@ -2079,6 +2086,32 @@ function dataBuildFeed() {
                   : 'https://update.nsfocus.com' + (srcUrl.startsWith('/') ? srcUrl : '/' + srcUrl);
                 const snapUrl = snapFullUrl.replace(/\/+$/, '');
                 if (!inSubtreeUrls.has(snapUrl)) return;
+            }
+            // 2026-08-21: search 激活时,每条 hit 按其 chains 列表展开成 N 行(同物理文件 +
+            // 多 chain 共享 URL 时,N = chains.length)。非 search 模式走原 path_id 分组。
+            // - _dataSearchHitIds 是后端返回的 snap id 集合
+            // - _dataSearchSnapChains 是 Map<snap_id, [chain, chain, ...]>,由
+            //   dataSearch 的 .then 回调填充(从 /api/latest/search response 读
+            //   hit.chains 字段)
+            // - 有 _dataSearchHitIds 但 _dataSearchSnapChains 为空 (说明后端响应
+            //   还在路上),保持单行模式不展开 — 避免异步 race
+            if (_dataQuery && _dataSearchHitIds && _dataSearchSnapChains) {
+              if (!_dataSearchHitIds.has(s.id)) return;  // 搜索未命中 → 过滤
+              const snapChains = _dataSearchSnapChains.get(s.id);
+              if (snapChains && snapChains.length > 0) {
+                // 每条 chain 一行:用 snap_id + chain 索引做唯一 key(避免 path_id 重复)
+                for (let i = 0; i < snapChains.length; i++) {
+                  const k = s.path_id + '||chain||' + i;
+                  if (!byKey[k]) byKey[k] = [];
+                  // 用 s 的浅拷贝附带 _chain 字段,后续 Object.values 渲染用
+                  byKey[k].push(Object.assign({}, s, { _chain: snapChains[i] }));
+                }
+                return;  // 已展开,跳过下面 path_id 分支
+              }
+            } else if (_dataQuery && _dataSearchHitIds) {
+              // 后端响应还在路上:_dataSearchHitIds 已设但 _dataSearchSnapChains 还没
+              // 此时仍按 path_id 分组(单行),不展开 — 异步数据一致
+              if (!_dataSearchHitIds.has(s.id)) return;
             }
             // 左侧选中一个 source card (无 _dataSelectedChain):显示该 source 全量
 
