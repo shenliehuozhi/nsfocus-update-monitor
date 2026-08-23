@@ -5230,7 +5230,13 @@ function _hideDiscBanner(){
 // 顶部红条 (dashRunningBar / .collecting-warning)。 配色用 primary 蓝,
 // 区别于 auto-discover 的紫色, 避免视觉混淆。
 function _collectPhaseText(state) {
-  // 阶段文案: phase + current_product。(done/total) 由 banner 模板统一拼接,这里不重复。
+  // 阶段文案: current_product (banner 顶部 titleText 已经是 phase label "采集中",这里不重复)。
+  // (done/total) 由 banner 模板统一拼接。
+  const product = state.current_product || '';
+  if (product) {
+    return product;
+  }
+  // 没有 current_product (例如 init / phase 但产品名未传):fallback 到 phase label
   const phaseMap = {
     'init': '初始化',
     'collecting': '采集中',
@@ -5240,12 +5246,7 @@ function _collectPhaseText(state) {
     'error': '出错',
     'cancelled': '已取消',
   };
-  const label = phaseMap[state.phase] || state.phase || '处理中';
-  const product = state.current_product || '';
-  if (product) {
-    return `${label} · ${product}`;
-  }
-  return label;
+  return phaseMap[state.phase] || state.phase || '处理中';
 }
 
 function _collectBannerHtml(state) {
