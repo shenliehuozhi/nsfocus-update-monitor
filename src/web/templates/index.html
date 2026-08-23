@@ -5265,9 +5265,11 @@ function _collectBannerHtml(state) {
     ' · <span style="opacity:0.85">⚠️ 请勿增删改配置</span>';
   return `
     <div style="flex:1;min-width:0">
-      <div style="font-weight:600;margin-bottom:4px">${titleText}</div>
-      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px">${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})${warnSuffix}</div>
-      <div style="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
+      <div style="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}</div>
+      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px;line-height:1.5;display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+        <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>${warnSuffix ? `<span style="opacity:0.85;background:rgba(255,255,255,0.12);padding:1px 8px;border-radius:10px;font-size:11px">⚠️ 请勿增删改配置</span>` : ''}
+      </div>
+      <div style="margin-top:8px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="collect-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
