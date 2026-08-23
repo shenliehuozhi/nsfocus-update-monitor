@@ -5258,18 +5258,17 @@ function _collectBannerHtml(state) {
   const phaseText = _collectPhaseText(state);
   // 完成态用绿色渐变, 进行中用 primary 蓝渐变
   const titleText = isDone ? '✅ 采集完成' : '⏳ 采集中';
-  // 2026-08-22: 保留旧顶部红条的核心提醒文案 (改自 dashRunningBar),
-  // 在 banner 内底部以小字提示,让用户知道采集中不要改配置。
-  const warnHint = isDone ? '' :
-    '<div style="margin-top:6px;font-size:11px;opacity:0.85">⚠️ 请勿增删改配置,待完成后再操作</div>';
+  // 2026-08-22: 旧顶部红条的核心提醒挪到 phase 行右边,不再占独立一行,避免
+  // 撑高 banner 高度。完成时不显示。
+  const warnSuffix = isDone ? '' :
+    ' · <span style="opacity:0.85">⚠️ 请勿增删改配置</span>';
   return `
     <div style="flex:1;min-width:0">
       <div style="font-weight:600;margin-bottom:4px">${titleText}</div>
-      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px">${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</div>
+      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px">${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})${warnSuffix}</div>
       <div style="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="collect-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
-      ${warnHint}
     </div>
     <div onclick="event.stopPropagation();_openCollectLog()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
     <div onclick="event.stopPropagation();_hideCollectBanner()" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
