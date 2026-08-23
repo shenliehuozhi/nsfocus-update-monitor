@@ -1989,7 +1989,11 @@ def _run_db_cleanup():
 
         for g in groups:
             src_id, pid, ver, pkgtype, cnt = g['source_id'], g['path_id'], g['version_branch'], g['package_type'], g['cnt']
-            # 保留该组最新 per_group 条，其余删除
+            # 保留该组最新 per_group 条，其余删除。
+            # 2026-08-24: 加 AND id NOT IN (delivery_log) 跳过被推送历史引用的行,
+            # 避免 FK constraint failed (delivery_log.snapshot_id → snapshots.id)。
+            # 被引用的老 snap 保留: 它的 delivery_log 行 (>90 天) 由第 3 步先清,
+            # 下次 cleanup 时这里就不再被引用,自然能删。
             cur.execute("""
                 DELETE FROM snapshots
                 WHERE source_id = ?
@@ -1997,6 +2001,9 @@ def _run_db_cleanup():
                   AND version_branch = ?
                   AND package_type = ?
                   AND status != 'rollback'
+                  AND id NOT IN (
+                      SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
+                  )
                   AND id NOT IN (
                       SELECT id FROM snapshots
                       WHERE source_id = ?
@@ -2030,6 +2037,9 @@ def _run_db_cleanup():
                   AND package_type = ?
                   AND path_id = ''
                   AND status != 'rollback'
+                  AND id NOT IN (
+                      SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
+                  )
                   AND id NOT IN (
                       SELECT id FROM snapshots
                       WHERE source_id = ?
