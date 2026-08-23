@@ -5262,12 +5262,12 @@ function _collectBannerHtml(state) {
   // 2026-08-22: 旧顶部红条的核心提醒挪到 phase 行右边,不再占独立一行,避免
   // 撑高 banner 高度。完成时不显示。
   const warnSuffix = isDone ? '' :
-    ' · <span style="opacity:0.85">⚠️ 请勿增删改配置</span>';
+    ' <span style="color:#ff5757;font-weight:600">⚠️ 请勿增删改配置</span>';
   return `
     <div style="flex:1;min-width:0">
-      <div style="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}</div>
-      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px;line-height:1.5;display:flex;flex-wrap:wrap;align-items:center;gap:6px">
-        <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>${warnSuffix ? `<span style="opacity:0.85;background:rgba(255,255,255,0.12);padding:1px 8px;border-radius:10px;font-size:11px">⚠️ 请勿增删改配置</span>` : ''}
+      <div style="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}${warnSuffix}</div>
+      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px;line-height:1.5">
+        <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>
       </div>
       <div style="margin-top:8px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="collect-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
