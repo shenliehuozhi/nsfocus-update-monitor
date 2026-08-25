@@ -8235,7 +8235,10 @@ function toolDiffSelectPathByUrl(expectedKind, url, chainStr){
   // 关弹层 + 触发 fetch
   const overlay = document.getElementById('rdPickerOverlay');
   if (overlay) overlay.remove();
+  // 触发 fetch (用户主动选择路径,直接进入提取流程)
   rdFetch(false);
+  // 顺便刷新一下链路反查 hint (rdFetch 不显示链路,rdUrlValidate 会)
+  if (typeof rdUrlValidate === 'function') rdUrlValidate();
 }
 
 // 旧版 from cache:保留作兼容,新 picker 走 tree 事件委托不再调它
