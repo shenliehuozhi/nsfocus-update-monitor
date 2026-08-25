@@ -8082,8 +8082,9 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
     </div>
   `;
   // 恢复上次输入的 URL + 实时校验
-  // 2026-07-12 统一 key (入口切换时也共用最近 URL,避免误删体验)
-  const last = localStorage.getItem('rd_last_url');
+  // 按 kind 分 key (ips/waf 各自记忆,避免 IPS 选了 URL 后切到 WAF 还显示 IPS 的 URL)
+  const lastKey = 'rd_last_url_' + expectedKind;
+  const last = localStorage.getItem(lastKey);
   if (last) {
     document.getElementById('rdUrl').value = last;
     // 延迟一帧触发 input 事件以显示 hint
@@ -8282,7 +8283,7 @@ async function rdFetch(force){
     btn.textContent = '🚀 提取规则信息';
     return;
   }
-  localStorage.setItem('rd_last_url', url);
+  localStorage.setItem('rd_last_url_' + _rd.expectedKind, url);
 
   const btn = document.getElementById('rdFetchBtn');
   const fbtn = document.getElementById('rdForceBtn');
