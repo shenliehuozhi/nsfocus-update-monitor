@@ -8235,10 +8235,19 @@ function toolDiffSelectPathByUrl(expectedKind, url, chainStr){
   // 关弹层 + 触发 fetch
   const overlay = document.getElementById('rdPickerOverlay');
   if (overlay) overlay.remove();
+  // 显示"已选路径"提示(让用户确认选对了路径),格式:📍 已选: chain › ... › URL
+  const hint = document.getElementById('rdUrlHint');
+  if (hint) {
+    const shortUrl = fullUrl.replace('https://update.nsfocus.com', '');
+    const chainDisp = chainStr ? chainStr.split(' › ').slice(-2).join(' › ') : '';  // 只显示末两段避免太长
+    hint.style.display = 'block';
+    hint.innerHTML = `<span style="color:var(--success);font-weight:600">📍 已选路径</span>: ${escHtml(chainDisp || shortUrl)} <span style="color:var(--muted);font-family:monospace;font-size:11px">(${escHtml(shortUrl)})</span>`;
+  }
   // 触发 fetch (用户主动选择路径,直接进入提取流程)
   rdFetch(false);
-  // 顺便刷新一下链路反查 hint (rdFetch 不显示链路,rdUrlValidate 会)
-  if (typeof rdUrlValidate === 'function') rdUrlValidate();
+  // 顺便刷新一下链路反查 hint (rdFetch 不显示链路,rdUrlValidate 会异步覆盖上面的"已选"提示为"链路 N 条匹配")
+  // 延迟一帧避免闪烁
+  setTimeout(() => { if (typeof rdUrlValidate === 'function') rdUrlValidate(); }, 50);
 }
 
 // 旧版 from cache:保留作兼容,新 picker 走 tree 事件委托不再调它
