@@ -598,6 +598,14 @@ function showPage(n){
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
   const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,tools:toolsPage};
   if(pages[n])pages[n]();
+  // 2026-08-25: 每次切页都检查后端是否有活动采集,有的话启动 banner 全局轮询
+  // 这样从其他菜单页面也能看到进度 banner 更新(banner 是全站浮动卡片)
+  api('/system/collect/progress').then(pr=>{
+    const p = pr?.data?.progress || {};
+    if (p.phase && p.active) {
+      startCollectBannerPoll();
+    }
+  }).catch(()=>{});
   // 切页时检查 pending disc 状态,刷新导航栏角标
   api('/system/products/discover/status').then(s=>{
     if(s.code===0 && s.data?.phase==='done' && s.data?.result && !s.data?.active){
