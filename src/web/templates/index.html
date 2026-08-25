@@ -8232,21 +8232,21 @@ function toolDiffSelectPathByUrl(expectedKind, url, chainStr){
   if (!url) { rdToast('该路径没有 URL,无法提取', 'error'); return; }
   const fullUrl = url.startsWith('http') ? url : ('https://update.nsfocus.com' + (url.startsWith('/') ? url : '/' + url));
   document.getElementById('rdUrl').value = fullUrl;
-  // 关弹层 + 触发 fetch
+  // 关弹层
   const overlay = document.getElementById('rdPickerOverlay');
   if (overlay) overlay.remove();
-  // 显示"已选路径"提示(让用户确认选对了路径),格式:📍 已选: chain › ... › URL
-  const hint = document.getElementById('rdUrlHint');
-  if (hint) {
-    const shortUrl = fullUrl.replace('https://update.nsfocus.com', '');
-    const chainDisp = chainStr ? chainStr.split(' › ').slice(-2).join(' › ') : '';  // 只显示末两段避免太长
-    hint.style.display = 'block';
-    hint.innerHTML = `<span style="color:var(--success);font-weight:600">📍 已选路径</span>: ${escHtml(chainDisp || shortUrl)} <span style="color:var(--muted);font-family:monospace;font-size:11px">(${escHtml(shortUrl)})</span>`;
+  // 自动切到手动输入模式,让选中的 URL 直接显示在输入框里
+  // (input 当前是 display:none,手动模式后变可见;再切回 picker 不冲突,因为 input.value 还在)
+  const input = document.getElementById('rdUrl');
+  const toggleBtn = document.getElementById('rdManualToggleBtn');
+  if (input && input.style.display === 'none') {
+    if (toggleBtn) toggleBtn.textContent = '✏️ 收起输入';
+    input.style.display = '';
+    input.focus();
   }
   // 触发 fetch (用户主动选择路径,直接进入提取流程)
   rdFetch(false);
-  // 顺便刷新一下链路反查 hint (rdFetch 不显示链路,rdUrlValidate 会异步覆盖上面的"已选"提示为"链路 N 条匹配")
-  // 延迟一帧避免闪烁
+  // 顺便刷新一下链路反查 hint (rdFetch 不显示链路,rdUrlValidate 会异步覆盖)
   setTimeout(() => { if (typeof rdUrlValidate === 'function') rdUrlValidate(); }, 50);
 }
 
