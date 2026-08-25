@@ -807,7 +807,7 @@ const CH_TYPE_STYLE = {
   feishu:   {bg:'#f5f3ff', fg:'#5b21b6', border:'#ddd6fe', icon:'FS'},
   apprise:  {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'AP'},
 };
-const CH_TYPE_CN = {email:'邮件',wecom:'企业微信',dingtalk:'钉钉',feishu:'飞书',apprise:'Apprise'};
+const CH_TYPE_CN = {email:'邮件',wecom:'企微',dingtalk:'钉钉',feishu:'飞书',apprise:'Apprise'};
 function chTypeChip(type, withIcon=true){
   const s = CH_TYPE_STYLE[type] || {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'•'};
   const cn = CH_TYPE_CN[type] || type;
@@ -3071,7 +3071,7 @@ async function showPushModal(sid, product, version, pkgType, chain){
             </div>
           </div>
           <div id="pushTabBot" class="hidden">
-            <p class="cfg-hint" style="margin-bottom:8px;color:var(--gray-muted)">将通知推送到所选渠道(企业微信/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
+            <p class="cfg-hint" style="margin-bottom:8px;color:var(--gray-muted)">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
             <div id="pushBotChannelList" class="push-target"><div class="empty" style="padding:8px">加载中...</div></div>
           </div>
         </div>
@@ -3189,7 +3189,7 @@ async function loadPushBotChannels(){
     el.innerHTML='<div class="empty" style="padding:8px;color:var(--muted)">暂无可用渠道</div>';
     return;
   }
-  const typeLabel={wecom:'企业微信',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
+  const typeLabel={wecom:'企微',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
   el.innerHTML=list.map(c=>{
     const isEmail=c.type==='email';
     const sub=isEmail
@@ -3675,8 +3675,8 @@ let editingChId=0;let chList=[];let _origChConfig={};
 function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=********');}
 async function channels(){
   const r=await api('/channels');chList=r.data||[];
-  const typeMap={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
-  const typeCNMap={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
+  const typeMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
+  const typeCNMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
 let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}
   // 5 个渠道(dingtalk/feishu/wecom/apprise/email)都支持「📋 日志」按钮 — 测试按钮触发后写入 /tmp/<type>_test_<id>.log,失败时常驻可见
   const testLogBtn=`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escHtml(c.name)}')">📋 日志</button>`;
@@ -3939,7 +3939,7 @@ async function testCh(id, type){
   const r=await api('/channels/'+id+'/test',{method:'POST'});
   if(r.data?.success){
     // type 优先用调用时传入的(channel list 行内调);否则回退到 modal #cht
-    const map={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
+    const map={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
     const effectiveType=type||document.getElementById('cht')?.value||'';
     toast('✅ '+(map[effectiveType]||'渠道')+' 测试发送成功','success');
   } else {

@@ -2337,7 +2337,7 @@ async function showPushModal(sid,product,version,pkgType){
             </div>
           </div>
           <div id="pushTabBot" class="hidden">
-            <p class="cfg-hint" style="margin-bottom:8px;color:#6b7d95">将通知推送到所选渠道(企业微信/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
+            <p class="cfg-hint" style="margin-bottom:8px;color:#6b7d95">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
             <div id="pushBotChannelList" class="push-target"><div class="empty" style="padding:8px">加载中...</div></div>
           </div>
         </div>
@@ -2455,7 +2455,7 @@ async function loadPushBotChannels(){
     el.innerHTML='<div class="empty" style="padding:8px;color:var(--muted)">暂无可用渠道</div>';
     return;
   }
-  const typeLabel={wecom:'企业微信',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
+  const typeLabel={wecom:'企微',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
   el.innerHTML=list.map(c=>{
     const isEmail=c.type==='email';
     const sub=isEmail
@@ -2818,7 +2818,7 @@ let editingChId=0;let chList=[];let _origChConfig={};
 function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=********');}
 async function channels(){
   const r=await api('/channels');chList=r.data||[];
-  const typeMap={'wecom':'企业微信','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
+  const typeMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
 let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}const testLogBtn=c.type==='email'?`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escHtml(c.name)}')">📋 日志</button>`:'';return `<tr><td>${c.name}${extra}</td><td>${typeLabel}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-success" onclick="testCh(${c.id})">测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openChModal()">+ 添加渠道</button><table class="mt16"><tr><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
 function chTypeCh(){
@@ -2925,7 +2925,7 @@ function _onEmailHostChange(){
 function openChModal(id){
   editingChId=id||0;
   const title=id?'编辑渠道':'添加渠道';
-  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">企业微信</option><option value="dingtalk">钉钉</option><option value="feishu">飞书</option><option value="apprise">Apprise</option><option value="email">邮件</option></select></div></div><div id="chcfg"></div>`;
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">企微</option><option value="dingtalk">钉钉</option><option value="feishu">飞书</option><option value="apprise">Apprise</option><option value="email">邮件</option></select></div></div><div id="chcfg"></div>`;
   const modal=document.createElement('div');
   modal.id='chModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
