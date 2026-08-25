@@ -8176,13 +8176,13 @@ async function toolDiffOpenPicker(expectedKind){
       </div>`;
     }).join('');
     return `<div class="rd-picker-product">
-      <div class="rd-picker-prod-hd" onclick="this.classList.toggle('open');const n=this.nextElementSibling;while(n && (n.classList.contains('rd-picker-prod-empty')||n.classList.contains('rd-picker-path'))){const v=n.style.display==='none'?'block':'none';n.style.display=v;n=n.nextElementSibling;}">
+      <div class="rd-picker-prod-hd" onclick="toolDiffToggleProduct(this)">
         <span class="${arrowCls}">▶</span>
         <span>${escHtml(p.name)}</span>
         <span class="rd-picker-count">${paths.length} paths</span>
       </div>
       ${emptyHtml}
-      <div data-paths-wrap style="display:none">${pathsHtml}</div>
+      <div class="rd-picker-paths-wrap" style="display:none">${pathsHtml}</div>
     </div>`;
   }).join('');
 }
@@ -8202,6 +8202,14 @@ function toolDiffSelectPath(expectedKind, prodIdx, pathIdx){
   const overlay = document.getElementById('rdPickerOverlay');
   if (overlay) overlay.remove();
   rdFetch(false);
+}
+
+// 展开/折叠单个产品的 paths 列表
+function toolDiffToggleProduct(hdEl){
+  hdEl.classList.toggle('open');
+  const product = hdEl.parentElement;
+  const wrap = product && product.querySelector('.rd-picker-paths-wrap');
+  if (wrap) wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
 }
 
 // 切换手动输入模式
