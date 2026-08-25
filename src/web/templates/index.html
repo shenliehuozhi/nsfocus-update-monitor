@@ -8190,13 +8190,35 @@ async function toolDiffOpenPicker(expectedKind){
     </div>`;
   }).join('');
 
+  // 给所有 tree leaf 节点追加一个明显的「✅ 选取」按钮(推到右侧)
+  // buildDataTreeHtml 内置的 leaf 只有 span 文字,视觉上不可点;加按钮让选择行为明确
+  bd.querySelectorAll('.tree-node[data-isleaf="1"]').forEach(leaf => {
+    // 防止重复注入 (再次打开弹层时)
+    if (leaf.querySelector('.rd-picker-select-btn')) return;
+    const url = leaf.getAttribute('data-url') || '';
+    const chainJson = leaf.getAttribute('data-chain') || '[]';
+    const btn = document.createElement('button');
+    btn.className = 'rd-picker-select-btn btn btn-xs btn-primary';
+    btn.textContent = '✅ 选取';
+    btn.style.marginLeft = 'auto';
+    btn.style.flexShrink = '0';
+    btn.onclick = (ev) => {
+      ev.stopPropagation();  // 阻止 leaf div 上的 click 委托
+      let chainStr = '';
+      try { chainStr = JSON.parse(chainJson).join(' › '); } catch (e) {}
+      toolDiffSelectPathByUrl(expectedKind, url, chainStr);
+    };
+    leaf.appendChild(btn);
+  });
+
   // 拦截 tree leaf 节点的 click (默认行为是弹右边面板/pktbl_*),改为"选这条路径"
-  // 用事件委托绑到弹层容器
+  // 用事件委托绑到弹层容器 (点 leaf 文字部分触发,点按钮不会被触发因为 stopPropagation)
   overlay.addEventListener('click', function(ev){
+    // 忽略按钮自身的 click (它已经 stopPropagation)
+    if (ev.target.closest('.rd-picker-select-btn')) return;
     const leafNode = ev.target.closest('.tree-node[data-isleaf="1"]');
     if (!leafNode) return;
     ev.preventDefault();
-    ev.stopPropagation();
     const url = leafNode.getAttribute('data-url') || '';
     const chainJson = leafNode.getAttribute('data-chain') || '[]';
     let chainStr = '';
