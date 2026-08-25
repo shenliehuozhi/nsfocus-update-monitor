@@ -646,40 +646,11 @@ async function dashboard(range){
   }
   let sesWarn='';
   const _ss=d.session_status||{};
-  const _cActive=_ss.collect_active||0;
   const _cTotal=_ss.collect_total||0;
-  const _cPolluted=_ss.collect_polluted||0;
-  const _ssActiveButExpired=_ss.active_but_expired||0;
-  // 2026-08-25: 统一告警区 — 按优先级显示(最严重的在最上面)
-  const _alerts=[];
-  // 1. 没有任何 collect session → 红色,提示添加
+  // 2026-08-25: 顶部告警只在"无可用采集 session"时显示
+  // 其他情况(部分污染/过期)由 Session 菜单自己的卡片提示,不再在仪表盘顶部打扰
   if(_cTotal===0){
-    _alerts.push({level:'error', icon:'🚨', msg:'<strong>无可用采集 Session</strong> — 请前往 <a href="#" onclick="showPage(\'sessions\')">Session 管理</a> 添加 PHPSESSID 才能采集'});
-  }
-  // 2. 有 collect session 但都被标过期/污染 → 橙色
-  else if(_cActive===0 && _cTotal>0){
-    const reasons=[];
-    if(_cPolluted>0) reasons.push(`${_cPolluted} 个被污染`);
-    if(_ssActiveButExpired>0) reasons.push(`${_ssActiveButExpired} 个已过期`);
-    _alerts.push({level:'warn', icon:'⚠️', msg:`<strong>所有采集 Session 不可用</strong> (${reasons.join('、')}) — 请前往 <a href="#" onclick="showPage(\'sessions\')">Session 管理</a> 重新添加`});
-  }
-  // 3. 部分 collect session 不可用 → 黄色提示
-  else if(_cActive<_cTotal){
-    _alerts.push({level:'warn', icon:'⚠️', msg:`<strong>部分 Session 不可用</strong> — ${_cActive}/${_cTotal} 可用 (${_cTotal-_cActive} 个需检查)`});
-  }
-  // 4. 通用 Session 过期提示(兼容旧的 active_but_expired 字段)
-  if(_ssActiveButExpired>0 && _cTotal===0){
-    // 已在 #1 处理,跳过
-  } else if(_ssActiveButExpired>0){
-    _alerts.push({level:'warn', icon:'⚠️', msg:`<strong>Session 过期</strong> — 有 ${_ssActiveButExpired} 个 Session 已失效，请前往 <a href="#" onclick="showPage(\'sessions\')">Session 管理</a> 重新添加`});
-  }
-  // 渲染告警条
-  if(_alerts.length){
-    const _styles={
-      error:'background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text)',
-      warn:'background:#fef3c7;border:1px solid #fde68a;color:#92400e'
-    };
-    sesWarn=_alerts.map(a=>`<div class="info-bar" style="${_styles[a.level]||_styles.warn};margin-bottom:10px;padding:10px 14px;border-radius:8px;font-size:13px">${a.icon} ${a.msg}</div>`).join('');
+    sesWarn=`<div class="info-bar" style="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 添加 PHPSESSID 才能采集</div>`;
   }
   // 采集进度条改用 _showCollectBanner() (2026-08-21),仿 _showDiscBanner 风格:底部悬浮卡片 + 进度条
   // 这里不再单独控制 dashRunningBar,改由 dataPage 内 _collectPollTimer 调度。
