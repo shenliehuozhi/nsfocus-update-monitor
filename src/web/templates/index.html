@@ -7645,7 +7645,7 @@ async function pollCollectBannerGlobal(){
       setTimeout(() => {
         _hideCollectBanner();
         if (_collectBannerPollTimer) { clearInterval(_collectBannerPollTimer); _collectBannerPollTimer = null; }
-      }, 600);
+      }, 8000);  // 2026-08-25: 延长到 8 秒让用户看清完成状态
     }
   } catch(e) {}
   finally { _collectBannerPollRunning = false; }
@@ -7675,7 +7675,7 @@ async function pollDashProgress(){
       el.style.display='none';
       if(p.phase==='done'){
         if(lc)lc.textContent='已完成';
-        setTimeout(()=>_hideCollectBanner(), 600);
+        setTimeout(()=>_hideCollectBanner(), 8000);  // 2026-08-25: 延长到 8 秒让用户看清完成状态
         if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
       } else {
         _hideCollectBanner();
