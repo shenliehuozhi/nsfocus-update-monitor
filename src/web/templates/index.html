@@ -8138,7 +8138,9 @@ async function toolDiffOpenPicker(expectedKind){
     } else {
       const r = await api('/system/products');
       if (r.code !== 0) throw new Error(r.message || '加载失败');
-      const all = r.data || [];
+      // /api/system/products 返回 {code, data:{products:[], total, ...}}, data 是包装对象
+      const dataObj = r.data || {};
+      const all = Array.isArray(dataObj) ? dataObj : (dataObj.products || []);
       products = all.filter(p => p.is_active && whitelist.has(p.name));
       _toolDiffProductsCache[expectedKind] = products;
     }
