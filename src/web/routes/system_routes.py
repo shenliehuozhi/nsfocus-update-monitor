@@ -404,6 +404,8 @@ def list_events():
     支持过滤:severity / event_type / since_hours / limit
     """
     from src.models.database import query
+    # 2026-08-25: 先确保 acked_at 列存在(migration),否则后续 SQL 查询会失败
+    _ensure_event_ack_column()
 
     severity = request.args.get('severity', '').strip()
     event_type = request.args.get('event_type', '').strip()
