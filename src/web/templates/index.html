@@ -7977,10 +7977,10 @@ async function toolsPage(){
 //   sourceKind='ips' → parse_rules (攻击[id]: 名称)
 //   sourceKind='waf' → parse_rules_waf (一、新增规则 / 二、修改规则 / 三、删除规则)
 // DIFF 工具前端白名单:跟后端 diff_routes._validate_diff_url 对齐
-// IDPS 接受 IPS/IDS/IDS-ICS (同 parse_rules); WAF 接受 WAF/HWAF (同 parse_rules_waf)
+// IDPS 入口仅展示 IPS/IDS;WAF 入口仅展示 WAF (IDS-ICS/HWAF 仍被后端接受,仅前端不主动列出)
 const _DIFF_WHITELIST = {
-  ips: new Set(['网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','工控入侵检测系统(IDS-ICS)']),
-  waf: new Set(['WEB应用防护系统(WAF)','WEB应用防护系统主机版(HWAF)']),
+  ips: new Set(['网络入侵防护系统(IPS)','网络入侵检测系统(IDS)']),
+  waf: new Set(['WEB应用防护系统(WAF)']),
 };
 const _DIFF_KIND_LABEL = { ips: 'IDPS', waf: 'WAF' };
 // picker 弹层缓存:{[expectedKind]: productsArray}

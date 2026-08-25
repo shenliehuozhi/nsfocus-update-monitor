@@ -1764,7 +1764,20 @@ def _product_safe(p: dict) -> dict:
         'health_status': p.get('health_status', 'unknown'),
         'last_collected_at': p.get('last_collected_at'),
         'created_at': p.get('created_at'),
+        # DIFF 工具 picker 需要从 /api/products 拿到 paths/url/chain (避免再发 /api/products/<id> 请求)
+        # package_type_discovered 是发现时存的 JSON,前端 picker 直接读 .paths
+        'package_type_discovered': _safe_json_load(p.get('package_type_discovered')),
     }
+
+
+def _safe_json_load(s):
+    """Parse JSON string, return None on empty / invalid input (for picker / API responses)."""
+    if not s:
+        return None
+    try:
+        return json.loads(s)
+    except (ValueError, TypeError):
+        return None
 
 
 # ── Helpers ───────────────────────────────────────────────────────
