@@ -65,7 +65,10 @@
 body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',sans-serif;background:var(--bg);color:var(--text)}
 .header{background:#334155;color:#e2e8f0;display:flex;align-items:center;height:58px;padding:0 24px;gap:24px;position:sticky;top:0;z-index:100;box-shadow:inset 0 -1px 0 rgba(255,255,255,0.08),0 2px 12px rgba(15,23,42,0.08)}
 .header h1{font-size:16px;font-weight:700;color:#f1f5f9}
-.nav{display:flex;gap:1px;flex-wrap:nowrap;overflow:hidden}
+.nav{display:flex;gap:1px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:thin}
+.nav::-webkit-scrollbar{height:6px}
+.nav::-webkit-scrollbar-thumb{background:rgba(203,213,225,.3);border-radius:3px}
+.nav::-webkit-scrollbar-thumb:hover{background:rgba(203,213,225,.5)}
 .nav a{color:#cbd5e1;text-decoration:none;padding:6px 12px;border-radius:6px;font-size:12.5px;font-weight:500;transition:.15s;white-space:nowrap;flex-shrink:0}
 .nav a:hover{color:#ffffff;background:rgba(67,97,238,0.25)}
 .nav a.active{color:#fff;background:var(--primary);box-shadow:0 2px 4px rgba(0,0,0,0.2)}
@@ -74,6 +77,19 @@ body{font:14px/1.6 -apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC',san
 .nav-badge.show{display:inline-block}
 @keyframes nav-badge-pulse{0%,100%{box-shadow:0 0 0 0 rgba(229,72,77,0.6)}50%{box-shadow:0 0 0 4px rgba(229,72,77,0)}}
 .user{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:#cbd5e1}
+.nav-toggle{display:none;align-items:center;justify-content:center;width:34px;height:34px;border-radius:6px;background:transparent;color:#e2e8f0;border:1px solid #475569;cursor:pointer;font-size:18px;line-height:1;position:relative}
+.nav-toggle:hover{background:rgba(255,255,255,.08);border-color:#64748b}
+.nav-toggle-badge{display:none;position:absolute;top:4px;right:4px;width:8px;height:8px;border-radius:50%;background:var(--danger);box-shadow:0 0 0 2px #334155}
+.nav-toggle-badge.show{display:block}
+@media (max-width:768px){
+  .header{flex-wrap:wrap;height:auto;min-height:58px;padding:8px 12px;gap:8px}
+  .header h1{font-size:14px;flex:1}
+  .nav-toggle{display:inline-flex}
+  .nav{display:none;flex-direction:column;gap:2px;width:100%;order:3;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);margin-top:4px}
+  .nav.open{display:flex}
+  .nav a{width:100%;padding:10px 12px;font-size:13px}
+  .user{order:2}
+}
 .user button{background:transparent;color:#e2e8f0;border:1px solid #475569;padding:5px 14px;border-radius:6px;cursor:pointer;font-size:12px}
 .user button:hover{background:rgba(255,255,255,0.08);border-color:#64748b;color:#ffffff}
 .main{max-width:100%;margin:0;padding:20px 24px}
@@ -110,10 +126,13 @@ td{padding:8px 12px;border-bottom:1px solid var(--gray-border)}
 .btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:6px}
 .btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:var(--gray-bg)}
 .btn-locked{opacity:.5;cursor:not-allowed!important;background:var(--gray-bg)!important;color:var(--gray-disabled)!important;border:1px solid var(--gray-border)!important;box-shadow:none!important}
+.btn-soft-primary{background:var(--primary-light);color:var(--primary-text);border:1px solid transparent}.btn-soft-primary:hover{background:var(--primary-fade)}
+.btn-soft-success{background:var(--success-light);color:var(--success-text);border:1px solid transparent}.btn-soft-success:hover{background:var(--success-light);filter:brightness(0.97)}
+.btn-soft-danger{background:var(--danger-light);color:var(--danger-text);border:1px solid transparent}.btn-soft-danger:hover{background:var(--danger-light);filter:brightness(0.97)}
 .form-group{margin-bottom:10px}
-.form-section{margin-bottom:18px;padding:14px 16px;border-bottom:2px solid var(--gray-bg);border-radius:8px}
-.form-section:last-of-type{border-bottom:none}
-.form-section-title{font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:.8px;margin-bottom:12px;padding-bottom:6px;border-bottom:1px solid var(--primary-light);display:inline-block}
+.form-section{margin-bottom:12px;padding:14px 16px;background:var(--bg);border:1px solid var(--border);border-radius:10px}
+.form-section:last-of-type{margin-bottom:0}
+.form-section-title{font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--primary-light);display:block;letter-spacing:0}
 .cfg-section{margin-bottom:22px}
 .cfg-section-hd{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.7px;padding:0 0 8px 0;border-bottom:1px solid var(--border);margin-bottom:12px}
 .cfg-section-sub{font-size:11.5px;color:var(--muted);margin:0 0 10px 0}
@@ -168,7 +187,7 @@ body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-cont
 .tp:hover::after,.tp:focus::after{opacity:1}
 .tp:hover::before,.tp:focus::before{opacity:1}
 .pill-tip{position:relative;display:inline-flex;align-items:center;cursor:default}
-.pill-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1a2332;color:#fff;padding:6px 10px;border-radius:6px;font-size:12px;white-space:nowrap;max-width:360px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.25);font-weight:400;line-height:1.5}
+.pill-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:0;background:#1a2332;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;white-space:pre-wrap;max-width:720px;min-width:240px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.25);font-weight:400;line-height:1.6;text-align:left;letter-spacing:0}
 .pill-tip::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a2332;opacity:0;transition:opacity .15s;z-index:9999;pointer-events:none}
 .pill-tip:hover::after{opacity:1}
 .pill-tip:hover::before{opacity:1}
@@ -351,8 +370,12 @@ tr[data-sid]{cursor:pointer}
 <body>
 
 <header class="header" id="header" style="display:none">
+  <button class="nav-toggle" onclick="toggleMobileNav()" aria-label="菜单" title="菜单">
+    <span>☰</span>
+    <span id="nav-toggle-badge" class="nav-toggle-badge" title="有待确认的自动发现结果"></span>
+  </button>
   <h1>🛡️ 绿盟升级监控</h1>
-  <nav class="nav">
+  <nav class="nav" id="mainNav">
     <a href="#" class="active" data-page="dashboard">仪表盘</a>
     <a href="#" data-page="sessions">Session</a>
     <a href="#" data-page="channels">通知渠道</a>
@@ -366,8 +389,8 @@ tr[data-sid]{cursor:pointer}
     <a href="#" data-page="tools">🛠️ 其他工具</a>
   </nav>
   <div class="user" style="display:flex;align-items:center;gap:6px;height:100%">
-    <span id="versionBadge" onclick="showAboutModal()" title="点击查看版本信息" style="display:inline-flex;align-items:center;cursor:pointer;font-family:monospace;font-size:11px;font-weight:600;color:#ffffff;padding:2px 7px;border-radius:4px;background:#4f46e5;border:1px solid #6366f1;line-height:1.4;white-space:nowrap;user-select:none">…</span>
-    <button onclick="showAboutModal()" title="关于 / 版本信息" style="background:#2563eb;color:#ffffff;border:none;padding:0;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;line-height:1;width:24px;height:24px;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,0.3);font-family:Arial,sans-serif">i</button>
+    <span id="versionBadge" onclick="showAboutModal()" title="点击查看版本信息" style="display:inline-flex;align-items:center;cursor:pointer;font-family:monospace;font-size:11px;font-weight:600;color:var(--primary-text);padding:2px 7px;border-radius:4px;background:var(--primary-light);border:1px solid transparent;line-height:1.4;white-space:nowrap;user-select:none">…</span>
+    <button onclick="showAboutModal()" title="关于 / 版本信息" style="background:var(--primary-light);color:var(--primary-text);border:1px solid transparent;padding:0;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;line-height:1;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif">i</button>
     <div id="userMenu" style="position:relative;display:inline-block">
       <span id="uname" onclick="toggleUserMenu(event)" title="点击打开用户菜单" style="font-size:11px;color:#cbd5e1;opacity:.85;cursor:pointer;user-select:none;padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px">
         <span id="unameText"></span>
@@ -647,8 +670,8 @@ async function dashboard(range){
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0">
         <span style="color:var(--primary);font-size:13px">🩺 运维健康</span>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
-          <button class="btn btn-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
-          <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
+          <button class="btn btn-soft-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
+          <button class="btn btn-soft-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
       </div>
       <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
@@ -778,19 +801,45 @@ function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t.endsWith('Z')?t:t+'Z'
 // 渠道类型 chip:每种类型独立品牌色 + emoji,通知渠道表 / 订阅规则通知对象列共用
 // 配色:浅背景 + 深文字 + 1px 同色淡边框,跟现有 .badge-ok/.badge-blue 同款风格
 const CH_TYPE_STYLE = {
-  email:    {bg:'#fef2f2', fg:'#dc2626', border:'#fecaca', icon:'📧'},
-  wecom:    {bg:'#ecfdf5', fg:'#0ca678', border:'#bbf7d0', icon:'💬'},
-  dingtalk: {bg:'#e6f0ff', fg:'#1d4ed8', border:'#bfdbfe', icon:'📞'},
-  feishu:   {bg:'#f5f3ff', fg:'#5b21b6', border:'#ddd6fe', icon:'🪶'},
-  apprise:  {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'🔗'},
+  email:    {bg:'#fef2f2', fg:'#dc2626', border:'#fecaca', icon:'M'},
+  wecom:    {bg:'#ecfdf5', fg:'#0ca678', border:'#bbf7d0', icon:'CW'},
+  dingtalk: {bg:'#e6f0ff', fg:'#1d4ed8', border:'#bfdbfe', icon:'DT'},
+  feishu:   {bg:'#f5f3ff', fg:'#5b21b6', border:'#ddd6fe', icon:'FS'},
+  apprise:  {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'AP'},
 };
 const CH_TYPE_CN = {email:'邮件',wecom:'企业微信',dingtalk:'钉钉',feishu:'飞书',apprise:'Apprise'};
 function chTypeChip(type, withIcon=true){
   const s = CH_TYPE_STYLE[type] || {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'•'};
   const cn = CH_TYPE_CN[type] || type;
-  const icon = withIcon ? `${s.icon} ` : '';
-  return `<span style="display:inline-flex;align-items:center;padding:1px 8px;background:${s.bg};color:${s.fg};border:1px solid ${s.border};border-radius:4px;font-size:11px;font-weight:600;white-space:nowrap">${icon}${cn}</span>`;
+  const iconHtml = withIcon ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${s.fg};color:#fff;font-size:9px;font-weight:700;line-height:1;margin-right:4px;font-family:Arial,sans-serif">${s.icon}</span>` : '';
+  return `<span style="display:inline-flex;align-items:center;padding:1px 8px 1px 4px;background:${s.bg};color:${s.fg};border:1px solid ${s.border};border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${iconHtml}${cn}</span>`;
 }
+
+function toggleChTypeDropdown(){
+  const m=document.getElementById('chTypeMenu');
+  if(m)m.style.display=m.style.display==='none'?'block':'none';
+}
+function selectChType(t, triggerCfgChange=true){
+  document.getElementById('cht').value=t;
+  const cur=document.getElementById('chTypeCurrent');
+  if(cur)cur.innerHTML=chTypeChip(t)+' <span style="color:var(--muted);font-size:11px;margin-left:4px">▾</span>';
+  document.querySelectorAll('.ch-type-option').forEach(o=>{
+    const isSel=o.dataset.t===t;
+    o.dataset.selected=isSel?'1':'';
+    o.style.background=isSel?'var(--primary-light)':'transparent';
+  });
+  const m=document.getElementById('chTypeMenu');
+  if(m)m.style.display='none';
+  if(triggerCfgChange && typeof chTypeCh==='function')chTypeCh();
+}
+// 关闭下拉(点击外部)
+document.addEventListener('click',function(e){
+  const dd=document.getElementById('chTypeDropdown');
+  if(dd && !dd.contains(e.target)){
+    const m=document.getElementById('chTypeMenu');
+    if(m)m.style.display='none';
+  }
+});
 
 // ── Dashboard Charts ─────────────────────────────────────────────
 const PIE_COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
@@ -1765,7 +1814,7 @@ function buildFlatVerTreeHtml(snapshots) {
         <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span style="font-size:11px;color:var(--muted)">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
-        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
+        <button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
       </div>
       <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
         <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
@@ -2245,7 +2294,7 @@ function dataRenderRight(sch, p, info) {
     <span style="color:var(--border)">|</span>
     <span style="color:var(--muted)">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
     ${progressHtml}
-    <button class="btn btn-xs" style="background:var(--primary);color:#fff" onclick="triggerCollect()">🔄 手动采集</button>${resetBtn}
+    <button class="btn btn-xs btn-soft-primary" onclick="triggerCollect()">🔄 手动采集</button>${resetBtn}
   </div>`;
 
   if (rows.length === 0) {
@@ -2258,14 +2307,14 @@ function dataRenderRight(sch, p, info) {
   let html = `<div class="feed-list">
 <div class="feed-hd">
   <div class="feed-cell feed-arrow-hd" style="width:28px;flex-shrink:0"></div>
-  <div class="feed-cell" style="width:80px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
-  <div class="feed-cell" style="width:68px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
-  <div class="feed-cell" style="width:56px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
-  <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">产品名称</div>
+  <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
+  <div class="feed-cell" style="width:84px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
+  <div class="feed-cell" style="width:72px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
+  <div class="feed-cell" style="width:160px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">产品名称</div>
   <div class="feed-cell" style="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">版本</div>
   <div class="feed-cell" style="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">文件</div>
-  <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发布时间</div>
-  <div class="feed-cell" style="width:136px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
+  <div class="feed-cell" style="width:116px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发布时间</div>
+  <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
 </div>`;
 
   pageSlice.forEach(r => {
@@ -2289,17 +2338,17 @@ function dataRenderRight(sch, p, info) {
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
   <div class="feed-cell feed-arrow" style="width:28px;flex-shrink:0" onclick="dataRightToggleRow('${rid}')">▶</div>
-  <div class="feed-cell" style="width:80px;flex-shrink:0" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color)">${typeLabel}</span></div>
-  <div class="feed-cell" style="width:68px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
-  <div class="feed-cell" style="width:60px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
-  <div class="feed-cell" style="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
+  <div class="feed-cell" style="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
+  <div class="feed-cell" style="width:84px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
+  <div class="feed-cell" style="width:72px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
+  <div class="feed-cell" style="width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
   <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || chainVer || '')}">${escHtml(r.package_version || chainVer || '')}</div>
   <div class="feed-cell" style="flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
-  <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
-  <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
+  <div class="feed-cell" style="width:116px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell" style="width:130px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
-      <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs" style="background:var(--success);color:#fff;border:1px solid var(--success)" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', '${escHtml(JSON.stringify(r._chain || []))}')">推送</button>
+      <button class="btn btn-xs btn-soft-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
+      <button class="btn btn-xs btn-soft-success" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', '${escHtml(JSON.stringify(r._chain || []))}')">推送</button>
     </div>
   </div>
 </div>`;
@@ -2881,7 +2930,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
+          <button class="btn btn-xs btn-soft-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
@@ -2895,7 +2944,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
               <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
               ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
-              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
+              <button class="btn btn-xs btn-soft-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}
@@ -3402,9 +3451,21 @@ function formatDiscPhase(state){
 // _pendingDiscStale 只用于决定弹窗文案,不影响角标显示 — 有 pending 就有角标。
 function updateNavPendingBadge(){
   const badge=document.getElementById('nav-pending-badge');
-  if(!badge) return;
-  if(window._pendingDiscResult){badge.classList.add('show');}
-  else{badge.classList.remove('show');}
+  if(badge){
+    if(window._pendingDiscResult){badge.classList.add('show');}
+    else{badge.classList.remove('show');}
+  }
+  // 2026-08-24: 移动端汉堡按钮上同步显示红点,nav 被折叠时也可见
+  const tb=document.getElementById('nav-toggle-badge');
+  if(tb){
+    if(window._pendingDiscResult){tb.classList.add('show');}
+    else{tb.classList.remove('show');}
+  }
+}
+
+function toggleMobileNav(){
+  const n=document.getElementById('mainNav');
+  if(n)n.classList.toggle('open');
 }
 
 // _cancelDisc() — 用户点 banner/modal 上的 ⏹ 按钮 → 调后端 cancel,等后端返回 cancelled 后刷新 UI。
@@ -3769,13 +3830,18 @@ function _onEmailHostChange(){
 function openChModal(id){
   editingChId=id||0;
   const title=id?'编辑渠道':'添加渠道';
-  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><select id="cht" onchange="chTypeCh()"><option value="wecom">💬 企业微信</option><option value="dingtalk">📞 钉钉</option><option value="feishu">🪶 飞书</option><option value="apprise">🔗 Apprise</option><option value="email">📧 邮件</option></select></div></div><div id="chcfg"></div>`;
+  const typeOptionsHtml=['wecom','dingtalk','feishu','apprise','email'].map(t=>{
+    return `<div class="ch-type-option" data-t="${t}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:6px" onmouseenter="if(!this.dataset.selected)this.style.background='var(--primary-fade)'" onmouseleave="if(!this.dataset.selected)this.style.background='transparent'" onclick="selectChType('${t}')">${chTypeChip(t)}</div>`;
+  }).join('');
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div id="chTypeDropdown" style="position:relative"><div id="chTypeCurrent" onclick="toggleChTypeDropdown()" style="cursor:pointer;min-height:22px"></div><div id="chTypeMenu" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:10;padding:4px">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
   const modal=document.createElement('div');
   modal.id='chModalWrap';
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
   modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${title} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px">${formHtml}<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveCh()">保存</button><button class="btn btn-outline" onclick="document.getElementById('chModalWrap').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
+  // 初始化"当前选中"的 chip 显示(无 id 时默认 wecom,有 id 时由 if 分支处理)
+  if(!id){selectChType('wecom',false);}
   _origChConfig={};
   if(id){
     const c=chList.find(x=>x.id===id);
@@ -3783,6 +3849,7 @@ function openChModal(id){
     _origChConfig={...c.config};
     document.getElementById('chn').value=c.name||'';
     document.getElementById('cht').value=c.type||'wecom';
+    selectChType(c.type||'wecom',false);
     chTypeCh();
 
 
@@ -4104,7 +4171,7 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
 
-let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip">${staleBadge}<span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="font-size:11px;color:var(--muted)">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'', false)}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="font-size:11px;color:var(--muted)">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'')}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:320px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
@@ -4705,7 +4772,7 @@ async function openRModal(id){
   modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
   modal.innerHTML=`<div class="card" style="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid">
-    <div class="form-section" style="background:var(--gray-bg)"><div class="form-section-title">基本信息</div>
+    <div class="form-section"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户</label><select id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
     <div id="custInfoRow" class="form-group" style="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
@@ -4713,12 +4780,12 @@ async function openRModal(id){
     <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px" placeholder="不限制"></div>
     </div>
 
-    <div class="form-section" style="background:var(--gray-bg)"><div class="form-section-title">订阅条件</div>
+    <div class="form-section"><div class="form-section-title">订阅条件</div>
     <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
     <div id="rcondsWrap"><div id="rconds" style="min-height:32px"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="(async ()=>{ await openChainSelectorModal(); })()">+ 添加路径</button></div>
     </div>
 
-    <div class="form-section" style="background:var(--gray-bg)"><div class="form-section-title">推送配置</div>
+    <div class="form-section"><div class="form-section-title">推送配置</div>
     <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden" style="background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
     <div id="delayWrap"><div class="form-group"><label>延迟(d) <span title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" min="0" style="width:80px"></div></div>
@@ -4729,10 +4796,10 @@ async function openRModal(id){
     </div>
     </div>
 
-    <div class="form-section" style="background:var(--gray-bg)"><div class="form-section-title">通知渠道</div>
+    <div class="form-section"><div class="form-section-title">通知渠道</div>
     <!-- 2026-07-11: 4 模板说明 (A=完整 / B=智能裁剪 / C=极简 / D=飞书全量) -->
     <!-- 仅钉钉/企微/飞书 走模板机制;邮箱是 HTML 全量单封,不走这 4 档 -->
-    <div style="margin-bottom:10px;padding:8px 10px;background:#fff;border:1px solid var(--gray-border);border-radius:6px;font-size:11px;color:var(--gray-disabled);line-height:1.6">
+    <div style="margin-bottom:10px;padding:8px 10px;background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.6">
       <div style="font-weight:600;margin-bottom:4px;color:var(--text)827">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
       <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">
         <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微默认</div>
@@ -4751,8 +4818,8 @@ async function openRModal(id){
     </div>
     </div>
 
-    <div style="margin-top:12px;padding-top:12px;border-top:2px solid var(--gray-bg)"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" style="margin:0"> 📢 包回退通知</label></div>
-    <div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveRule()">保存</button><button class="btn btn-outline" onclick="document.getElementById('rModalWrap').remove()">取消</button></div></div></div>`;
+    <div class="form-section"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" style="margin:0"> 📢 包回退通知</label></div>
+    <div style="display:flex;gap:8px;margin-top:14px;padding:12px 16px;border-top:1px solid var(--border);background:var(--card);border-radius:0 0 10px 10px;margin-left:-16px;margin-right:-16px;margin-bottom:-16px"><button class="btn btn-soft-primary" style="flex:1" onclick="saveRule()">保存</button><button class="btn btn-outline" onclick="document.getElementById('rModalWrap').remove()">取消</button></div></div></div>`;
   document.body.appendChild(modal);
   // 推送模式 tooltip
   const modeTips={'':'检测到版本变化立即推送','weekly':'每周汇总推送一次','monthly':'每月汇总推送一次','quarterly':'每季汇总推送一次'};
@@ -4955,7 +5022,7 @@ async function history(){
         // 发件邮箱 sender 由 email notifier 写入;老数据/机器人渠道为空时 fallback 到 recipient
         let channelDisp;
         if (botTypes.has(d.channel_type)) {
-          channelDisp = `${chTypeChip(d.channel_type, false)} ${escHtml(_chanName||'—')}`;
+          channelDisp = `${chTypeChip(d.channel_type)} ${escHtml(_chanName||'—')}`;
         } else if (d.channel_type === 'email') {
           let senderEmail = d.sender || d.recipient || '';
           channelDisp = senderEmail ? `${escHtml(_chanName||'—')} (${escHtml(senderEmail)})` : escHtml(_chanName||'—');
@@ -7131,9 +7198,16 @@ async function collectProduct(id,mode){
 
 // Card-level trigger (data page): single product quick collection
 async function dataCollectProduct(sid, name){
+  // 2026-08-24: 触发前先查状态,避免无效请求 + 给用户明确反馈"已有任务在跑"
+  const s = await api('/system/products/0/collect-status');
+  if(s && s.code === 0 && s.data && s.data.active){
+    toast('已有产品采集中,请稍后操作','warn');
+    showSingleCollectBanner(s.data.source_id, s.data.source_name || name);
+    return;
+  }
   const r=await api(`/system/products/${sid}/collect`,{method:'POST',body:JSON.stringify({mode:'quick'})});
   if(r.code===0){toast(`「${name}」采集已触发`,'success');showSingleCollectBanner(sid, name);}
-  else if(r.code===409){toast(r.message||'已有单产品采集中','warn');}
+  else if(r.code===409){toast(r.message||'已有单产品采集中,请稍后操作','warn');}
   else{toast(r.message||'触发失败','error');}
 }
 

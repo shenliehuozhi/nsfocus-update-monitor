@@ -38,6 +38,9 @@ td{padding:8px 12px;border-bottom:1px solid #f1f3f5}
 .btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
 .btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:5px}
 .btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:#f8fafc}
+.btn-soft-primary{background:var(--primary-light);color:var(--primary-text);border:1px solid transparent}.btn-soft-primary:hover{background:var(--primary-fade)}
+.btn-soft-success{background:var(--success-light);color:var(--success-text);border:1px solid transparent}.btn-soft-success:hover{background:var(--success-light);filter:brightness(0.97)}
+.btn-soft-danger{background:var(--danger-light);color:var(--danger-text);border:1px solid transparent}.btn-soft-danger:hover{background:var(--danger-light);filter:brightness(0.97)}
 .form-group{margin-bottom:10px}
 .form-section{margin-bottom:18px;padding:14px 16px;border-bottom:2px solid #f0f0f0;border-radius:8px}
 .form-section:last-of-type{border-bottom:none}
@@ -418,8 +421,8 @@ async function dashboard(range){
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0">
         <span style="color:var(--primary);font-size:13px">🩺 运维健康</span>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
-          <button class="btn btn-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
-          <button class="btn btn-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
+          <button class="btn btn-soft-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
+          <button class="btn btn-soft-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
       </div>
       <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
@@ -1056,7 +1059,7 @@ async function dataPage() {
   <span style="color:var(--border)">|</span>
   <span style="color:var(--muted)">下次</span><span>${nextText2}${nextMode2 ? ' [' + nextMode2 + ']' : ''}</span>
   ${ph2}
-  <button class="btn btn-xs" style="background:var(--primary);color:#fff" onclick="triggerCollect()">🔄 手动采集</button>
+  <button class="btn btn-xs btn-soft-primary" onclick="triggerCollect()">🔄 手动采集</button>
 </div>`;
           document.getElementById('dataRightHd').querySelector('.hdr-right')?.remove();
           document.getElementById('dataRightHd').insertAdjacentHTML('beforeend', hdrRight);
@@ -1279,7 +1282,7 @@ function buildFlatVerTreeHtml(snapshots) {
         <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span style="font-size:11px;color:var(--muted)">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
-        <button class="btn btn-xs btn-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button>
+        <button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(s.version_branch)}','${esc(s.package_type)}')">推送</button>
       </div>
       <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
         <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:#fafdf7;padding:8px;border-radius:4px">
@@ -1679,7 +1682,7 @@ function dataRenderRight(sch, p, info) {
     <span style="color:var(--border)">|</span>
     <span style="color:var(--muted)">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
     ${progressHtml}
-    <button class="btn btn-xs" style="background:var(--primary);color:#fff" onclick="triggerCollect()">🔄 手动采集</button>${resetBtn}
+    <button class="btn btn-xs btn-soft-primary" onclick="triggerCollect()">🔄 手动采集</button>${resetBtn}
   </div>`;
 
   if (rows.length === 0) {
@@ -1732,8 +1735,8 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:100px;flex-shrink:0;font-size:12px;overflow:hidden">${fmtTZ(r.published_at, true)}</div>
   <div class="feed-cell" style="width:136px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
-      <button class="btn btn-xs btn-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs" style="background:#0e9f6e;color:#fff;border:1px solid #0e9f6e" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
+      <button class="btn btn-xs btn-soft-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
+      <button class="btn btn-xs btn-soft-success" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml(r.package_version || r.version_branch)}', '${escHtml(r.package_type)}')">推送</button>
     </div>
   </div>
 </div>`;
@@ -2207,7 +2210,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
+          <button class="btn btn-xs btn-soft-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
@@ -2221,7 +2224,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
               <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
               ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
-              <button class="btn btn-xs btn-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
+              <button class="btn btn-xs btn-soft-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(ver)}','${esc(pkgType)}')">推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}
