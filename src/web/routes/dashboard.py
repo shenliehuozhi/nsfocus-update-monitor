@@ -115,6 +115,8 @@ def get_dashboard():
                 'active_but_expired': active_but_expired,
                 # 2026-08-25: collect / discover session 状态(供仪表盘卡片 + 告警用)
                 'collect_active': collect_active,
+                'collect_total': collect_total,
+                'collect_polluted': collect_polluted,
                 'discover_active': discover_active,
             },
             'session_detail': session_detail,

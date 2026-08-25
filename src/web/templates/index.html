@@ -642,8 +642,6 @@ async function dashboard(range){
   const _cTotal=_ss.collect_total||0;
   const _cPolluted=_ss.collect_polluted||0;
   const _ssActiveButExpired=_ss.active_but_expired||0;
-  // 2026-08-25 DEBUG: 临时 debug 输出,问题排查后删除
-  console.log('[debug dashboard]', JSON.stringify(_ss));
   // 2026-08-25: 统一告警区 — 按优先级显示(最严重的在最上面)
   const _alerts=[];
   // 1. 没有任何 collect session → 红色,提示添加
