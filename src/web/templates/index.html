@@ -8033,8 +8033,7 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
       <div class="card-bd">
         <div class="rd-toolbar">
           <button class="btn btn-outline" id="rdPickerBtn" onclick="toolDiffOpenPicker('${expectedKind}')" title="从已有产品目录选择路径, 自动填 URL">📂 选择产品路径</button>
-          <button class="btn btn-outline btn-sm" id="rdManualToggleBtn" onclick="toolDiffToggleManual()" title="切换到手输 URL 模式">✏️ 手动输入</button>
-          <input type="text" id="rdUrl" placeholder="${placeholder}" style="display:none">
+          <input type="text" id="rdUrl" placeholder="${placeholder}" title="可手动编辑 URL,或点「选择产品路径」自动填充">
           <button class="btn btn-primary" id="rdFetchBtn" onclick="rdFetch(false)">🚀 提取规则信息</button>
           <button class="btn btn-primary btn-sm" id="rdForceBtn" onclick="rdFetch(true)" title="跳过本地缓存, 重新从 vendor portal 拉取">🔄 强制刷新</button>
           <span class="rd-status" id="rdStatus"></span>
@@ -8146,9 +8145,8 @@ async function toolDiffOpenPicker(expectedKind){
     }
   } catch (e) {
     const bd = overlay.querySelector('.rd-picker-bd');
-    bd.innerHTML = `<div class="rd-picker-error">⚠️ 加载失败: ${escHtml(e.message || String(e))}<br><span style="font-size:11px;color:var(--muted)">已自动切回手动输入模式</span></div>`;
-    // 切回手动模式兜底
-    setTimeout(() => { toolDiffToggleManual(); overlay.remove(); }, 1500);
+    bd.innerHTML = `<div class="rd-picker-error">⚠️ 加载失败: ${escHtml(e.message || String(e))}<br><span style="font-size:11px;color:var(--muted)">请手动输入 URL 或重试</span></div>`;
+    // 保留弹层,用户可手动关闭或重试
     return;
   }
 
@@ -8231,19 +8229,11 @@ async function toolDiffOpenPicker(expectedKind){
 function toolDiffSelectPathByUrl(expectedKind, url, chainStr){
   if (!url) { rdToast('该路径没有 URL,无法提取', 'error'); return; }
   const fullUrl = url.startsWith('http') ? url : ('https://update.nsfocus.com' + (url.startsWith('/') ? url : '/' + url));
+  // input 一直可见,直接写 URL 即可 (用户可继续手动编辑)
   document.getElementById('rdUrl').value = fullUrl;
   // 关弹层
   const overlay = document.getElementById('rdPickerOverlay');
   if (overlay) overlay.remove();
-  // 自动切到手动输入模式,让选中的 URL 直接显示在输入框里
-  // (input 当前是 display:none,手动模式后变可见;再切回 picker 不冲突,因为 input.value 还在)
-  const input = document.getElementById('rdUrl');
-  const toggleBtn = document.getElementById('rdManualToggleBtn');
-  if (input && input.style.display === 'none') {
-    if (toggleBtn) toggleBtn.textContent = '✏️ 收起输入';
-    input.style.display = '';
-    input.focus();
-  }
   // 触发 fetch (用户主动选择路径,直接进入提取流程)
   rdFetch(false);
   // 顺便刷新一下链路反查 hint (rdFetch 不显示链路,rdUrlValidate 会异步覆盖)
@@ -8273,17 +8263,6 @@ function toolDiffToggleProduct(hdEl){
   const product = hdEl.parentElement;
   const wrap = product && product.querySelector('.rd-picker-paths-wrap');
   if (wrap) wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
-}
-
-// 切换手动输入模式
-function toolDiffToggleManual(){
-  const input = document.getElementById('rdUrl');
-  const toggleBtn = document.getElementById('rdManualToggleBtn');
-  if (!input) return;
-  const isHidden = input.style.display === 'none';
-  input.style.display = isHidden ? '' : 'none';
-  if (toggleBtn) toggleBtn.textContent = isHidden ? '✏️ 收起输入' : '✏️ 手动输入';
-  if (isHidden) setTimeout(() => input.focus(), 50);
 }
 
 async function rdFetch(force){
