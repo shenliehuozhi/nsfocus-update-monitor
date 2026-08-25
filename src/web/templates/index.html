@@ -650,7 +650,7 @@ async function dashboard(range){
   // 2026-08-25: 顶部告警只在"无可用采集 session"时显示
   // 其他情况(部分污染/过期)由 Session 菜单自己的卡片提示,不再在仪表盘顶部打扰
   if(_cTotal===0){
-    sesWarn=`<div class="info-bar" style="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 添加 PHPSESSID 才能采集</div>`;
+    sesWarn=`<div class="info-bar" style="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 添加 PHPSESSID 才能采集<br><span style="color:var(--muted);font-size:12px">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
   }
   // 采集进度条改用 _showCollectBanner() (2026-08-21),仿 _showDiscBanner 风格:底部悬浮卡片 + 进度条
   // 这里不再单独控制 dashRunningBar,改由 dataPage 内 _collectPollTimer 调度。
