@@ -1412,33 +1412,13 @@ async function dataPage() {
   dataRenderRight(sch, p, { lastText, nextText, isRunning, curMode, mode_label, progressHtml });
   console.log('[perf] dataPage total:', Math.round(performance.now() - t0), 'ms');
 
-  // ── Collect progress polling ──
-  // Only poll when actually running; update collect banner + stop when done.
+  // ── Collect progress polling (banner 由全局轮询维护,这里只更新 header) ──
   if (isRunning) {
     _collectRunning = true;
-    if (_collectPollTimer) { clearInterval(_collectPollTimer); _collectPollTimer = null; }
-    _collectPollTimer = setInterval(async () => {
-      try {
-        const pr = await api('/system/collect/progress');
-        const p2 = pr.data?.progress || {};
-        // 没有 phase 数据 → 后端已完成/无活动 → 停止轮询
-        if (!p2.phase) {
-          _collectRunning = false; clearInterval(_collectPollTimer); _collectPollTimer = null;
-          _hideCollectBanner();
-          return;
-        }
-        _showCollectBanner(p2);
-        if (p2.phase === 'done' || p2.phase === 'error' || p2.phase === 'cancelled') {
-          // 完成后保留 0.5s 让用户看到 100% 后隐藏
-          setTimeout(() => _hideCollectBanner(), 600);
-          _collectRunning = false; clearInterval(_collectPollTimer); _collectPollTimer = null;
-        }
-      } catch(e) {}
-    }, 3000);
+    // banner 由 pollCollectBannerGlobal 全局维护,这里不重复启动
   } else {
-    if (_collectPollTimer) { clearInterval(_collectPollTimer); _collectPollTimer = null; }
     _collectRunning = false;
-    _hideCollectBanner();
+    // DataPage 进入但采集没在跑 → 不停全局轮询 (可能其他页面刚启动采集)
   }
 
   // ── One-time event delegation (NEVER inside dataRenderLeft) ──
@@ -7528,8 +7508,9 @@ async function startCollect(){
   if(r.code===409){toast('采集正在进行中','warn');location.reload();return;}
   if(r.code!==0){toast(r.message,'error');location.reload();return;}
   _collectRunning=true;
-  if(_collectPollTimer)clearInterval(_collectPollTimer);
-  _collectPollTimer=setInterval(pollProgress,2000);
+  // 2026-08-25: 改用全局独立轮询,不管用户切到哪个页面 banner 都持续更新
+  // (之前用 pollProgress 依赖 modal body,切走就停了)
+  startCollectBannerPoll();
 }
 function showCollectProgress(){
   // Remove existing modal if any
@@ -7600,7 +7581,46 @@ function pollProgress(){
     if(html)body.innerHTML=html;
   }).catch(()=>{});
 }
+// ── 全局独立轮询 ──
+// 不依赖任何页面 DOM:只更新底部 banner 浮动卡片。
+// 启动一次后,无论用户切到哪个页面 banner 都持续更新;采集完成自动停止。
+// 用于仪表盘"立即采集"按钮 (banner 是全站可见的浮动卡片,轮询也应该是全局的)。
+let _collectBannerPollTimer = null;
+let _collectBannerPollRunning = false;
+async function pollCollectBannerGlobal(){
+  if (_collectBannerPollRunning) return; // 防重叠
+  _collectBannerPollRunning = true;
+  try{
+    const pr = await api('/system/collect/progress');
+    if (!pr.data) return;
+    const p = pr.data.progress || {};
+    if (!p.phase) {
+      _hideCollectBanner();
+      if (_collectBannerPollTimer) { clearInterval(_collectBannerPollTimer); _collectBannerPollTimer = null; }
+      return;
+    }
+    _showCollectBanner(p);
+    if (p.phase === 'done' || p.phase === 'error' || p.phase === 'cancelled') {
+      setTimeout(() => {
+        _hideCollectBanner();
+        if (_collectBannerPollTimer) { clearInterval(_collectBannerPollTimer); _collectBannerPollTimer = null; }
+      }, 600);
+    }
+  } catch(e) {}
+  finally { _collectBannerPollRunning = false; }
+}
+function startCollectBannerPoll(){
+  if (_collectBannerPollTimer) return;
+  pollCollectBannerGlobal();
+  _collectBannerPollTimer = setInterval(pollCollectBannerGlobal, 2000);
+}
+function stopCollectBannerPoll(){
+  if (_collectBannerPollTimer) { clearInterval(_collectBannerPollTimer); _collectBannerPollTimer = null; }
+  _hideCollectBanner();
+}
+
 // ── Dashboard Progress Poll ──
+// 只更新 dashboard 自己的 dashProgress DOM 元素;banner 由 pollCollectBannerGlobal 维护
 async function pollDashProgress(){
   try{
     const pr=await api('/system/collect/progress');
@@ -7609,14 +7629,11 @@ async function pollDashProgress(){
     const el=document.getElementById('dashProgress');
     const lc=document.getElementById('lastColText');
     if(!el)return;
-    // 2026-08-21: 同时调 _showCollectBanner,让底部悬浮卡片在仪表盘页签也可见
-    // pollDashProgress 在仪表盘已注册 setInterval,每 3 秒轮询一次
     if(p.phase){_showCollectBanner(p);}
     if(!p.active||p.phase==='done'){
       el.style.display='none';
       if(p.phase==='done'){
         if(lc)lc.textContent='已完成';
-        // 2026-08-21: 完成后保留 0.5s 让用户看到 100% 再隐藏
         setTimeout(()=>_hideCollectBanner(), 600);
         if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
       } else {
