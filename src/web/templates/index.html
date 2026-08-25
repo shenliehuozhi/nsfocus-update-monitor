@@ -8161,10 +8161,11 @@ async function toolDiffOpenPicker(expectedKind){
   const rdpKind = 'rdp_' + expectedKind;
   bd.innerHTML = products.map((p, idx) => {
     const allPaths = (p.package_type_discovered && p.package_type_discovered.paths) || [];
-    // DIFF 工具只关心规则库对比 → 过滤 chain 任一段含"规则升级包"或"规则库升级包"
+    // DIFF 工具只关心规则库对比 → 过滤 chain 任一段含"规则升级"或"规则库升级"
+    // 兼容三种命名:规则升级包(标准) / 规则库升级包(IDPS) / 规则升级(信创海光,无"包"字)
     const ruleLibPaths = allPaths.filter(pth => {
       const chain = pth.chain || [];
-      return chain.some(seg => /规则(?:库)?升级包/.test(seg));
+      return chain.some(seg => /规则(?:库)?升级(?:包)?/.test(seg));
     });
     const cardId = `${rdpKind}_card_${idx}`;
     const bodyId = cardId + '_body';
