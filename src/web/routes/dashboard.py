@@ -18,6 +18,16 @@ def get_dashboard():
     active = count_by_status('active')
     total = active + count_by_status('expired') + count_by_status('unknown')
     active_but_expired = get_expired_active_count()
+    # 2026-08-25: collect session 专项统计 — 用于仪表盘告警判断
+    collect_active = query(
+        "SELECT COUNT(*) as cnt FROM user_sessions WHERE status='active' AND purpose='collect'"
+    )[0]['cnt']
+    collect_total = query(
+        "SELECT COUNT(*) as cnt FROM user_sessions WHERE purpose='collect'"
+    )[0]['cnt']
+    collect_polluted = query(
+        "SELECT COUNT(*) as cnt FROM user_sessions WHERE purpose='collect' AND heartbeat_status='污染'"
+    )[0]['cnt']
 
     # Source health
     sources = list_src('nsfocus')
@@ -100,6 +110,10 @@ def get_dashboard():
             'session_status': {
                 'active': active, 'total': total,
                 'active_but_expired': active_but_expired,
+                # 2026-08-25: collect session 状态(供仪表盘告警用)
+                'collect_active': collect_active,
+                'collect_total': collect_total,
+                'collect_polluted': collect_polluted,
             },
             'session_detail': session_detail,
             'sources': source_summary,
