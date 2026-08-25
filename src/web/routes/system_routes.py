@@ -396,6 +396,115 @@ def reset_rate_limit():
         return {'code': 0, 'message': f'已重置全部频率限制 ({affected} 条)'}
 
 
+@bp.route('/events', methods=['GET'])
+@require_auth
+def list_events():
+    """仪表盘事件中心 — 返回 system_event_log 最近事件列表
+
+    支持过滤:severity / event_type / since_hours / limit
+    """
+    from src.models.database import query
+
+    severity = request.args.get('severity', '').strip()
+    event_type = request.args.get('event_type', '').strip()
+    since_hours = int(request.args.get('since_hours', '24'))
+    limit = min(int(request.args.get('limit', '50')), 200)
+
+    where = ["created_at >= datetime('now', ? || ' hours')"]
+    params = [f'-{since_hours}']
+    if severity:
+        where.append('severity = ?')
+        params.append(severity)
+    if event_type:
+        where.append('event_type = ?')
+        params.append(event_type)
+
+    sql = f"""SELECT id, event_type, severity, product_name, source_url,
+                      rule_id, channel_id, channel_type, customer_id,
+                      is_rollback, message, created_at
+               FROM system_event_log
+               WHERE {' AND '.join(where)}
+               ORDER BY id DESC
+               LIMIT {limit}"""
+    rows = query(sql, tuple(params))
+
+    counts_sql = """SELECT severity, COUNT(*) as cnt
+                    FROM system_event_log
+                    WHERE created_at >= datetime('now', '-24 hours')
+                      AND severity IN ('CRITICAL', 'ERROR', 'WARNING')
+                      AND acked_at IS NULL
+                    GROUP BY severity"""
+    counts_rows = query(counts_sql)
+    counts = {'CRITICAL': 0, 'ERROR': 0, 'WARNING': 0, 'unread_total': 0}
+    for r in counts_rows:
+        sev = r['severity']
+        cnt = r['cnt']
+        if sev in counts:
+            counts[sev] = cnt
+            counts['unread_total'] += cnt
+
+    return jsonify({
+        'code': 0,
+        'data': {
+            'events': [dict(r) for r in rows],
+            'unread_counts': counts,
+            'total': len(rows),
+        }
+    })
+
+
+@bp.route('/events/<int:event_id>/ack', methods=['POST'])
+@require_auth
+def ack_event(event_id):
+    """标记单个事件已确认"""
+    from src.models.database import execute
+    if not _ensure_event_ack_column():
+        return {'code': 500, 'message': '数据库迁移失败'}, 500
+    execute(
+        "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
+        "WHERE id = ? AND acked_at IS NULL",
+        (event_id,)
+    )
+    return {'code': 0, 'data': {'acked_id': event_id}}
+
+
+@bp.route('/events/ack-all', methods=['POST'])
+@require_auth
+def ack_all_events():
+    """批量标记所有未确认事件(可选 severity 过滤)"""
+    from src.models.database import execute
+    severity_filter = (request.json or {}).get('severity') if request.json else None
+    if not _ensure_event_ack_column():
+        return {'code': 500, 'message': '数据库迁移失败'}, 500
+    if severity_filter:
+        execute(
+            "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
+            "WHERE acked_at IS NULL AND severity = ?",
+            (severity_filter,)
+        )
+    else:
+        execute(
+            "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
+            "WHERE acked_at IS NULL"
+        )
+    return {'code': 0, 'data': {'message': 'all acked'}}
+
+
+def _ensure_event_ack_column() -> bool:
+    """确保 system_event_log 有 acked_at 列(轻量 migration)"""
+    from src.models.database import query, execute
+    cols = query("PRAGMA table_info(system_event_log)")
+    if any(c[1] == 'acked_at' for c in cols):
+        return True
+    try:
+        execute("ALTER TABLE system_event_log ADD COLUMN acked_at TEXT")
+        return True
+    except Exception as e:
+        import logging
+        logging.getLogger('api.events').warning(f'add acked_at column failed: {e}')
+        return False
+
+
 @bp.route('/version', methods=['GET'])
 @require_auth
 def version_info():

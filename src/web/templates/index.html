@@ -656,6 +656,8 @@ async function dashboard(range){
   // 这里不再单独控制 dashRunningBar,改由 dataPage 内 _collectPollTimer 调度。
 
   const mode_label={'quick':'⚡Quick','full':'🔍Full','':''};
+  // 加载事件中心头部统计 + badge（无论面板是否展开都要显示）
+  fetchEventsHeader();
   // Collect status
   let nextCol='—';
   let lastCol='—';
@@ -672,6 +674,33 @@ async function dashboard(range){
 
   document.getElementById('app').innerHTML=
     sesWarn +
+    `<div class="card" style="margin-bottom:14px">
+      <div id="eventsCardHd" class="card-hd" style="cursor:pointer;user-select:none">
+        🔔 最近事件
+        <span id="eventsUnreadBadge" style="display:none;margin-left:8px;background:var(--danger);color:#fff;font-size:11px;padding:1px 8px;border-radius:10px;font-weight:600">0</span>
+        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span id="eventsCounts" style="font-size:11px;color:var(--muted)"></span>
+          <button class="btn btn-xs btn-soft-primary" id="eventsExpandBtn" onclick="event.stopPropagation();toggleEventsPanel()">展开</button>
+          <button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackAllEvents()">✓ 全部已读</button>
+        </span>
+      </div>
+      <div id="eventsPanel" class="card-bd" style="display:none;padding:0">
+        <div id="eventsFilter" style="padding:10px 14px;border-bottom:1px solid var(--gray-bg);display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:var(--gray-bg)">
+          <select id="eventsSevFilter" onchange="loadEvents()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+            <option value="">全部</option><option value="CRITICAL">🔴 CRITICAL</option><option value="ERROR">🟠 ERROR</option><option value="WARNING">⚠️ WARNING</option><option value="INFO">ℹ️ INFO</option>
+          </select>
+          <select id="eventsTypeFilter" onchange="loadEvents()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+            <option value="">全部类型</option><option value="session_error">session_error</option><option value="session_expired">session_expired</option><option value="collection_summary">collection_summary</option><option value="cleanup_summary">cleanup_summary</option><option value="push_success">push_success</option><option value="log_error">log_error</option>
+          </select>
+          <select id="eventsHoursFilter" onchange="loadEvents()" style="font-size:12px;padding:4px 8px;border:1px solid var(--border);border-radius:4px">
+            <option value="1">最近 1h</option><option value="6">最近 6h</option><option value="24" selected>最近 24h</option><option value="72">最近 3 天</option><option value="168">最近 7 天</option>
+          </select>
+          <span style="flex:1"></span>
+          <button class="btn btn-xs btn-outline" onclick="loadEvents()">🔄 刷新</button>
+        </div>
+        <div id="eventsList" style="max-height:480px;overflow-y:auto;padding:6px 0"></div>
+      </div>
+    </div>` +
     `<div class="grid3">
       <div class="stat tint-info">
         <div class="num">${d.session_status?.collect_active||0}<span style="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span style="color:#5b21b6">${d.session_status?.discover_active||0}</span></div>
@@ -816,6 +845,133 @@ async function dashboard(range){
   }else{
     if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
   }
+
+  // 启动事件中心头部轮询(每 30 秒,即使面板折叠也运行更新 badge)
+  if(!window._eventsHeaderTimer){
+    fetchEventsHeader();
+    window._eventsHeaderTimer = setInterval(fetchEventsHeader, 30000);
+  }
+  if(!window._eventsRefreshTimer && document.getElementById('eventsPanel') && document.getElementById('eventsPanel').style.display !== 'none'){
+    loadEvents();
+    window._eventsRefreshTimer = setInterval(loadEvents, 15000);
+  }
+}
+
+// ── 事件中心 ───────────────────────────────────────────
+async function fetchEventsHeader(){
+  try{
+    const r = await api('/system/events?limit=1');
+    if(r.code !== 0) return;
+    const c = r.data?.unread_counts || {CRITICAL:0,ERROR:0,WARNING:0,unread_total:0};
+    const badge = document.getElementById('eventsUnreadBadge');
+    const counts = document.getElementById('eventsCounts');
+    if(badge){
+      if(c.unread_total > 0){
+        badge.textContent = c.unread_total;
+        badge.style.display = 'inline-block';
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    if(counts){
+      const parts = [];
+      if(c.CRITICAL) parts.push(`🔴 ${c.CRITICAL}`);
+      if(c.ERROR) parts.push(`🟠 ${c.ERROR}`);
+      if(c.WARNING) parts.push(`⚠️ ${c.WARNING}`);
+      counts.textContent = parts.length ? parts.join(' · ') + ' 未读' : '✅ 全部已读';
+    }
+  }catch(e){}
+}
+
+async function loadEvents(){
+  if(!document.getElementById('eventsList')) return;
+  const sev = document.getElementById('eventsSevFilter').value;
+  const typ = document.getElementById('eventsTypeFilter').value;
+  const hrs = document.getElementById('eventsHoursFilter').value;
+  const params = new URLSearchParams({limit:'100', since_hours:hrs});
+  if(sev) params.set('severity', sev);
+  if(typ) params.set('event_type', typ);
+  try{
+    const r = await api('/system/events?' + params.toString());
+    const list = document.getElementById('eventsList');
+    if(r.code !== 0){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">加载失败</div>';return;}
+    const events = r.data?.events || [];
+    if(!events.length){
+      list.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">✅ 当前条件下无事件</div>';
+      return;
+    }
+    list.innerHTML = events.map(renderEvent).join('');
+  }catch(e){
+    document.getElementById('eventsList').innerHTML='<div style="padding:20px;text-align:center;color:var(--danger);font-size:12px">网络错误</div>';
+  }
+}
+
+function renderEvent(e){
+  const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
+  const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
+  const sevBg = {CRITICAL:'#fef2f2',ERROR:'#fff7ed',WARNING:'#fefce8',INFO:'#f9fafb'}[e.severity] || '#f9fafb';
+  const isUnread = (e.severity === 'CRITICAL' || e.severity === 'ERROR' || e.severity === 'WARNING') && !e.acked_at;
+  const ackBtn = isUnread ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id})" style="margin-left:8px">✓ 已读</button>` : '';
+  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--gray-bg);background:${isUnread?sevBg:'transparent'};${isUnread?'border-left:3px solid '+sevColor:''}cursor:pointer" onclick="toggleEventDetail(${e.id})">
+    <span style="font-size:14px;flex-shrink:0;margin-top:1px">${sevIcon}</span>
+    <div style="flex:1;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-weight:600;color:${sevColor};font-size:12px">${escHtml(e.severity)}</span>
+        <span style="color:var(--muted);font-size:11px">${escHtml(e.event_type)}</span>
+        ${e.product_name ? `<span style="color:var(--primary);font-size:11px">${escHtml(e.product_name)}</span>` : ''}
+        <span style="color:var(--muted);font-size:11px;margin-left:auto">${escHtml(fmtTZ(e.created_at, true))}</span>
+      </div>
+      <div style="font-size:12px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.message || '')}</div>
+      <div id="eventDetail${e.id}" style="display:none;margin-top:8px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;color:var(--muted)">
+        ${e.source_url ? `<div><b>URL:</b> ${escHtml(e.source_url)}</div>` : ''}
+        ${e.rule_id ? `<div><b>规则 ID:</b> ${e.rule_id}</div>` : ''}
+        ${e.channel_id ? `<div><b>渠道 ID:</b> ${e.channel_id}</div>` : ''}
+        ${e.customer_id ? `<div><b>客户 ID:</b> ${e.customer_id}</div>` : ''}
+        ${e.is_rollback ? '<div><b>回滚事件</b></div>' : ''}
+        <div><b>事件 ID:</b> ${e.id}</div>
+        ${e.acked_at ? `<div><b>已确认:</b> ${escHtml(fmtTZ(e.acked_at, true))}</div>` : ''}
+      </div>
+    </div>
+    ${ackBtn}
+  </div>`;
+}
+
+function toggleEventDetail(id){
+  const el = document.getElementById('eventDetail'+id);
+  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleEventsPanel(){
+  const panel = document.getElementById('eventsPanel');
+  const btn = document.getElementById('eventsExpandBtn');
+  if(!panel || !btn) return;
+  const showing = panel.style.display !== 'none';
+  panel.style.display = showing ? 'none' : 'block';
+  btn.textContent = showing ? '展开' : '收起';
+  if(!showing) loadEvents();
+  // 折叠时停轮询,展开时启动
+  if(showing){
+    if(window._eventsRefreshTimer){clearInterval(window._eventsRefreshTimer);window._eventsRefreshTimer=null;}
+  } else {
+    if(!window._eventsRefreshTimer) window._eventsRefreshTimer = setInterval(loadEvents, 15000);
+  }
+}
+
+async function ackEvent(id){
+  try{
+    await api('/system/events/'+id+'/ack', {method:'POST'});
+    fetchEventsHeader();
+    loadEvents();
+  }catch(e){}
+}
+
+async function ackAllEvents(){
+  if(!confirm('标记所有未读事件为已读?')) return;
+  try{
+    await api('/system/events/ack-all', {method:'POST', body: JSON.stringify({severity:null})});
+    fetchEventsHeader();
+    loadEvents();
+  }catch(e){}
 }
 
 // ── Data ──
