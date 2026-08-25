@@ -777,19 +777,53 @@ class NsfocusCollector(BaseCollector):
         raise Exception(last_error or f'[discover] Failed after {MAX_RETRIES+1} attempts')
 
     def verify_session(self, health_url: str = None) -> bool:
-        """Check if session is still valid. health_url defaults to /update/listBvsV6/v/bvssys."""
+        """Check if session is still valid. health_url defaults to /update/listBvsV6/v/bvssys.
+
+        Returns True if session can access vendor portal normally.
+        Note: BVS/RSAS detail pages contain `downloadsVm/id` strings by product design,
+        so this function only checks for redirect-based pollution (jumping to /update/upLic)
+        or expiry (jumping to /portal/login), NOT body content.
+        """
         url = health_url or '/update/listBvsV6/v/bvssys'
         try:
             resp = self.session.get(f'{BASE_URL}{url}', timeout=15, allow_redirects=True)
             # Login redirect: any nsfocus portal path means expired
             if '/portal/' in resp.url or '/login' in resp.url:
                 return False
-            # Also catch the license redirect (session context switch = wrong mode)
+            # Also catch the license redirect (session context switch = wrong mode = polluted)
             if '/update/upLic' in resp.url:
                 return False
             return resp.status_code == 200
         except Exception:
             return False
+
+    def check_session_status(self, health_url: str = None) -> tuple:
+        """采集前预检,跟主动心跳的污染检测逻辑保持一致(scheduler.py:1715)。
+
+        返回 (status, reason) tuple:
+          - ('ok', ''):           session 正常
+          - ('expired', reason):  session 失效(被污染后 vendor 会重定向到 upLic)
+          - ('污染', reason):     session 上下文被 upLic/Vm 污染(响应 body 含 downloadsVm/id)
+          - ('error', reason):    网络/解析错误
+
+        主动心跳判断污染:`if 'downloadsVm/id' in resp.text` (line 1715)。
+        预检现在用同样的逻辑,确保两者检测结果一致 — 看到 downloadsVm/id 就是污染。
+        """
+        url = health_url or '/update/listBvsV6/v/bvssys'
+        try:
+            resp = self.session.get(f'{BASE_URL}{url}', timeout=15, allow_redirects=True)
+            # Pollution #1: 重定向到 Vm/license 上传页
+            if '/update/upLic' in resp.url:
+                return ('污染', 'redirect → /update/upLic')
+            # Pollution #2: 响应 body 含 downloadsVm/id — 跟心跳 line 1715 完全一致
+            if resp.status_code == 200 and 'downloadsVm/id' in resp.text:
+                return ('污染', 'response body 含 downloadsVm/id')
+            # Expiry: 重定向到登录页
+            if '/portal/' in resp.url or '/login' in resp.url:
+                return ('expired', f'redirect → {resp.url}')
+            return ('ok', '') if resp.status_code == 200 else ('error', f'HTTP {resp.status_code}')
+        except Exception as e:
+            return ('error', str(e)[:200])
 
     def _delay(self, skip: bool = False):
         if skip:

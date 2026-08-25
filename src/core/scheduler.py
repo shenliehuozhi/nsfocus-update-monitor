@@ -551,24 +551,43 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _collector._set_cookie(sess['cookie_value'])
             is_collect = sess['purpose'] == 'collect'
             purpose_tag = 'collect' if is_collect else 'discover'
-            if _collector.verify_session(HEALTH_URL):
+            # 2026-08-25: 采集前预检,跟主动心跳用同一套污染检测逻辑(downloadsVm/id)
+            # 让预检不仅检查 redirect,也检查响应 body 里的 downloadsVm/id 字符串
+            preflight_ok, preflight_reason = _collector.check_session_status(HEALTH_URL)
+            if preflight_ok == 'ok':
                 update_status(sess['id'], 'active')
                 update_heartbeat(sess['id'], '正常')
                 log_heartbeat(sess['id'], '正常', error_msg=f'pre-flight OK ({purpose_tag})', purpose=sess['purpose'], collect_mode=sess.get('collect_mode', ''))
                 if is_collect and valid_session is None:
                     valid_session = sess
                     logger.info(f'Pre-flight passed: session {sess["id"]} (collect/{sess.get("collect_mode","standard")})')
+            elif preflight_ok == '污染':
+                # session 被虚拟化上下文污染,跟心跳路径的处理一致
+                logger.warning(f'Session {sess["id"]} ({purpose_tag}) pre-flight: 污染检测到 (downloadsVm/id)')
+                try:
+                    update_status(sess['id'], '污染')
+                    update_heartbeat(sess['id'], '污染')
+                    log_heartbeat(sess['id'], '污染', error_msg='pre-flight 污染 (响应 body 含 downloadsVm/id)', purpose=sess['purpose'], collect_mode=sess.get('collect_mode', ''))
+                except Exception as ex:
+                    logger.warning(f'Session {sess["id"]} DB 更新失败（预检污染）: {ex}')
+                from src.core.event_handler import emit_session_error
+                emit_session_error(
+                    username=sess.get('username', ''),
+                    product_name=sess.get('product_name', ''),
+                    reason='Session 污染（预检:响应 body 含 downloadsVm/id,上下文被 upLic/Vm 格式污染）'
+                )
             else:
-                logger.warning(f'Session {sess["id"]} ({purpose_tag}) pre-flight failed — marking expired')
+                # 'expired' 或 'error' → 当作失效处理
+                logger.warning(f'Session {sess["id"]} ({purpose_tag}) pre-flight failed ({preflight_ok}) — marking expired')
                 update_status(sess['id'], 'expired')
                 update_heartbeat(sess['id'], '过期')
-                log_heartbeat(sess['id'], '过期', error_msg=f'pre-flight failed ({purpose_tag})', purpose=sess['purpose'], collect_mode=sess.get('collect_mode', ''))
+                log_heartbeat(sess['id'], '过期', error_msg=f'pre-flight failed ({purpose_tag}, reason={preflight_ok})', purpose=sess['purpose'], collect_mode=sess.get('collect_mode', ''))
                 from src.core.event_handler import emit_session_expired
                 emit_session_expired(
                     session_id=sess['id'],
                     purpose=sess['purpose'],
                     collect_mode=sess.get('collect_mode', ''),
-                    reason='预检失败（verify_session 返回 false，cookie 可能已失效）',
+                    reason=f'预检失败（{preflight_ok}，cookie 可能已失效）',
                     source='pre-flight'
                 )
 
