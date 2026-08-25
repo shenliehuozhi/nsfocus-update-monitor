@@ -3513,9 +3513,9 @@ async function sessions(){
       hbInfo=`<span class="badge badge-${hbColor}" style="cursor:pointer" onclick="showHbHistory(${s.id})" title="点击查看心跳历史">${s.heartbeat_status}</span>`;
     }
     let hbTime=s.last_heartbeat_at?fmtTZ(s.last_heartbeat_at,true):'—';
-    return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td style="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" onclick="validateSes(${s.id})">验证</button> <button class="btn btn-danger btn-xs" onclick="delSes(${s.id})">删除</button></td></tr>`;
+    return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td style="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" onclick="validateSes(${s.id})">验证</button> <button class="btn btn-soft-danger btn-xs" onclick="delSes(${s.id})">删除</button></td></tr>`;
   }).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span style="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span style="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary" onclick="openAddSesModal()" style="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span style="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span style="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-soft-primary" onclick="openAddSesModal()" style="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
   <!-- 健康度概览 -->
   <div style="display:flex;gap:12px;margin-bottom:16px">
     <div style="flex:1;background:var(--success-light);border:1px solid var(--success-border);border-radius:8px;padding:12px 16px">
@@ -3588,7 +3588,7 @@ function openAddSesModal(){
           <span style="font-weight:600">采集</span>：获取产品升级包（规则包 / 系统包等）用于变更监控<br>
           <span style="font-weight:600">发现</span>：探测绿盟产品线变化，自动识别新出现的产品和包类型，默认已内置当前全量产品及类型，可不添加。<span style="color:var(--danger);font-weight:600">注意：发现过程可能触发证书上传页面，所有升级包会被误判为虚拟化包；若需探测产品目录结构变化，请单独添加一个专用 session 用于发现。</span>
         </div>
-        <button id="addSesConfirm" class="btn btn-primary" style="width:100%" onclick="confirmAddSes()">验证并添加</button>
+        <button id="addSesConfirm" class="btn btn-soft-primary" style="width:100%" onclick="confirmAddSes()">验证并添加</button>
         <div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center">获取方式：浏览器登录 update.nsfocus.com → F12 开发者工具 → Application → Cookies → 复制 PHPSESSID</div>
       </div>
     </div>
