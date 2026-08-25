@@ -8158,36 +8158,65 @@ async function toolDiffOpenPicker(expectedKind){
     return;
   }
 
-  // 渲染产品列表
+  // 渲染:每个白名单产品一张卡片,卡片 body 用 buildDataTreeHtml 渲染规则库路径树
+  // (跟采集数据左侧产品目录同款树形,只是过滤后只显示"规则升级包/规则库升级包"路径)
+  const rdpKind = 'rdp_' + expectedKind;
   bd.innerHTML = products.map((p, idx) => {
-    const paths = (p.package_type_discovered && p.package_type_discovered.paths) || [];
-    const arrowCls = 'rd-picker-arrow';
-    const emptyHtml = paths.length === 0
-      ? `<div class="rd-picker-prod-empty">该产品尚未完成包路径发现,请先到「产品」页执行「发现」</div>`
-      : '';
-    const pathsHtml = paths.map((pth, i) => {
-      const chainStr = (pth.chain || []).join(' › ');
-      const url = pth.url || '';
-      const fullUrl = url.startsWith('http') ? url : ('https://update.nsfocus.com' + (url.startsWith('/') ? url : '/' + url));
-      return `<div class="rd-picker-path">
-        <span class="rd-picker-chain" title="${escHtml(chainStr)}">${escHtml(chainStr)}</span>
-        <span class="rd-picker-url" title="${escHtml(fullUrl)}">${escHtml(url)}</span>
-        <button class="btn btn-xs btn-primary" onclick="toolDiffSelectPath('${expectedKind}', ${idx}, ${i})">选取</button>
-      </div>`;
-    }).join('');
-    return `<div class="rd-picker-product">
+    const allPaths = (p.package_type_discovered && p.package_type_discovered.paths) || [];
+    // DIFF 工具只关心规则库对比 → 过滤 chain 任一段含"规则升级包"或"规则库升级包"
+    const ruleLibPaths = allPaths.filter(pth => {
+      const chain = pth.chain || [];
+      return chain.some(seg => /规则(?:库)?升级包/.test(seg));
+    });
+    const cardId = `${rdpKind}_card_${idx}`;
+    const bodyId = cardId + '_body';
+    let treeHtml;
+    if (allPaths.length === 0) {
+      treeHtml = `<div style="color:var(--muted);font-size:12px;padding:8px 12px">该产品尚未完成包路径发现,请先到「产品」页执行「发现」</div>`;
+    } else if (ruleLibPaths.length === 0) {
+      treeHtml = `<div style="color:var(--muted);font-size:12px;padding:8px 12px">该产品下没有规则库路径 (共 ${allPaths.length} 条 path, 无匹配)</div>`;
+    } else {
+      // 复用采集数据左侧目录的 buildDataTreeHtml 渲染树形结构
+      // sid 用独立 namespace 避免跟正常采集数据页冲突; snapshotsMap 传空 (DIFF 不需要快照)
+      treeHtml = buildDataTreeHtml({paths: ruleLibPaths}, {}, typeCN, {}, '', `${rdpKind}_${idx}`);
+    }
+    return `<div class="rd-picker-product" id="${cardId}" style="border-bottom:1px solid var(--gray-bg)">
       <div class="rd-picker-prod-hd" onclick="toolDiffToggleProduct(this)">
-        <span class="${arrowCls}">▶</span>
+        <span class="rd-picker-arrow">▶</span>
         <span>${escHtml(p.name)}</span>
-        <span class="rd-picker-count">${paths.length} paths</span>
+        <span class="rd-picker-count">${ruleLibPaths.length} / ${allPaths.length} paths</span>
       </div>
-      ${emptyHtml}
-      <div class="rd-picker-paths-wrap" style="display:none">${pathsHtml}</div>
+      <div class="rd-picker-paths-wrap" id="${bodyId}" style="display:none">${treeHtml}</div>
     </div>`;
   }).join('');
+
+  // 拦截 tree leaf 节点的 click (默认行为是弹右边面板/pktbl_*),改为"选这条路径"
+  // 用事件委托绑到弹层容器
+  overlay.addEventListener('click', function(ev){
+    const leafNode = ev.target.closest('.tree-node[data-isleaf="1"]');
+    if (!leafNode) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const url = leafNode.getAttribute('data-url') || '';
+    const chainJson = leafNode.getAttribute('data-chain') || '[]';
+    let chainStr = '';
+    try { chainStr = JSON.parse(chainJson).join(' › '); } catch (e) {}
+    toolDiffSelectPathByUrl(expectedKind, url, chainStr);
+  });
 }
 
-// 选取路径后:写 URL + 触发 fetch
+// 选取路径后:写 URL + 触发 fetch (新版本从 tree-node data-url 直接拿)
+function toolDiffSelectPathByUrl(expectedKind, url, chainStr){
+  if (!url) { rdToast('该路径没有 URL,无法提取', 'error'); return; }
+  const fullUrl = url.startsWith('http') ? url : ('https://update.nsfocus.com' + (url.startsWith('/') ? url : '/' + url));
+  document.getElementById('rdUrl').value = fullUrl;
+  // 关弹层 + 触发 fetch
+  const overlay = document.getElementById('rdPickerOverlay');
+  if (overlay) overlay.remove();
+  rdFetch(false);
+}
+
+// 旧版 from cache:保留作兼容,新 picker 走 tree 事件委托不再调它
 function toolDiffSelectPath(expectedKind, prodIdx, pathIdx){
   const products = _toolDiffProductsCache[expectedKind] || [];
   const p = products[prodIdx];
