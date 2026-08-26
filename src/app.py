@@ -384,6 +384,47 @@ def create_app(config_path=None):
     from src.web.routes import register_routes
     register_routes(app)
 
+    # 2026-08-26: Flask 全局异常处理 — 任何未捕获异常都实时调 emit_log_error
+    # 之前依赖 log_scanner 事后扫日志,延迟几分钟。现在异常立即进 DB + 推通知
+    import traceback as _tb
+    @app.errorhandler(Exception)
+    def _handle_uncaught(e):
+        # HTTPException (404/405/...) 是用户行为,不当 bug 处理
+        from werkzeug.exceptions import HTTPException
+        if isinstance(e, HTTPException):
+            return e
+        # 取 traceback 字符串
+        tb_str = ''.join(_tb.format_exception(type(e), e, e.__traceback__))
+        # 限长避免 DB 爆
+        tb_short = tb_str[-2000:] if len(tb_str) > 2000 else tb_str
+        # 简单分类(跟 log_scanner 保持一致)
+        if 'sqlite3.OperationalError' in tb_short:
+            err_type, keyword = 'DB错误', 'OperationalError'
+        elif 'IntegrityError' in tb_short:
+            err_type, keyword = 'DB错误', 'IntegrityError'
+        elif 'database is locked' in tb_short:
+            err_type, keyword = 'DB错误', 'database is locked'
+        elif 'no such column' in tb_short:
+            err_type, keyword = 'DB错误', 'no such column'
+        else:
+            err_type, keyword = 'Python异常', 'Traceback'
+        try:
+            # 写 DB + 发通知(emit_log_error 内部两件事都做)
+            from src.core.event_handler import emit_log_error
+            emit_log_error(
+                log_file='service_error.log',
+                error_type=err_type,
+                keyword=keyword,
+                context=tb_short,
+                line_number=None,
+            )
+        except Exception as inner_e:
+            # 异常处理本身失败不能崩服务
+            app.logger.error(f'Failed to log uncaught exception: {inner_e}')
+        # 返回 500
+        from flask import jsonify
+        return jsonify({'code': 50000, 'message': f'服务器内部错误: {type(e).__name__}'}), 500
+
     # Start scheduler
     from src.core.scheduler import start_scheduler
     app.scheduler = start_scheduler(app)
