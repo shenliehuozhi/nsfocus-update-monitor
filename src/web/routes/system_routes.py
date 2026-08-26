@@ -1980,6 +1980,35 @@ def ingest_log_alert():
 
     cst_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    # 2026-08-26: log_scanner 的事件也要进 system_event_log 事件面板
+    # 之前只发通知不写 DB,用户看不到。severity 跟 ERROR_PATTERNS 字典对齐
+    try:
+        from src.models.event_log import log_event
+        _severity_map = {
+            'DB错误': 'CRITICAL',
+            'Python异常': 'CRITICAL',
+            '网络错误': 'WARNING',
+            'HTTP错误': 'WARNING',
+        }
+        _sev = _severity_map.get(error_type, 'WARNING')
+        log_event(
+            event_type='log_error',
+            severity=_sev,
+            message={
+                'log_file': log_file,
+                'error_type': error_type,
+                'keyword': keyword,
+                'context': context[:500] if context else '',
+                'line_number': line_number,
+            }
+        )
+    except Exception as _e:
+        try:
+            from flask import current_app
+            current_app.logger.warning(f'ingest_log_alert: log_event failed: {_e}')
+        except Exception:
+            pass
+
     message_text = '\n'.join([
         "【日志异常检测】",
         f"扫描时间：{cst_now}",
