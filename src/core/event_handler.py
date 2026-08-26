@@ -806,7 +806,7 @@ def emit_session_expired(session_id: int, purpose: str, collect_mode: str, reaso
 
 def emit_log_error(log_file: str, error_type: str, keyword: str,
                    context: str, line_number: int = None):
-    """日志扫描发现异常时调用"""
+    """日志扫描发现异常时调用 — 既发通知也记 DB 事件(跟 collection_summary 一致)"""
     event_type = 'log_error'
 
     if not is_event_enabled(event_type):
@@ -829,6 +829,24 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
         "上下文：",
         context[:500] if context else '—',
     ])
+
+    # 2026-08-26: 既发通知也写 DB — 跟 collection_summary / session_error 保持一致
+    # 之前只发通知不写 DB,导致事件面板看不到这类事件
+    try:
+        from src.models.event_log import log_event
+        log_event(
+            event_type=event_type,
+            severity='CRITICAL',
+            message={
+                'log_file': log_file,
+                'error_type': error_type,
+                'keyword': keyword,
+                'context': context[:500] if context else '',
+                'line_number': line_number,
+            }
+        )
+    except Exception as e:
+        logger.error(f'Failed to write log_error event to DB: {e}')
 
     # 发送通知
     notifier = _get_notifier(channel)
