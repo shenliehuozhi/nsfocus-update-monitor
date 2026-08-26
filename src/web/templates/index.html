@@ -658,10 +658,9 @@ async function dashboard(range){
   const mode_label={'quick':'⚡Quick','full':'🔍Full','':''};
   // 加载事件中心头部统计 + badge（无论面板是否展开都要显示）
   fetchEventsHeader();
-  // 2026-08-26: 仪表盘事件中心卡片渲染
-  renderEventsCenter();
-  if(window._eventsCenterTimer) clearInterval(window._eventsCenterTimer);
-  window._eventsCenterTimer = setInterval(renderEventsCenter, 30000);
+  // 2026-08-26: 事件中心卡片直接用 /api/dashboard 返回的 recent_events 同步渲染
+  // (不再单独 ajax 调用 /api/system/events, 避免 dashboard 打开时还有加载中)
+  renderEventsCenterFromData(d.recent_events);
   // Collect status
   let nextCol='—';
   let lastCol='—';
@@ -878,14 +877,41 @@ async function fetchEventsHeader(){
   }catch(e){}
 }
 
-// 仪表盘事件中心卡片 — 渲染最近 5 条事件
-// 简化:不显示 loading 占位(避免无限 loading),后端慢就让用户看到 dashboard 其他内容
+// 仪表盘事件中心卡片 — 同步渲染(数据从 /api/dashboard 拿,不另外 ajax)
+// 之前走 ajax /api/system/events 太慢,现在跟 dashboard 一起返回
+function renderEventsCenterFromData(events){
+  const body = document.getElementById('eventsCenterBody');
+  if (!body) return;
+  if (!events || !events.length) {
+    body.innerHTML = '<div style="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
+    return;
+  }
+  body.innerHTML = events.map(e => {
+    const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
+    let msg = '';
+    if (typeof e.message === 'string') msg = e.message;
+    else if (e.message?.reason) msg = e.message.reason;
+    else if (e.message?.error_type) msg = e.message.error_type + (e.message?.keyword ? ' / ' + e.message.keyword : '');
+    else msg = JSON.stringify(e.message || {}).slice(0, 80);
+    const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
+    return `<div style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4">
+      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+        <span>${sevIcon}</span>
+        <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.event_type||'')}</span>
+        <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? e.created_at.slice(11,19) : ''}</span>
+        ${ackBadge}
+      </div>
+      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(msg)}">${escHtml(msg)}</div>
+    </div>`;
+  }).join('');
+}
+
+// 旧版本异步拉(保留兼容,但 dashboard 不再调用)
 async function renderEventsCenter(){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
   try{
     const r = await api('/system/events?limit=5');
-    // 防 timer 累积覆盖:DOM 已被卸载就别写
     if (document.getElementById('eventsCenterBody') !== body) return;
     if (r.code !== 0) {
       body.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px 0">加载失败,点击 <a href="#" onclick="renderEventsCenter();return false">重试</a></div>`;
@@ -896,24 +922,7 @@ async function renderEventsCenter(){
       body.innerHTML = '<div style="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
       return;
     }
-    body.innerHTML = events.map(e => {
-      const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
-      let msg = '';
-      if (typeof e.message === 'string') msg = e.message;
-      else if (e.message?.reason) msg = e.message.reason;
-      else if (e.message?.error_type) msg = e.message.error_type + (e.message?.keyword ? ' / ' + e.message.keyword : '');
-      else msg = JSON.stringify(e.message || {}).slice(0, 80);
-      const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
-      return `<div style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4">
-        <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-          <span>${sevIcon}</span>
-          <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.event_type||'')}</span>
-          <span style="color:var(--muted);font-size:10px;flex-shrink:0">${fmtTZ(e.created_at,true).slice(11,16)}</span>
-          ${ackBadge}
-        </div>
-        <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(msg)}">${escHtml(msg)}</div>
-      </div>`;
-    }).join('');
+    renderEventsCenterFromData(events);
   }catch(e){
     if (document.getElementById('eventsCenterBody') === body) {
       body.innerHTML = `<div style="text-align:center;color:var(--danger);font-size:12px;padding:16px 0">网络错误</div>`;

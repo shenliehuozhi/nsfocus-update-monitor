@@ -124,11 +124,28 @@ def get_dashboard():
             'push_today': push_today,
             'push_week': push_week,
             'total_snapshots': total_snapshots,
-            'recent_deliveries': recent_deliveries,
+'recent_deliveries': recent_deliveries,
+            # 2026-08-26: 仪表盘事件中心卡片需要最近事件(避免独立 ajax 调用, 加快首屏)
+            'recent_events': _recent_events_for_dashboard(limit=5),
             'product_stats': _product_pie_stats(int(days)),
             'timeline_stats': _timeline_stats(int(days)),
         }
     })
+
+
+def _recent_events_for_dashboard(limit: int = 5):
+    """最近 N 条事件(仪表盘事件中心卡片直接渲染,无需 ajax)
+
+    2026-08-26: 把 events 一起塞进 /api/dashboard 返回,
+    避免 dashboard 打开后再发 /api/system/events 拉数据(慢 + 加载占位闪)
+    """
+    from src.models.database import query
+    rows = query(
+        f"""SELECT id, event_type, severity, message, created_at, acked_at
+           FROM system_event_log
+           ORDER BY id DESC LIMIT {limit}"""
+    )
+    return [dict(r) for r in rows]
 
 
 def _product_pie_stats(days: int = 30):
