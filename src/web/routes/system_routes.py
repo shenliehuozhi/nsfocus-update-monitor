@@ -494,16 +494,23 @@ def ack_all_events():
 
 def _ensure_event_ack_column() -> bool:
     """确保 system_event_log 有 acked_at 列(轻量 migration)"""
-    from src.models.database import query, execute
-    cols = query("PRAGMA table_info(system_event_log)")
-    if any(c[1] == 'acked_at' for c in cols):
-        return True
     try:
+        from src.models.database import query, execute
+        cols = query("PRAGMA table_info(system_event_log)")
+        # 2026-08-26: query() 返回 [dict(row)] 格式,字段名 'name' (不是 tuple 索引 1)
+        if any(c.get('name') == 'acked_at' for c in cols):
+            return True
         execute("ALTER TABLE system_event_log ADD COLUMN acked_at TEXT")
-        return True
+        # 验证加成功
+        cols2 = query("PRAGMA table_info(system_event_log)")
+        if any(c.get('name') == 'acked_at' for c in cols2):
+            return True
+        import logging
+        logging.getLogger('api.events').warning(f'acked_at column not visible after ALTER')
+        return False
     except Exception as e:
         import logging
-        logging.getLogger('api.events').warning(f'add acked_at column failed: {e}')
+        logging.getLogger('api.events').warning(f'add acked_at column failed: {e}', exc_info=True)
         return False
 
 
