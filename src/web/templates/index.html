@@ -658,9 +658,6 @@ async function dashboard(range){
   const mode_label={'quick':'⚡Quick','full':'🔍Full','':''};
   // 加载事件中心头部统计 + badge（无论面板是否展开都要显示）
   fetchEventsHeader();
-  // 2026-08-26: 事件中心卡片直接用 /api/dashboard 返回的 recent_events 同步渲染
-  // (不再单独 ajax 调用 /api/system/events, 避免 dashboard 打开时还有加载中)
-  renderEventsCenterFromData(d.recent_events);
   // Collect status
   let nextCol='—';
   let lastCol='—';
@@ -818,6 +815,11 @@ async function dashboard(range){
     _renderProdDistTable(d.product_stats || []);
     _renderTimelineChart('chartTimeline', window._tlData, window._tlDays, window._tlVisible);
     _renderTlLegend(allProds, window._tlVisible);
+    // 2026-08-26: 事件中心卡片数据已在 d.recent_events 里(dashboard 接口一次性返回)
+    // 此时 #eventsCenterBody 已存在于 DOM 中,可以直接渲染
+    if (typeof renderEventsCenterFromData === 'function') {
+      renderEventsCenterFromData(d.recent_events);
+    }
     // 高亮当前选中范围按钮
     document.querySelectorAll('#pieRange .btn, #tlRange .btn').forEach(b => {
       const v = b.textContent.trim();
