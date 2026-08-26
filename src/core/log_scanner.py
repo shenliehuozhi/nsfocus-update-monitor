@@ -212,6 +212,10 @@ def _scan_file(filepath: str) -> list:
                 
                 # Check each error pattern
                 for error_type, patterns in ERROR_PATTERNS.items():
+                    # 2026-08-26: 跳过 DB错误 / Python异常 — Flask errorhandler 已实时处理
+                    # (app.py: _handle_uncaught) — 避免重复推送 / 重复写 DB
+                    if error_type in ('DB错误', 'Python异常'):
+                        continue
                     for pattern in patterns:
                         if pattern.search(line):
                             # Capture context: current line + next few lines if Exception/Traceback
