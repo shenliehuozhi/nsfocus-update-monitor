@@ -911,7 +911,10 @@ function renderEventsCenterFromData(events){
     if (m.title) title = String(m.title);
     // 2. 按 event_type 字段提取
     else if (t === 'session_error') title = (m.username ? `Session 污染 (${m.username})` : 'Session 污染') + ': ' + (m.reason || '未知');
-    else if (t === 'session_expired') title = (m.session_id ? `Session ${m.session_id} 失效` : 'Session 失效') + ': ' + (m.reason || '');
+    // 老数据没 title 字段, 但 session_error 事件一定有 reason, 直接用 reason 做标题更清晰
+    if (!title && (t === 'session_error' || t === 'session_expired') && m.reason) {
+      title = `${t === 'session_expired' ? 'Session 失效' : 'Session 污染'}: ${m.reason.slice(0, 80)}`;
+    }
     else if (t === 'log_error') title = (m.error_type || '日志异常') + (m.keyword ? ` / ${m.keyword}` : '');
     else if (t === 'collection_summary') title = m.ok === false ? '⚠️ 采集异常' : '✅ 采集完成';
     else if (t === 'push_summary') title = m.success > 0 ? `推送 ${m.success} 成功` : (m.total ? `推送 ${m.total} 条` : '本次无推送');

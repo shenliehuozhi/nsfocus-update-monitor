@@ -131,21 +131,34 @@ def get_dashboard():
             'timeline_stats': _timeline_stats(int(days)),
         }
     })
-
-
 def _recent_events_for_dashboard(limit: int = 5):
-    """最近 N 条事件(仪表盘事件中心卡片直接渲染,无需 ajax)
+    """仪表盘事件中心卡片数据(从 system_event_log 单表查最近 N 条)
 
-    2026-08-26: 把 events 一起塞进 /api/dashboard 返回,
-    避免 dashboard 打开后再发 /api/system/events 拉数据(慢 + 加载占位闪)
+    2026-08-26: 之前走独立 ajax /api/system/events 接口太慢,
+    改成 dashboard 接口直接查(单条 SQL, <1ms)塞进返回,前端同步渲染无 loading。
+    注意:跟 recent_deliveries (delivery_log) / product_stats (snapshots JOIN) /
+    timeline_stats (snapshots 全表) 是完全独立的数据源 — 事件中心只查 system_event_log 这一张表。
+
+    2026-08-26 v2: 解析 message 字段从 JSON 字符串成 dict,前端直接取字段不用 JSON.parse
     """
+    import json as _json
     from src.models.database import query
     rows = query(
         f"""SELECT id, event_type, severity, message, created_at, acked_at
            FROM system_event_log
            ORDER BY id DESC LIMIT {limit}"""
     )
-    return [dict(r) for r in rows]
+    result = []
+    for r in rows:
+        d = dict(r)
+        # message 字段是 JSON 字符串,解析成 dict 给前端用
+        if isinstance(d.get('message'), str):
+            try:
+                d['message'] = _json.loads(d['message'])
+            except (ValueError, TypeError):
+                pass  # 保留字符串,前端兜底
+        result.append(d)
+    return result
 
 
 def _product_pie_stats(days: int = 30):
