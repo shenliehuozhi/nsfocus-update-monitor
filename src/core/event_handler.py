@@ -708,13 +708,25 @@ def emit_session_error(username: str, product_name: str, reason: str, source: st
     ])
 
     # 记录到日志表
+    # 2026-08-26: 事件中心需要统一 schema(message 加 title 字段,人类可读的一句话)
+    # title 优先于前端模板拼接 — 显示给运维人看的第一行
+    if source == 'health_check':
+        simple_title = f'系统健康检查失败: {reason[:80]}'
+    elif username:
+        simple_title = f'Session 污染 ({username}): {reason[:80]}'
+    else:
+        simple_title = f'Session 污染: {reason[:80]}'
+
     log_event(
         event_type=event_type,
         severity='CRITICAL',
         product_name=product_name,
         message={
+            'title': simple_title,
             'username': username,
             'reason': reason,
+            'source': source,
+            'detected_at': cst_now,
         }
     )
 

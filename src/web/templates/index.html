@@ -888,25 +888,29 @@ function renderEventsCenterFromData(events){
     body.innerHTML = '<div style="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
     return;
   }
-  body.innerHTML = events.map(e => {
+    body.innerHTML = events.map(e => {
     const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
     // 2026-08-26: 统一标题提取规则 — 按 event_type 字段优先级
     const m = (typeof e.message === 'object' && e.message) ? e.message : {};
     const t = e.event_type || '';
     let title = '';
-    if (m.title) title = m.title;  // 统一字段优先
-    else if (t === 'session_error') title = `Session ${m.username || ''} 污染: ${m.reason || '未知'}`;
-    else if (t === 'session_expired') title = `Session ${m.session_id || ''} 失效: ${m.reason || ''}`;
-    else if (t === 'log_error') title = `${m.error_type || '日志异常'}: ${m.keyword || ''}`;
-    else if (t === 'collection_summary') title = m.ok ? '✅ 采集完成' : '⚠️ 采集异常';
-    else if (t === 'push_summary') title = m.success > 0 ? `推送 ${m.success} 成功` : '本次无推送';
-    else if (t === 'push_success') title = `${m.product_name || ''} ${m.file_name || ''} 推送${m.success ? '成功' : '失败'}`;
-    else if (t === 'cleanup_summary') title = m.ok ? '✅ 清理完成' : '⚠️ 清理异常';
-    else if (t === 'login_bruteforce') title = `IP ${m.ip || ''} 失败 ${m.count || 0} 次`;
-    else if (typeof e.message === 'string') title = e.message;
+    // 1. 优先用 message.title(统一 schema)
+    if (m.title) title = String(m.title);
+    // 2. 按 event_type 字段提取
+    else if (t === 'session_error') title = (m.username ? `Session 污染 (${m.username})` : 'Session 污染') + ': ' + (m.reason || '未知');
+    else if (t === 'session_expired') title = (m.session_id ? `Session ${m.session_id} 失效` : 'Session 失效') + ': ' + (m.reason || '');
+    else if (t === 'log_error') title = (m.error_type || '日志异常') + (m.keyword ? ` / ${m.keyword}` : '');
+    else if (t === 'collection_summary') title = m.ok === false ? '⚠️ 采集异常' : '✅ 采集完成';
+    else if (t === 'push_summary') title = m.success > 0 ? `推送 ${m.success} 成功` : (m.total ? `推送 ${m.total} 条` : '本次无推送');
+    else if (t === 'push_success') title = (m.product_name || '') + (m.file_name ? ` ${m.file_name}` : '') + (m.success === false ? ' 推送失败' : ' 推送成功');
+    else if (t === 'cleanup_summary') title = m.ok === false ? '⚠️ 清理异常' : '✅ 清理完成';
+    else if (t === 'login_bruteforce') title = `IP ${m.ip || '?'} 失败 ${m.count || 0} 次`;
+    // 3. 字符串 message(推送汇总/采集汇总 旧数据)
+    else if (typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
+    // 4. fallback JSON
     else title = JSON.stringify(m).slice(0, 80);
-    // 详情(可选, 用于 hover)
-    const detail = m.detail || '';
+    // 详情(可选, 用于 hover/title)
+    const detail = m.detail || (typeof e.message === 'string' ? e.message : '');
     const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
     return `<div style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4">
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
