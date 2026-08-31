@@ -926,10 +926,69 @@ function renderEventsCenterFromData(events){
     // 4. fallback JSON
     else title = JSON.stringify(m).slice(0, 80);
     const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
-    // 2026-08-26: 完整 message JSON(展示详情用), 避免 < > 破坏 HTML
-    const msgJson = JSON.stringify(m, null, 2).replace(/</g, '&lt;');
-    // log_error 类显示 context (可能很长)
-    const contextText = m.context ? String(m.context).replace(/</g, '&lt;') : '';
+    // 2026-08-26: 详情面板 — 按字段分类展示 + JSON 折叠在底部
+    // 关键字段平铺(易读), 原始 JSON 折叠(可点开)
+    const keyFields = [];
+    // 通用字段
+    if (m.detected_at) keyFields.push(['检测时间', m.detected_at]);
+    if (m.source) keyFields.push(['来源', m.source]);
+    // session_error / session_expired
+    if (t === 'session_error') {
+      if (m.username) keyFields.push(['用户名', m.username]);
+      if (m.reason) keyFields.push(['原因', m.reason]);
+    }
+    if (t === 'session_expired') {
+      if (m.session_id) keyFields.push(['Session ID', m.session_id]);
+      if (m.reason) keyFields.push(['原因', m.reason]);
+      if (m.purpose) keyFields.push(['用途', m.purpose]);
+    }
+    // log_error
+    if (t === 'log_error') {
+      if (m.log_file) keyFields.push(['日志文件', m.log_file]);
+      if (m.line_number) keyFields.push(['行号', String(m.line_number)]);
+      if (m.context) keyFields.push(['上下文', String(m.context)]);
+    }
+    // collection_summary
+    if (t === 'collection_summary') {
+      if (m.mode) keyFields.push(['模式', m.mode]);
+      if (m.total_new !== undefined) keyFields.push(['新增包', String(m.total_new)]);
+      if (m.total_rollback !== undefined) keyFields.push(['回滚包', String(m.total_rollback)]);
+      if (m.duration_s !== undefined) keyFields.push(['耗时(s)', String(m.duration_s)]);
+      if (m.errors_count !== undefined) keyFields.push(['错误数', String(m.errors_count)]);
+      if (m.errors && m.errors.length) keyFields.push(['错误详情', m.errors.join('\n')]);
+    }
+    // push_summary / push_success
+    if (t === 'push_summary' || t === 'push_success') {
+      if (m.product_name) keyFields.push(['产品', m.product_name]);
+      if (m.file_name) keyFields.push(['文件名', m.file_name]);
+      if (m.channel_name) keyFields.push(['渠道', m.channel_name]);
+      if (m.success !== undefined) keyFields.push(['成功', m.success ? '✅ 是' : '❌ 否']);
+      if (m.total !== undefined) keyFields.push(['总数', String(m.total)]);
+    }
+    // login_bruteforce
+    if (t === 'login_bruteforce') {
+      if (m.ip) keyFields.push(['IP', m.ip]);
+      if (m.count !== undefined) keyFields.push(['失败次数', String(m.count)]);
+      if (m.recent_failures && m.recent_failures.length) {
+        keyFields.push(['最近失败', JSON.stringify(m.recent_failures, null, 2)]);
+      }
+    }
+    // cleanup_summary
+    if (t === 'cleanup_summary') {
+      if (m.steps && m.steps.length) {
+        const stepTxt = m.steps.map(s => `${s.name}: ${s.deleted || 0} 条`).join('  ');
+        keyFields.push(['清理步骤', stepTxt]);
+      }
+      if (m.errors && m.errors.length) keyFields.push(['清理错误', m.errors.join('\n')]);
+    }
+    const keyHtml = keyFields.length ? keyFields.map(([k, v]) =>
+      `<div style="display:flex;gap:8px;margin:2px 0">
+         <span style="color:var(--muted);min-width:60px;flex-shrink:0">${escHtml(k)}</span>
+         <span style="flex:1;word-break:break-all;white-space:pre-wrap">${escHtml(String(v))}</span>
+       </div>`
+    ).join('') : '<div style="color:var(--muted);font-style:italic">(无附加字段)</div>';
+    // 原始 JSON(可折叠)
+    const rawJson = JSON.stringify(m, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;');
     return `<div data-event-id="${e.id}" class="event-row" style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4;cursor:pointer" onclick="toggleCenterEventDetail(${e.id})">
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <span>${sevIcon}</span>
@@ -938,8 +997,16 @@ function renderEventsCenterFromData(events){
         ${ackBadge}
       </div>
       <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
-      <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--text);max-height:240px;overflow-y:auto">
-${msgJson}${contextText ? '\n\n--- context ---\n' + contextText : ''}
+      <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;line-height:1.5;color:var(--text);max-height:280px;overflow-y:auto">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
+          <span><b>${escHtml(t)}</b> · <span style="color:${e.severity==='CRITICAL'?'var(--danger)':e.severity==='WARNING'?'#ca8a04':'var(--muted)'}">${escHtml(e.severity)}</span></span>
+          <span style="color:var(--muted);font-size:10px">${escHtml(fmtTZ(e.created_at, true))}</span>
+        </div>
+        <div style="font-family:system-ui;font-size:11px">${keyHtml}</div>
+        <details style="margin-top:8px">
+          <summary style="cursor:pointer;color:var(--muted);font-size:10px;user-select:none">📦 原始 message JSON (点击展开)</summary>
+          <pre style="margin:6px 0 0 0;padding:6px;background:var(--card);border-radius:3px;font-family:monospace;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:160px;overflow-y:auto">${rawJson}</pre>
+        </details>
       </div>
     </div>`;
   }).join('');
