@@ -890,20 +890,32 @@ function renderEventsCenterFromData(events){
   }
   body.innerHTML = events.map(e => {
     const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
-    let msg = '';
-    if (typeof e.message === 'string') msg = e.message;
-    else if (e.message?.reason) msg = e.message.reason;
-    else if (e.message?.error_type) msg = e.message.error_type + (e.message?.keyword ? ' / ' + e.message.keyword : '');
-    else msg = JSON.stringify(e.message || {}).slice(0, 80);
+    // 2026-08-26: 统一标题提取规则 — 按 event_type 字段优先级
+    const m = (typeof e.message === 'object' && e.message) ? e.message : {};
+    const t = e.event_type || '';
+    let title = '';
+    if (m.title) title = m.title;  // 统一字段优先
+    else if (t === 'session_error') title = `Session ${m.username || ''} 污染: ${m.reason || '未知'}`;
+    else if (t === 'session_expired') title = `Session ${m.session_id || ''} 失效: ${m.reason || ''}`;
+    else if (t === 'log_error') title = `${m.error_type || '日志异常'}: ${m.keyword || ''}`;
+    else if (t === 'collection_summary') title = m.ok ? '✅ 采集完成' : '⚠️ 采集异常';
+    else if (t === 'push_summary') title = m.success > 0 ? `推送 ${m.success} 成功` : '本次无推送';
+    else if (t === 'push_success') title = `${m.product_name || ''} ${m.file_name || ''} 推送${m.success ? '成功' : '失败'}`;
+    else if (t === 'cleanup_summary') title = m.ok ? '✅ 清理完成' : '⚠️ 清理异常';
+    else if (t === 'login_bruteforce') title = `IP ${m.ip || ''} 失败 ${m.count || 0} 次`;
+    else if (typeof e.message === 'string') title = e.message;
+    else title = JSON.stringify(m).slice(0, 80);
+    // 详情(可选, 用于 hover)
+    const detail = m.detail || '';
     const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
     return `<div style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4">
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <span>${sevIcon}</span>
-        <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.event_type||'')}</span>
+        <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
         <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? e.created_at.slice(11,19) : ''}</span>
         ${ackBadge}
       </div>
-      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(msg)}">${escHtml(msg)}</div>
+      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(detail || title)}">${escHtml(title)}</div>
     </div>`;
   }).join('');
 }
