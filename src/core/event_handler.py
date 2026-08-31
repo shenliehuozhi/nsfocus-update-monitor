@@ -573,6 +573,30 @@ def emit_collection_summary(summary: dict, mode: str):
     products = summary.get('products', {})
     duration = summary.get('duration_s', 0)
 
+    # 2026-08-26: 写 DB(事件中心要看)。severity 跟结果挂钩 — 有错 WARNING/CRITICAL, 纯成功 INFO
+    try:
+        from src.models.event_log import log_event
+        if errors:
+            sev = 'CRITICAL' if total_rollback else 'WARNING'
+        else:
+            sev = 'INFO'
+        log_event(
+            event_type=event_type,
+            severity=sev,
+            message={
+                'title': f'采集完成: 新增 {total_new} / 回滚 {total_rollback} (耗时 {duration}s)',
+                'mode': mode,
+                'total_new': total_new,
+                'total_rollback': total_rollback,
+                'duration_s': duration,
+                'errors_count': len(errors),
+                'errors': errors[:5],  # 最多 5 个错误
+                'products': products,
+            }
+        )
+    except Exception as e:
+        logger.warning(f'emit_collection_summary: log_event failed: {e}')
+
     # 构建消息
     message_text = _build_summary_message(summary, mode)
 
