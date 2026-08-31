@@ -881,6 +881,18 @@ async function fetchEventsHeader(){
 
 // 仪表盘事件中心卡片 — 同步渲染(数据从 /api/dashboard 拿,不另外 ajax)
 // 之前走 ajax /api/system/events 太慢,现在跟 dashboard 一起返回
+// 2026-08-26: 切换事件详情显示(点击事件行展开/收起)
+function toggleEventDetail(eventId){
+  const el = document.getElementById('eventDetail-' + eventId);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
+  // 展开时滚动到事件行
+  if (el.style.display === 'block') {
+    const row = document.querySelector(`[data-event-id="${eventId}"]`);
+    if (row) row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+  }
+}
+
 function renderEventsCenterFromData(events){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
@@ -909,17 +921,22 @@ function renderEventsCenterFromData(events){
     else if (typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
     // 4. fallback JSON
     else title = JSON.stringify(m).slice(0, 80);
-    // 详情(可选, 用于 hover/title)
-    const detail = m.detail || (typeof e.message === 'string' ? e.message : '');
     const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
-    return `<div style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4">
+    // 2026-08-26: 完整 message JSON(展示详情用), 避免 < > 破坏 HTML
+    const msgJson = JSON.stringify(m, null, 2).replace(/</g, '&lt;');
+    // log_error 类显示 context (可能很长)
+    const contextText = m.context ? String(m.context).replace(/</g, '&lt;') : '';
+    return `<div data-event-id="${e.id}" class="event-row" style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4;cursor:pointer" onclick="toggleEventDetail(${e.id})">
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <span>${sevIcon}</span>
         <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
         <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? e.created_at.slice(11,19) : ''}</span>
         ${ackBadge}
       </div>
-      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(detail || title)}">${escHtml(title)}</div>
+      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
+      <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--text);max-height:240px;overflow-y:auto">
+${msgJson}${contextText ? '\n\n--- context ---\n' + contextText : ''}
+      </div>
     </div>`;
   }).join('');
 }
