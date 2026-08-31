@@ -993,14 +993,15 @@ function renderEventsCenterFromData(events){
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <span>${sevIcon}</span>
         <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
-        <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? fmtTZ(e.created_at, true).slice(11,16) : ''}</span>
+        // 2026-08-31: 仪表盘时间显示服务端时区(CST/UTC+8)
+        <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? serverTime(e.created_at, true).slice(11,16) : ''}</span>
         ${ackBadge}
       </div>
       <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
       <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;line-height:1.5;color:var(--text);max-height:280px;overflow-y:auto">
         <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
           <span><b>${escHtml(t)}</b> · <span style="color:${e.severity==='CRITICAL'?'var(--danger)':e.severity==='WARNING'?'#ca8a04':'var(--muted)'}">${escHtml(e.severity)}</span></span>
-          <span style="color:var(--muted);font-size:10px">${escHtml(fmtTZ(e.created_at, true))}</span>
+          <span style="color:var(--muted);font-size:10px">${escHtml(serverTime(e.created_at, true))}</span>
         </div>
         <div style="font-family:system-ui;font-size:11px">${keyHtml}</div>
         <details style="margin-top:8px">
@@ -1136,6 +1137,28 @@ async function ackAllEvents(){
 //   Uses getHours()/getMinutes() — NOT toISOString() — by design.
 //   toISOString() would show UTC (8h behind CST). See commit 884a835.
 // ═══════════════════════════════════════════════════════════════
+// 2026-08-31: 服务端时间(CST/UTC+8),避开浏览器时区差异
+// 直接对 UTC 字符串加 8 小时,不依赖浏览器 getHours()
+function serverTime(t, full){
+  if(!t) return '';
+  try{
+    // 解析 "2026-08-25 14:05:41" 或 "2026-08-25T14:05:41Z"
+    let s = String(t).replace('T', ' ').replace('Z', '').replace(/\..*$/, '');
+    const dt = new Date(s + 'Z');  // 当作 UTC 解析
+    if (isNaN(dt.getTime())) return full ? String(t).substring(0,16) : String(t).substring(0,10);
+    // 加 8 小时转 CST
+    const cst = new Date(dt.getTime() + 8 * 3600 * 1000);
+    const y = cst.getUTCFullYear();
+    const m = String(cst.getUTCMonth()+1).padStart(2, '0');
+    const d = String(cst.getUTCDate()).padStart(2, '0');
+    const hh = String(cst.getUTCHours()).padStart(2, '0');
+    const mm = String(cst.getUTCMinutes()).padStart(2, '0');
+    return full ? `${y}-${m}-${d} ${hh}:${mm}` : `${y}-${m}-${d}`;
+  }catch(e){
+    return full ? String(t).substring(0,16) : String(t).substring(0,10);
+  }
+}
+
 function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t.endsWith('Z')?t:t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
 
 // 渠道类型 chip:每种类型独立品牌色 + emoji,通知渠道表 / 订阅规则通知对象列共用
