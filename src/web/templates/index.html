@@ -882,7 +882,8 @@ async function fetchEventsHeader(){
 // 仪表盘事件中心卡片 — 同步渲染(数据从 /api/dashboard 拿,不另外 ajax)
 // 之前走 ajax /api/system/events 太慢,现在跟 dashboard 一起返回
 // 2026-08-26: 切换事件详情显示(点击事件行展开/收起)
-function toggleEventDetail(eventId){
+// 注意:不能用 toggleEventDetail 名字,跟下面老的事件面板的函数冲突会被覆盖
+function toggleCenterEventDetail(eventId){
   const el = document.getElementById('eventDetail-' + eventId);
   if (!el) return;
   el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
@@ -926,7 +927,7 @@ function renderEventsCenterFromData(events){
     const msgJson = JSON.stringify(m, null, 2).replace(/</g, '&lt;');
     // log_error 类显示 context (可能很长)
     const contextText = m.context ? String(m.context).replace(/</g, '&lt;') : '';
-    return `<div data-event-id="${e.id}" class="event-row" style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4;cursor:pointer" onclick="toggleEventDetail(${e.id})">
+    return `<div data-event-id="${e.id}" class="event-row" style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4;cursor:pointer" onclick="toggleCenterEventDetail(${e.id})">
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <span>${sevIcon}</span>
         <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
