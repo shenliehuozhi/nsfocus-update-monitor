@@ -934,7 +934,7 @@ function renderEventsCenterFromData(events){
       <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
         <span>${sevIcon}</span>
         <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
-        <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? e.created_at.slice(11,19) : ''}</span>
+        <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? fmtTZ(e.created_at, true).slice(11,16) : ''}</span>
         ${ackBadge}
       </div>
       <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
