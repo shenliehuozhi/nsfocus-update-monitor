@@ -1429,12 +1429,16 @@ function toggleEventsPanel(){
 }
 
 async function ackEvent(id){
+  console.log('[ackEvent] 触发 id=', id);
   try{
     await api('/system/events/'+id+'/ack', {method:'POST'});
+    console.log('[ackEvent] ack 接口成功');
     fetchEventsHeader();
     loadEvents();
     refreshEventsCenterCardIfVisible();  // 同步刷新仪表盘事件中心卡片(去掉 NEW)
-  }catch(e){}
+  }catch(e){
+    console.error('[ackEvent] 异常:', e);
+  }
 }
 
 async function ackAllEvents(){
