@@ -756,33 +756,10 @@ async function dashboard(range){
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
         <span style="color:var(--danger);font-size:13px">🔔 事件中心</span>
         <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
-        <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" onclick="toggleEventsCenterPanel()" style="margin-left:6px;flex-shrink:0">展开 ▾</button>
+        <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" onclick="openEventsCenterModal()" style="margin-left:6px;flex-shrink:0">弹窗查看 ↗</button>
       </div>
       <div class="card-bd" id="eventsCenterBody" style="flex:1;padding:8px 12px;overflow-y:auto">
         <div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
-      </div>
-      <div id="eventsCenterPanel" style="display:none;border-top:1px solid var(--border);padding:8px 12px;background:var(--gray-bg)">
-        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px">
-          <span style="color:var(--muted)">严重度</span>
-          <select id="eventsCenterSevFilter" class="btn btn-xs btn-outline" style="padding:2px 6px;font-size:11px" onchange="loadEventsCenterPanel()">
-            <option value="">全部</option>
-            <option value="CRITICAL">🔴 CRITICAL</option>
-            <option value="ERROR">🟠 ERROR</option>
-            <option value="WARNING">⚠️ WARNING</option>
-            <option value="INFO">ℹ️ INFO</option>
-          </select>
-          <span style="color:var(--muted);margin-left:8px">时间范围</span>
-          <select id="eventsCenterHoursFilter" class="btn btn-xs btn-outline" style="padding:2px 6px;font-size:11px" onchange="loadEventsCenterPanel()">
-            <option value="24">近 24 小时</option>
-            <option value="168" selected>近 7 天</option>
-            <option value="720">近 30 天</option>
-            <option value="2160">近 90 天</option>
-          </select>
-          <span style="margin-left:auto;color:var(--muted);font-size:10px" id="eventsCenterPanelCount"></span>
-        </div>
-        <div id="eventsCenterPanelList" style="max-height:400px;overflow-y:auto;background:var(--card);border-radius:6px;border:1px solid var(--border)">
-          <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">点击「展开」加载</div>
-        </div>
       </div>
     </div>
     <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
@@ -1039,52 +1016,92 @@ function renderEventsCenterFromData(events){
 // 旧版本异步拉(保留兼容,但 dashboard 不再调用)
 
 // ═══════════════════════════════════════════════════════════════
-// 事件中心面板 — 展开后用 ajax 拉全量 + 过滤器
-// 2026-09-01: 不拆新菜单,内嵌在事件中心卡片下方
-// 数据源 /api/system/events,字段比 dashboard recent_events 多了 product_name/source_url/...
-// message 字段是 JSON 字符串,前端 parse 后用 getEventTitle 提取标题
+// 事件中心弹窗 — modal 形式,过滤器 + 全量列表
+// 2026-09-01: 改成弹窗(参考 closeAboutModal / openPwdModal 风格)
+// 数据源 /api/system/events,message 字段前端 JSON.parse 后渲染
 // ═══════════════════════════════════════════════════════════════
-function toggleEventsCenterPanel(){
-  const panel = document.getElementById('eventsCenterPanel');
-  const btn = document.getElementById('eventsCenterExpandBtn');
-  if(!panel || !btn) return;
-  const showing = panel.style.display !== 'none';
-  if(showing){
-    panel.style.display = 'none';
-    btn.textContent = '展开 ▾';
-    if(window._eventsCenterPanelTimer){clearInterval(window._eventsCenterPanelTimer); window._eventsCenterPanelTimer=null;}
-  } else {
-    panel.style.display = 'block';
-    btn.textContent = '收起 ▴';
-    loadEventsCenterPanel();
-    if(!window._eventsCenterPanelTimer) window._eventsCenterPanelTimer = setInterval(loadEventsCenterPanel, 30000);
+function openEventsCenterModal(){
+  let m = document.getElementById('eventsCenterModal');
+  if(!m){
+    m = document.createElement('div');
+    m.id = 'eventsCenterModal';
+    m.innerHTML = `
+      <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeEventsCenterModal()">
+        <div class="card" style="width:780px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column">
+          <div class="card-hd" style="display:flex;align-items:center">
+            <span style="color:var(--danger)">🔔 事件中心</span>
+            <span id="eventsCenterModalCount" style="margin-left:8px;color:var(--muted);font-size:11px;font-weight:400"></span>
+            <span onclick="closeEventsCenterModal()" style="margin-left:auto;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1;padding:0 4px">×</span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
+            <span style="color:var(--muted)">严重度</span>
+            <select id="eventsCenterModalSev" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="loadEventsCenterModal()">
+              <option value="">全部</option>
+              <option value="CRITICAL">🔴 CRITICAL</option>
+              <option value="ERROR">🟠 ERROR</option>
+              <option value="WARNING">⚠️ WARNING</option>
+              <option value="INFO">ℹ️ INFO</option>
+            </select>
+            <span style="color:var(--muted)">时间范围</span>
+            <select id="eventsCenterModalHours" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="loadEventsCenterModal()">
+              <option value="24">近 24 小时</option>
+              <option value="168" selected>近 7 天</option>
+              <option value="720">近 30 天</option>
+              <option value="2160">近 90 天</option>
+            </select>
+            <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()" style="margin-left:auto">🔄 刷新</button>
+          </div>
+          <div class="card-bd" id="eventsCenterModalList" style="flex:1;overflow-y:auto;padding:0">
+            <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
+          </div>
+          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding:10px 16px;display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-outline" onclick="closeEventsCenterModal()">关闭</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(m);
   }
+  m.style.display = 'block';
+  loadEventsCenterModal();
+  if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(loadEventsCenterModal, 30000);
 }
 
-async function loadEventsCenterPanel(){
-  const list = document.getElementById('eventsCenterPanelList');
-  const countEl = document.getElementById('eventsCenterPanelCount');
+function closeEventsCenterModal(){
+  const m = document.getElementById('eventsCenterModal');
+  if(m) m.style.display = 'none';
+  if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer); window._eventsCenterModalTimer=null;}
+}
+
+async function loadEventsCenterModal(){
+  const list = document.getElementById('eventsCenterModalList');
+  const countEl = document.getElementById('eventsCenterModalCount');
   if(!list) return;
-  const sev = document.getElementById('eventsCenterSevFilter').value;
-  const hrs = document.getElementById('eventsCenterHoursFilter').value || '168';
+  const sev = document.getElementById('eventsCenterModalSev').value;
+  const hrs = document.getElementById('eventsCenterModalHours').value || '168';
   const params = new URLSearchParams({limit:'200', since_hours: hrs});
   if(sev) params.set('severity', sev);
-  list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px">加载中…</div>';
+  // 第一次加载才显示"加载中",后续刷新不闪(避免 AP-127)
+  if(!list.dataset.loaded){
+    list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>';
+  }
   const r = await api('/system/events?' + params.toString());
-  // DOM 守卫:面板可能已被收起(避免写已卸载元素)
-  if(document.getElementById('eventsCenterPanelList') !== list) return;
+  // DOM 守卫:modal 可能已关闭(避免写已卸载元素)
+  if(document.getElementById('eventsCenterModalList') !== list) return;
   if(r.code !== 0){
-    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--danger);font-size:12px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
+    list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);font-size:13px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
     return;
   }
   const events = (r.data && r.data.events) || [];
   if(!events.length){
-    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--success);font-size:13px">✅ 当前条件下无事件</div>';
-    if(countEl) countEl.textContent = '0 条';
+    list.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--success);font-size:14px">✅ 当前条件下无事件</div>';
+    if(countEl) countEl.textContent = '(0 条)';
+    list.dataset.loaded = '1';
     return;
   }
   list.innerHTML = events.map(renderCenterPanelEvent).join('');
-  if(countEl) countEl.textContent = events.length + ' 条';
+  if(countEl) countEl.textContent = '(' + events.length + ' 条)';
+  list.dataset.loaded = '1';
 }
 
 function renderCenterPanelEvent(e){
