@@ -756,9 +756,33 @@ async function dashboard(range){
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
         <span style="color:var(--danger);font-size:13px">🔔 事件中心</span>
         <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
+        <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" onclick="toggleEventsCenterPanel()" style="margin-left:6px;flex-shrink:0">展开 ▾</button>
       </div>
       <div class="card-bd" id="eventsCenterBody" style="flex:1;padding:8px 12px;overflow-y:auto">
         <div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
+      </div>
+      <div id="eventsCenterPanel" style="display:none;border-top:1px solid var(--border);padding:8px 12px;background:var(--gray-bg)">
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:11px">
+          <span style="color:var(--muted)">严重度</span>
+          <select id="eventsCenterSevFilter" class="btn btn-xs btn-outline" style="padding:2px 6px;font-size:11px" onchange="loadEventsCenterPanel()">
+            <option value="">全部</option>
+            <option value="CRITICAL">🔴 CRITICAL</option>
+            <option value="ERROR">🟠 ERROR</option>
+            <option value="WARNING">⚠️ WARNING</option>
+            <option value="INFO">ℹ️ INFO</option>
+          </select>
+          <span style="color:var(--muted);margin-left:8px">时间范围</span>
+          <select id="eventsCenterHoursFilter" class="btn btn-xs btn-outline" style="padding:2px 6px;font-size:11px" onchange="loadEventsCenterPanel()">
+            <option value="24">近 24 小时</option>
+            <option value="168" selected>近 7 天</option>
+            <option value="720">近 30 天</option>
+            <option value="2160">近 90 天</option>
+          </select>
+          <span style="margin-left:auto;color:var(--muted);font-size:10px" id="eventsCenterPanelCount"></span>
+        </div>
+        <div id="eventsCenterPanelList" style="max-height:400px;overflow-y:auto;background:var(--card);border-radius:6px;border:1px solid var(--border)">
+          <div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">点击「展开」加载</div>
+        </div>
       </div>
     </div>
     <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
@@ -1013,6 +1037,108 @@ function renderEventsCenterFromData(events){
 }
 
 // 旧版本异步拉(保留兼容,但 dashboard 不再调用)
+
+// ═══════════════════════════════════════════════════════════════
+// 事件中心面板 — 展开后用 ajax 拉全量 + 过滤器
+// 2026-09-01: 不拆新菜单,内嵌在事件中心卡片下方
+// 数据源 /api/system/events,字段比 dashboard recent_events 多了 product_name/source_url/...
+// message 字段是 JSON 字符串,前端 parse 后用 getEventTitle 提取标题
+// ═══════════════════════════════════════════════════════════════
+function toggleEventsCenterPanel(){
+  const panel = document.getElementById('eventsCenterPanel');
+  const btn = document.getElementById('eventsCenterExpandBtn');
+  if(!panel || !btn) return;
+  const showing = panel.style.display !== 'none';
+  if(showing){
+    panel.style.display = 'none';
+    btn.textContent = '展开 ▾';
+    if(window._eventsCenterPanelTimer){clearInterval(window._eventsCenterPanelTimer); window._eventsCenterPanelTimer=null;}
+  } else {
+    panel.style.display = 'block';
+    btn.textContent = '收起 ▴';
+    loadEventsCenterPanel();
+    if(!window._eventsCenterPanelTimer) window._eventsCenterPanelTimer = setInterval(loadEventsCenterPanel, 30000);
+  }
+}
+
+async function loadEventsCenterPanel(){
+  const list = document.getElementById('eventsCenterPanelList');
+  const countEl = document.getElementById('eventsCenterPanelCount');
+  if(!list) return;
+  const sev = document.getElementById('eventsCenterSevFilter').value;
+  const hrs = document.getElementById('eventsCenterHoursFilter').value || '168';
+  const params = new URLSearchParams({limit:'200', since_hours: hrs});
+  if(sev) params.set('severity', sev);
+  list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:12px">加载中…</div>';
+  const r = await api('/system/events?' + params.toString());
+  // DOM 守卫:面板可能已被收起(避免写已卸载元素)
+  if(document.getElementById('eventsCenterPanelList') !== list) return;
+  if(r.code !== 0){
+    list.innerHTML = '<div style="padding:16px;text-align:center;color:var(--danger);font-size:12px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
+    return;
+  }
+  const events = (r.data && r.data.events) || [];
+  if(!events.length){
+    list.innerHTML = '<div style="padding:24px;text-align:center;color:var(--success);font-size:13px">✅ 当前条件下无事件</div>';
+    if(countEl) countEl.textContent = '0 条';
+    return;
+  }
+  list.innerHTML = events.map(renderCenterPanelEvent).join('');
+  if(countEl) countEl.textContent = events.length + ' 条';
+}
+
+function renderCenterPanelEvent(e){
+  // 与 dashboard recent_events 区别:message 是 JSON 字符串,前端 parse
+  let m = {};
+  if(typeof e.message === 'string'){
+    try { m = JSON.parse(e.message); } catch(_) { m = {}; }
+  } else if(typeof e.message === 'object' && e.message){
+    m = e.message;
+  }
+  const t = e.event_type || '';
+  const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
+  const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
+  // 标题提取(优先 m.title,fallback 按 event_type)
+  let title = '';
+  if(m.title) title = String(m.title);
+  else if(t === 'session_error') title = (m.username?`Session 污染 (${m.username})`:'Session 污染')+': '+(m.reason||'未知');
+  else if(t === 'session_expired') title = (m.session_id?`Session ${m.session_id} 失效`:'Session 失效')+': '+(m.reason||'');
+  else if(t === 'log_error') title = (m.error_type||'日志异常')+(m.keyword?` / ${m.keyword}`:'');
+  else if(t === 'collection_summary') title = m.ok===false ? '⚠️ 采集异常' : `采集完成 新增 ${m.total_new||0} / 回滚 ${m.total_rollback||0}`;
+  else if(t === 'push_summary') title = m.success>0 ? `推送 ${m.success} 成功` : (m.total?`推送 ${m.total} 条`:'本次无推送');
+  else if(t === 'push_success') title = (m.product_name||'')+(m.file_name?` ${m.file_name}`:'')+(m.success===false?' 推送失败':' 推送成功');
+  else if(t === 'login_bruteforce') title = `IP ${m.ip||'?'} 失败 ${m.count||0} 次`;
+  else if(typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
+  else title = JSON.stringify(m).slice(0, 80);
+  const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
+  const unreadBg = isUnread ? 'background:#fef2f2;border-left:3px solid '+sevColor+';' : '';
+  return `<div data-event-id="${e.id}" style="padding:8px 10px;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.45;${unreadBg}cursor:pointer" onclick="toggleCenterEventDetail(${e.id})">
+    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
+      <span>${sevIcon}</span>
+      <span style="color:${sevColor};font-weight:600;font-size:11px">${escHtml(e.severity)}</span>
+      <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
+      <span style="color:var(--muted);font-size:10px;flex-shrink:0">${escHtml(serverTime(e.created_at, true))}</span>
+    </div>
+    <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
+    <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;color:var(--text)">
+      <div style="margin-bottom:4px"><b>${escHtml(t)}</b></div>
+      ${e.product_name?`<div><b>产品:</b> ${escHtml(e.product_name)}</div>`:''}
+      ${e.source_url?`<div style="word-break:break-all"><b>URL:</b> ${escHtml(e.source_url)}</div>`:''}
+      ${e.channel_id?`<div><b>渠道 ID:</b> ${e.channel_id}</div>`:''}
+      ${e.customer_id?`<div><b>客户 ID:</b> ${e.customer_id}</div>`:''}
+      ${e.is_rollback?'<div><b>回滚事件</b></div>':''}
+      ${m.username?`<div><b>用户名:</b> ${escHtml(m.username)}</div>`:''}
+      ${m.reason?`<div><b>原因:</b> ${escHtml(String(m.reason))}</div>`:''}
+      ${m.source?`<div><b>来源:</b> ${escHtml(m.source)}</div>`:''}
+      ${m.ip?`<div><b>IP:</b> ${escHtml(m.ip)}</div>`:''}
+      ${m.count?`<div><b>失败次数:</b> ${m.count}</div>`:''}
+      <details style="margin-top:6px">
+        <summary style="cursor:pointer;color:var(--muted);font-size:10px;user-select:none">📦 原始 message JSON</summary>
+        <pre style="margin:6px 0 0;padding:6px;background:var(--card);border-radius:3px;font-family:monospace;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:160px;overflow-y:auto">${escHtml(JSON.stringify(m, null, 2))}</pre>
+      </details>
+    </div>
+  </div>`;
+}
 async function renderEventsCenter(){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
