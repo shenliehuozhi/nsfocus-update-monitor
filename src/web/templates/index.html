@@ -1273,29 +1273,36 @@ function toggleEventsTableRow(eventId){
 }
 
 // 一键已读 — 按当前过滤器(severity)批量标,默认只标 CRITICAL/ERROR/WARNING
-// 不弹确认框,直接执行:成功/失败都用 toast 反馈(比 alert 体验好,不阻塞 UI)
+// 用 confirmAct 弹项目级确认框(图标+标题+按钮,比原生 confirm/alert 好看),不阻塞;反馈用 toast
 async function eventsCenterAckCurrent(){
   const sev = document.getElementById('eventsCenterModalSev').value;
   // 没选 severity 时默认只标未读的 3 个严重级别,避免把 INFO 也刷了
   const targets = sev ? [sev] : ['CRITICAL', 'ERROR', 'WARNING'];
   const label = sev ? `当前过滤(${sev})` : '未读告警(CRITICAL/ERROR/WARNING)';
-  let ackCount = 0;
-  try{
-    // 循环调 3 个 severity,避免后端支持多 severity 时改 schema
-    for(const s of targets){
-      const r = await api('/system/events/ack-all', {method:'POST', body: JSON.stringify({severity: s})});
-      if(r.code !== 0){
-        toast('标记失败 (' + s + '): ' + (r.message || '未知错误'), 'error');
-        return;
+  await confirmAct(
+    `标记${label}全部为已读?`,
+    async () => {
+      let ackCount = 0;
+      try{
+        for(const s of targets){
+          const r = await api('/system/events/ack-all', {method:'POST', body: JSON.stringify({severity: s})});
+          if(r.code !== 0){
+            toast('标记失败 (' + s + '): ' + (r.message || '未知错误'), 'error');
+            return;
+          }
+          ackCount++;
+        }
+        toast(`已标记 ${ackCount} 个 severity 类别为已读`, 'success');
+        loadEventsCenterModal();
+        fetchEventsHeader();
+      }catch(e){
+        toast('网络错误', 'error');
       }
-      ackCount++;
-    }
-    toast(`已标记 ${ackCount} 个 severity 类别为已读`, 'success');
-    loadEventsCenterModal();
-    fetchEventsHeader();
-  }catch(e){
-    toast('网络错误', 'error');
-  }
+    },
+    '✓',
+    '标记为已读',
+    !sev  // 没选 severity(标全 3 个)算 warning,按钮变红警示
+  );
 }
 
 async function renderEventsCenter(){
