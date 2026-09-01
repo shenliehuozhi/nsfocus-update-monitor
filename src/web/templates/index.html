@@ -1261,7 +1261,7 @@ function renderEventsTableRow(e){
     <td style="padding:8px;text-align:center">
       ${isUnread
         ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id});loadEventsCenterModal()" style="font-size:10px;padding:1px 6px">✓ 已读</button>`
-        : '<span style="color:var(--muted);font-size:11px">已读</span>'}</td>
+        : '<span style="background:#f3e8ff;color:#7c3aed;font-size:10px;padding:2px 8px;border-radius:4px">已读</span>'}</td>
   </tr>${detail}`;
 }
 
