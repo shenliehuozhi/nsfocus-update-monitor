@@ -1136,17 +1136,16 @@ async function ackAllEvents(){
 //   Uses getHours()/getMinutes() — NOT toISOString() — by design.
 //   toISOString() would show UTC (8h behind CST). See commit 884a835.
 // ═══════════════════════════════════════════════════════════════
-// 2026-08-31: 服务端时间(CST/UTC+8),避开浏览器时区差异
-// 直接对 UTC 字符串加 8 小时,不依赖浏览器 getHours()
+// 2026-09-01: DB 字面已是 CST+8 (DEFAULT datetime('now','utc') 在本机写的是本地时间)
+// 显示时减 8h 还原成 CST 真实时刻 (跟推送 finished_at 转 CST 一致)
 function serverTime(t, full){
   if(!t) return '';
   try{
-    // 解析 "2026-08-25 14:05:41" 或 "2026-08-25T14:05:41Z"
     let s = String(t).replace('T', ' ').replace('Z', '').replace(/\..*$/, '');
-    const dt = new Date(s + 'Z');  // 当作 UTC 解析
+    const dt = new Date(s + 'Z');  // 当 UTC 解析
     if (isNaN(dt.getTime())) return full ? String(t).substring(0,16) : String(t).substring(0,10);
-    // 加 8 小时转 CST
-    const cst = new Date(dt.getTime() + 8 * 3600 * 1000);
+    // 减 8 小时 (DB 字面 = UTC+8, 显示真实 CST = 字面 - 8h)
+    const cst = new Date(dt.getTime() - 8 * 3600 * 1000);
     const y = cst.getUTCFullYear();
     const m = String(cst.getUTCMonth()+1).padStart(2, '0');
     const d = String(cst.getUTCDate()).padStart(2, '0');
