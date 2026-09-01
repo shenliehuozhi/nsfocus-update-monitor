@@ -126,7 +126,7 @@ def get_dashboard():
             'total_snapshots': total_snapshots,
 'recent_deliveries': recent_deliveries,
             # 2026-08-26: 仪表盘事件中心卡片需要最近事件(避免独立 ajax 调用, 加快首屏)
-            'recent_events': _recent_events_for_dashboard(limit=5),
+            'recent_events': _recent_events_for_dashboard(limit=10),
             'product_stats': _product_pie_stats(int(days)),
             'timeline_stats': _timeline_stats(int(days)),
         }

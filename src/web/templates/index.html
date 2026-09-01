@@ -752,7 +752,7 @@ async function dashboard(range){
         </div>`:''}
       </div>
     </div>
-    <div class="card" style="flex:1;min-width:280px;display:flex;flex-direction:column">
+    <div class="card" style="flex:2;min-width:280px;display:flex;flex-direction:column">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
         <span style="color:var(--danger);font-size:13px">🔔 事件中心</span>
         <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
@@ -762,7 +762,7 @@ async function dashboard(range){
         <div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
       </div>
     </div>
-    <div class="card" style="flex:2;min-width:300px;display:flex;flex-direction:column">
+    <div class="card" style="flex:1;min-width:300px;display:flex;flex-direction:column">
       <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近更新</div>
       <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
         ${(d.recent_deliveries||[]).slice(0,8).map(r=>`
@@ -882,18 +882,6 @@ async function fetchEventsHeader(){
 
 // 仪表盘事件中心卡片 — 同步渲染(数据从 /api/dashboard 拿,不另外 ajax)
 // 之前走 ajax /api/system/events 太慢,现在跟 dashboard 一起返回
-// 2026-08-26: 切换事件详情显示(点击事件行展开/收起)
-// 注意:不能用 toggleEventDetail 名字,跟下面老的事件面板的函数冲突会被覆盖
-function toggleCenterEventDetail(eventId){
-  const el = document.getElementById('eventDetail-' + eventId);
-  if (!el) return;
-  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'block' : 'none';
-  // 展开时滚动到事件行
-  if (el.style.display === 'block') {
-    const row = document.querySelector(`[data-event-id="${eventId}"]`);
-    if (row) row.scrollIntoView({behavior: 'smooth', block: 'nearest'});
-  }
-}
 
 // 2026-09-01: 弹窗表格点已读后,同步刷新仪表盘事件中心卡片(去掉对应行 NEW)
 // 只在当前是仪表盘页面 + eventsCenterBody 存在时才走,避免无谓请求
@@ -919,117 +907,124 @@ function renderEventsCenterFromData(events){
     body.innerHTML = '<div style="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
     return;
   }
-    body.innerHTML = events.map(e => {
-    const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
-    // 2026-08-26: 统一标题提取规则 — 按 event_type 字段优先级
-    const m = (typeof e.message === 'object' && e.message) ? e.message : {};
-    const t = e.event_type || '';
-    let title = '';
-    // 1. 优先用 message.title(统一 schema)
-    if (m.title) title = String(m.title);
-    // 2. 按 event_type 字段提取
-    else if (t === 'session_error') title = (m.username ? `Session 污染 (${m.username})` : 'Session 污染') + ': ' + (m.reason || '未知');
-    // 老数据没 title 字段, 但 session_error 事件一定有 reason, 直接用 reason 做标题更清晰
-    if (!title && (t === 'session_error' || t === 'session_expired') && m.reason) {
-      title = `${t === 'session_expired' ? 'Session 失效' : 'Session 污染'}: ${m.reason.slice(0, 80)}`;
+  // 2026-09-01: 仪表盘卡片现在宽度足够,直接按弹窗表格格式渲染
+  // 弹窗表格已有事件中心全部字段(时间/严重度/类型/标题/产品/渠道/状态)
+  // 这里去掉 modalOnly 的"已读"按钮列,直接显示 NEW/已读
+  body.style.padding = '0';
+  body.innerHTML = renderEventsCenterTable(events);
+}
+
+// 仪表盘卡片专用表格(去掉"已读"按钮,仅显示 NEW/已读状态标签;列宽按卡片适配)
+function renderEventsCenterTable(events){
+  const head = `<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+    <colgroup>
+      <col style="width:160px">
+      <col style="width:100px">
+      <col style="width:130px">
+      <col>
+      <col style="width:140px">
+      <col style="width:100px">
+      <col style="width:60px">
+    </colgroup>
+    <thead style="position:sticky;top:0;background:var(--card);z-index:1;box-shadow:0 1px 0 var(--border)">
+      <tr style="text-align:left;color:var(--muted);font-weight:600">
+        <th style="padding:6px 8px">时间</th>
+        <th style="padding:6px 6px">严重度</th>
+        <th style="padding:6px 6px">类型</th>
+        <th style="padding:6px 6px">标题</th>
+        <th style="padding:6px 6px">产品 / URL</th>
+        <th style="padding:6px 6px">渠道</th>
+        <th style="padding:6px 6px;text-align:center">状态</th>
+      </tr>
+    </thead>
+    <tbody>`;
+  const rows = events.map(renderEventsCenterTableRow).join('');
+  return head + rows + '</tbody></table>';
+}
+
+// 仪表盘卡片行 — 与弹窗 renderEventsTableRow 类似但用不同 detail ID 前缀(eventCardDetail-)
+// 避免和弹窗的 eventTableDetail- 冲突;状态列只显示 NEW/已读 不显示按钮
+function renderEventsCenterTableRow(e){
+  let m = {};
+  if(typeof e.message === 'string'){
+    try { m = JSON.parse(e.message); } catch(_) { m = {}; }
+  } else if(typeof e.message === 'object' && e.message){
+    m = e.message;
+  }
+  const t = e.event_type || '';
+  const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
+  const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
+  // 标题提取 — 与弹窗表格保持完全一致
+  let title = '';
+  if(m.title) title = String(m.title);
+  else if(t === 'session_error') title = (m.username?`Session 污染 (${m.username})`:'Session 污染')+': '+(m.reason||'未知');
+  else if(t === 'session_expired') title = (m.session_id?`Session ${m.session_id} 失效`:'Session 失效')+': '+(m.reason||'');
+  else if(t === 'log_error') title = (m.error_type||'日志异常')+(m.keyword?` / ${m.keyword}`:'');
+  else if(t === 'collection_summary') title = m.ok===false ? '⚠️ 采集异常' : `采集完成 新增 ${m.total_new||0} / 回滚 ${m.total_rollback||0}`;
+  else if(t === 'push_summary') title = m.success>0 ? `推送 ${m.success} 成功` : (m.total?`推送 ${m.total} 条`:'本次无推送');
+  else if(t === 'push_success') title = (m.product_name||'')+(m.file_name?` ${m.file_name}`:'')+(m.success===false?' 推送失败':' 推送成功');
+  else if(t === 'login_bruteforce') title = `IP ${m.ip||'?'} 失败 ${m.count||0} 次`;
+  else if(typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
+  else title = JSON.stringify(m).slice(0, 80);
+  const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
+  const productCell = e.product_name
+    ? `<div>${escHtml(e.product_name)}</div>`
+    + (e.source_url ? `<div style="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
+    : (e.source_url ? `<div style="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span style="color:var(--muted)">—</span>');
+  const channelCell = e.channel_type
+    ? `<div>${escHtml(e.channel_type)}</div>`
+    + (e.channel_id ? `<div style="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
+    + (e.customer_id ? `<div style="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
+    : '<span style="color:var(--muted)">—</span>';
+  // 详情面板 — 用 eventCardDetail- 前缀避免跟弹窗 eventTableDetail- 撞 ID
+  const detailId = 'eventCardDetail-' + e.id;
+  const detailJson = escHtml(JSON.stringify(m, null, 2));
+  const detail = `<tr id="${detailId}" style="display:none;background:var(--gray-bg)"><td colspan="7" style="padding:10px 12px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+      <span><b>event_type:</b> ${escHtml(t)}</span>
+      <span><b>severity:</b> <span style="color:${sevColor}">${escHtml(e.severity)}</span></span>
+      ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
+      ${e.rule_id?`<span><b>rule_id:</b> ${e.rule_id}</span>`:''}
+      ${m.username?`<span><b>用户名:</b> ${escHtml(m.username)}</span>`:''}
+      ${m.reason?`<span><b>原因:</b> ${escHtml(String(m.reason))}</span>`:''}
+      ${m.source?`<span><b>来源:</b> ${escHtml(m.source)}</span>`:''}
+      ${m.ip?`<span><b>IP:</b> ${escHtml(m.ip)}</span>`:''}
+      ${m.count?`<span><b>失败次数:</b> ${m.count}</span>`:''}
+    </div>
+    <details>
+      <summary style="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
+      <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto">${detailJson}</pre>
+    </details>
+  </td></tr>`;
+  let rowStyle = 'border-bottom:1px solid var(--gray-border);cursor:pointer';
+  if(isUnread){
+    if(e.severity==='CRITICAL'){
+      rowStyle += ';background:#fef2f2;border-left:4px solid #dc2626';
+    } else if(e.severity==='ERROR'){
+      rowStyle += ';background:#fff7ed;border-left:3px solid #ea580c';
+    } else if(e.severity==='WARNING'){
+      rowStyle += ';border-left:2px solid #ca8a04';
     }
-    else if (t === 'log_error') title = (m.error_type || '日志异常') + (m.keyword ? ` / ${m.keyword}` : '');
-    else if (t === 'collection_summary') title = m.ok === false ? '⚠️ 采集异常' : '✅ 采集完成';
-    else if (t === 'push_summary') title = m.success > 0 ? `推送 ${m.success} 成功` : (m.total ? `推送 ${m.total} 条` : '本次无推送');
-    else if (t === 'push_success') title = (m.product_name || '') + (m.file_name ? ` ${m.file_name}` : '') + (m.success === false ? ' 推送失败' : ' 推送成功');
-    else if (t === 'cleanup_summary') title = m.ok === false ? '⚠️ 清理异常' : '✅ 清理完成';
-    else if (t === 'login_bruteforce') title = `IP ${m.ip || '?'} 失败 ${m.count || 0} 次`;
-    // 3. 字符串 message(推送汇总/采集汇总 旧数据)
-    else if (typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
-    // 4. fallback JSON
-    else title = JSON.stringify(m).slice(0, 80);
-    // 2026-09-01: 跟表格保持一致 — 仅 C/E/W 未读算 NEW,INFO 不算
-    const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
-    const ackBadge = isUnread ? '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>' : '';
-    // 2026-08-26: 详情面板 — 按字段分类展示 + JSON 折叠在底部
-    // 关键字段平铺(易读), 原始 JSON 折叠(可点开)
-    const keyFields = [];
-    // 通用字段
-    if (m.detected_at) keyFields.push(['检测时间', m.detected_at]);
-    if (m.source) keyFields.push(['来源', m.source]);
-    // session_error / session_expired
-    if (t === 'session_error') {
-      if (m.username) keyFields.push(['用户名', m.username]);
-      if (m.reason) keyFields.push(['原因', m.reason]);
-    }
-    if (t === 'session_expired') {
-      if (m.session_id) keyFields.push(['Session ID', m.session_id]);
-      if (m.reason) keyFields.push(['原因', m.reason]);
-      if (m.purpose) keyFields.push(['用途', m.purpose]);
-    }
-    // log_error
-    if (t === 'log_error') {
-      if (m.log_file) keyFields.push(['日志文件', m.log_file]);
-      if (m.line_number) keyFields.push(['行号', String(m.line_number)]);
-      if (m.context) keyFields.push(['上下文', String(m.context)]);
-    }
-    // collection_summary
-    if (t === 'collection_summary') {
-      if (m.mode) keyFields.push(['模式', m.mode]);
-      if (m.total_new !== undefined) keyFields.push(['新增包', String(m.total_new)]);
-      if (m.total_rollback !== undefined) keyFields.push(['回滚包', String(m.total_rollback)]);
-      if (m.duration_s !== undefined) keyFields.push(['耗时(s)', String(m.duration_s)]);
-      if (m.errors_count !== undefined) keyFields.push(['错误数', String(m.errors_count)]);
-      if (m.errors && m.errors.length) keyFields.push(['错误详情', m.errors.join('\n')]);
-    }
-    // push_summary / push_success
-    if (t === 'push_summary' || t === 'push_success') {
-      if (m.product_name) keyFields.push(['产品', m.product_name]);
-      if (m.file_name) keyFields.push(['文件名', m.file_name]);
-      if (m.channel_name) keyFields.push(['渠道', m.channel_name]);
-      if (m.success !== undefined) keyFields.push(['成功', m.success ? '✅ 是' : '❌ 否']);
-      if (m.total !== undefined) keyFields.push(['总数', String(m.total)]);
-    }
-    // login_bruteforce
-    if (t === 'login_bruteforce') {
-      if (m.ip) keyFields.push(['IP', m.ip]);
-      if (m.count !== undefined) keyFields.push(['失败次数', String(m.count)]);
-      if (m.recent_failures && m.recent_failures.length) {
-        keyFields.push(['最近失败', JSON.stringify(m.recent_failures, null, 2)]);
-      }
-    }
-    // cleanup_summary
-    if (t === 'cleanup_summary') {
-      if (m.steps && m.steps.length) {
-        const stepTxt = m.steps.map(s => `${s.name}: ${s.deleted || 0} 条`).join('  ');
-        keyFields.push(['清理步骤', stepTxt]);
-      }
-      if (m.errors && m.errors.length) keyFields.push(['清理错误', m.errors.join('\n')]);
-    }
-    const keyHtml = keyFields.length ? keyFields.map(([k, v]) =>
-      `<div style="display:flex;gap:8px;margin:2px 0">
-         <span style="color:var(--muted);min-width:60px;flex-shrink:0">${escHtml(k)}</span>
-         <span style="flex:1;word-break:break-all;white-space:pre-wrap">${escHtml(String(v))}</span>
-       </div>`
-    ).join('') : '<div style="color:var(--muted);font-style:italic">(无附加字段)</div>';
-    // 原始 JSON(可折叠)
-    const rawJson = JSON.stringify(m, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    return `<div data-event-id="${e.id}" class="event-row" style="padding:6px 0;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.4;cursor:pointer" onclick="toggleCenterEventDetail(${e.id})">
-      <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-        <span>${sevIcon}</span>
-        <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
-        <span style="color:var(--muted);font-size:10px;flex-shrink:0">${e.created_at ? serverTime(e.created_at, true).slice(11,16) : ''}</span>
-        ${ackBadge}
-      </div>
-      <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
-      <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;line-height:1.5;color:var(--text);max-height:280px;overflow-y:auto">
-        <div style="display:flex;justify-content:space-between;margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid var(--border)">
-          <span><b>${escHtml(t)}</b> · <span style="color:${e.severity==='CRITICAL'?'var(--danger)':e.severity==='WARNING'?'#ca8a04':'var(--muted)'}">${escHtml(e.severity)}</span></span>
-          <span style="color:var(--muted);font-size:10px">${escHtml(serverTime(e.created_at, true))}</span>
-        </div>
-        <div style="font-family:system-ui;font-size:11px">${keyHtml}</div>
-        <details style="margin-top:8px">
-          <summary style="cursor:pointer;color:var(--muted);font-size:10px;user-select:none">📦 原始 message JSON (点击展开)</summary>
-          <pre style="margin:6px 0 0 0;padding:6px;background:var(--card);border-radius:3px;font-family:monospace;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:160px;overflow-y:auto">${rawJson}</pre>
-        </details>
-      </div>
-    </div>`;
-  }).join('');
+  }
+  return `<tr style="${rowStyle}" onclick="toggleEventsCenterCardRow(${e.id})" title="点击展开详情">
+    <td style="padding:6px 8px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
+    <td style="padding:6px"><span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td style="padding:6px;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t)}">${escHtml(t)}</td>
+    <td style="padding:6px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(title)}">${escHtml(title)}</td>
+    <td style="padding:6px;color:var(--text);font-size:11px">${productCell}</td>
+    <td style="padding:6px;color:var(--text);font-size:11px">${channelCell}</td>
+    <td style="padding:6px;text-align:center;font-size:10px">
+      ${isUnread
+        ? '<span style="background:var(--danger);color:#fff;padding:1px 6px;border-radius:4px">NEW</span>'
+        : '<span style="background:#f3e8ff;color:#7c3aed;padding:1px 6px;border-radius:4px">已读</span>'}</td>
+  </tr>${detail}`;
+}
+
+// 仪表盘卡片行的展开/收起
+function toggleEventsCenterCardRow(eventId){
+  const el = document.getElementById('eventCardDetail-' + eventId);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
 }
 
 // 旧版本异步拉(保留兼容,但 dashboard 不再调用)
@@ -1333,7 +1328,7 @@ async function renderEventsCenter(){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
   try{
-    const r = await api('/system/events?limit=5');
+    const r = await api('/system/events?limit=10');
     if (document.getElementById('eventsCenterBody') !== body) return;
     if (r.code !== 0) {
       body.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px 0">加载失败,点击 <a href="#" onclick="renderEventsCenter();return false">重试</a></div>`;
