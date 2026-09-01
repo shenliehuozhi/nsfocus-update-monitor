@@ -897,12 +897,13 @@ function toggleCenterEventDetail(eventId){
 
 // 2026-09-01: 弹窗表格点已读后,同步刷新仪表盘事件中心卡片(去掉对应行 NEW)
 // 只在当前是仪表盘页面 + eventsCenterBody 存在时才走,避免无谓请求
+// 加时间戳避免浏览器 GET 缓存返回老数据(浏览器对 /dashboard?range=7 默认会缓存)
 async function refreshEventsCenterCardIfVisible(){
   const body = document.getElementById('eventsCenterBody');
   if(!body) return;  // 当前不在仪表盘,跳过
   try{
     const rng = _dashRange || '7';
-    const r = await api('/dashboard?range=' + rng);
+    const r = await api('/dashboard?range=' + rng + '&_t=' + Date.now());
     if(r.code !== 0) return;
     const events = r.data && r.data.recent_events;
     if(events && typeof renderEventsCenterFromData === 'function'){
