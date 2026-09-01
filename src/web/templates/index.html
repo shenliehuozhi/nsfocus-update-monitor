@@ -1301,7 +1301,11 @@ async function eventsCenterAckCurrent(){
     },
     ' ',
     '标记为已读',
-    !sev  // 没选 severity(标全 3 个)算 warning,按钮变红警示
+    !sev,  // 没选 severity(标全 3 个)算 warning,按钮变红警示
+    `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:12px 0;background:#f3e8ff;border:1px solid #e9d5ff;border-radius:8px">
+       <span style="font-size:20px;line-height:1">✓</span>
+       <span style="font-size:12px;color:#7c3aed;line-height:1.5">将标记当前过滤条件下 <b>${targets.length}</b> 个 severity 类别(${targets.join(' / ')})的全部未读事件</span>
+     </div>`
   );
 }
 
