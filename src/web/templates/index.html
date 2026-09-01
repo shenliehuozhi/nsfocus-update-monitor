@@ -900,20 +900,16 @@ function toggleCenterEventDetail(eventId){
 // 加时间戳避免浏览器 GET 缓存返回老数据(浏览器对 /dashboard?range=7 默认会缓存)
 async function refreshEventsCenterCardIfVisible(){
   const body = document.getElementById('eventsCenterBody');
-  if(!body){ console.log('[refreshEvents] eventsCenterBody 不存在,跳过'); return; }
+  if(!body) return;  // 当前不在仪表盘,跳过
   try{
     const rng = _dashRange || '7';
     const r = await api('/dashboard?range=' + rng + '&_t=' + Date.now());
-    console.log('[refreshEvents] 拉数据', r.code, 'events 数:', r.data?.recent_events?.length);
     if(r.code !== 0) return;
     const events = r.data && r.data.recent_events;
     if(events && typeof renderEventsCenterFromData === 'function'){
       renderEventsCenterFromData(events);
-      console.log('[refreshEvents] 已重渲,acked_at 状态:', events.map(e => e.acked_at));
     }
-  }catch(e){
-    console.error('[refreshEvents] 异常:', e);
-  }
+  }catch(e){}
 }
 
 function renderEventsCenterFromData(events){
@@ -947,7 +943,9 @@ function renderEventsCenterFromData(events){
     else if (typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
     // 4. fallback JSON
     else title = JSON.stringify(m).slice(0, 80);
-    const ackBadge = e.acked_at ? '' : '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>';
+    // 2026-09-01: 跟表格保持一致 — 仅 C/E/W 未读算 NEW,INFO 不算
+    const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
+    const ackBadge = isUnread ? '<span style="background:var(--danger);color:#fff;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px">NEW</span>' : '';
     // 2026-08-26: 详情面板 — 按字段分类展示 + JSON 折叠在底部
     // 关键字段平铺(易读), 原始 JSON 折叠(可点开)
     const keyFields = [];
@@ -1429,16 +1427,12 @@ function toggleEventsPanel(){
 }
 
 async function ackEvent(id){
-  console.log('[ackEvent] 触发 id=', id);
   try{
     await api('/system/events/'+id+'/ack', {method:'POST'});
-    console.log('[ackEvent] ack 接口成功');
     fetchEventsHeader();
     loadEvents();
     refreshEventsCenterCardIfVisible();  // 同步刷新仪表盘事件中心卡片(去掉 NEW)
-  }catch(e){
-    console.error('[ackEvent] 异常:', e);
-  }
+  }catch(e){}
 }
 
 async function ackAllEvents(){
