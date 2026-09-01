@@ -1051,7 +1051,7 @@ function openEventsCenterModal(){
               <option value="720">近 30 天</option>
               <option value="2160">近 90 天</option>
             </select>
-            <button class="btn btn-xs btn-outline" onclick="eventsCenterAckCurrent()" title="按当前过滤器批量标记为已读,默认只标 CRITICAL/ERROR/WARNING" style="margin-left:auto">一键已读</button>
+            <button class="btn btn-xs btn-outline" onclick="eventsCenterAckCurrent()" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)" style="margin-left:auto">一键已读</button>
             <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()">🔄 刷新</button>
           </div>
           <div class="card-bd" id="eventsCenterModalBody" style="flex:1;overflow:auto;padding:0">
@@ -1272,13 +1272,13 @@ function toggleEventsTableRow(eventId){
   el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
 }
 
-// 一键已读 — 按当前过滤器(severity)批量标,默认只标 CRITICAL/ERROR/WARNING
+// 一键已读 — 按当前过滤器(severity)批量标,无过滤时标全部 4 个 severity
 // 用 confirmAct 弹项目级确认框(图标+标题+按钮,比原生 confirm/alert 好看),不阻塞;反馈用 toast
 async function eventsCenterAckCurrent(){
   const sev = document.getElementById('eventsCenterModalSev').value;
-  // 没选 severity 时默认只标未读的 3 个严重级别,避免把 INFO 也刷了
-  const targets = sev ? [sev] : ['CRITICAL', 'ERROR', 'WARNING'];
-  const label = sev ? `当前过滤(${sev})` : '未读告警(CRITICAL/ERROR/WARNING)';
+  // 没选 severity 时默认标全部 4 个 severity(含 INFO,彻底清未读)
+  const targets = sev ? [sev] : ['CRITICAL', 'ERROR', 'WARNING', 'INFO'];
+  const label = sev ? `当前过滤(${sev})` : '全部未读事件(含 INFO)';
   await confirmAct(
     `标记${label}全部为已读?`,
     async () => {
@@ -1301,7 +1301,7 @@ async function eventsCenterAckCurrent(){
     },
     ' ',
     '标记为已读',
-    !sev,  // 没选 severity(标全 3 个)算 warning,按钮变红警示
+    false,  // 含 INFO 也是正常清理,不再警告
     `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:12px 0;background:#f3e8ff;border:1px solid #e9d5ff;border-radius:8px">
        <span style="font-size:20px;line-height:1">✓</span>
        <span style="font-size:12px;color:#7c3aed;line-height:1.5">将标记当前过滤条件下 <b>${targets.length}</b> 个 severity 类别(${targets.join(' / ')})的全部未读事件</span>
