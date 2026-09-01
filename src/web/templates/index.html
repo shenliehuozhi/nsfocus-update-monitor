@@ -1051,7 +1051,8 @@ function openEventsCenterModal(){
               <option value="720">近 30 天</option>
               <option value="2160">近 90 天</option>
             </select>
-            <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()" style="margin-left:auto">🔄 刷新</button>
+            <button class="btn btn-xs btn-outline" onclick="eventsCenterAckCurrent()" style="margin-left:auto">✓ 一键已读</button>
+            <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()">🔄 刷新</button>
           </div>
           <div class="card-bd" id="eventsCenterModalBody" style="flex:1;overflow:auto;padding:0">
             <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
@@ -1239,16 +1240,28 @@ function renderEventsTableRow(e){
       <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>
     </details>
   </td></tr>`;
-  return `<tr style="border-bottom:1px solid var(--gray-border);cursor:pointer" onclick="toggleEventsTableRow(${e.id})" title="点击展开详情">
+  // 重要事件视觉强化:CRITICAL 未读加左侧粗红条 + 浅红背景;ERROR 橙条;INFO/WARNING 普通
+  let rowStyle = 'border-bottom:1px solid var(--gray-border);cursor:pointer';
+  if(isUnread){
+    if(e.severity==='CRITICAL'){
+      rowStyle += ';background:#fef2f2;border-left:4px solid #dc2626';
+    } else if(e.severity==='ERROR'){
+      rowStyle += ';background:#fff7ed;border-left:3px solid #ea580c';
+    } else if(e.severity==='WARNING'){
+      rowStyle += ';border-left:2px solid #ca8a04';
+    }
+  }
+  return `<tr style="${rowStyle}" onclick="toggleEventsTableRow(${e.id})" title="点击展开详情">
     <td style="padding:8px 12px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
     <td style="padding:8px"><span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td style="padding:8px;color:var(--muted);font-size:11px">${escHtml(t)}</td>
     <td style="padding:8px;color:var(--text);overflow:hidden;text-overflow:ellipsis">${escHtml(title)}</td>
     <td style="padding:8px;color:var(--text);font-size:11px">${productCell}</td>
     <td style="padding:8px;color:var(--text);font-size:11px">${channelCell}</td>
-    <td style="padding:8px;text-align:center">${isUnread
-      ? '<span style="background:var(--danger);color:#fff;font-size:10px;padding:1px 5px;border-radius:4px">NEW</span>'
-      : '<span style="color:var(--muted);font-size:11px">已读</span>'}</td>
+    <td style="padding:8px;text-align:center">
+      ${isUnread
+        ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id});loadEventsCenterModal()" style="font-size:10px;padding:1px 6px">✓ 已读</button>`
+        : '<span style="color:var(--muted);font-size:11px">已读</span>'}</td>
   </tr>${detail}`;
 }
 
@@ -1257,6 +1270,29 @@ function toggleEventsTableRow(eventId){
   const el = document.getElementById('eventTableDetail-' + eventId);
   if (!el) return;
   el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
+}
+
+// 一键已读 — 按当前过滤器(severity)批量标,默认只标 CRITICAL/ERROR/WARNING
+async function eventsCenterAckCurrent(){
+  const sev = document.getElementById('eventsCenterModalSev').value;
+  // 没选 severity 时默认只标未读的 3 个严重级别,避免把 INFO 也刷了
+  const targets = sev ? [sev] : ['CRITICAL', 'ERROR', 'WARNING'];
+  const label = sev ? `当前过滤(${sev})` : '未读告警(CRITICAL/ERROR/WARNING)';
+  if(!confirm(`标记${label}全部为已读?`)) return;
+  try{
+    // 循环调 3 个 severity,避免后端支持多 severity 时改 schema
+    for(const s of targets){
+      const r = await api('/system/events/ack-all', {method:'POST', body: JSON.stringify({severity: s})});
+      if(r.code !== 0){
+        alert('标记失败 (' + s + '): ' + (r.message || '未知错误'));
+        return;
+      }
+    }
+    loadEventsCenterModal();
+    fetchEventsHeader();
+  }catch(e){
+    alert('网络错误');
+  }
 }
 
 async function renderEventsCenter(){
