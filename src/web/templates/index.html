@@ -895,6 +895,22 @@ function toggleCenterEventDetail(eventId){
   }
 }
 
+// 2026-09-01: 弹窗表格点已读后,同步刷新仪表盘事件中心卡片(去掉对应行 NEW)
+// 只在当前是仪表盘页面 + eventsCenterBody 存在时才走,避免无谓请求
+async function refreshEventsCenterCardIfVisible(){
+  const body = document.getElementById('eventsCenterBody');
+  if(!body) return;  // 当前不在仪表盘,跳过
+  try{
+    const rng = _dashRange || '7';
+    const r = await api('/dashboard?range=' + rng);
+    if(r.code !== 0) return;
+    const events = r.data && r.data.recent_events;
+    if(events && typeof renderEventsCenterFromData === 'function'){
+      renderEventsCenterFromData(events);
+    }
+  }catch(e){}
+}
+
 function renderEventsCenterFromData(events){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
@@ -1295,6 +1311,7 @@ async function eventsCenterAckCurrent(){
         toast(`已标记 ${ackCount} 个 severity 类别为已读`, 'success');
         loadEventsCenterModal();
         fetchEventsHeader();
+        refreshEventsCenterCardIfVisible();  // 同步刷新仪表盘事件中心卡片
       }catch(e){
         toast('网络错误', 'error');
       }
@@ -1411,6 +1428,7 @@ async function ackEvent(id){
     await api('/system/events/'+id+'/ack', {method:'POST'});
     fetchEventsHeader();
     loadEvents();
+    refreshEventsCenterCardIfVisible();  // 同步刷新仪表盘事件中心卡片(去掉 NEW)
   }catch(e){}
 }
 
