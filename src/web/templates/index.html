@@ -1051,7 +1051,7 @@ function openEventsCenterModal(){
               <option value="720">近 30 天</option>
               <option value="2160">近 90 天</option>
             </select>
-            <button class="btn btn-xs btn-outline" onclick="eventsCenterAckCurrent()" title="按当前过滤器批量标记为已读,默认只标 CRITICAL/ERROR/WARNING" style="margin-left:auto">✓ 一键已读</button>
+            <button class="btn btn-xs btn-outline" onclick="eventsCenterAckCurrent()" title="按当前过滤器批量标记为已读,默认只标 CRITICAL/ERROR/WARNING" style="margin-left:auto">一键已读</button>
             <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()">🔄 刷新</button>
           </div>
           <div class="card-bd" id="eventsCenterModalBody" style="flex:1;overflow:auto;padding:0">
@@ -1260,7 +1260,7 @@ function renderEventsTableRow(e){
     <td style="padding:8px;color:var(--text);font-size:11px">${channelCell}</td>
     <td style="padding:8px;text-align:center">
       ${isUnread
-        ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id});loadEventsCenterModal()" style="font-size:10px;padding:1px 6px">✓ 已读</button>`
+        ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id});loadEventsCenterModal()" style="font-size:10px;padding:1px 6px">已读</button>`
         : '<span style="background:#f3e8ff;color:#7c3aed;font-size:10px;padding:2px 8px;border-radius:4px">已读</span>'}</td>
   </tr>${detail}`;
 }
@@ -1299,7 +1299,7 @@ async function eventsCenterAckCurrent(){
         toast('网络错误', 'error');
       }
     },
-    '✓',
+    ' ',
     '标记为已读',
     !sev  // 没选 severity(标全 3 个)算 warning,按钮变红警示
   );
