@@ -1219,8 +1219,8 @@ function renderEventsTableRow(e){
     + (e.channel_id ? `<div style="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
     + (e.customer_id ? `<div style="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
     : '<span style="color:var(--muted)">—</span>';
-  // 详情面板 — 同样的 eventDetail-${id} ID 复用,跟 dashboard 卡片一致(AP-133)
-  const detailId = 'eventDetail-' + e.id;
+  // 详情面板 — 用 eventTableDetail- 前缀避免跟 dashboard 卡片的 eventDetail- 撞 ID(AP-133)
+  const detailId = 'eventTableDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
   const detail = `<tr id="${detailId}" style="display:none;background:var(--gray-bg)"><td colspan="7" style="padding:12px 16px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
@@ -1254,7 +1254,7 @@ function renderEventsTableRow(e){
 
 // 表格行的展开/收起 — 用 table-row/none(display:block 对 tr 不合法)
 function toggleEventsTableRow(eventId){
-  const el = document.getElementById('eventDetail-' + eventId);
+  const el = document.getElementById('eventTableDetail-' + eventId);
   if (!el) return;
   el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
 }
