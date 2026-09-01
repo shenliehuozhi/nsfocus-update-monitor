@@ -1016,10 +1016,12 @@ function renderEventsCenterFromData(events){
 // 旧版本异步拉(保留兼容,但 dashboard 不再调用)
 
 // ═══════════════════════════════════════════════════════════════
-// 事件中心弹窗 — modal 形式,过滤器 + 全量列表
-// 2026-09-01: 改成弹窗(参考 closeAboutModal / openPwdModal 风格)
+// 事件中心弹窗 — 表格 + 分页 + 过滤器
+// 2026-09-01: 改成表格形式,字段作为列;按 limit/offset 分页
 // 数据源 /api/system/events,message 字段前端 JSON.parse 后渲染
 // ═══════════════════════════════════════════════════════════════
+const _EVENTS_PER_PAGE = 50;
+
 function openEventsCenterModal(){
   let m = document.getElementById('eventsCenterModal');
   if(!m){
@@ -1027,7 +1029,7 @@ function openEventsCenterModal(){
     m.id = 'eventsCenterModal';
     m.innerHTML = `
       <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeEventsCenterModal()">
-        <div class="card" style="width:780px;max-width:95vw;max-height:88vh;display:flex;flex-direction:column">
+        <div class="card" style="width:960px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column">
           <div class="card-hd" style="display:flex;align-items:center">
             <span style="color:var(--danger)">🔔 事件中心</span>
             <span id="eventsCenterModalCount" style="margin-left:8px;color:var(--muted);font-size:11px;font-weight:400"></span>
@@ -1035,7 +1037,7 @@ function openEventsCenterModal(){
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
             <span style="color:var(--muted)">严重度</span>
-            <select id="eventsCenterModalSev" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="loadEventsCenterModal()">
+            <select id="eventsCenterModalSev" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="eventsCenterGoPage(0)">
               <option value="">全部</option>
               <option value="CRITICAL">🔴 CRITICAL</option>
               <option value="ERROR">🟠 ERROR</option>
@@ -1043,7 +1045,7 @@ function openEventsCenterModal(){
               <option value="INFO">ℹ️ INFO</option>
             </select>
             <span style="color:var(--muted)">时间范围</span>
-            <select id="eventsCenterModalHours" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="loadEventsCenterModal()">
+            <select id="eventsCenterModalHours" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="eventsCenterGoPage(0)">
               <option value="24">近 24 小时</option>
               <option value="168" selected>近 7 天</option>
               <option value="720">近 30 天</option>
@@ -1051,10 +1053,18 @@ function openEventsCenterModal(){
             </select>
             <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()" style="margin-left:auto">🔄 刷新</button>
           </div>
-          <div class="card-bd" id="eventsCenterModalList" style="flex:1;overflow-y:auto;padding:0">
+          <div class="card-bd" id="eventsCenterModalBody" style="flex:1;overflow:auto;padding:0">
             <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
           </div>
-          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding:10px 16px;display:flex;justify-content:flex-end;gap:8px">
+          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:12px">
+            <span id="eventsCenterModalPagerInfo" style="color:var(--muted)"></span>
+            <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <button id="eventsCenterModalPrevBtn" class="btn btn-xs btn-outline" onclick="eventsCenterPrevPage()">← 上一页</button>
+              <span id="eventsCenterModalPageInfo" style="color:var(--muted);font-size:11px;min-width:60px;text-align:center"></span>
+              <button id="eventsCenterModalNextBtn" class="btn btn-xs btn-outline" onclick="eventsCenterNextPage()">下一页 →</button>
+            </div>
+          </div>
+          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;justify-content:flex-end">
             <button class="btn btn-outline" onclick="closeEventsCenterModal()">关闭</button>
           </div>
         </div>
@@ -1063,9 +1073,13 @@ function openEventsCenterModal(){
     document.body.appendChild(m);
   }
   m.style.display = 'block';
+  eventsCenterState.offset = 0;
   loadEventsCenterModal();
-  if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(loadEventsCenterModal, 30000);
+  if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(()=>{ if(document.getElementById('eventsCenterModal').style.display!=='none') loadEventsCenterModal(); }, 30000);
 }
+
+// 分页状态(全局,避免每次重置)
+window.eventsCenterState = window.eventsCenterState || { offset: 0, total: 0, loadedOnce: false };
 
 function closeEventsCenterModal(){
   const m = document.getElementById('eventsCenterModal');
@@ -1073,39 +1087,107 @@ function closeEventsCenterModal(){
   if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer); window._eventsCenterModalTimer=null;}
 }
 
+function eventsCenterGoPage(offset){
+  eventsCenterState.offset = Math.max(0, offset);
+  loadEventsCenterModal();
+}
+
+function eventsCenterPrevPage(){
+  eventsCenterGoPage(eventsCenterState.offset - _EVENTS_PER_PAGE);
+}
+
+function eventsCenterNextPage(){
+  if(eventsCenterState.offset + _EVENTS_PER_PAGE < eventsCenterState.total){
+    eventsCenterGoPage(eventsCenterState.offset + _EVENTS_PER_PAGE);
+  }
+}
+
 async function loadEventsCenterModal(){
-  const list = document.getElementById('eventsCenterModalList');
+  const body = document.getElementById('eventsCenterModalBody');
   const countEl = document.getElementById('eventsCenterModalCount');
-  if(!list) return;
+  const pagerInfo = document.getElementById('eventsCenterModalPagerInfo');
+  const pageInfo = document.getElementById('eventsCenterModalPageInfo');
+  const prevBtn = document.getElementById('eventsCenterModalPrevBtn');
+  const nextBtn = document.getElementById('eventsCenterModalNextBtn');
+  if(!body) return;
   const sev = document.getElementById('eventsCenterModalSev').value;
   const hrs = document.getElementById('eventsCenterModalHours').value || '168';
-  const params = new URLSearchParams({limit:'200', since_hours: hrs});
+  const offset = eventsCenterState.offset || 0;
+  const params = new URLSearchParams({
+    limit: String(_EVENTS_PER_PAGE),
+    offset: String(offset),
+    since_hours: hrs
+  });
   if(sev) params.set('severity', sev);
   // 第一次加载才显示"加载中",后续刷新不闪(避免 AP-127)
-  if(!list.dataset.loaded){
-    list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>';
+  if(!eventsCenterState.loadedOnce){
+    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>';
   }
   const r = await api('/system/events?' + params.toString());
   // DOM 守卫:modal 可能已关闭(避免写已卸载元素)
-  if(document.getElementById('eventsCenterModalList') !== list) return;
+  if(document.getElementById('eventsCenterModalBody') !== body) return;
   if(r.code !== 0){
-    list.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);font-size:13px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
+    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);font-size:13px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
     return;
   }
-  const events = (r.data && r.data.events) || [];
+  const data = r.data || {};
+  const events = data.events || [];
+  const total = data.total || 0;
+  eventsCenterState.total = total;
   if(!events.length){
-    list.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--success);font-size:14px">✅ 当前条件下无事件</div>';
-    if(countEl) countEl.textContent = '(0 条)';
-    list.dataset.loaded = '1';
+    body.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--success);font-size:14px">✅ 当前条件下无事件</div>';
+    if(countEl) countEl.textContent = '(共 0 条)';
+    if(pagerInfo) pagerInfo.textContent = '';
+    if(pageInfo) pageInfo.textContent = '0 / 0';
+    if(prevBtn) prevBtn.disabled = true;
+    if(nextBtn) nextBtn.disabled = true;
+    eventsCenterState.loadedOnce = true;
     return;
   }
-  list.innerHTML = events.map(renderCenterPanelEvent).join('');
-  if(countEl) countEl.textContent = '(' + events.length + ' 条)';
-  list.dataset.loaded = '1';
+  body.innerHTML = renderEventsTable(events);
+  // 计数 + 分页信息
+  const start = offset + 1;
+  const end = Math.min(offset + events.length, total);
+  if(countEl) countEl.textContent = '(共 ' + total + ' 条)';
+  if(pagerInfo) pagerInfo.textContent = '第 ' + start + '-' + end + ' 条 / 共 ' + total + ' 条';
+  const totalPages = Math.max(1, Math.ceil(total / _EVENTS_PER_PAGE));
+  const curPage = Math.floor(offset / _EVENTS_PER_PAGE) + 1;
+  if(pageInfo) pageInfo.textContent = curPage + ' / ' + totalPages;
+  if(prevBtn) prevBtn.disabled = (offset <= 0);
+  if(nextBtn) nextBtn.disabled = (offset + _EVENTS_PER_PAGE >= total);
+  eventsCenterState.loadedOnce = true;
 }
 
-function renderCenterPanelEvent(e){
-  // 与 dashboard recent_events 区别:message 是 JSON 字符串,前端 parse
+// 表格渲染 — 字段作为表头
+function renderEventsTable(events){
+  const head = `<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+    <colgroup>
+      <col style="width:140px">
+      <col style="width:80px">
+      <col style="width:130px">
+      <col>
+      <col style="width:140px">
+      <col style="width:110px">
+      <col style="width:70px">
+    </colgroup>
+    <thead style="position:sticky;top:0;background:var(--card);z-index:1;box-shadow:0 1px 0 var(--border)">
+      <tr style="text-align:left;color:var(--muted);font-weight:600">
+        <th style="padding:10px 12px">时间</th>
+        <th style="padding:10px 8px">严重度</th>
+        <th style="padding:10px 8px">类型</th>
+        <th style="padding:10px 8px">标题</th>
+        <th style="padding:10px 8px">产品 / URL</th>
+        <th style="padding:10px 8px">渠道</th>
+        <th style="padding:10px 8px">状态</th>
+      </tr>
+    </thead>
+    <tbody>`;
+  const rows = events.map(renderEventsTableRow).join('');
+  return head + rows + '</tbody></table>';
+}
+
+function renderEventsTableRow(e){
+  // message parse(JSON 字符串 → dict)
   let m = {};
   if(typeof e.message === 'string'){
     try { m = JSON.parse(e.message); } catch(_) { m = {}; }
@@ -1115,7 +1197,7 @@ function renderCenterPanelEvent(e){
   const t = e.event_type || '';
   const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
   const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
-  // 标题提取(优先 m.title,fallback 按 event_type)
+  // 标题提取
   let title = '';
   if(m.title) title = String(m.title);
   else if(t === 'session_error') title = (m.username?`Session 污染 (${m.username})`:'Session 污染')+': '+(m.reason||'未知');
@@ -1128,34 +1210,55 @@ function renderCenterPanelEvent(e){
   else if(typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
   else title = JSON.stringify(m).slice(0, 80);
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
-  const unreadBg = isUnread ? 'background:#fef2f2;border-left:3px solid '+sevColor+';' : '';
-  return `<div data-event-id="${e.id}" style="padding:8px 10px;border-bottom:1px solid var(--gray-border);font-size:12px;line-height:1.45;${unreadBg}cursor:pointer" onclick="toggleCenterEventDetail(${e.id})">
-    <div style="display:flex;align-items:center;gap:6px;margin-bottom:2px">
-      <span>${sevIcon}</span>
-      <span style="color:${sevColor};font-weight:600;font-size:11px">${escHtml(e.severity)}</span>
-      <span style="color:var(--muted);font-size:10px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(t)}</span>
-      <span style="color:var(--muted);font-size:10px;flex-shrink:0">${escHtml(serverTime(e.created_at, true))}</span>
+  const productCell = e.product_name
+    ? `<div>${escHtml(e.product_name)}</div>`
+    + (e.source_url ? `<div style="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
+    : (e.source_url ? `<div style="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span style="color:var(--muted)">—</span>');
+  const channelCell = e.channel_type
+    ? `<div>${escHtml(e.channel_type)}</div>`
+    + (e.channel_id ? `<div style="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
+    + (e.customer_id ? `<div style="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
+    : '<span style="color:var(--muted)">—</span>';
+  // 详情面板 — 同样的 eventDetail-${id} ID 复用,跟 dashboard 卡片一致(AP-133)
+  const detailId = 'eventDetail-' + e.id;
+  const detailJson = escHtml(JSON.stringify(m, null, 2));
+  const detail = `<tr id="${detailId}" style="display:none;background:var(--gray-bg)"><td colspan="7" style="padding:12px 16px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
+    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+      <span><b>event_type:</b> ${escHtml(t)}</span>
+      <span><b>severity:</b> <span style="color:${sevColor}">${escHtml(e.severity)}</span></span>
+      ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
+      ${e.rule_id?`<span><b>rule_id:</b> ${e.rule_id}</span>`:''}
+      ${m.username?`<span><b>用户名:</b> ${escHtml(m.username)}</span>`:''}
+      ${m.reason?`<span><b>原因:</b> ${escHtml(String(m.reason))}</span>`:''}
+      ${m.source?`<span><b>来源:</b> ${escHtml(m.source)}</span>`:''}
+      ${m.ip?`<span><b>IP:</b> ${escHtml(m.ip)}</span>`:''}
+      ${m.count?`<span><b>失败次数:</b> ${m.count}</span>`:''}
     </div>
-    <div style="color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(title)}</div>
-    <div id="eventDetail-${e.id}" class="event-detail" style="display:none;margin-top:6px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;color:var(--text)">
-      <div style="margin-bottom:4px"><b>${escHtml(t)}</b></div>
-      ${e.product_name?`<div><b>产品:</b> ${escHtml(e.product_name)}</div>`:''}
-      ${e.source_url?`<div style="word-break:break-all"><b>URL:</b> ${escHtml(e.source_url)}</div>`:''}
-      ${e.channel_id?`<div><b>渠道 ID:</b> ${e.channel_id}</div>`:''}
-      ${e.customer_id?`<div><b>客户 ID:</b> ${e.customer_id}</div>`:''}
-      ${e.is_rollback?'<div><b>回滚事件</b></div>':''}
-      ${m.username?`<div><b>用户名:</b> ${escHtml(m.username)}</div>`:''}
-      ${m.reason?`<div><b>原因:</b> ${escHtml(String(m.reason))}</div>`:''}
-      ${m.source?`<div><b>来源:</b> ${escHtml(m.source)}</div>`:''}
-      ${m.ip?`<div><b>IP:</b> ${escHtml(m.ip)}</div>`:''}
-      ${m.count?`<div><b>失败次数:</b> ${m.count}</div>`:''}
-      <details style="margin-top:6px">
-        <summary style="cursor:pointer;color:var(--muted);font-size:10px;user-select:none">📦 原始 message JSON</summary>
-        <pre style="margin:6px 0 0;padding:6px;background:var(--card);border-radius:3px;font-family:monospace;font-size:10px;line-height:1.4;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:160px;overflow-y:auto">${escHtml(JSON.stringify(m, null, 2))}</pre>
-      </details>
-    </div>
-  </div>`;
+    <details>
+      <summary style="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
+      <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>
+    </details>
+  </td></tr>`;
+  return `<tr style="border-bottom:1px solid var(--gray-border);cursor:pointer" onclick="toggleEventsTableRow(${e.id})" title="点击展开详情">
+    <td style="padding:8px 12px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
+    <td style="padding:8px"><span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td style="padding:8px;color:var(--muted);font-size:11px">${escHtml(t)}</td>
+    <td style="padding:8px;color:var(--text);overflow:hidden;text-overflow:ellipsis">${escHtml(title)}</td>
+    <td style="padding:8px;color:var(--text);font-size:11px">${productCell}</td>
+    <td style="padding:8px;color:var(--text);font-size:11px">${channelCell}</td>
+    <td style="padding:8px;text-align:center">${isUnread
+      ? '<span style="background:var(--danger);color:#fff;font-size:10px;padding:1px 5px;border-radius:4px">NEW</span>'
+      : '<span style="color:var(--muted);font-size:11px">已读</span>'}</td>
+  </tr>${detail}`;
 }
+
+// 表格行的展开/收起 — 用 table-row/none(display:block 对 tr 不合法)
+function toggleEventsTableRow(eventId){
+  const el = document.getElementById('eventDetail-' + eventId);
+  if (!el) return;
+  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
+}
+
 async function renderEventsCenter(){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;

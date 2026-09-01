@@ -401,7 +401,8 @@ def reset_rate_limit():
 def list_events():
     """仪表盘事件中心 — 返回 system_event_log 最近事件列表
 
-    支持过滤:severity / event_type / since_hours / limit
+    支持过滤:severity / event_type / since_hours / limit / offset
+    2026-09-01: 加 offset + total 用于弹窗表格分页
     """
     from src.models.database import query
     # 2026-08-25: 先确保 acked_at 列存在(migration),否则后续 SQL 查询会失败
@@ -410,7 +411,8 @@ def list_events():
     severity = request.args.get('severity', '').strip()
     event_type = request.args.get('event_type', '').strip()
     since_hours = int(request.args.get('since_hours', '24'))
-    limit = min(int(request.args.get('limit', '50')), 200)
+    limit = min(int(request.args.get('limit', '50')), 500)
+    offset = max(int(request.args.get('offset', '0')), 0)
 
     where = ["created_at >= datetime('now', ? || ' hours')"]
     params = [f'-{since_hours}']
@@ -423,12 +425,18 @@ def list_events():
 
     sql = f"""SELECT id, event_type, severity, product_name, source_url,
                       rule_id, channel_id, channel_type, customer_id,
-                      is_rollback, message, created_at
+                      is_rollback, message, created_at, acked_at
                FROM system_event_log
                WHERE {' AND '.join(where)}
                ORDER BY id DESC
-               LIMIT {limit}"""
+               LIMIT {limit} OFFSET {offset}"""
     rows = query(sql, tuple(params))
+
+    # 2026-09-01: 当前过滤条件下的总数(分页用)
+    count_sql = f"""SELECT COUNT(*) AS cnt FROM system_event_log
+                   WHERE {' AND '.join(where)}"""
+    total_row = query(count_sql, tuple(params))
+    total = total_row[0]['cnt'] if total_row else 0
 
     counts_sql = """SELECT severity, COUNT(*) as cnt
                     FROM system_event_log
@@ -450,7 +458,9 @@ def list_events():
         'data': {
             'events': [dict(r) for r in rows],
             'unread_counts': counts,
-            'total': len(rows),
+            'total': total,
+            'limit': limit,
+            'offset': offset,
         }
     })
 
