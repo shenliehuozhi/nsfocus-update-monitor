@@ -900,16 +900,20 @@ function toggleCenterEventDetail(eventId){
 // 加时间戳避免浏览器 GET 缓存返回老数据(浏览器对 /dashboard?range=7 默认会缓存)
 async function refreshEventsCenterCardIfVisible(){
   const body = document.getElementById('eventsCenterBody');
-  if(!body) return;  // 当前不在仪表盘,跳过
+  if(!body){ console.log('[refreshEvents] eventsCenterBody 不存在,跳过'); return; }
   try{
     const rng = _dashRange || '7';
     const r = await api('/dashboard?range=' + rng + '&_t=' + Date.now());
+    console.log('[refreshEvents] 拉数据', r.code, 'events 数:', r.data?.recent_events?.length);
     if(r.code !== 0) return;
     const events = r.data && r.data.recent_events;
     if(events && typeof renderEventsCenterFromData === 'function'){
       renderEventsCenterFromData(events);
+      console.log('[refreshEvents] 已重渲,acked_at 状态:', events.map(e => e.acked_at));
     }
-  }catch(e){}
+  }catch(e){
+    console.error('[refreshEvents] 异常:', e);
+  }
 }
 
 function renderEventsCenterFromData(events){
