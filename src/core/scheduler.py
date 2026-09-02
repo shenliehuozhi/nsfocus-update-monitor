@@ -553,7 +553,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             purpose_tag = 'collect' if is_collect else 'discover'
             # 2026-08-25: 采集前预检,跟主动心跳用同一套污染检测逻辑(downloadsVm/id)
             # 让预检不仅检查 redirect,也检查响应 body 里的 downloadsVm/id 字符串
-            preflight_ok, preflight_reason = _collector.check_session_status(HEALTH_URL)
+            preflight_ok, preflight_reason = _collector.check_session_status(_get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys'))
             if preflight_ok == 'ok':
                 update_status(sess['id'], 'active')
                 update_heartbeat(sess['id'], '正常')
@@ -1722,7 +1722,7 @@ def _session_heartbeat():
         try:
             start = _time.time()
             resp = _requests.get(
-                BASE_URL + HEALTH_URL,
+                BASE_URL + _get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys'),
                 cookies={'PHPSESSID': cookie},
                 timeout=10,
                 allow_redirects=False

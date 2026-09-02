@@ -5858,6 +5858,15 @@ async function settings(){
       <div class="cfg-row" id="heartbeat-interval-row" style="display:${cfg.heartbeat_enabled==='1'?'':'none'}">
         <div class="form-group"><label>心跳间隔 <span class="cfg-unit">(分钟)</span></label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p class="cfg-hint">Session 保活间隔，默认30分钟</p></div>
       </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>预检 URL <span class="tp" data-tip="采集前/主动心跳时用于快速探测 Session 状态的轻量接口。\n\n【判定机制】\n• HTTP 200 + 正常 HTML → Session 正常\n• 重定向到 /update/upLic → Session 已过期(vendor 把过期会话踢到 license 页)\n• 响应 body 含 downloadsVm/id → Session 被虚拟化上下文污染(被带进 upLic/Vm 格式上下文,返回的不是预期页面)\n\n【选择建议】需是返回 v2 升级包列表的轻量 GET 接口,响应稳定 + 无重定向。默认 /update/listBvsV6/v/bvssys 是绿盟升级站点默认入口(对应 v2 升级包列表页)。改错会导致 Session 状态判错:过期/污染漏报或误报。\n\n【生效时机】保存后下次采集/心跳生效,无需重启进程。">ⓘ</span></label>
+          <div style="display:flex;gap:6px;align-items:center">
+            <input id="cfg-heartbeat-url" type="text" value="${cfg.heartbeat_url||'/update/listBvsV6/v/bvssys'}" placeholder="/update/listBvsV6/v/bvssys" readonly style="background:var(--gray-bg);flex:1">
+            <button type="button" id="cfg-heartbeat-url-edit" class="btn btn-xs btn-outline" onclick="editHeartbeatUrl()">✏️ 编辑</button>
+          </div>
+          <p class="cfg-hint">默认 /update/listBvsV6/v/bvssys (绿盟升级站点默认端点)。修改会影响 Session 过期/污染判断,点编辑后需二次确认</p>
+        </div>
+      </div>
     </div>
 
     <div class="cfg-section">
@@ -8132,7 +8141,7 @@ async function handleSchedulerToggle(cb){
 
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
@@ -8159,8 +8168,40 @@ async function saveEventConfig(){
   })});
 }
 
+function editHeartbeatUrl(){
+  const inp=document.getElementById('cfg-heartbeat-url');
+  const btn=document.getElementById('cfg-heartbeat-url-edit');
+  if(!inp){console.warn('[editHeartbeatUrl] input#cfg-heartbeat-url not found');return;}
+  if(!btn){console.warn('[editHeartbeatUrl] button#cfg-heartbeat-url-edit not found');return;}
+  if(!inp.readOnly){return;} // 已在编辑模式,无操作
+  confirmAct(
+    '⚠️ 修改预检 URL 会影响 Session 状态判断\n\n该 URL 用于采集前/主动心跳快速探测 Session 状态:\n• 错配会导致"过期/污染"漏报或误报\n• 默认值 /update/listBvsV6/v/bvssys 是 NSFOCUS 设备验证过的端点\n• 必须是返回 v2 升级包列表的轻量 GET 接口\n\n确认要编辑吗?',
+    async()=>{
+      inp.readOnly=false;
+      inp.style.background='#fff';
+      inp.focus();inp.select();
+      btn.textContent='🔒 锁定';
+      btn.onclick=lockHeartbeatUrl;
+      toast('已进入编辑模式,改完点"保存配置"提交','info');
+    },
+    '✏️',
+    '确认编辑',
+    true
+  );
+}
+function lockHeartbeatUrl(){
+  const inp=document.getElementById('cfg-heartbeat-url');
+  const btn=document.getElementById('cfg-heartbeat-url-edit');
+  inp.readOnly=true;
+  inp.value=inp.defaultValue; // 还原成进入编辑前的值,避免误存
+  inp.style.background='var(--gray-bg)';
+  btn.textContent='✏️ 编辑';
+  btn.onclick=editHeartbeatUrl;
+  toast('已锁定,改动已撤销','info');
+}
+
 async function saveSettings(){
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
