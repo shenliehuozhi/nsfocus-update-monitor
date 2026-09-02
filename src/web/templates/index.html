@@ -796,8 +796,23 @@ async function dashboard(range){
       </div>
     </div>
 
-    <!-- Row 2 Col 1: 包发布趋势 -->
+    <!-- Row 2 Col 1: 客户推送分布 -->
     <div class="card" style="grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+        <span>📨 客户推送分布</span>
+        <div style="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
+          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+        </div>
+      </div>
+      <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
+        <div id="custPushTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
+      </div>
+    </div>
+
+    <!-- Row 2 Col 2: 包发布趋势 (中间,与事件中心对齐) -->
+    <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
       <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📈 包发布趋势</span>
         <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
@@ -809,21 +824,6 @@ async function dashboard(range){
       <div class="card-bd" style="flex:1;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">
         <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
         <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;line-height:1.4;flex:1;overflow-y:auto;overflow-x:hidden;padding-right:4px"></div>
-      </div>
-    </div>
-
-    <!-- Row 2 Col 2: 客户推送分布 -->
-    <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
-        <span>📨 客户推送分布</span>
-        <div style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
-        </div>
-      </div>
-      <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-        <div id="custPushTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
       </div>
     </div>
 
