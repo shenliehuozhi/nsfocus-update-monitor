@@ -717,19 +717,20 @@ async function dashboard(range){
       </div>
     </div>
 
-    <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:wrap;align-items:stretch">
-    <div class="card" style="min-width:240px;flex:1;display:flex;flex-direction:column">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0">
+    <div class="dash-grid" style="display:grid;grid-template-columns:1fr 1.2fr 1.2fr;grid-template-rows:auto 430px;gap:12px;margin-top:12px;align-items:stretch">
+    <!-- Row 1 Col 1: 运维健康 -->
+    <div class="card" style="grid-column:1;grid-row:1;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
         <span style="color:var(--primary);font-size:13px">🩺 运维健康</span>
         <span style="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
           <button class="btn btn-soft-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
           <button class="btn btn-soft-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
       </div>
-      <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px">
+      <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px;align-content:flex-start;overflow-y:auto">
         ${h.product_health&&h.product_health.length>0?`<div style="min-width:200px">
           <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">采集</div>
-          <div style="display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto">
+          <div style="display:flex;flex-direction:column;gap:3px">
             ${h.product_health.slice(0,8).map(p=>{
               const statusColor={'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[p.health_status||'未知']||'var(--gray-muted)';
               const statusIcon=(p.health_status==='ok'||p.health_status==='正常')?'💚':p.health_status&&p.health_status!=='未知'&&p.health_status!=='ok'?'❌':'⚪';
@@ -771,8 +772,9 @@ async function dashboard(range){
         </div>`:''}
       </div>
     </div>
-    <div class="card" style="flex:2;min-width:280px;display:flex;flex-direction:column">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
+    <!-- Row 1 Col 2: 事件中心 -->
+    <div class="card" style="grid-column:2;grid-row:1;display:flex;flex-direction:column;min-width:0">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
         <span style="color:var(--danger);font-size:13px">🔔 事件中心</span>
         <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
         <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" onclick="openEventsCenterModal()" style="margin-left:6px;flex-shrink:0">查看更多 ↗</button>
@@ -781,8 +783,9 @@ async function dashboard(range){
         <div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
       </div>
     </div>
-    <div class="card" style="flex:1;min-width:300px;display:flex;flex-direction:column">
-      <div class="card-hd" style="color:var(--muted);font-size:11px">📋 最近更新</div>
+    <!-- Row 1 Col 3: 最近更新 -->
+    <div class="card" style="grid-column:3;grid-row:1;display:flex;flex-direction:column;min-width:0">
+      <div class="card-hd" style="color:var(--muted);font-size:11px;flex-shrink:0">📋 最近更新</div>
       <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
         ${(d.recent_deliveries||[]).slice(0,8).map(r=>`
           <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--gray-border);white-space:nowrap">
@@ -792,51 +795,52 @@ async function dashboard(range){
           </div>`).join('')}
       </div>
     </div>
+
+    <!-- Row 2 Col 1: 包发布趋势 -->
+    <div class="card" style="grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+        <span>📈 包发布趋势</span>
+        <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
+          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+        </div>
+      </div>
+      <div class="card-bd" style="flex:1;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">
+        <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
+        <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;line-height:1.4;flex:1;overflow-y:auto;overflow-x:hidden;padding-right:4px"></div>
+      </div>
     </div>
 
-    <div style="display:flex;gap:12px;margin-top:12px;flex-wrap:nowrap;align-items:stretch;height:430px">
-      <div class="card" style="flex:2;min-width:0">
-        <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px">
-          <span>📈 包发布趋势</span>
-          <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
-            <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-            <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-            <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
-          </div>
-        </div>
-        <div class="card-bd" style="padding:12px;box-sizing:border-box;height:375px;display:flex;flex-direction:column">
-          <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
-          <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;line-height:1.4;max-height:108px;overflow-y:auto;overflow-x:hidden;padding-right:4px"></div>
+    <!-- Row 2 Col 2: 客户推送分布 -->
+    <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+        <span>📨 客户推送分布</span>
+        <div style="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
+          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
         </div>
       </div>
+      <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
+        <div id="custPushTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
+      </div>
+    </div>
 
-      <div class="card" style="flex:1.2;min-width:280px;display:flex;flex-direction:column">
-        <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
-          <span>📨 客户推送分布</span>
-          <div style="display:flex;gap:4px;margin-left:8px">
-            <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-            <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-            <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
-          </div>
-        </div>
-        <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-          <div id="custPushTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
+    <!-- Row 2 Col 3: 产品发布分布 -->
+    <div class="card" style="grid-column:3;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+        <span>📊 产品发布分布</span>
+        <div id="pieRange" style="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
+          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
         </div>
       </div>
-
-      <div class="card" style="flex:1.2;min-width:280px;display:flex;flex-direction:column">
-        <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
-          <span>📊 产品发布分布</span>
-          <div id="pieRange" style="display:flex;gap:4px;margin-left:8px">
-            <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-            <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-            <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
-          </div>
-        </div>
-        <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-          <div id="prodDistTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
-        </div>
+      <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
+        <div id="prodDistTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
       </div>
+    </div>
     </div>
     `;
     // 渲染图表
