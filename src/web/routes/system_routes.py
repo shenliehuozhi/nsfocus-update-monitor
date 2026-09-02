@@ -625,6 +625,66 @@ def health_check():
     """)
     product_health_list = [dict(row) for row in product_health] if product_health else []
 
+    # ── 4b. 沉默产品 / 采集异常摘要（feat/dashboard-silent-stale 2026-09-02）──
+    # 阈值从 system_settings 读（可配置）；缺失则用默认。
+    # silent = 已启用但 last_collected_at > silent_days 未更新（绿盟停更 / 抓取断了）
+    # stale  = 已启用但 last_collected_at > stale_hours 未更新（停摆）
+    # error_recent = health_status='error' 且 last_collected_at > failed_hours（抓取连续失败）
+    silent_days = _read_threshold('monitor_silent_days', '60')
+    stale_hours = _read_threshold('monitor_stale_hours', '24')
+    failed_hours = _read_threshold('monitor_failed_hours', '6')
+
+    silent_rows = query(f"""
+        SELECT id, name, last_collected_at,
+               CAST((julianday('now') - julianday(last_collected_at)) AS INTEGER) AS days_since
+        FROM content_sources
+        WHERE is_active = 1
+          AND last_collected_at IS NOT NULL AND last_collected_at != ''
+          AND julianday('now') - julianday(last_collected_at) > {int(silent_days)}
+        ORDER BY days_since DESC
+        LIMIT 50
+    """)
+    silent_products = {
+        'threshold_days': int(silent_days),
+        'count': len(silent_rows),
+        'items': [dict(r) for r in silent_rows] if silent_rows else [],
+    }
+
+    stale_rows = query(f"""
+        SELECT id, name, last_collected_at, health_status,
+               ROUND((julianday('now') - julianday(last_collected_at)) * 24, 1) AS hours_since
+        FROM content_sources
+        WHERE is_active = 1
+          AND (last_collected_at IS NULL OR last_collected_at = ''
+               OR julianday('now') - julianday(last_collected_at) > {float(stale_hours) / 24.0})
+        ORDER BY hours_since DESC
+        LIMIT 50
+    """)
+    stale_count = len(stale_rows) if stale_rows else 0
+
+    error_rows = query(f"""
+        SELECT id, name, last_collected_at, health_status,
+               ROUND((julianday('now') - julianday(last_collected_at)) * 24, 1) AS hours_since
+        FROM content_sources
+        WHERE is_active = 1 AND health_status = 'error'
+          AND (last_collected_at IS NULL OR last_collected_at = ''
+               OR julianday('now') - julianday(last_collected_at) > {float(failed_hours) / 24.0})
+        ORDER BY hours_since DESC
+        LIMIT 50
+    """)
+    error_recent_count = len(error_rows) if error_rows else 0
+
+    collection_summary = {
+        'silent_products': silent_products,
+        'stale_count': stale_count,
+        'error_recent_count': error_recent_count,
+        'thresholds': {
+            'silent_days': int(silent_days),
+            'stale_hours': int(stale_hours),
+            'failed_hours': int(failed_hours),
+        },
+    }
+
     # ── 5. 采集异常摘要（从 app.log 聚合最近2小时的 WARNING/ERROR）────────
     异常日志 = []
     try:
@@ -700,11 +760,27 @@ def health_check():
         'push_success_rate': round(push_today['success'] / push_today['total'] * 100) if push_today['total'] > 0 else 0,
         'active_snapshots': active_snapshots,
         'product_health': product_health_list,
+        'collection_summary': collection_summary,    # feat/dashboard-silent-stale 2026-09-02
         '异常日志': 异常日志[-20:],              # 最近2小时内最多20条
     }}
 
 
 # ── Product Management ────────────────────────────────────────
+
+def _read_threshold(key: str, default: str) -> str:
+    """从 system_settings 表读阈值(可配置监控告警阈值)。
+
+    缺失/解析失败返回默认。feat/dashboard-silent-stale 2026-09-02。
+    """
+    from src.models.database import query
+    try:
+        rows = query("SELECT value FROM system_settings WHERE key = ?", (key,))
+        if rows and rows[0].get('value'):
+            return str(rows[0]['value']).strip()
+    except Exception:
+        pass
+    return default
+
 
 VALID_STRATEGIES = ('standard', 'recursive')
 
