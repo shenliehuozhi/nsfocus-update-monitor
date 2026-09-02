@@ -547,7 +547,8 @@ async function dashboard(range){
 //   Uses getHours()/getMinutes() — NOT toISOString() — by design.
 //   toISOString() would show UTC (8h behind CST). See commit 884a835.
 // ═══════════════════════════════════════════════════════════════
-function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t.endsWith('Z')?t:t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
+// 2026-09-02: 与 serverTime 对齐 — 强制 +8h 输出 CST,不依赖浏览器时区
+function fmtTZ(t,full){if(!t)return'';try{let s=String(t).replace('T',' ').replace('Z','').replace(/\..*$/,'');const dt=new Date(s+'Z');if(isNaN(dt.getTime()))return full?String(t).substring(0,16):String(t).substring(0,10);const cst=new Date(dt.getTime()+8*3600*1000);const y=cst.getUTCFullYear(),m=String(cst.getUTCMonth()+1).padStart(2,'0'),day=String(cst.getUTCDate()).padStart(2,'0'),h=String(cst.getUTCHours()).padStart(2,'0'),min=String(cst.getUTCMinutes()).padStart(2,'0');return full?`${y}-${m}-${day} ${h}:${min}`:`${y}-${m}-${day}`;}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
 
 // ── Dashboard Charts ─────────────────────────────────────────────
 const PIE_COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];

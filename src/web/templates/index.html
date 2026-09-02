@@ -1469,7 +1469,8 @@ function serverTime(t, full){
   }
 }
 
-function fmtTZ(t,full){if(!t)return'';try{let d=new Date(t.endsWith('Z')?t:t+'Z');if(full){let y=d.getFullYear(),m=String(d.getMonth()+1).padStart(2,'0'),day=String(d.getDate()).padStart(2,'0'),h=String(d.getHours()).padStart(2,'0'),min=String(d.getMinutes()).padStart(2,'0');return y+'-'+m+'-'+day+' '+h+':'+min;}return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
+// 2026-09-02: 与 serverTime 对齐 — 强制 +8h 输出 CST,不依赖浏览器时区
+function fmtTZ(t,full){if(!t)return'';try{let s=String(t).replace('T',' ').replace('Z','').replace(/\..*$/,'');const dt=new Date(s+'Z');if(isNaN(dt.getTime()))return full?String(t).substring(0,16):String(t).substring(0,10);const cst=new Date(dt.getTime()+8*3600*1000);const y=cst.getUTCFullYear(),m=String(cst.getUTCMonth()+1).padStart(2,'0'),day=String(cst.getUTCDate()).padStart(2,'0'),h=String(cst.getUTCHours()).padStart(2,'0'),min=String(cst.getUTCMinutes()).padStart(2,'0');return full?`${y}-${m}-${day} ${h}:${min}`:`${y}-${m}-${day}`;}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
 
 // 渠道类型 chip:每种类型独立品牌色 + emoji,通知渠道表 / 订阅规则通知对象列共用
 // 配色:浅背景 + 深文字 + 1px 同色淡边框,跟现有 .badge-ok/.badge-blue 同款风格
