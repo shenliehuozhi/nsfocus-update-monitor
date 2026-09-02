@@ -299,6 +299,45 @@ def list_customers():
     rows = list_all()
     return jsonify({'code': 0, 'data': rows})
 
+@bp_customers.route('/push-summary', methods=['GET'])
+@require_auth
+def push_summary():
+    """按客户聚合推送统计 — 给 history 页顶部摘要 + dashboard 中间卡片用。
+
+    Query: ?days=N (默认 30, 0 = 全部)
+    返回: {days, items: [{id, name, total, success, failed, last_sent_at, last_product}]}
+    feat/customer-push-card 2026-09-02
+    """
+    from src.models.database import query
+    days = request.args.get('days', 30, type=int)
+    days_filter = '' if days <= 0 else f"AND dl.sent_at >= datetime('now', '-{int(days)} days')"
+    rows = query(f"""
+        SELECT c.id, c.name,
+               COUNT(dl.id) AS total,
+               SUM(CASE WHEN dl.delivery_status='sent' THEN 1 ELSE 0 END) AS success,
+               SUM(CASE WHEN dl.delivery_status='failed' THEN 1 ELSE 0 END) AS failed,
+               MAX(dl.sent_at) AS last_sent_at
+        FROM customers c
+        LEFT JOIN delivery_log dl ON dl.customer_id = c.id {days_filter}
+        GROUP BY c.id, c.name
+        ORDER BY total DESC, c.name
+    """)
+    out = []
+    for r in rows:
+        d = dict(r)
+        d['total'] = d.get('total') or 0
+        d['success'] = d.get('success') or 0
+        d['failed'] = d.get('failed') or 0
+        if d['last_sent_at']:
+            snap = query("""SELECT s.product_name FROM delivery_log dl
+                            JOIN snapshots s ON dl.snapshot_id = s.id
+                            WHERE dl.customer_id = ? ORDER BY dl.sent_at DESC LIMIT 1""", (d['id'],))
+            d['last_product'] = snap[0]['product_name'] if snap else ''
+        else:
+            d['last_product'] = ''
+        out.append(d)
+    return jsonify({'code': 0, 'data': {'days': days, 'items': out}})
+
 @bp_customers.route('', methods=['POST'])
 @require_auth
 def create_customer():
