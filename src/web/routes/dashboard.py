@@ -1,6 +1,6 @@
 """Dashboard API."""
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, current_app
 
 from src.web.auth import require_auth
 
@@ -124,7 +124,12 @@ def get_dashboard():
             'push_today': push_today,
             'push_week': push_week,
             'total_snapshots': total_snapshots,
-'recent_deliveries': recent_deliveries,
+            'recent_deliveries': recent_deliveries,
+            # 2026-09-02: 产品总数 + 已启用数(仪表盘产品卡片)
+            'product_total': len(sources),
+            'product_active': sum(1 for s in sources if s.get('is_active')),
+            # 2026-09-02: 服务已运行时间(从 VERSION_INFO.process_start 派生)
+            'process_start': (current_app.config.get('VERSION_INFO') or {}).get('process_start') or _process_start_fallback(),
             # 2026-08-26: 仪表盘事件中心卡片需要最近事件(避免独立 ajax 调用, 加快首屏)
             'recent_events': _recent_events_for_dashboard(limit=10),
             'product_stats': _product_pie_stats(int(days)),
@@ -215,3 +220,13 @@ def _timeline_stats(days: int):
             counts[p] = date_map.get(dt, {}).get(p, 0)
         result.append({'date': dt, 'counts': counts})
     return result
+
+
+def _process_start_fallback() -> str:
+    """VERSION_INFO 没注入时兜底 — 读 /proc/self/cmdline 创建时间,UTC ISO 格式."""
+    import os, datetime
+    try:
+        st = os.stat('/proc/self')
+        return datetime.datetime.fromtimestamp(st.st_ctime, tz=datetime.timezone.utc).isoformat()
+    except Exception:
+        return datetime.datetime.now(datetime.timezone.utc).isoformat()

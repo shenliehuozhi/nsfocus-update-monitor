@@ -635,6 +635,9 @@ async function dashboard(range){
   dR._range=rng;
   const d=dR.data||{},sch=sR.data||{},h=hR.data||{};
 
+  // 2026-09-02: 服务已运行时间 — process_start 是 UTC ISO,前端每秒重算
+  if(d.process_start){ _processStartMs=new Date(d.process_start).getTime(); _tickUptime(); if(!_uptimeTimer){ _uptimeTimer=setInterval(_tickUptime,1000); } }
+
   // Session status line
   let sesLine='';
   if(d.session_detail&&d.session_detail.length){
@@ -680,15 +683,29 @@ async function dashboard(range){
         <div class="label">活跃 Session <span style="color:var(--muted);font-weight:400">(采集 / 发现)</span></div>
       </div>
       <div class="stat tint-neutral"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
-      <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-success':'tint-danger')}" style="display:flex;align-items:center;justify-content:center;gap:10px;padding:14px">
-        <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sch.is_running?'var(--primary)':(sch.enabled?'var(--success)':'var(--danger)')};box-shadow:0 0 0 4px ${sch.is_running?'rgba(67,97,238,0.2)':(sch.enabled?'rgba(12,166,120,0.2)':'rgba(229,72,77,0.2)')};flex-shrink:0"></span>
-        <span style="font-size:14px;font-weight:600;color:var(--text)">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
+      <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-success':'tint-danger')}" style="display:flex;flex-direction:column;justify-content:center;gap:8px;padding:14px 12px">
+        <div style="display:flex;align-items:center;justify-content:center;gap:10px">
+          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sch.is_running?'var(--primary)':(sch.enabled?'var(--success)':'var(--danger)')};box-shadow:0 0 0 4px ${sch.is_running?'rgba(67,97,238,0.2)':(sch.enabled?'rgba(12,166,120,0.2)':'rgba(229,72,77,0.2)')};flex-shrink:0"></span>
+          <span style="font-size:14px;font-weight:600;color:var(--text)">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);line-height:1.4">采集器状态</div>
       </div>
     </div>
     <div class="grid3" style="margin-top:14px">
-      <div class="stat tint-primary"><div class="num">${d.push_today?.total||0}</div><div class="label">今日推送</div></div>
-      <div class="stat tint-success"><div class="num">${d.push_today?.success||0}</div><div class="label">成功</div></div>
-      <div class="stat ${d.push_today?.failed>0?'tint-danger':(d.push_today?.failed===0?'tint-success':'tint-neutral')}"><div class="num">${d.push_today?.failed||0}</div><div class="label">失败</div></div>
+      <div class="stat tint-primary">
+        <div class="num" id="dashUptime">—</div>
+        <div class="label">已运行时间</div>
+      </div>
+      <div class="stat ${d.product_total>0?(d.product_active===d.product_total?'tint-success':(d.product_active>0?'tint-warn':'tint-danger')):'tint-neutral'}">
+        <div class="num">${d.product_active||0}<span style="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span style="color:var(--muted)">${d.product_total||0}</span></div>
+        <div class="label">已启用产品 / 总数</div>
+        ${d.product_total>0 && d.product_active!==d.product_total?`<div style="font-size:11px;color:var(--muted);margin-top:6px">未启用 <b style="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
+      </div>
+      <div class="stat ${d.push_today?.total>0?(d.push_today.failed>0?'tint-warn':'tint-success'):'tint-neutral'}">
+        <div class="num">${d.push_today?.success||0}</div>
+        <div class="label">${d.push_today?.total>0?`今日推送 ${d.push_today.total} 条`:'今日推送'}</div>
+        ${d.push_today?.failed>0?`<div style="font-size:11px;color:var(--muted);margin-top:6px"><b style="color:var(--danger)">${d.push_today.failed}</b> 失败</div>`:''}
+      </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
       <div class="info-bar info-bar-stat">
@@ -846,6 +863,21 @@ async function dashboard(range){
 }
 
 // ── 事件中心 ───────────────────────────────────────────
+let _processStartMs=null, _uptimeTimer=null;
+function _fmtUptime(ms){
+  if(ms<0) ms=0;
+  const s=Math.floor(ms/1000);
+  const d=Math.floor(s/86400), h=Math.floor((s%86400)/3600), m=Math.floor((s%3600)/60), sec=s%60;
+  if(d>0) return `${d}天${h}时${m}分`;
+  if(h>0) return `${h}时${m}分${sec}秒`;
+  return `${m}分${sec}秒`;
+}
+function _tickUptime(){
+  const el=document.getElementById('dashUptime');
+  if(!el || !_processStartMs) return;
+  el.textContent = _fmtUptime(Date.now()-_processStartMs);
+}
+
 async function fetchEventsHeader(){
   try{
     const r = await api('/system/events?limit=1');
