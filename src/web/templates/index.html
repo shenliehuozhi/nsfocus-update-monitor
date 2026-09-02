@@ -767,28 +767,6 @@ async function dashboard(range){
             ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
-        ${h.collection_summary && (h.collection_summary.stale_count>0 || h.collection_summary.error_recent_count>0 || h.collection_summary.silent_products?.count>0)?(()=>{
-          // feat/dashboard-silent-stale 2026-09-02: 采集异常摘要
-          // 严格按用户偏好: 健康子行（=0）完全不显示, 不堆"0失败"占位
-          const cs = h.collection_summary;
-          const sp = cs.silent_products || {count:0, threshold_days:60, items:[]};
-          const rows = [];
-          if(cs.stale_count > 0){
-            rows.push(`<div style="font-size:12px;color:var(--danger);font-weight:600">⚠️ ${cs.stale_count} 个产品停摆（>${cs.thresholds.stale_hours}h 未采集）</div>`);
-          }
-          if(cs.error_recent_count > 0){
-            rows.push(`<div style="font-size:12px;color:var(--danger);font-weight:600">❌ ${cs.error_recent_count} 个产品连续失败（>${cs.thresholds.failed_hours}h）</div>`);
-          }
-          if(sp.count > 0){
-            const tipItems = sp.items.slice(0,3).map(it=>`${escHtml(it.name)} ${it.days_since}天前`).join('、');
-            const more = sp.count > 3 ? ` 等 ${sp.count} 个` : '';
-            rows.push(`<div style="font-size:12px;color:var(--warn);font-weight:600" class="tp" data-tip="${escHtml(tipItems + more)}">🔕 ${sp.count} 个产品沉默（>${sp.threshold_days}天）</div>`);
-          }
-          return `<div style="min-width:200px">
-            <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">采集异常</div>
-            <div style="display:flex;flex-direction:column;gap:4px">${rows.join('')}</div>
-          </div>`;
-        })():''}
       </div>
     </div>
     <div class="card" style="flex:2;min-width:280px;display:flex;flex-direction:column">
