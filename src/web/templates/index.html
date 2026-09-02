@@ -727,47 +727,46 @@ async function dashboard(range){
           <button class="btn btn-soft-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
       </div>
-      <div class="card-bd" style="flex:1;padding:12px 16px;display:flex;flex-wrap:wrap;gap:16px;align-content:flex-start;overflow-y:auto">
-        ${h.product_health&&h.product_health.length>0?`<div style="min-width:200px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">采集</div>
-          <div style="display:flex;flex-direction:column;gap:3px">
-            ${h.product_health.slice(0,8).map(p=>{
-              const statusColor={'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[p.health_status||'未知']||'var(--gray-muted)';
+      <div class="card-bd" style="flex:1;padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;overflow-y:auto">
+        ${h.product_health&&h.product_health.length>0?`<div style="min-width:160px;flex:1">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">采集</div>
+          <div style="display:flex;flex-direction:column;gap:2px">
+            ${h.product_health.slice(0,12).map(p=>{
               const statusIcon=(p.health_status==='ok'||p.health_status==='正常')?'💚':p.health_status&&p.health_status!=='未知'&&p.health_status!=='ok'?'❌':'⚪';
               const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
-              return `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray-disabled)">
+              return `<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray-disabled)">
                 <span style="flex-shrink:0">${statusIcon}</span>
                 <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name||'未知'}</span>
-                <span style="color:var(--gray-disabled);font-size:11px;flex-shrink:0">${last}</span>
+                <span style="color:var(--gray-disabled);font-size:10px;flex-shrink:0">${last}</span>
               </div>`}).join('')}
           </div>
         </div>`:''}
-        ${h.push_today?`<div style="min-width:140px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">推送</div>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
+        ${h.push_today?`<div style="min-width:110px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">推送</div>
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
             <span class="badge ${h.push_success_rate>=80?'badge-ok':h.push_success_rate>=50?'badge-warn':'badge-err'}">${h.push_success_rate||0}%</span>
             <span class="badge badge-grey">${h.push_today.total||0}条</span>
           </div>
-          <div style="font-size:11px;color:var(--gray-disabled);margin-top:4px">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
+          <div style="font-size:10px;color:var(--gray-disabled);margin-top:3px">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
         </div>`:''}
-        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div style="min-width:100px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">快照</div>
+        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div style="min-width:80px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">快照</div>
           <span class="badge badge-blue">${h.active_snapshots} 个</span>
         </div>`:''}
-        ${h.异常日志&&h.异常日志.length>0?`<div style="min-width:180px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">异常 (2h内)</div>
-          <div style="display:flex;flex-direction:column;gap:3px;max-height:80px;overflow-y:auto">
-            ${h.异常日志.slice(0,4).map(l=>`<div style="font-size:11px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:240px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-80)}</div>`).join('')}
+        ${h.异常日志&&h.异常日志.length>0?`<div style="min-width:140px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">异常 (2h内)</div>
+          <div style="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
+            ${h.异常日志.slice(0,3).map(l=>`<div style="font-size:10px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
           </div>
         </div>`:''}
-        ${h.queue?.overdue>0?`<div style="min-width:120px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">队列</div>
+        ${h.queue?.overdue>0?`<div style="min-width:100px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">队列</div>
           <span class="badge badge-warn">⏰ 超时 ${h.queue.overdue} 条</span>
         </div>`:''}
-        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div style="min-width:160px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:6px">限流</div>
-          <div style="display:flex;flex-direction:column;gap:3px;max-height:220px;overflow-y:auto">
-            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
+        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div style="min-width:130px">
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">限流</div>
+          <div style="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
+            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err" style="font-size:10px">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
       </div>
