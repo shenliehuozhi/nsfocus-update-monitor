@@ -454,12 +454,14 @@ def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
 
 
 def update_delivery(delivery_id: int, status: str, error: str = ''):
-    from src.models.database import execute
-    sent_at = "datetime('now')" if status == 'sent' else None
+    # 2026-09-02: 改用 Python datetime.utcnow() 而非 SQLite datetime('now')
+    # SQLite 在 CST 服务器上 datetime('now') 会把 CST 减 8h 当 UTC,前端 +8h 后少 8h
+    from datetime import datetime
+    sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S') if status == 'sent' else None
     if sent_at:
         execute(
-            f"UPDATE delivery_log SET delivery_status = ?, error_message = ?, sent_at = {sent_at} WHERE id = ?",
-            (status, error, delivery_id)
+            "UPDATE delivery_log SET delivery_status = ?, error_message = ?, sent_at = ? WHERE id = ?",
+            (status, error, sent_at, delivery_id)
         )
     else:
         execute(

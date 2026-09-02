@@ -110,7 +110,8 @@ def update_config(enabled: bool = None, channel_id: int = None,
         updates.append("event_types = ?")
         params.append(json.dumps(event_types, ensure_ascii=False))
     if updates:
-        updates.append("updated_at = datetime('now', 'utc')")
+        updates.append("updated_at = ?")
+        params.append(datetime.utcnow().isoformat())
         execute(
             f"UPDATE system_event_config SET {','.join(updates)} WHERE id = 1",
             tuple(params)
@@ -145,16 +146,21 @@ def log_event(event_type: str, severity: str = 'INFO',
               rule_id: int = None, channel_id: int = None,
               channel_type: str = None, customer_id: int = None,
               is_rollback: bool = False, message: dict = None) -> int:
-    """记录系统事件到日志表"""
+    """记录系统事件到日志表
+    2026-09-02: created_at 改用 Python datetime.utcnow().isoformat() 显式传 ISO UTC,
+    避免 SQLite 在 CST 服务器上 datetime('now','utc') 算错 -8h 的 bug
+    (详见 commit 日志: SQLite 编译时假设系统 UTC,把 CST 减 8h 再当 UTC)
+    """
     from src.models.database import execute
     msg_json = json.dumps(message, ensure_ascii=False) if message else '{}'
     return execute(
         """INSERT INTO system_event_log
            (event_type, severity, product_name, source_url, rule_id,
-            channel_id, channel_type, customer_id, is_rollback, message)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            channel_id, channel_type, customer_id, is_rollback, message, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (event_type, severity, product_name, source_url, rule_id,
-         channel_id, channel_type, customer_id, 1 if is_rollback else 0, msg_json)
+         channel_id, channel_type, customer_id, 1 if is_rollback else 0,
+         msg_json, datetime.utcnow().isoformat())
     )
 
 

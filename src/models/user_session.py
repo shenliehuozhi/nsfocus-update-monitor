@@ -148,12 +148,16 @@ def update_status(session_id: int, status: str, last_valid: str = None, expires_
 
 
 def update_heartbeat(session_id: int, hb_status: str):
-    """Update heartbeat fields after a heartbeat run."""
+    """Update heartbeat fields after a heartbeat run.
+    2026-09-02: 改用 Python datetime.utcnow() 而非 SQLite datetime('now')
+    避免 SQLite 在 CST 服务器上 datetime('now') 返回 CST-8h 的 bug
+    """
+    from datetime import datetime
     from src.models.database import execute
     execute(
-        "UPDATE user_sessions SET last_heartbeat_at = datetime('now'), "
+        "UPDATE user_sessions SET last_heartbeat_at = ?, "
         "heartbeat_status = ?, heartbeat_count = heartbeat_count + 1 WHERE id = ?",
-        (hb_status, session_id)
+        (datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'), hb_status, session_id)
     )
 
 
