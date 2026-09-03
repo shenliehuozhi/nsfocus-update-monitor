@@ -1671,18 +1671,18 @@ function _renderCustPushTable(items, days){
         ? `<span style="color:var(--danger);font-size:16px" title="${c.failed} 失败">❌</span>`
         : `<span style="color:var(--success);font-size:16px" title="全部成功">✅</span>`;
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="box-sizing:border-box;padding:0;overflow:hidden;width:203px">
+        <td style="box-sizing:border-box;padding:9px 0;overflow:hidden;width:203px">
           <div style="display:flex;flex-direction:column;gap:2px;min-width:0;justify-content:center;min-height:40px;overflow:hidden">
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)">${escHtml(c.name)}</span>
             <span style="font-size:10px;color:var(--gray-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.last_product||'—')} · ${lastShort}</span>
           </div>
         </td>
-        <td style="box-sizing:border-box;padding:0;font-variant-numeric:tabular-nums;width:82px">
+        <td style="box-sizing:border-box;padding:9px 0;font-variant-numeric:tabular-nums;width:82px;overflow:hidden">
           <div style="display:flex;align-items:center;justify-content:flex-end;min-height:40px">
             <span style="display:inline-block;width:54px;text-align:right;color:${c.failed>0?'var(--danger)':'var(--success)'};font-weight:700;font-size:14px;line-height:1">${c.total||0}</span>
           </div>
         </td>
-        <td style="box-sizing:border-box;padding:0;text-align:center;width:54px"><div style="display:flex;justify-content:center;align-items:center;min-height:40px">${statusCell}</div></td>
+        <td style="box-sizing:border-box;padding:9px 0;text-align:center;width:54px;overflow:hidden"><div style="display:flex;justify-content:center;align-items:center;min-height:40px">${statusCell}</div></td>
       </tr>`;
     }).join('')+
     '</tbody></table>';
