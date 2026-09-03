@@ -1644,17 +1644,17 @@ function _renderCustPushTable(items, days){
   const active = items.filter(c => (c.total||0) > 0 || (c.failed||0) > 0);
   if(!active.length){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">近'+days+'天无推送</div>';
-    return;
-  }
+     return;
+   }
   const grandTotal = active.reduce((s,e)=>s+(e.total||0),0);
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
     '<colgroup>'+
       '<col style="width:203px"><col style="width:82px"><col style="width:54px">'+
     '</colgroup>'+
-    '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="text-align:left;color:var(--gray-muted);font-weight:500;white-space:nowrap;padding:9px 0">客户</th>'+
-      '<th style="text-align:right;color:var(--gray-muted);font-weight:500;white-space:nowrap;padding:9px 0">推送</th>'+
-      '<th style="text-align:center;color:var(--gray-muted);font-weight:500;white-space:nowrap;padding:9px 0">状态</th>'+
+    '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--border)">'+
+      '<th style="text-align:left;color:var(--muted);font-weight:500;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--border)">客户</th>'+
+      '<th style="text-align:right;color:var(--muted);font-weight:500;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--border)">推送</th>'+
+      '<th style="text-align:center;color:var(--muted);font-weight:500;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--border)">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const pct = grandTotal>0 ? ((c.total||0)/grandTotal*100).toFixed(1) : '0';
