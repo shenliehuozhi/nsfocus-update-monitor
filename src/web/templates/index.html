@@ -1649,9 +1649,9 @@ function _renderCustPushTable(items, days){
   const grandTotal = active.reduce((s,e)=>s+(e.total||0),0);
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
-      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">推送</th>'+
-      '<th style="padding:8px 12px;width:50px;text-align:center;color:var(--gray-muted);font-weight:500">状态</th>'+
+      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;white-space:nowrap">客户</th>'+
+      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;white-space:nowrap">推送</th>'+
+      '<th style="padding:8px 12px;width:64px;min-width:64px;text-align:center;color:var(--gray-muted);font-weight:500;white-space:nowrap">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const pct = grandTotal>0 ? ((c.total||0)/grandTotal*100).toFixed(1) : '0';
@@ -1669,20 +1669,20 @@ function _renderCustPushTable(items, days){
         : `<span style="color:var(--success);font-size:16px" title="全部成功">✅</span>`;
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
         <td style="padding:9px 12px">
-          <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
+          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;justify-content:center;min-height:40px">
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)">${escHtml(c.name)}</span>
             <span style="font-size:10px;color:var(--gray-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.last_product||'—')} · ${lastShort}</span>
           </div>
         </td>
         <td style="padding:9px 14px 9px 12px;text-align:right;font-variant-numeric:tabular-nums">
-          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;justify-content:center;min-height:40px">
             <span style="color:${c.failed>0?'var(--danger)':'var(--success)'};font-weight:700;font-size:14px">${c.total||0}</span>
             <div style="width:50px;height:4px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div style="width:${pct}%;height:100%;background:${c.failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
             </div>
           </div>
         </td>
-        <td style="padding:9px 12px;text-align:center">${statusCell}</td>
+        <td style="padding:9px 12px;text-align:center;width:64px;min-width:64px"><div style="display:flex;justify-content:center;align-items:center;min-height:40px">${statusCell}</div></td>
       </tr>`;
     }).join('')+
     '</tbody></table>';
