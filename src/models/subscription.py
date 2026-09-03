@@ -480,6 +480,9 @@ def get_delivery_by_snapshot(snapshot_id: int) -> list:
 
 def get_history(page: int = 1, limit: int = 20, product: str = None,
                 customer_id: int = None, days: int = None) -> tuple:
+    """获取推送历史。feat/customer-push-card 2026-09-02 修复 cust 过滤:
+    必须按 dl.customer_id 过滤,不能 GROUP BY s.id 后丢失交付关联。
+    """
     from src.models.database import query
     conditions = []
     params = []
@@ -487,6 +490,7 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         conditions.append("s.product_name = ?")
         params.append(product)
     if customer_id:
+        # 直接按 dl 过滤,确保只返回推给该客户的 snap,后续 deliveries 也只列该客户的
         conditions.append("dl.customer_id = ?")
         params.append(customer_id)
     if days:
@@ -495,17 +499,17 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
     where = " AND ".join(conditions) if conditions else "1=1"
 
     total = query(
-        f"""SELECT COUNT(DISTINCT dl.snapshot_id) as cnt 
-            FROM delivery_log dl JOIN snapshots s ON dl.snapshot_id = s.id 
+        f"""SELECT COUNT(*) as cnt
+            FROM delivery_log dl JOIN snapshots s ON dl.snapshot_id = s.id
             WHERE {where}""",
         tuple(params)
     )
     total = total[0]['cnt'] if total else 0
 
-    # Get distinct snapshots with their latest pushed_at time
-    # ⚠️ 不能直接 SELECT DISTINCT s.* + dl.sent_at — 因为同 snap 有多条 delivery_log,
-    #    每个 dl.sent_at 不同 → DISTINCT 不工作 → 同 snap 重复出现 N 次
-    # 用 GROUP BY + MAX(dl.sent_at) 聚合,确保每个 snap 只 1 行
+    # ⚠️ feat/customer-push-card 2026-09-02 修复:
+    # 原来 GROUP BY s.id + MAX(sent_at) 会让 customer_id 过滤失效 (返回该 snap 的所有客户)
+    # 改成直接 SELECT dl.*,取 delivery 行,distinct snapshot_id
+    # 因同 snap 推给同客户会有多条 (email 重试/多渠道),用 GROUP BY s.id 取最新一条
     rows = query(
         f"""SELECT s.*, MAX(dl.sent_at) as pushed_at
             FROM delivery_log dl JOIN snapshots s ON dl.snapshot_id = s.id
@@ -516,13 +520,15 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
     )
 
     # For each snapshot, get the delivery details.
-    # package_type 派生规则:
-    #   1. chain_json 非空(新链路写入)→ 取 chain_json 末项作为本次推送的 chain-specific package_type
-    #      (同一物理 snap 在不同 chain 下应该显示不同 package_type,例如 WAF V6.0.9 vs 海光 V6.0.9)
-    #   2. chain_json='[]'(旧链路 / 老历史记录)→ fallback 到 snapshots.package_type
+    # feat/customer-push-card 2026-09-02 修复: deliveries 也按 customer_id 过滤,避免显示其他客户的推送
     for row in rows:
+        del_cond = "dl.snapshot_id = ?"
+        del_params = [row['id']]
+        if customer_id:
+            del_cond += " AND dl.customer_id = ?"
+            del_params.append(customer_id)
         deliveries = query(
-            """SELECT dl.channel_name, dl.channel_type, dl.delivery_status,
+            f"""SELECT dl.channel_name, dl.channel_type, dl.delivery_status,
                       dl.error_message, dl.sent_at, dl.channel_id, dl.customer_id,
                       dl.recipient, dl.sender, dl.chain_json,
                       c.name as customer_name, c.company as customer_company,
@@ -534,9 +540,9 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
                FROM delivery_log dl
                JOIN snapshots s ON dl.snapshot_id = s.id
                LEFT JOIN customers c ON dl.customer_id = c.id
-               WHERE dl.snapshot_id = ?
+               WHERE {del_cond}
                ORDER BY dl.sent_at DESC""",
-            (row['id'],)
+            tuple(del_params)
         )
         row['deliveries'] = [dict(d) for d in deliveries]
 
