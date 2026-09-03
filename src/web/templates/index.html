@@ -1667,7 +1667,7 @@ function _renderCustPushTable(items, days){
       const statusCell = c.failed>0
         ? `<span style="color:var(--danger);font-size:16px" title="${c.failed} 失败">❌</span>`
         : `<span style="color:var(--success);font-size:16px" title="全部成功">✅</span>`;
-      return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}'">
+      return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
         <td style="padding:9px 12px">
           <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)">${escHtml(c.name)}</span>
