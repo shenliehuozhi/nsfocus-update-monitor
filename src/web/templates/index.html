@@ -1650,15 +1650,11 @@ function _renderCustPushTable(items, days){
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
       '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
-      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">总数</th>'+
-      '<th style="padding:8px 12px;width:120px;color:var(--gray-muted);font-weight:500">状态</th>'+
+      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">推送</th>'+
+      '<th style="padding:8px 12px;width:50px;text-align:center;color:var(--gray-muted);font-weight:500">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const pct = grandTotal>0 ? ((c.total||0)/grandTotal*100).toFixed(1) : '0';
-      const tint = c.failed>0 ? 'var(--danger)' : 'var(--success)';
-      const statusText = c.failed>0
-        ? `<span style="color:var(--danger);font-weight:600">❌ ${c.failed}</span><span style="color:var(--gray-muted);margin-left:4px;font-size:11px">失败</span>`
-        : `<span style="color:var(--success);font-weight:600">✅ ${c.success||0}</span>`;
       const lastShort = c.last_sent_at ? fmtTZ(c.last_sent_at, true).slice(11,16) : '—';
       const tipLines = [
         `客户: ${c.name}`,
@@ -1667,6 +1663,10 @@ function _renderCustPushTable(items, days){
         c.last_sent_at ? `时间: ${fmtTZ(c.last_sent_at, true)}` : '',
         '点击查看该客户推送历史',
       ].filter(Boolean).join('\n');
+      // 状态图标: 失败>0 显示❌ + 数字, 全成功显示✅
+      const statusCell = c.failed>0
+        ? `<span style="color:var(--danger);font-size:16px" title="${c.failed} 失败">❌</span>`
+        : `<span style="color:var(--success);font-size:16px" title="全部成功">✅</span>`;
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}'">
         <td style="padding:9px 12px">
           <div style="display:flex;flex-direction:column;gap:2px;min-width:0">
@@ -1674,15 +1674,15 @@ function _renderCustPushTable(items, days){
             <span style="font-size:10px;color:var(--gray-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.last_product||'—')} · ${lastShort}</span>
           </div>
         </td>
-        <td style="padding:9px 14px 9px 12px;text-align:right;color:${tint};font-variant-numeric:tabular-nums;font-weight:600">${c.total||0}</td>
-        <td style="padding:9px 12px">
-          <div style="display:flex;flex-direction:column;gap:3px">
-            ${statusText}
-            <div style="height:4px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
+        <td style="padding:9px 14px 9px 12px;text-align:right;font-variant-numeric:tabular-nums">
+          <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px">
+            <span style="color:${c.failed>0?'var(--danger)':'var(--success)'};font-weight:700;font-size:14px">${c.total||0}</span>
+            <div style="width:50px;height:4px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div style="width:${pct}%;height:100%;background:${c.failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
             </div>
           </div>
         </td>
+        <td style="padding:9px 12px;text-align:center">${statusCell}</td>
       </tr>`;
     }).join('')+
     '</tbody></table>';
