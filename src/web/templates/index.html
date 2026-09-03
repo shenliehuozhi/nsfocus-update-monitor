@@ -1649,12 +1649,12 @@ function _renderCustPushTable(items, days){
   const grandTotal = active.reduce((s,e)=>s+(e.total||0),0);
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
     '<colgroup>'+
-      '<col style="width:217px"><col style="width:64px"><col style="width:60px">'+
+      '<col style="width:203px"><col style="width:82px"><col style="width:54px">'+
     '</colgroup>'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;white-space:nowrap">客户</th>'+
-      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;white-space:nowrap">推送</th>'+
-      '<th style="padding:8px 12px;text-align:center;color:var(--gray-muted);font-weight:500;white-space:nowrap">状态</th>'+
+      '<th style="text-align:left;color:var(--gray-muted);font-weight:500;white-space:nowrap;padding:9px 0">客户</th>'+
+      '<th style="text-align:right;color:var(--gray-muted);font-weight:500;white-space:nowrap;padding:9px 0">推送</th>'+
+      '<th style="text-align:center;color:var(--gray-muted);font-weight:500;white-space:nowrap;padding:9px 0">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const pct = grandTotal>0 ? ((c.total||0)/grandTotal*100).toFixed(1) : '0';
@@ -1671,18 +1671,18 @@ function _renderCustPushTable(items, days){
         ? `<span style="color:var(--danger);font-size:16px" title="${c.failed} 失败">❌</span>`
         : `<span style="color:var(--success);font-size:16px" title="全部成功">✅</span>`;
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="padding:9px 12px;overflow:hidden;width:165px">
+        <td style="box-sizing:border-box;padding:0;overflow:hidden;width:203px">
           <div style="display:flex;flex-direction:column;gap:2px;min-width:0;justify-content:center;min-height:40px;overflow:hidden">
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)">${escHtml(c.name)}</span>
             <span style="font-size:10px;color:var(--gray-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.last_product||'—')} · ${lastShort}</span>
           </div>
         </td>
-        <td style="padding:9px 14px 9px 12px;font-variant-numeric:tabular-nums;width:70px">
+        <td style="box-sizing:border-box;padding:0;font-variant-numeric:tabular-nums;width:82px">
           <div style="display:flex;align-items:center;justify-content:flex-end;min-height:40px">
             <span style="display:inline-block;width:54px;text-align:right;color:${c.failed>0?'var(--danger)':'var(--success)'};font-weight:700;font-size:14px;line-height:1">${c.total||0}</span>
           </div>
         </td>
-        <td style="padding:9px 12px;text-align:center;width:60px"><div style="display:flex;justify-content:center;align-items:center;min-height:40px">${statusCell}</div></td>
+        <td style="box-sizing:border-box;padding:0;text-align:center;width:54px"><div style="display:flex;justify-content:center;align-items:center;min-height:40px">${statusCell}</div></td>
       </tr>`;
     }).join('')+
     '</tbody></table>';
