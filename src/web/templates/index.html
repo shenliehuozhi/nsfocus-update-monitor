@@ -1633,6 +1633,9 @@ function _renderProdDistTable(data){
 // feat/customer-push-card 2026-09-02: 客户维度推送聚合卡片
 // 下钻: 点击客户行 → location.hash='history?days='+rng+'&cust='+cid
 // 严格按偏好: =0 子行 完全隐藏 (0 推送的客户不显示, 避免"hejianming 0条"噪音)
+// 跟产品发布分布保持一致的布局骨架: 色点+名称 / 数字右对齐 / 进度条+百分比
+// 状态列 = 失败率 (failed/total*100%), 0% 时全绿, >0% 红色
+function _hashIdx(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return Math.abs(h);}
 function _renderCustPushTable(items, days){
   const container = document.getElementById('custPushTable');
   if(!container) return;
@@ -1646,43 +1649,40 @@ function _renderCustPushTable(items, days){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">近'+days+'天无推送</div>';
      return;
    }
-  const grandTotal = active.reduce((s,e)=>s+(e.total||0),0);
-  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-    '<colgroup>'+
-      '<col style="width:203px"><col style="width:82px"><col style="width:54px">'+
-    '</colgroup>'+
-    '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--border)">'+
-      '<th style="text-align:left;color:var(--muted);font-weight:500;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--border)">客户</th>'+
-      '<th style="text-align:center;color:var(--muted);font-weight:500;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--border)">推送</th>'+
-      '<th style="text-align:left;color:var(--muted);font-weight:500;white-space:nowrap;padding:9px 0;border-bottom:1px solid var(--border)">状态</th>'+
+  // 2026-09-04: 三列骨架对齐产品发布分布 — 色点+名称 / 数字右对齐 / 进度条+失败率百分比
+  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
+      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
+      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">推送</th>'+
+      '<th style="padding:8px 12px;width:120px;text-align:right;color:var(--gray-muted);font-weight:500">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
-      const pct = grandTotal>0 ? ((c.total||0)/grandTotal*100).toFixed(1) : '0';
-      const lastShort = c.last_sent_at ? fmtTZ(c.last_sent_at, true).slice(11,16) : '—';
+      const total = c.total||0, failed = c.failed||0;
+      const failPct = total>0 ? (failed/total*100).toFixed(1) : '0';
       const tipLines = [
         `客户: ${c.name}`,
-        `总数/成功/失败: ${c.total||0} / ${c.success||0} / ${c.failed||0}`,
+        `总数/成功/失败: ${total} / ${(c.success||0)} / ${failed}`,
         c.last_product ? `最近推送: ${c.last_product}` : '',
         c.last_sent_at ? `时间: ${fmtTZ(c.last_sent_at, true)}` : '',
         '点击查看该客户推送历史',
       ].filter(Boolean).join('\n');
-      // 状态图标: 失败>0 显示❌ + 数字, 全成功显示✅
-      const statusCell = c.failed>0
-        ? `<span style="color:var(--danger);font-size:16px" title="${c.failed} 失败">❌</span>`
-        : `<span style="color:var(--success);font-size:16px" title="全部成功">✅</span>`;
+      const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="box-sizing:border-box;padding:9px 0;overflow:hidden;width:203px">
-          <div style="display:flex;flex-direction:column;gap:2px;min-width:0;justify-content:center;min-height:40px;overflow:hidden">
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:var(--text)">${escHtml(c.name)}</span>
-            <span style="font-size:10px;color:var(--gray-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(c.last_product||'—')} · ${lastShort}</span>
+        <td style="padding:9px 12px">
+          <div style="display:flex;align-items:center;gap:6px;min-width:0">
+            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
-        <td style="box-sizing:border-box;padding:9px 0;font-variant-numeric:tabular-nums;width:82px;overflow:hidden">
-          <div style="display:flex;align-items:center;justify-content:center;min-height:40px">
-            <span style="display:inline-block;width:82px;text-align:center;color:${c.failed>0?'var(--danger)':'var(--success)'};font-weight:700;font-size:14px;line-height:1">${c.total||0}</span>
+        <td style="padding:9px 14px 9px 12px;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
+        <td style="padding:9px 12px">
+          <div style="display:flex;align-items:center;gap:6px">
+            <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
+              <div style="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
+            </div>
+            <span style="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${failPct}%</span>
           </div>
         </td>
-        <td style="box-sizing:border-box;padding:9px 0;text-align:center;width:54px;overflow:hidden"><div style="display:flex;justify-content:center;align-items:center;min-height:40px">${statusCell}</div></td>
       </tr>`;
     }).join('')+
     '</tbody></table>';
