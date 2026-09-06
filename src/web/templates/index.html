@@ -1650,11 +1650,14 @@ function _renderCustPushTable(items, days){
      return;
    }
   // 2026-09-04: 三列骨架对齐产品发布分布 — 色点+名称 / 数字右对齐 / 进度条+失败率百分比
-  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+  // table-layout:fixed 四件套: colgroup + th/td 全部显式 width + box-sizing:border-box
+  // col 第一列 width:auto 拿剩余空间, th/td 第一列都设 width:auto 让浏览器分配相同宽度
+  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
+    '<colgroup><col style="width:auto"><col style="width:60px"><col style="width:160px"></colgroup>'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
-      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">推送</th>'+
-      '<th style="padding:8px 12px;width:120px;text-align:right;color:var(--gray-muted);font-weight:500">状态</th>'+
+      '<th style="padding:9px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:auto;box-sizing:border-box">客户</th>'+
+      '<th style="padding:9px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:60px;box-sizing:border-box">推送</th>'+
+      '<th style="padding:9px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:160px;box-sizing:border-box">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -1668,14 +1671,14 @@ function _renderCustPushTable(items, days){
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="padding:9px 12px">
+        <td style="padding:9px 12px;width:118px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
             <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
-        <td style="padding:9px 14px 9px 12px;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
-        <td style="padding:9px 12px">
+        <td style="padding:9px 14px 9px 12px;width:60px;box-sizing:border-box;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
+        <td style="padding:9px 12px;width:160px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div style="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
