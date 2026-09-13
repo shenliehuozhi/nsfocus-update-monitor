@@ -1649,15 +1649,15 @@ function _renderCustPushTable(items, days){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">近'+days+'天无推送</div>';
      return;
    }
-  // 2026-09-04: 三列骨架对齐产品发布分布 — 色点+名称 / 数字右对齐 / 进度条+失败率百分比
-  // table-layout:fixed 四件套: colgroup + th/td 全部显式 width + box-sizing:border-box
-  // col 第一列 width:auto 拿剩余空间, th/td 第一列都设 width:auto 让浏览器分配相同宽度
+// 2026-09-04: 客户推送表重构, 严格按产品发布分布布局 — table-layout:fixed + 全 width + box-sizing
+  // 列宽: 119(客户) / 60(推送) / 160(状态) = 339 撑满 card (colgroup 第一列 width:auto 拿剩余 119)
+  // td/td 全 width:119/60/160 保证 th/td 严格对齐 (table-layout:fixed 下 td width:auto 被忽略)
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
     '<colgroup><col style="width:auto"><col style="width:60px"><col style="width:160px"></colgroup>'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:9px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:auto;box-sizing:border-box">客户</th>'+
-      '<th style="padding:9px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:60px;box-sizing:border-box">推送</th>'+
-      '<th style="padding:9px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:160px;box-sizing:border-box">状态</th>'+
+      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
+      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">推送</th>'+
+      '<th style="padding:8px 12px;width:160px;text-align:right;color:var(--gray-muted);font-weight:500">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -1671,7 +1671,7 @@ function _renderCustPushTable(items, days){
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="padding:9px 12px;width:118px;box-sizing:border-box">
+        <td style="padding:9px 12px;width:119px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
             <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
