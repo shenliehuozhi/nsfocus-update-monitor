@@ -187,10 +187,8 @@ body.login-bg #app{min-height:100vh;display:flex;align-items:center;justify-cont
 .tp:hover::after,.tp:focus::after{opacity:1}
 .tp:hover::before,.tp:focus::before{opacity:1}
 .pill-tip{position:relative;display:inline-flex;align-items:center;cursor:default}
-.pill-tip::after{content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:0;background:#1a2332;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;white-space:pre-wrap;max-width:720px;min-width:240px;opacity:0;pointer-events:none;transition:opacity .15s;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,.25);font-weight:400;line-height:1.6;text-align:left;letter-spacing:0}
-.pill-tip::before{content:'';position:absolute;bottom:calc(100% + 2px);left:50%;transform:translateX(-50%);border:5px solid transparent;border-top-color:#1a2332;opacity:0;transition:opacity .15s;z-index:9999;pointer-events:none}
-.pill-tip:hover::after{opacity:1}
-.pill-tip:hover::before{opacity:1}
+.pill-tip::after,.pill-tip::before{display:none}
+.pill-tip:hover::after,.pill-tip:hover::before{opacity:1}
 .hidden{display:none!important}
 .step{display:flex;align-items:center;padding:10px 14px;background:var(--gray-bg);border-radius:8px;margin-bottom:6px;font-size:13px;gap:10px;border:1px solid var(--border)}
 .step-badge{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--primary);color:#fff;font-size:12px;font-weight:700;flex-shrink:0}
@@ -624,6 +622,27 @@ function typeCN(t){const m={sys:'系统',rule:'规则',nti:'威胁情报',av:'�
 
 // ── Dashboard ──
 let _dashRange='7';
+// 全局浮窗: append 到 body, 避开所有祖先 overflow:hidden 裁切
+let _tipEl=null;
+function _showTip(target){
+  if(!_tipEl){_tipEl=document.createElement('div');_tipEl.style.cssText='position:fixed;background:#1a2332;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;white-space:pre-wrap;max-width:720px;min-width:240px;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.25);line-height:1.6;pointer-events:none;opacity:0;transition:opacity .15s';document.body.appendChild(_tipEl);}
+  _tipEl.textContent=target.dataset.tip||'';
+  const r=target.getBoundingClientRect();
+  // 默认显示在行的下方 (top: r.bottom + 6), 如果下方空间不够则显示在上方
+  let top=r.bottom+6;
+  const tipH=80; // 估算浮窗高度
+  if(top+tipH>window.innerHeight)top=r.top-tipH-6;
+  let left=r.left;
+  const tipW=280;
+  if(left+tipW>window.innerWidth)left=window.innerWidth-tipW-8;
+  if(left<8)left=8;
+  _tipEl.style.top=top+'px';
+  _tipEl.style.left=left+'px';
+  _tipEl.style.opacity='1';
+}
+function _hideTip(){if(_tipEl)_tipEl.style.opacity='0';}
+document.addEventListener('mouseover',e=>{const t=e.target.closest('.pill-tip');if(t)_showTip(t)});
+document.addEventListener('mouseout',e=>{const t=e.target.closest('.pill-tip');if(t)_hideTip()});
 async function dashboard(range){
   if(range)_dashRange=range;
   const rng=_dashRange||'7';
@@ -1649,15 +1668,14 @@ function _renderCustPushTable(items, days){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">近'+days+'天无推送</div>';
      return;
    }
-// 2026-09-04: 客户推送表 — 关键修复: table-layout:fixed + 显式 width (120/60/160) + box-sizing:border-box
-  // 三列 width 总和 120+60+160 = 340 (比 card 339 多 1, 由 cell border 抵消)
-  // th/td 全部 width 写死保证列宽严格对齐 (table-layout:fixed 下 td width:auto 被忽略)
+// 2026-09-04: 客户推送表 — 响应式: 渲染后用 JS 算 card 实际宽度按比例分配三列, 任意视口都对齐
+  // 列宽比例 35%/15%/50% (跟用户截图的视觉比例一致), padding 让 td 内容左/右对齐
+  // 用 table-layout:fixed + JS 设 th/td width (table-layout:auto 下 td 内容长度会破坏比例)
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-    '<colgroup><col style="width:120px"><col style="width:60px"><col style="width:160px"></colgroup>'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:120px;box-sizing:border-box">客户</th>'+
-      '<th style="padding:8px 12px;text-align:center;color:var(--gray-muted);font-weight:500;width:60px;box-sizing:border-box">推送</th>'+
-      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:160px;box-sizing:border-box">状态</th>'+
+      '<th data-col="0" style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;box-sizing:border-box">客户</th>'+
+      '<th data-col="1" style="padding:8px 12px;text-align:center;color:var(--gray-muted);font-weight:500;box-sizing:border-box">推送</th>'+
+      '<th data-col="2" style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;box-sizing:border-box">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -1671,14 +1689,14 @@ function _renderCustPushTable(items, days){
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="padding:9px 12px;width:120px;box-sizing:border-box">
+        <td data-col="0" style="padding:9px 12px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
             <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
-        <td style="padding:9px 14px 9px 12px;width:60px;box-sizing:border-box;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
-        <td style="padding:9px 12px;width:160px;box-sizing:border-box">
+        <td data-col="1" style="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
+        <td data-col="2" style="padding:9px 12px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div style="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
@@ -1689,6 +1707,21 @@ function _renderCustPushTable(items, days){
       </tr>`;
     }).join('')+
     '</tbody></table>';
+  // 响应式列宽: 渲染后立刻算 card 实际 content 宽度, 按 35%/15%/50% 分配到 th/td
+  // 任意视口下三列都等比例伸缩, th/td 严格对齐
+  setTimeout(()=>{
+    const tbl=container.querySelector('table');
+    if(!tbl)return;
+    const cardW=tbl.clientWidth;
+    const ratios=[0.35,0.15,0.50];
+    const widths=ratios.map(r=>Math.floor(cardW*r));
+    // 最后一列拿剩余, 避免舍入误差
+    widths[2]=cardW-widths[0]-widths[1];
+    container.querySelectorAll('th[data-col],td[data-col]').forEach(el=>{
+      const col=parseInt(el.dataset.col);
+      el.style.width=widths[col]+'px';
+    });
+  },0);
 }
 
 function _renderTimelineChart(canvasId, data, days, visible){
