@@ -1649,15 +1649,15 @@ function _renderCustPushTable(items, days){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">近'+days+'天无推送</div>';
      return;
    }
-// 2026-09-04: 客户推送表重构 — table-layout:fixed + colgroup 三列 width 全部写死 (119/60/160) + th/td 全 width
-  // 关键: 客户名短 td 内容撑不到 119 → 必须 th/td 都设 width:119 才能对齐 (fixed 下 td width:auto 被忽略)
-  // 三列总和 119+60+160=339 刚好等于 card content 339
+// 2026-09-04: 客户推送表重构 — table-layout:fixed + colgroup 三列 width 全部写死 (80/60/200)
+  // 列宽调整: 客户列窄 (80), 推送列中 (60), 状态列宽 (200) 装下进度条 + 百分比
+  // 之前 119/60/160 客户列太宽, 状态列内容太短, 视觉上右边大片空白
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-    '<colgroup><col style="width:119px"><col style="width:60px"><col style="width:160px"></colgroup>'+
+    '<colgroup><col style="width:80px"><col style="width:60px"><col style="width:200px"></colgroup>'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:119px;box-sizing:border-box">客户</th>'+
+      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:80px;box-sizing:border-box">客户</th>'+
       '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:60px;box-sizing:border-box">推送</th>'+
-      '<th style="padding:8px 12px;width:160px;color:var(--gray-muted);font-weight:500;box-sizing:border-box">状态</th>'+
+      '<th style="padding:8px 12px;width:200px;color:var(--gray-muted);font-weight:500;box-sizing:border-box">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -1671,14 +1671,14 @@ function _renderCustPushTable(items, days){
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="padding:9px 12px;width:119px;box-sizing:border-box">
+        <td style="padding:9px 12px;width:80px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
             <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
         <td style="padding:9px 14px 9px 12px;width:60px;box-sizing:border-box;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
-        <td style="padding:9px 12px;width:160px;box-sizing:border-box">
+        <td style="padding:9px 12px;width:200px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div style="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
