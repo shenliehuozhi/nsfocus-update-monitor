@@ -643,17 +643,66 @@ function _showTip(target){
 function _hideTip(){if(_tipEl)_tipEl.style.opacity='0';}
 document.addEventListener('mouseover',e=>{const t=e.target.closest('.pill-tip');if(t)_showTip(t)});
 document.addEventListener('mouseout',e=>{const t=e.target.closest('.pill-tip');if(t)_hideTip()});
+// 2026-09-18: 三个卡的 7/30/90 各自独立, 每个卡独立 fetch 自己 range 的数据
+let _dashRanges={cust:'7',tl:'7',pie:'7'};
+let _dashData=null; // 缓存 dashboard 接口响应, 只刷新部分卡片时复用
+
+async function setDashRange(card, range){
+  _dashRanges[card]=String(range);
+  // 更新按钮高亮
+  const map={cust:'#custRange',tl:'#tlRange',pie:'#pieRange'};
+  const btns=document.querySelectorAll(map[card]+' .btn');
+  btns.forEach(b=>{
+    const v=b.textContent.trim();
+    b.className='btn btn-xs '+(v===range+'天'?'btn-primary':'btn-outline');
+  });
+  if(card==='cust'){
+    // 客户推送独立 fetch
+    const r=await fetch(API+'/customers/push-summary?days='+range,{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{items:[]}}));
+    _renderCustPushTable(r.data?.items||[], range);
+  }else if(card==='tl'){
+    // 包发布趋势 fetch 整个 dashboard (timeline 用 range_tl)
+    const r=await api('/dashboard?range_tl='+range);
+    _renderDashFromData(r.data);
+    _renderTimelineChart('chartTimeline', window._tlData, window._tlDays, window._tlVisible);
+    _renderTlLegend(Object.keys(window._tlVisible), window._tlVisible);
+  }else if(card==='pie'){
+    // 产品发布分布 fetch 整个 dashboard (product_stats 用 range_pie)
+    const r=await api('/dashboard?range_pie='+range);
+    _renderDashFromData(r.data);
+    _renderProdDistTable(r.data?.product_stats||[]);
+  }
+}
+
+// 从 dashboard 响应数据中更新 timeline + product + legend 共享数据
+function _renderDashFromData(d){
+  if(!d)return;
+  window._tlData=d.timeline_stats||[];
+  window._tlDays=parseInt(_dashRanges.tl);
+  if(!window._tlVisible)window._tlVisible={};
+  const allProds=(d.product_stats||[]).map(p=>p.name);
+  allProds.forEach(p=>{if(window._tlVisible[p]===undefined)window._tlVisible[p]=true;});
+  window._productStats=d.product_stats||[];
+}
+
 async function dashboard(range){
-  if(range)_dashRange=range;
-  const rng=_dashRange||'7';
+  // range 兼容旧的全局参数 (默认用 _dashRanges.pie)
+  if(range && !window._dashInit){
+    _dashRanges.cust=String(range);
+    _dashRanges.tl=String(range);
+    _dashRanges.pie=String(range);
+    window._dashInit=true;
+  }
+  const custRange=_dashRanges.cust;
+  const tlRange=_dashRanges.tl;
+  const pieRange=_dashRanges.pie;
   const[dR,sR,hR,cR]=await Promise.all([
-    api('/dashboard?range='+rng),
+    api('/dashboard?range_recent='+custRange+'&range_tl='+tlRange+'&range_pie='+pieRange),
     fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
     fetch(API+'/system/health',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
-    // feat/customer-push-card 2026-09-02: 客户推送聚合 (中间卡片 + history 顶部共用)
-    fetch(API+'/customers/push-summary?days='+rng,{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{items:[]}}))
+    fetch(API+'/customers/push-summary?days='+custRange,{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{items:[]}}))
   ]);
-  dR._range=rng;
+  _dashData=dR.data||{};
   const d=dR.data||{},sch=sR.data||{},h=hR.data||{},custs=cR.data?.items||[];
 
   // 2026-09-02: 服务已运行时间 — process_start 是 UTC ISO,前端每秒重算
@@ -818,10 +867,10 @@ async function dashboard(range){
     <div class="card" style="grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
       <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📨 客户推送分布</span>
-        <div style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+        <div id="custRange" style="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-primary" onclick="setDashRange('cust','7')">7天</button>
+          <button class="btn btn-xs btn-outline" onclick="setDashRange('cust','30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="setDashRange('cust','90')">90天</button>
         </div>
       </div>
       <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
@@ -834,9 +883,9 @@ async function dashboard(range){
       <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📈 包发布趋势</span>
         <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+          <button class="btn btn-xs btn-primary" onclick="setDashRange('tl','7')">7天</button>
+          <button class="btn btn-xs btn-outline" onclick="setDashRange('tl','30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="setDashRange('tl','90')">90天</button>
         </div>
       </div>
       <div class="card-bd" style="flex:1;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">
@@ -850,9 +899,9 @@ async function dashboard(range){
       <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📊 产品发布分布</span>
         <div id="pieRange" style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-outline" onclick="dashboard('7')">7天</button>
-          <button class="btn btn-xs btn-primary" onclick="dashboard('30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="dashboard('90')">90天</button>
+          <button class="btn btn-xs btn-primary" onclick="setDashRange('pie','7')">7天</button>
+          <button class="btn btn-xs btn-outline" onclick="setDashRange('pie','30')">30天</button>
+          <button class="btn btn-xs btn-outline" onclick="setDashRange('pie','90')">90天</button>
         </div>
       </div>
       <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
@@ -863,14 +912,14 @@ async function dashboard(range){
     `;
     // 渲染图表
     window._tlData = d.timeline_stats || [];
-    window._tlDays = parseInt(rng);
+    window._tlDays = parseInt(tlRange);
     // 从 product_stats 取所有产品列表（确保全0产品也被初始化）
     const allProds = (d.product_stats || []).map(p => p.name);
     if(!window._tlVisible) window._tlVisible = {};
     allProds.forEach(p => { if(window._tlVisible[p]===undefined) window._tlVisible[p]=true; });
     _renderProdDistTable(d.product_stats || []);
     // feat/customer-push-card 2026-09-02: 客户推送聚合中间卡片
-    _renderCustPushTable(custs, rng);
+    _renderCustPushTable(custs, custRange);
     _renderTimelineChart('chartTimeline', window._tlData, window._tlDays, window._tlVisible);
     _renderTlLegend(allProds, window._tlVisible);
     // 2026-08-26: 事件中心卡片数据已在 d.recent_events 里(dashboard 接口一次性返回)

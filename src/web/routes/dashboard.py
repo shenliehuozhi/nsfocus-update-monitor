@@ -79,10 +79,13 @@ def get_dashboard():
     )
     session_detail = [dict(s) for s in sessions]
 
-    # Recent deliveries with time range
+    # Recent deliveries with time range (兼容两个 range: recent 用于推送历史, stats 用于 product_stats+timeline_stats)
     range_days = request.args.get('range', '7')
+    range_recent = request.args.get('range_recent') or range_days
+    range_stats = request.args.get('range_stats') or range_days
     range_map = {'1': '1', '7': '7', '30': '30', '90': '90', '365': '365'}
-    days = range_map.get(range_days, '7')
+    days_recent = range_map.get(range_recent, '7')
+    days_stats = range_map.get(range_stats, '7')
 
     # package_type 派生: 同 chain-scoped 历史查询
     #   1. chain_json 非空 → 末项 (e.g. 海光 V6.0.9 规则升级 vs WAF V6.0.9 规则升级)
@@ -101,7 +104,7 @@ def get_dashboard():
             FROM delivery_log dl
             JOIN snapshots s ON dl.snapshot_id = s.id
             LEFT JOIN customers c ON dl.customer_id = c.id
-            WHERE dl.sent_at >= date('now', '-{days} days')
+            WHERE dl.sent_at >= date('now', '-{days_recent} days')
             ORDER BY dl.sent_at DESC
             LIMIT 50"""
     )
@@ -132,8 +135,8 @@ def get_dashboard():
             'process_start': (current_app.config.get('VERSION_INFO') or {}).get('process_start') or _process_start_fallback(),
             # 2026-08-26: 仪表盘事件中心卡片需要最近事件(避免独立 ajax 调用, 加快首屏)
             'recent_events': _recent_events_for_dashboard(limit=10),
-            'product_stats': _product_pie_stats(int(days)),
-            'timeline_stats': _timeline_stats(int(days)),
+            'product_stats': _product_pie_stats(int(days_stats)),
+            'timeline_stats': _timeline_stats(int(days_stats)),
         }
     })
 def _recent_events_for_dashboard(limit: int = 5):
