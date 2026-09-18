@@ -1649,18 +1649,15 @@ function _renderCustPushTable(items, days){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">近'+days+'天无推送</div>';
      return;
    }
-// 2026-09-04: 客户推送表重构 — table-layout:fixed + colgroup 三列 width 全部写死 (100/60/180)
-  // 关键: th 表头文字跟 td 数据使用不同对齐方式让视觉上看像同一列
-  //   - 客户 th: text-align:left, td: text-align:left (色点+名字 撑满 td)
-  //   - 推送 th: text-align:left, td: text-align:right (让 th "推送" 跟 td 数字在同一区域)
-  //   - 状态 th: text-align:left, td: 进度条+百分比 (flex start)
-  // 之前 th/td 都右对齐导致 th "推送" 两字跟 td 数字错开 (th 右缘 165, td 右缘 165 但 th 文字窄, 看起来在 td 文字左边)
+// 2026-09-04: 客户推送表 — 关键修复: table-layout:fixed + 显式 width (120/60/160) + box-sizing:border-box
+  // 三列 width 总和 120+60+160 = 340 (比 card 339 多 1, 由 cell border 抵消)
+  // th/td 全部 width 写死保证列宽严格对齐 (table-layout:fixed 下 td width:auto 被忽略)
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-    '<colgroup><col style="width:100px"><col style="width:60px"><col style="width:180px"></colgroup>'+
+    '<colgroup><col style="width:120px"><col style="width:60px"><col style="width:160px"></colgroup>'+
     '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:100px;box-sizing:border-box">客户</th>'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:60px;box-sizing:border-box">推送</th>'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:180px;box-sizing:border-box">状态</th>'+
+      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;width:120px;box-sizing:border-box">客户</th>'+
+      '<th style="padding:8px 12px;text-align:center;color:var(--gray-muted);font-weight:500;width:60px;box-sizing:border-box">推送</th>'+
+      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;width:160px;box-sizing:border-box">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -1674,14 +1671,14 @@ function _renderCustPushTable(items, days){
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td style="padding:9px 12px;width:100px;box-sizing:border-box">
+        <td style="padding:9px 12px;width:120px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
             <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
             <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
         <td style="padding:9px 14px 9px 12px;width:60px;box-sizing:border-box;text-align:right;color:${failed>0?'var(--danger)':'var(--success)'};font-variant-numeric:tabular-nums">${total}</td>
-        <td style="padding:9px 12px;width:180px;box-sizing:border-box">
+        <td style="padding:9px 12px;width:160px;box-sizing:border-box">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div style="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
