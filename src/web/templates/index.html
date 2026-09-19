@@ -124,6 +124,7 @@ td{padding:8px 12px;border-bottom:1px solid var(--gray-border)}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{filter:brightness(1.08)}
 .btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
 .btn-sm{padding:5px 11px;font-size:11.5px}.btn-xs{padding:3px 8px;font-size:10.5px;border-radius:6px}
+.btn-xs.btn-primary{background:var(--primary-light);color:var(--primary-text)}
 .btn-outline{border:1px solid var(--border);background:#fff;color:var(--text)}.btn-outline:hover{background:var(--gray-bg)}
 .btn-locked{opacity:.5;cursor:not-allowed!important;background:var(--gray-bg)!important;color:var(--gray-disabled)!important;border:1px solid var(--gray-border)!important;box-shadow:none!important}
 .btn-soft-primary{background:var(--primary-light);color:var(--primary-text);border:1px solid transparent}.btn-soft-primary:hover{background:var(--primary-fade)}
@@ -840,7 +841,7 @@ async function dashboard(range){
       </div>
     </div>
     <!-- Row 1 Col 2: 事件中心 -->
-    <div class="card" style="grid-column:2;grid-row:1;display:flex;flex-direction:column;min-width:0">
+    <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0">
       <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
         <span style="color:var(--danger);font-size:13px">🔔 事件中心</span>
         <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
@@ -879,7 +880,7 @@ async function dashboard(range){
     </div>
 
     <!-- Row 2 Col 2: 包发布趋势 (中间,与事件中心对齐) -->
-    <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+    <div class="card" style="grid-column:2;grid-row:1;display:flex;flex-direction:column;min-width:0;height:430px">
       <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📈 包发布趋势</span>
         <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
