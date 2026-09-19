@@ -81,8 +81,12 @@ def get_dashboard():
 
     # Recent deliveries with time range (兼容两个 range: recent 用于推送历史, stats 用于 product_stats+timeline_stats)
     range_days = request.args.get('range', '7')
-    range_recent = request.args.get('range_recent') or range_days
-    range_stats = request.args.get('range_stats') or range_days
+    range_recent = request.args.get('range_recent') or request.args.get('range_recent_push') or range_days
+    # stats 范围兼容两种参数命名 (range_stats 旧名 + range_pie/range_tl 新名)
+    range_stats = (request.args.get('range_stats')
+                   or request.args.get('range_pie')
+                   or request.args.get('range_tl')
+                   or range_days)
     range_map = {'1': '1', '7': '7', '30': '30', '90': '90', '365': '365'}
     days_recent = range_map.get(range_recent, '7')
     days_stats = range_map.get(range_stats, '7')
