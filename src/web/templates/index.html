@@ -842,8 +842,8 @@ async function dashboard(range){
     </div>
     <!-- Row 1 Col 2: 事件中心 -->
     <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
-        <span style="color:var(--danger);font-size:13px">🔔 事件中心</span>
+      <div class="card-hd" style="background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
+        <span style="color:var(--danger)">🔔 事件中心</span>
         <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
         <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" onclick="openEventsCenterModal()" style="margin-left:6px;flex-shrink:0">查看更多 ↗</button>
       </div>
