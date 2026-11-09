@@ -8,6 +8,7 @@
 - **API 文档**：更新路由路径（`/api/settings/scheduler/*`），删除不存在的端面
 
 ### 修复
+- **仪表盘 · 客户推送分布**：不再隐藏近 N 天 0 推送的客户（此前 `items.filter(c => c.total>0)` 把 5 个客户砍成 3 个）。后端 `LEFT JOIN customers` 本就返回全量，现在 0 推送客户置灰沉底、状态列显示「无推送」
 - **代码质量**：清理死代码和过时注释（database.py WAL 注释、subscription.py 死代码、router.py 重复声明、system_routes.py 重复 import）
 - **调度器**：`_shutdown_cleanup` 退出时清理 `collection_running` 标志，避免重启后误判
 - **日志**：`log_scanner` 异常处理增加 `exc_info=True` 输出完整 traceback
