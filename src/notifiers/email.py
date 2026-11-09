@@ -312,6 +312,50 @@ class EmailNotifier(BaseNotifier):
                 except Exception:
                     pass
 
+    def check_credentials(self, config: dict) -> tuple[bool, str]:
+        """只做 SMTP 连接 + 登录，不发任何邮件。供每日渠道体检调用。
+
+        返回 (是否可用, 失败原因)。
+        """
+        smtp_host = config.get('smtp_host', '')
+        smtp_port = int(config.get('smtp_port', 465))
+        smtp_user = config.get('smtp_user', '')
+        smtp_password = config.get('smtp_password', '')
+        encryption = (config.get('smtp_encryption') or '').lower()
+
+        if not smtp_host or not smtp_user:
+            return False, 'SMTP 配置不完整 (host 或 user 为空)'
+        if encryption not in ('ssl', 'starttls'):
+            return False, f'不支持的加密方式: {encryption or "未配置"}'
+
+        server = None
+        try:
+            if encryption == 'ssl':
+                server = smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=15)
+            else:
+                server = smtplib.SMTP(smtp_host, smtp_port, timeout=15)
+                server.ehlo()
+                if not server.has_extn('starttls'):
+                    return False, '服务器不支持 STARTTLS'
+                server.starttls()
+                server.ehlo()
+            server.login(smtp_user, smtp_password)
+            return True, ''
+        except smtplib.SMTPAuthenticationError as e:
+            return False, f'认证失败 {e.smtp_code} {e.smtp_error}'
+        except smtplib.SMTPException as e:
+            return False, f'SMTP 错误: {e}'
+        except (TimeoutError, OSError) as e:
+            return False, f'网络错误: {type(e).__name__}: {e}'
+        except Exception as e:
+            return False, f'未知错误: {type(e).__name__}: {e}'
+        finally:
+            if server is not None:
+                try:
+                    server.quit()
+                except Exception:
+                    pass
+
     def _attach_file(self, msg: MIMEMultipart, message: NotificationMessage, max_size: int, log=None) -> bool:
         """下载并附加文件到邮件。返回 True 表示成功附加。
 

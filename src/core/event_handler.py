@@ -5,6 +5,7 @@ Called by:
 - scheduler.py: emit_collection_summary() on collection complete
 - scheduler.py: emit_session_error() on session heartbeat failure
 - log_scanner.py: emit_log_error() on log anomaly
+- scheduler.py: emit_channel_error() on daily email-channel credential check failure
 - collectors/nsfocus.py: emit_network_error() on network error
 
 Deprecated:
@@ -910,6 +911,71 @@ def emit_log_error(log_file: str, error_type: str, keyword: str,
             logger.info(f'Event notification sent: {event_type}')
         except Exception as e:
             logger.error(f'Failed to send log error notification: {e}')
+
+
+def emit_channel_error(failures: list, checked: int = 0):
+    """渠道体检（scheduler._channel_health_check）发现渠道不可用时调用。
+
+    failures: [{channel_id, channel_name, channel_type, reason}, ...]
+    一次体检只发一条汇总通知，避免多个坏渠道刷多条。
+    """
+    event_type = 'channel_error'
+
+    if not failures or not is_event_enabled(event_type):
+        return
+
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+    names = '、'.join(str(f.get('channel_name') or f.get('channel_type') or '') for f in failures[:3])
+    simple_title = f'渠道体检失败: {len(failures)} 个 ({names})'
+
+    message_text = '\n'.join(
+        ['【渠道体检失败】',
+         f'检测时间：{cst_now}',
+         f'本次检测 {checked} 个渠道，{len(failures)} 个不可用：',
+         '']
+        + [s for f in failures for s in (
+            f"  ✗ [{f.get('channel_type', '')}] {f.get('channel_name', '')} (ID {f.get('channel_id', '')})",
+            f"     原因：{str(f.get('reason', ''))[:200]}",
+        )]
+        + ['', '建议：进入「通知渠道」测试该渠道；邮箱密码/授权码过期请更新后重试。']
+    )
+
+    try:
+        log_event(
+            event_type=event_type,
+            severity='CRITICAL',
+            channel_id=failures[0].get('channel_id'),
+            channel_type=failures[0].get('channel_type'),
+            message={
+                'title': simple_title,
+                'checked': checked,
+                'failures': failures,
+                'detected_at': cst_now,
+            },
+        )
+    except Exception as e:
+        logger.error(f'Failed to write channel_error event to DB: {e}')
+
+    channel = get_notify_channel()
+    if not channel:
+        return
+    notifier = _get_notifier(channel)
+    if not notifier:
+        return
+
+    from src.notifiers.base import NotificationMessage
+    msg = NotificationMessage(
+        title='绿盟监控 - 渠道体检失败',
+        description_full=message_text,
+    )
+    try:
+        result = notifier.send(msg, channel.get('config', {}))
+        if result.success:
+            logger.info(f'Channel error notification sent: {len(failures)} failing channel(s)')
+        else:
+            logger.error(f'Channel error notification failed: {result.error_message}')
+    except Exception as e:
+        logger.error(f'Failed to send channel error notification: {e}')
 
 
 def emit_network_error(errors: list, source: str = 'collector'):

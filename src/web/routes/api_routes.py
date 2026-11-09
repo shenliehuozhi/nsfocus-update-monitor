@@ -1545,7 +1545,7 @@ def update_config():
         else:
             from src.core.scheduler import refresh_scheduler_jobs
             refresh_scheduler_jobs()
-    if 'scheduler_enabled' in data:
+    if 'scheduler_enabled' in data or 'channel_health_enabled' in data:
         from src.core.scheduler import refresh_scheduler_jobs
         refresh_scheduler_jobs()
     return jsonify({'code': 0, 'message': '配置已保存'})

@@ -1564,9 +1564,21 @@ def refresh_scheduler_jobs():
         else:
             _scheduler.reschedule_job('nsfocus_db_cleanup', trigger='cron',
                                       hour=3, minute=0)
+        # 邮件渠道凭据体检：默认开启，每天 04:00（cron 按调度器时区解释，即服务器本地时间）
+        channel_health_enabled = _get_setting('channel_health_enabled', '1') == '1'
+        if channel_health_enabled:
+            if not _scheduler.get_job('nsfocus_channel_health'):
+                _scheduler.add_job(_channel_health_check, 'cron', hour=4, minute=0,
+                                   id='nsfocus_channel_health',
+                                   name='Email Channel Health Check')
+                logger.info('[CHANNEL-HEALTH] job ADDED (daily 04:00)')
+        elif _scheduler.get_job('nsfocus_channel_health'):
+            _scheduler.remove_job('nsfocus_channel_health')
+            logger.info('[CHANNEL-HEALTH] job REMOVED (channel_health_enabled=0)')
         # nsfocus_health removed: _health_check is disabled
     else:
-        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest', 'nsfocus_db_cleanup']:
+        for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest',
+                       'nsfocus_db_cleanup', 'nsfocus_channel_health']:
             job = _scheduler.get_job(job_id)
             if job:
                 _scheduler.remove_job(job_id)
@@ -1893,6 +1905,48 @@ def _health_check():
             logger.info('[HEALTH] Health alert sent: %s', reason)
         except Exception as e:
             logger.error('[HEALTH] Failed to send health alert: %s', e)
+
+
+# ── Channel health check ──────────────────────────────────────────────────────
+
+def _channel_health_check():
+    """每日邮件渠道凭据体检：只做 SMTP 连接 + 登录，不发邮件。
+
+    背景：邮件发送失败只写进 delivery_log，若该期间没有新包发布就完全静默，
+    邮箱密码/授权码过期往往要等客户投诉才被发现。这里主动探测并上报 channel_error。
+    """
+    try:
+        from src.models.channel import list_active
+        from src.notifiers.email import EmailNotifier
+        from src.core.event_handler import emit_channel_error
+
+        channels = [c for c in list_active() if c.get('type') == 'email']
+        if not channels:
+            logger.info('[CHANNEL-HEALTH] No active email channel, skip')
+            return
+
+        notifier = EmailNotifier()
+        failures = []
+        for ch in channels:
+            cfg = dict(ch.get('config') or {})
+            ok, reason = notifier.check_credentials(cfg)
+            if ok:
+                logger.info(f"[CHANNEL-HEALTH] channel {ch['id']} ({ch.get('name', '')}) OK")
+            else:
+                logger.warning(f"[CHANNEL-HEALTH] channel {ch['id']} ({ch.get('name', '')}) FAILED: {reason}")
+                failures.append({
+                    'channel_id': ch['id'],
+                    'channel_name': ch.get('name', ''),
+                    'channel_type': ch.get('type', 'email'),
+                    'reason': reason,
+                })
+
+        if failures:
+            emit_channel_error(failures, checked=len(channels))
+        else:
+            logger.info(f'[CHANNEL-HEALTH] All {len(channels)} email channel(s) authenticated OK')
+    except Exception as e:
+        logger.error(f'[CHANNEL-HEALTH] check failed: {e}')
 
 
 # ── Database cleanup ──────────────────────────────────────────────────────────

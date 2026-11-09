@@ -71,6 +71,15 @@ ERROR_PATTERNS = {
         re.compile(r'Login failed', re.IGNORECASE),
         re.compile(r'登录失败', re.IGNORECASE),
         re.compile(r'authentication failed', re.IGNORECASE),
+        # 邮箱凭据失效：email.py 的日志文案是 "SMTP auth failed: <code> <server msg>"，
+        # 服务商返回体措辞不一（163/Microsoft/Gmail/腾讯企业邮各不相同），
+        # 故按各家实际返回串逐条匹配，避免只靠 authentication failed 漏报。
+        re.compile(r'SMTP auth failed', re.IGNORECASE),
+        re.compile(r'SMTPAuthenticationError', re.IGNORECASE),
+        re.compile(r'authentication unsuccessful', re.IGNORECASE),
+        re.compile(r'Username and Password not accepted', re.IGNORECASE),
+        re.compile(r'Login error', re.IGNORECASE),
+        re.compile(r'密码不正确|用户名密码', re.IGNORECASE),
     ],
     '登录失败': [
         # audit_log: login_failed entries written by auth routes
