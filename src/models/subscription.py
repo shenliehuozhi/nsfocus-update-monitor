@@ -479,9 +479,11 @@ def get_delivery_by_snapshot(snapshot_id: int) -> list:
 
 
 def get_history(page: int = 1, limit: int = 20, product: str = None,
-                customer_id: int = None, days: int = None) -> tuple:
+                customer_id: int = None, days: int = None,
+                rule_id: int = None) -> tuple:
     """获取推送历史。feat/customer-push-card 2026-09-02 修复 cust 过滤:
     必须按 dl.customer_id 过滤,不能 GROUP BY s.id 后丢失交付关联。
+    rule_id 同理按 dl.rule_id 过滤(delivery_log.rule_id 记录命中的订阅规则)。
     """
     from src.models.database import query
     conditions = []
@@ -493,6 +495,9 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         # 直接按 dl 过滤,确保只返回推给该客户的 snap,后续 deliveries 也只列该客户的
         conditions.append("dl.customer_id = ?")
         params.append(customer_id)
+    if rule_id:
+        conditions.append("dl.rule_id = ?")
+        params.append(rule_id)
     if days:
         conditions.append("dl.sent_at >= datetime('now', ?)")
         params.append(f'-{days} days')
@@ -527,6 +532,9 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         if customer_id:
             del_cond += " AND dl.customer_id = ?"
             del_params.append(customer_id)
+        if rule_id:
+            del_cond += " AND dl.rule_id = ?"
+            del_params.append(rule_id)
         deliveries = query(
             f"""SELECT dl.channel_name, dl.channel_type, dl.delivery_status,
                       dl.error_message, dl.sent_at, dl.channel_id, dl.customer_id,

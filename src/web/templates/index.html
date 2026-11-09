@@ -5857,12 +5857,21 @@ function validateRuleConf(){
 
 // ── History ──
 async function history(){
-  let days=new URLSearchParams(location.hash.split('?')[1]||'').get('days')||'30';
+  const _q=new URLSearchParams(location.hash.split('?')[1]||'');
+  let days=_q.get('days')||'30';
   // feat/customer-push-card 2026-09-02: 支持 cust query 下钻 (来自 dashboard 客户推送卡片)
-  const cust=new URLSearchParams(location.hash.split('?')[1]||'').get('cust')||'';
+  const cust=_q.get('cust')||'';
+  const rule=_q.get('rule')||'';
   let _apiUrl='/history?limit=200&days='+days;
   if(cust) _apiUrl+='&customer_id='+encodeURIComponent(cust);
-  const r=await api(_apiUrl);const list=r.data?.items||[];
+  if(rule) _apiUrl+='&rule_id='+encodeURIComponent(rule);
+  // 过滤下拉的候选项: 客户全量 + 订阅规则全量 (与列表并行拉取,不额外等一轮)
+  const [r,custR,ruleR]=await Promise.all([
+    api(_apiUrl),
+    api('/customers').catch(()=>({data:[]})),
+    api('/subscriptions').catch(()=>({data:[]}))
+  ]);
+  const list=r.data?.items||[];
   // 不再按 minute-level 聚合,每个 delivery 直接一行
   // 渠道类型 → 中文标签 + emoji
   const botTypes = new Set(['wecom','dingtalk','feishu','webhook']);
@@ -5914,10 +5923,25 @@ async function history(){
       });
     }
   });
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 ${cust?`<span style="margin-left:8px;padding:2px 8px;background:var(--primary-light);color:var(--primary);border-radius:4px;font-size:11px;font-weight:500">已筛选客户 #${cust} · <a href="#" onclick="location.hash='history?days=${days}';setTimeout(history,0);return false" style="color:var(--primary);text-decoration:underline">清除</a></span>`:''} <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px"><select onchange="let d=this.value;location.hash='history?days='+d${cust?'+\'&cust='+cust+'\'':''};history()" style="padding:3px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px"><option value="1" ${days==='1'?'selected':''}>近1天</option><option value="3" ${days==='3'?'selected':''}>近3天</option><option value="7" ${days==='7'?'selected':''}>近7天</option><option value="30" ${days==='30'?'selected':''}>近30天</option><option value="90" ${days==='90'?'selected':''}>近90天</option><option value="365" ${days==='365'?'selected':''}>近1年</option><option value="0" ${days==='0'?'selected':''}>全部</option></select><a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;
+  // 2026-11-09: 过滤条 — 订阅规则 / 客户 / 时间范围, 三者都写进 hash, 可分享也可从仪表盘卡片带 cust 下钻进来
+  const _selCss='padding:3px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;max-width:190px';
+  const _opt=(v,l,sel)=>`<option value="${v}" ${String(v)===String(sel)?'selected':''}>${escHtml(l)}</option>`;
+  const ruleSel=`<select id="histRule" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
+  const custSel=`<select id="histCust" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
+  const daysSel=`<select id="histDays" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;
+}
+
+// 改写 hash 里的过滤条件再重渲染;val 为空 = 清除该条件
+function histSetFilter(key,val){
+  const q=new URLSearchParams(location.hash.split('?')[1]||'');
+  if(!q.get('days'))q.set('days','30');
+  if(val)q.set(key,val);else q.delete(key);
+  location.hash='history?'+q.toString();
+  history();
 }
 async function confirmClearHistory(){
-  let days=document.querySelector('#app select')?.value||'30';
+  let days=document.getElementById('histDays')?.value||'30';
   let label=days==='0'?'全部':`最近${days}天之前的`;
   await confirmAct(`⚠️ 确认清空${label}推送历史记录？此操作不可撤销。`, async ()=>{const r=await api('/history?days='+(days==='0'?'':days),{method:'DELETE'});toast(r.message||'已清空',r.code===0?'success':'error');if(r.code===0)history();}, '🗑️', '确认清空', true);
 }

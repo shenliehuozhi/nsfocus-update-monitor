@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### 新增
+- **推送历史过滤**：页面头部过滤条新增「订阅规则」+「客户」两个下拉（与原有时间范围并列），条件写进 URL hash 可分享；后端 `GET /api/history` 新增 `rule_id` 参数，`subscription.get_history()` 按 `delivery_log.rule_id` 过滤并同时下推到每个快照的 deliveries 子查询（否则列表行会混入其他规则/客户的交付记录）
 - **渠道体检**：新增每日邮件渠道凭据探测 `scheduler._channel_health_check`（04:00，只做 SMTP 连接+登录、不发信）。此前邮箱密码/授权码过期只有被动路径（`delivery_log` 留痕 + 仪表盘失败数 + 人工「测试渠道」），若期间无新包发布则完全静默；现在失败会汇总成一条 `channel_error` 系统事件（`emit_channel_error`）经系统事件渠道告警。开关 `channel_health_enabled`（默认开）
 - **日志扫描**：`ERROR_PATTERNS['认证错误']` 补 SMTP 凭据失效文案（`SMTP auth failed`、`SMTPAuthenticationError`、163/Microsoft/Gmail/腾讯企业邮各自返回串），使 30 分钟日志扫描能捕获 `[EMAIL] SMTP auth failed: 535 ...`
 - **API 文档**：更新路由路径（`/api/settings/scheduler/*`），删除不存在的端面

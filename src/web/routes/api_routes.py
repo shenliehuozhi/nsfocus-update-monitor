@@ -533,8 +533,9 @@ def get_history():
     days = request.args.get('days', type=int)
     product = request.args.get('product')
     customer_id = request.args.get('customer_id', type=int)
+    rule_id = request.args.get('rule_id', type=int)
     from src.models.subscription import get_history as gh
-    rows, total = gh(page, limit, product, customer_id, days=days)
+    rows, total = gh(page, limit, product, customer_id, days=days, rule_id=rule_id)
     return jsonify({'code': 0, 'data': {'items': [dict(r) for r in rows], 'total': total, 'page': page}})
 
 @bp_history.route('', methods=['DELETE'])
