@@ -1048,17 +1048,17 @@ function renderEventsCenterTable(events){
       <col style="width:100px">
       <col style="width:60px">
     </colgroup>
-    <thead style="position:sticky;top:0;background:var(--card);z-index:1;box-shadow:0 1px 0 var(--border)">
-      <tr style="text-align:left;color:var(--muted);font-weight:600">
-        <th style="padding:6px 8px">时间</th>
-        <th style="padding:6px 6px">严重度</th>
-        <th style="padding:6px 6px">类型</th>
-        <th style="padding:6px 6px">标题</th>
-        <th style="padding:6px 6px">产品 / URL</th>
-        <th style="padding:6px 6px">渠道</th>
-        <th style="padding:6px 6px;text-align:center">状态</th>
-      </tr>
-    </thead>
+    '<thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">'+
+      '<tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>'+
+      '</tr>'+
+    '</thead>'+
     <tbody>`;
   const rows = events.map(renderEventsCenterTableRow).join('');
   return head + rows + '</tbody></table>';
@@ -1086,6 +1086,7 @@ function renderEventsCenterTableRow(e){
   else if(t === 'push_summary') title = m.success>0 ? `推送 ${m.success} 成功` : (m.total?`推送 ${m.total} 条`:'本次无推送');
   else if(t === 'push_success') title = (m.product_name||'')+(m.file_name?` ${m.file_name}`:'')+(m.success===false?' 推送失败':' 推送成功');
   else if(t === 'login_bruteforce') title = `IP ${m.ip||'?'} 失败 ${m.count||0} 次`;
+  else if(t === 'channel_error') title = '渠道体检失败: '+(m.failures||[]).length+' 个'+((m.failures&&m.failures[0])?` (${m.failures[0].channel_name||m.failures[0].channel_type||''})`:'');
   else if(typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
   else title = JSON.stringify(m).slice(0, 80);
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
@@ -1307,17 +1308,17 @@ function renderEventsTable(events){
       <col style="width:110px">
       <col style="width:70px">
     </colgroup>
-    <thead style="position:sticky;top:0;background:var(--card);z-index:1;box-shadow:0 1px 0 var(--border)">
-      <tr style="text-align:left;color:var(--muted);font-weight:600">
-        <th style="padding:10px 12px">时间</th>
-        <th style="padding:10px 8px">严重度</th>
-        <th style="padding:10px 8px">类型</th>
-        <th style="padding:10px 8px">标题</th>
-        <th style="padding:10px 8px">产品 / URL</th>
-        <th style="padding:10px 8px">渠道</th>
-        <th style="padding:10px 8px">状态</th>
-      </tr>
-    </thead>
+    '<thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">'+
+      '<tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>'+
+        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>'+
+      '</tr>'+
+    '</thead>'+
     <tbody>`;
   const rows = events.map(renderEventsTableRow).join('');
   return head + rows + '</tbody></table>';
@@ -1344,6 +1345,7 @@ function renderEventsTableRow(e){
   else if(t === 'push_summary') title = m.success>0 ? `推送 ${m.success} 成功` : (m.total?`推送 ${m.total} 条`:'本次无推送');
   else if(t === 'push_success') title = (m.product_name||'')+(m.file_name?` ${m.file_name}`:'')+(m.success===false?' 推送失败':' 推送成功');
   else if(t === 'login_bruteforce') title = `IP ${m.ip||'?'} 失败 ${m.count||0} 次`;
+  else if(t === 'channel_error') title = '渠道体检失败: '+(m.failures||[]).length+' 个'+((m.failures&&m.failures[0])?` (${m.failures[0].channel_name||m.failures[0].channel_type||''})`:'');
   else if(typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
   else title = JSON.stringify(m).slice(0, 80);
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
@@ -1662,6 +1664,15 @@ function _matchEmailProvider(host){
   return 'custom';
 }
 
+// 全局 table thead 高度统一 (dashboard 三个表格表头对齐) — 立即执行, 不依赖任何渲染
+(function(){
+  const s=document.createElement('style');
+  s.setAttribute('data-injected','thead36');
+  s.textContent='table thead th{height:36px !important;min-height:0 !important;max-height:36px !important;line-height:1.2 !important;padding-top:8px !important;padding-bottom:8px !important}';
+  if(document.head)document.head.appendChild(s);
+  else document.addEventListener('DOMContentLoaded',()=>document.head.appendChild(s));
+})();
+
 function _renderProdDistTable(data){
   const container = document.getElementById('prodDistTable');
   if(!container) return;
@@ -1671,10 +1682,10 @@ function _renderProdDistTable(data){
   const total = data.reduce((s,e)=>s+e.count,0);
   const max = data[0].count;
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
-    '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500">产品</th>'+
-      '<th style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
-      '<th style="padding:8px 12px;width:160px;color:var(--gray-muted);font-weight:500">占比</th>'+
+    '<thead><tr style="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
+      '<th style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">产品</th>'+
+      '<th style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
+      '<th style="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
     '</tr></thead><tbody>'+
     data.map((item,i)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
@@ -1722,10 +1733,10 @@ function _renderCustPushTable(items, days){
   // 列宽比例 35%/15%/50% (跟用户截图的视觉比例一致), padding 让 td 内容左/右对齐
   // 用 table-layout:fixed + JS 设 th/td width (table-layout:auto 下 td 内容长度会破坏比例)
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-    '<thead><tr style="background:var(--gray-bg);border-bottom:1px solid var(--gray-border)">'+
-      '<th data-col="0" style="padding:8px 12px;text-align:left;color:var(--gray-muted);font-weight:500;box-sizing:border-box">客户</th>'+
-      '<th data-col="1" style="padding:8px 12px;text-align:center;color:var(--gray-muted);font-weight:500;box-sizing:border-box">推送</th>'+
-      '<th data-col="2" style="padding:8px 12px;text-align:right;color:var(--gray-muted);font-weight:500;box-sizing:border-box">状态</th>'+
+'<thead><tr style="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
+      '<th data-col="0" style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
+      '<th data-col="1" style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">推送</th>'+
+      '<th data-col="2" style="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">状态</th>'+
     '</tr></thead><tbody>'+
     active.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -6036,6 +6047,12 @@ async function settings(){
           <p class="cfg-hint">默认 /update/listBvsV6/v/bvssys (绿盟升级站点默认端点)。修改会影响 Session 过期/污染判断,点编辑后需二次确认</p>
         </div>
       </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>每日渠道体检</label>
+          <label class="toggle-switch"><input type="checkbox" id="cfg-channel-health" ${cfg.channel_health_enabled==='0'?'':'checked'}><span class="toggle-slider"></span></label>
+          <p class="cfg-hint">每天 04:00（服务器时间）对邮件渠道只做 SMTP 连接+登录（不发信），探测密码/授权码是否失效；失败按「渠道体检失败」事件告警</p>
+        </div>
+      </div>
     </div>
 
     <div class="cfg-section">
@@ -6090,6 +6107,7 @@ async function settings(){
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="channel_error" ${(cfg.event_types||[]).includes('channel_error')?'checked':''}> 渠道体检失败</label>
             </div>
             <p class="cfg-hint">推送汇总合并本 cycle 所有推送成功/失败详情(单条不再发);采集完成=cycle 末汇总;空=全部启用</p>
           </div>
@@ -8310,7 +8328,7 @@ async function handleSchedulerToggle(cb){
 
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
@@ -8370,7 +8388,7 @@ function lockHeartbeatUrl(){
 }
 
 async function saveSettings(){
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
