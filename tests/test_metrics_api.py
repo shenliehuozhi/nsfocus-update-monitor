@@ -231,8 +231,52 @@ def test_prometheus_format(client):
     assert resp.mimetype.startswith('text/plain')
     body = resp.get_data(as_text=True)
     assert 'nsfocus_queue_pending{queue="digest"} 1' in body
-    assert 'nsfocus_delivery_undated_failed_total 1' in body
+    assert 'nsfocus_delivery_undated_failed 1' in body
     assert 'nsfocus_delivery_success_rate{window_hours="24"}' in body
+
+
+def test_prometheus_is_well_formed(client):
+    """每行符合 name{labels} value；每个 family 有且仅有一条 TYPE；无 _total Gauge。"""
+    import re
+
+    _seed_deliveries()
+    _seed_queue()
+    resp = client.get('/api/metrics?format=prometheus',
+                      headers={'Authorization': f'Bearer {_token()}'})
+    lines = resp.get_data(as_text=True).splitlines()
+    sample_re = re.compile(r'^([a-zA-Z_:][a-zA-Z0-9_:]*)(\{.*\})? (\S+)$')
+
+    types = {}
+    seen = set()
+    for line in lines:
+        if line.startswith('# TYPE '):
+            _, _, name, kind = line.split(' ')
+            assert name not in types, f'重复 TYPE: {name}'
+            assert kind == 'gauge'
+            types[name] = kind
+            continue
+        assert not line.startswith('#'), f'未声明的注释行: {line}'
+        m = sample_re.match(line)
+        assert m, f'非法样本行: {line}'
+        name, labels = m.group(1), m.group(2) or ''
+        assert name in types, f'样本缺少 TYPE 声明: {name}'
+        assert not name.endswith('_total'), f'窗口统计不应使用 counter 命名: {name}'
+        assert (name, labels) not in seen, f'重复序列: {line}'
+        seen.add((name, labels))
+
+    assert 'nsfocus_delivery_events' in types
+    assert 'nsfocus_delivery_undated_failed' in types
+
+
+def test_prometheus_escapes_label_values(client):
+    from src.web.routes.metrics_routes import collect_metrics, render_prometheus
+
+    data = collect_metrics(24)
+    data['queues']['digest']['by_rule'] = [{
+        'rule_id': 1, 'rule_name': 'a"b\nc', 'pending': 2, 'oldest_age_minutes': 1,
+    }]
+    body = render_prometheus(data)
+    assert 'rule_name="a\\"b\\nc"' in body
 
 
 def test_log_delivery_stamps_created_at_for_failed_rows(client):

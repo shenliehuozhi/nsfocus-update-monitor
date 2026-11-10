@@ -339,7 +339,8 @@ def collect_metrics(hours: int) -> dict:
 # ── Prometheus exposition ────────────────────────────────────
 
 def _label(key: str, value) -> str:
-    escaped = str(value).replace('\\', '\\\\').replace('"', '\\"')
+    escaped = (str(value).replace('\\', '\\\\')
+               .replace('\n', '\\n').replace('"', '\\"'))
     return f'{key}="{escaped}"'
 
 
@@ -353,8 +354,13 @@ def _fmt(value) -> str:
 
 def render_prometheus(data: dict) -> str:
     lines = []
+    typed = set()
 
     def gauge(name: str, value, labels: dict | None = None):
+        # 窗口统计是 Gauge，不是单调 Counter：名字不带 _total，并显式声明类型
+        if name not in typed:
+            lines.append(f'# TYPE {name} gauge')
+            typed.add(name)
         if labels:
             lbl = '{' + ','.join(_label(k, v) for k, v in labels.items()) + '}'
         else:
@@ -363,14 +369,14 @@ def render_prometheus(data: dict) -> str:
 
     window = {'window_hours': data['window_hours']}
     delivery = data['delivery']
-    gauge('nsfocus_delivery_events_total', delivery['total'], {**window})
+    gauge('nsfocus_delivery_events', delivery['total'], {**window})
     gauge('nsfocus_delivery_success_rate', delivery['success_rate'], {**window})
-    gauge('nsfocus_delivery_undated_failed_total', delivery['undated_failed'])
+    gauge('nsfocus_delivery_undated_failed', delivery['undated_failed'])
     for ch in delivery['by_channel']:
         tags = {'channel_type': ch['channel_type'], 'window_hours': data['window_hours']}
-        gauge('nsfocus_delivery_channel_events_total', ch['total'], tags)
-        gauge('nsfocus_delivery_channel_sent_total', ch['sent'], tags)
-        gauge('nsfocus_delivery_channel_failed_total', ch['failed'], tags)
+        gauge('nsfocus_delivery_channel_events', ch['total'], tags)
+        gauge('nsfocus_delivery_channel_sent', ch['sent'], tags)
+        gauge('nsfocus_delivery_channel_failed', ch['failed'], tags)
 
     delayed = data['queues']['delayed']
     digest = data['queues']['digest']
@@ -388,7 +394,7 @@ def render_prometheus(data: dict) -> str:
     gauge('nsfocus_collection_last_duration_seconds', col['last_duration_s'])
     gauge('nsfocus_collection_avg_duration_seconds', col['avg_duration_s'])
     gauge('nsfocus_collection_last_run_age_minutes', _age_minutes(col['last_run']))
-    gauge('nsfocus_collection_sources_total', col['sources_total'])
+    gauge('nsfocus_collection_sources', col['sources_total'])
     gauge('nsfocus_collection_sources_stale', col['sources_stale'])
 
     for severity, count in data['events']['unacked'].items():
