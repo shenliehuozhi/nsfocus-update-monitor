@@ -11,6 +11,7 @@ import os
 import sys
 import hashlib
 import subprocess
+from pathlib import Path
 import pytest
 
 
@@ -25,7 +26,7 @@ def test_git_source_when_in_repo(monkeypatch):
     # Sanity: are we actually in the nsfocus-monitor repo?
     real_commit = subprocess.run(
         ('git', 'rev-parse', '--short', 'HEAD'),
-        cwd='/root/nsfocus-monitor',
+        cwd=str(Path(__file__).resolve().parents[1]),
         capture_output=True, text=True, timeout=2,
     ).stdout.strip()
     assert real_commit, 'precondition: this test must run inside the repo'

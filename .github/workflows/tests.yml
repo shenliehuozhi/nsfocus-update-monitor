@@ -1,0 +1,60 @@
+name: Tests
+
+# 这是仓库里第一个真正跑测试的门禁。此前 5 个 workflow 没有一个执行 pytest,
+# 所以 7 个用例能从 2026-07-22 一路红到 2026-11-10 都没被发现。
+# 不上传 artifact,不占 windows.yml 那套配额,单次跑约 5 秒。
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          # 与生产 systemd 服务同款解释器主次版本(生产实测 3.10.12)
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # 版本漂移在日志里可见:requirements.txt 的 pin ≠ 生产机已装版本
+          pip list
+
+      - name: Tests must not bind to one developer machine
+        # 硬编码 /root/nsfocus-monitor 的用例在别的机器上必挂(CI 上没有这个
+        # 目录)。src/ 里出现的同名路径是 MONITOR_LOG_DIR 的兜底默认值,合法。
+        run: |
+          if grep -rn --include="*.py" "/root/nsfocus-monitor" tests/ ; then
+            echo "::error::tests/ 里出现开发机绝对路径,请改用 Path(__file__).resolve().parents[1]"
+            exit 1
+          fi
+
+      - name: No test may read the production database
+        # 用例必须自带临时库。历史教训:test_subscription_match 有 31 个用例
+        # 靠开发机上恰好存在 data/nsfocus_monitor.db 才不报错。
+        run: |
+          if grep -rnE --include="*.py" "sqlite3\.connect\(\s*['\"]/root|['\"][^'\"]*data/nsfocus_monitor\.db" tests/ ; then
+            echo "::error::tests/ 里直接连了生产库路径,请改用 tmp_path + monkeypatch.setattr(DB_PATH)"
+            exit 1
+          fi
+
+      - name: pytest
+        env:
+          # 写路径也隔离到临时目录,门禁自身绝不接触真实数据文件
+          MONITOR_DATA_DIR: ${{ github.workspace }}/.ci-data
+          MONITOR_LOG_DIR: ${{ github.workspace }}/.ci-logs
+        run: |
+          mkdir -p .ci-data .ci-logs
+          python -m pytest

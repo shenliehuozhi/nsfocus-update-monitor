@@ -47,7 +47,7 @@ def _make_rule(rule_id=10, name='r', **overrides):
     return rule
 
 
-SCHEDULER_PATH = Path('/root/nsfocus-monitor/src/core/scheduler.py')
+SCHEDULER_PATH = Path(__file__).resolve().parents[1] / 'src' / 'core' / 'scheduler.py'
 
 
 def test_scheduler_source_no_longer_uses_matched_zero():

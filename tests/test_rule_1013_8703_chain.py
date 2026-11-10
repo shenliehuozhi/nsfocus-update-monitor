@@ -2,71 +2,63 @@
 
 Confirms commit d3a97f2 properly returns the subscription chain
 (not snap-derived chain) as user_chain for push messages.
+
+匹配数据取自生产库 rule 1013 / snap 8703 的真实取值(已内联成常量),但断言
+走的是产品实现 src.detector.change._chain_matches —— 原先这个用例既 SELECT
+生产库(绑死开发机、CI 上没文件、保留期清理一删 8703 就红),又在自己文件里
+重写了一份 _chain_matches 来自测。
 """
 import sys
-import sqlite3
-import json
-sys.path.insert(0, '/root/nsfocus-monitor')
+import sqlite3 as _sqlite3
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+# 生产 subscription_rules.id=1013(华兴银行黄灵昌)的 filter_conditions['chains']
+RULE_1013_CHAINS = [
+    {'chain': ['WEB应用防护系统(WAF)', 'WEB应用防护系统(WAF)列表',
+               'WAF V6.0.8', 'WAF V6.0.8 规则升级包'], 'match': 'leaf'},
+    {'chain': ['WEB应用防护系统(WAF)', 'WEB应用防护系统(WAF)列表',
+               'WAF V6.0.7', 'WAF V6.0.7 规则升级包'], 'match': 'leaf'},
+    {'chain': ['WEB应用防护系统(WAF)', '信息技术应用创新-WEB应用防护系统(WAF)列表',
+               '海光系列HG', '海光系列 V6.0.9', '海光系列 V6.0.9规则升级'], 'match': 'leaf'},
+]
+
+# snap 8703 的物理 URL /listWafV68Detail/v/rule 被两条链共用,
+# _get_chain 返回 list of chains —— 真实数据结构
+SNAP_8703_CHAINS = [
+    ['WEB应用防护系统(WAF)', 'WEB应用防护系统(WAF)列表', 'WAF V6.0.8', 'WAF V6.0.8 规则升级包'],
+    ['WEB应用防护系统(WAF)', '信息技术应用创新-WEB应用防护系统(WAF)列表',
+     '海光系列HG', '海光系列 V6.0.8', '海光系列 V6.0.8 规则升级'],
+]
 
 
 def test_rule_1013_8703_matched_to_waf_v68():
-    """Rule 1013 (subscribe WAF V6.0.8/V6.0.9 规则升级包) + 8703
-    (海光 V6.0.8 规则升级 active, on /listWafV68Detail/v/rule shared URL)
-    → detector matches because URL-only path_id first match is WAF V6.0.8
-    chain, which matches subscription rule chain[1] exactly.
+    """Rule 1013 (订阅 WAF V6.0.8/V6.0.7 规则升级包 + 海光 V6.0.9) + snap 8703
+    (海光 V6.0.8 规则升级 active, 挂在共享 URL /listWafV68Detail/v/rule)
+    → 按 change.py:291 的逐链匹配, WAF 那条 leaf 命中, 海光那条不命中。
     """
-    db = sqlite3.connect('/root/nsfocus-monitor/data/nsfocus_monitor.db')
-    db.row_factory = sqlite3.Row
+    from src.detector.change import _chain_matches
 
-    # Real DB data: Rule 1013, snap 8703
-    rule = dict(db.execute("""
-        SELECT * FROM subscription_rules WHERE id=1013
-    """).fetchone())
-    snap = dict(db.execute("""
-        SELECT * FROM snapshots WHERE id=8703
-    """).fetchone())
-
-    fc = json.loads(rule['filter_conditions'])
-    chains = fc['chains']
-
-    # Simulate commit 69e7fe0's _get_chain returning list of chains for URL
-    # /listWafV68Detail/v/rule (real data structure):
-    snap_chains_for_pid = [
-        ['WEB应用防护系统(WAF)', 'WEB应用防护系统(WAF)列表', 'WAF V6.0.8', 'WAF V6.0.8 规则升级包'],  # WAF chain (4 layers)
-        ['WEB应用防护系统(WAF)', '信息技术应用创新-WEB应用防护系统(WAF)列表', '海光系列HG', '海光系列 V6.0.8', '海光系列 V6.0.8 规则升级'],  # 海光 chain (5 layers)
-    ]
-
-    # Iterate and try match (commit d3a97f2 logic)
     matched_chain = None
-    for sc in snap_chains_for_pid:
-        for entry in chains:
-            rc = entry['chain']
-            mode = entry.get('match', 'leaf')
-            if mode == 'leaf' and sc == rc:
-                matched_chain = sc
-                break
-        if matched_chain:
+    for sc in SNAP_8703_CHAINS:
+        if _chain_matches(sc, RULE_1013_CHAINS):
+            matched_chain = sc
             break
 
-    # WAF V6.0.8 4-layer chain == subscription chain[1] (also 4 layers)
-    # → matched
     assert matched_chain is not None, (
-        'Expected Rule 1013 chain[1] (WAF V6.0.8 规则升级包) to match '
-        '8703 reverse-looked-up WAF chain.'
+        'Expected one of snap 8703 chains to match Rule 1013 leaf subscription.'
     )
     assert matched_chain[-1] == 'WAF V6.0.8 规则升级包'
     assert matched_chain[-2] == 'WAF V6.0.8'
 
-    # Sanity: the OTHER chain (海光 5-layer) does NOT match subscription
-    # chain[1] (WAF V6.0.8 4-layer) — strict equality fails.
-    haiguang_chain = snap_chains_for_pid[1]
-    assert haiguang_chain != chains[1]['chain']
-    assert haiguang_chain != chains[0]['chain']
-
-    db.close()
+    # 海光 V6.0.8 5 层链 ≠ 规则里任何一条(规则订的是海光 V6.0.9)
+    assert _chain_matches(SNAP_8703_CHAINS[1], RULE_1013_CHAINS) is False
 
 
-def test_8703_push_message_uses_user_chain_not_snap_ver():
+def test_8703_push_message_uses_user_chain_not_snap_ver(monkeypatch, tmp_path):
     """from_snapshot(snap, user_chain=matched_chain) constructs push
     message from user_chain (content_source-derived), NOT snap.version_branch.
 
@@ -98,24 +90,18 @@ def test_8703_push_message_uses_user_chain_not_snap_ver():
         'description_raw': '',
     }
 
-    # Path 1 (pre-d3a97f2 fallback): user_chain=None → _build_chain picks WAF first
-    # match IF the chain lookup succeeds. In test environment DB_PATH may not
-    # resolve, so msg.chain could be empty → msg.version_branch falls back to
-    # snap.version_branch (= ''). The test asserts whichever fallback happens,
-    # since the production path always passes user_chain.
+    # Path 1 (pre-d3a97f2 fallback): user_chain=None → _build_chain 反查 chain。
+    # 反查是否命中取决于 DB_PATH,原先用 if/else "两条路都接受",等于没断言。
+    # 这里把 DB_PATH 钉在一个空的 content_sources 库上 → 必然查不到 →
+    # 只断言 fallback 行为(生产路径永远传 user_chain,见 Path 2/3)。
+    empty_db = str(tmp_path / 'no_sources.db')
+    _sqlite3.connect(empty_db).close()
+    monkeypatch.setattr('src.models.database.DB_PATH', empty_db)
+
     msg_no_chain = NotificationMessage.from_snapshot(snap)
-    if msg_no_chain.chain:
-        # Real _build_chain path: WAF chain first match
-        assert msg_no_chain.version_branch == 'WAF V6.0.8'
-        assert msg_no_chain.package_type == 'WAF V6.0.8 规则升级包'
-        assert msg_no_chain.chain[-2:] == ['WAF V6.0.8', 'WAF V6.0.8 规则升级包']
-    else:
-        # Test environment can't reach DB → falls through to snap fields.
-        # In this test, snap.version_branch and snap.package_type are both
-        # '' so the fallback returns '' (not '海光系列 V6.0.8' — that's the
-        # real DB's value, not the snap dict passed in).
-        assert msg_no_chain.version_branch == ''
-        assert msg_no_chain.package_type == ''
+    assert msg_no_chain.chain == [], f'空库不该反查到 chain: {msg_no_chain.chain}'
+    assert msg_no_chain.version_branch == ''
+    assert msg_no_chain.package_type == ''
 
     # Path 2 (post-d3a97f2): user_chain=海光 chain (snap 的真正归属)
     msg_haiguang = NotificationMessage.from_snapshot(snap, user_chain=haiguang_v68_chain)
@@ -132,47 +118,35 @@ def test_8703_push_message_uses_user_chain_not_snap_ver():
 
 
 def test_subscription_chain_match_leaf_strict():
-    """_chain_matches strict leaf equality — WAF 4-layer vs WAF 4-layer match,
-    WAF 4-layer vs 海光 5-layer NOT match."""
-    def _chain_matches(snap_chain, rule_chains):
-        for entry in rule_chains:
-            rc = entry['chain']
-            mode = entry.get('match', 'leaf')
-            if mode == 'leaf' and snap_chain == rc:
-                return True
-            if mode == 'subtree' and len(snap_chain) >= len(rc) and snap_chain[:len(rc)] == rc:
-                return True
-        return False
+    """产品 _chain_matches 的 leaf 严格相等:WAF 4 层 vs WAF 4 层命中,
+    WAF 4 层 vs 海光 5 层不命中。
+
+    原先这个用例在本文件里手写了一份 _chain_matches 副本自测 —— 改坏产品
+    函数它照样绿。现在直接调实现。
+    """
+    from src.detector.change import _chain_matches
 
     waf = ['WAF', 'WAF列表', 'WAF V6.0.8', 'WAF V6.0.8 规则升级包']
     haiguang = ['WAF', '信创列表', '海光HG', '海光 V6.0.8', '海光 V6.0.8 规则升级']
     sub_waf_68 = {'chain': waf, 'match': 'leaf'}
 
-    # WAF chain matches WAF V6.0.8 subscription
     assert _chain_matches(waf, [sub_waf_68]) is True
-    # 海光 chain does NOT match WAF V6.0.8 subscription (different chain, different length)
+    # 不同 chain、不同长度 → leaf 模式不匹配
     assert _chain_matches(haiguang, [sub_waf_68]) is False
+    # subtree 模式:前缀相同即命中(订阅该节点下全部包)
+    assert _chain_matches(waf, [{'chain': waf[:2], 'match': 'subtree'}]) is True
 
 
 def test_multi_chain_subscription_matches_either_chain():
-    """For shared URL, both WAF and 海光 chains are checked — at
-    least one matches subscription, so push triggers."""
-    def _chain_matches(snap_chains, rule_chains):
-        for sc in snap_chains:
-            for entry in rule_chains:
-                rc = entry['chain']
-                mode = entry.get('match', 'leaf')
-                if mode == 'leaf' and sc == rc:
-                    return True
-                if mode == 'subtree' and len(sc) >= len(rc) and sc[:len(rc)] == rc:
-                    return True
-        return False
+    """共享 URL 反查出多条 chain 时,逐条问 _chain_matches(change.py:291 的做法),
+    任意一条命中就要推送 —— 原先这里又是本地副本,且副本签名和产品不一致。"""
+    from src.detector.change import _chain_matches
 
     waf = ['WAF', 'WAF列表', 'WAF V6.0.8', 'WAF V6.0.8 规则升级包']
     haiguang = ['WAF', '信创列表', '海光HG', '海光 V6.0.8', '海光 V6.0.8 规则升级']
-    sub_waf_68 = {'chain': waf, 'match': 'leaf'}
+    sub_waf_68 = [{'chain': waf, 'match': 'leaf'}]
 
-    # Rule 1013 subscribes WAF V6.0.8 规则升级包. 8703's reverse-looked chain
-    # list is [WAF_chain, 海光_chain]. WAF_chain matches → push triggers.
-    snap_chains_list = [waf, haiguang]
-    assert _chain_matches(snap_chains_list, [sub_waf_68]) is True
+    # 海光那条不命中,但 WAF 那条命中 → 至少一条命中即触发推送
+    assert any(_chain_matches(sc, sub_waf_68) for sc in [haiguang, waf]) is True
+    # 一条都不命中时不能误推
+    assert any(_chain_matches(sc, sub_waf_68) for sc in [haiguang]) is False

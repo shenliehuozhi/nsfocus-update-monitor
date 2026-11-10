@@ -14,9 +14,10 @@ Strategy: We don't actually render the page in jsdom. Instead, we:
 import re
 import sys
 import subprocess
+from pathlib import Path
 
 
-INDEX_HTML = '/root/nsfocus-monitor/src/web/templates/index.html'
+INDEX_HTML = str(Path(__file__).resolve().parents[1] / 'src' / 'web' / 'templates' / 'index.html')
 
 
 def _extract_function(source: str, name: str) -> str:

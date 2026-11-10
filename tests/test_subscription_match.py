@@ -20,15 +20,34 @@ from src.detector.change import (
 
 
 @pytest.fixture(autouse=True)
-def _reset_chain_cache():
+def _reset_chain_cache(monkeypatch):
     """Reset scheduler's chain cache between tests so pollution from
     other modules' DB_PATH / cache mutations doesn't leak into detector
     tests (where get_new_for_subscription's empty-conditions branch
-    now calls _get_chain, which would return cached real-DB data)."""
+    now calls _get_chain, which would return cached real-DB data).
+
+    同时把 _get_chain 默认打桩成返回 []。原先没显式 patch 它的那批用例
+    (urgency / keywords / valid_until)只是碰巧在开发机上能连到生产库才不报错,
+    在没有 data/nsfocus_monitor.db 的环境里会直接抛
+    ``sqlite3.OperationalError: no such table: content_sources``。
+    用例内部再用 with patch(...) 时会覆盖这个默认桩。
+
+    invalidate_chain_cache() 会立刻 _build_url_chain_cache() 重扫
+    content_sources;在没有建过表的环境(全新 checkout / CI)它抛
+    OperationalError —— 此时缓存本就是空的,还原无须成功,故吞掉。
+    """
     from src.core.scheduler import invalidate_chain_cache
-    invalidate_chain_cache()
+    monkeypatch.setattr('src.core.scheduler._get_chain', lambda *a, **k: [])
+
+    def _safe_invalidate():
+        try:
+            invalidate_chain_cache()
+        except Exception:
+            pass
+
+    _safe_invalidate()
     yield
-    invalidate_chain_cache()
+    _safe_invalidate()
 
 
 def test_empty_conditions_matches_all(base_snap):
