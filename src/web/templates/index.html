@@ -2107,7 +2107,7 @@ function _renderTlLegend(allProducts, visible){
 
   container.innerHTML = allProducts.map((p,i) => {
     const on = visible[p];
-    return `<span onclick="_toggleTlProd('${p.replace(/'/g,"\\'")}')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'var(--gray-disabled)'};text-decoration:${on?'none':'line-through'}">
+    return `<span onclick="_toggleTlProd('${escAttr(p)}')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'var(--gray-disabled)'};text-decoration:${on?'none':'line-through'}">
       <span style="width:10px;height:2px;background:${prodColor[p]};display:inline-block;border-radius:4px"></span>
       ${p}
     </span>`;
@@ -2757,7 +2757,7 @@ function dataRenderLeft() {
       <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge && `<span style="margin-left:auto">${freshBadge}</span>`}
-        <button style="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" onmouseenter="this.style.background='var(--primary)';this.style.color='#fff'" onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escHtml(src.name || sid)}')" title="立即采集此产品">采</button>
+        <button style="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" onmouseenter="this.style.background='var(--primary)';this.style.color='#fff'" onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escAttr(src.name || sid)}')" title="立即采集此产品">采</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
         <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
@@ -3208,8 +3208,8 @@ function dataRenderRight(sch, p, info) {
   <div class="feed-cell" style="width:116px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
   <div class="feed-cell" style="width:130px;flex-shrink:0;white-space:nowrap">
     <div class="data-right-actions" onclick="event.stopPropagation()">
-      <button class="btn btn-xs btn-soft-primary" onclick="dataRightGoto('${escHtml(r._sid)}','${escHtml(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs btn-soft-success" onclick="showPushModal(${r.id}, '${escHtml(r._srcName)}', '${escHtml((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escHtml((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', '${escHtml(JSON.stringify(r._chain || []))}')">推送</button>
+      <button class="btn btn-xs btn-soft-primary" onclick="dataRightGoto('${escAttr(r._sid)}','${escAttr(JSON.stringify(r._chain || []))}')">跳转</button>
+      <button class="btn btn-xs btn-soft-success" onclick="showPushModal(${r.id}, '${escAttr(r._srcName)}', '${escAttr((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escAttr((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', '${escAttr(JSON.stringify(r._chain || []))}')">推送</button>
     </div>
   </div>
 </div>`;
@@ -3761,7 +3761,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     const verBodyClass = isHighlight ? 'data-ver-body' : 'data-ver-body hidden';
 
     drillHtml += `<div class="data-ver-block ${isHighlight ? 'data-ver-highlight' : ''}" id="dvb_anchor_${escHtml(verKey)}">
-      <div class="data-ver-hd" onclick="dataToggleVer(this, '${escHtml(verKey)}')">
+      <div class="data-ver-hd" onclick="dataToggleVer(this, '${escAttr(verKey)}')">
         <span class="data-prod-arrow">${isHighlight ? '&#9660;' : '&#9658;'}</span>
         <span class="data-ver-label">${ver}</span>
         <div style="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
@@ -3792,7 +3792,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
           <button class="btn btn-xs btn-soft-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${escAttr(src.name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
-          ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
+          ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escAttr(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
         ${historyCount > 0 ? `<div class="data-history hidden" id="dh_${escHtml(histKey)}">
@@ -4540,7 +4540,7 @@ async function channels(){
   const typeCNMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
 let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}
   // 5 个渠道(dingtalk/feishu/wecom/apprise/email)都支持「📋 日志」按钮 — 测试按钮触发后写入 /tmp/<type>_test_<id>.log,失败时常驻可见
-  const testLogBtn=`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escHtml(c.name)}')">📋 日志</button>`;
+  const testLogBtn=`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escAttr(c.name)}')">📋 日志</button>`;
   return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${c.name}${extra}</td><td>${chTypeChip(c.type)}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-success" onclick="testCh(${c.id},'${c.type}')">测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openChModal()">+ 添加渠道</button><table class="mt16"><tr><th style="width:50px">ID</th><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
 function chTypeCh(){
@@ -6737,7 +6737,7 @@ function buildTreeHtml(pt, MAP) {
       html += badges;
       const modeKey = types[0];
       const mode = (pt.modes && pt.modes[modeKey]) || 'auto';
-      html += `<select data-type="${escHtml(modeKey)}" onchange="window._ptModes['${escHtml(modeKey)}']=this.value" style="margin-left:auto;flex:0 0 80px;padding:2px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:11px;cursor:pointer">
+      html += `<select data-type="${escHtml(modeKey)}" onchange="window._ptModes['${escAttr(modeKey)}']=this.value" style="margin-left:auto;flex:0 0 80px;padding:2px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:11px;cursor:pointer">
         <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
         <option value="full" ${mode==='full'?'selected':''}>全量</option>
         <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
@@ -7714,7 +7714,7 @@ function showDiscoverResult(result, isStale){
       pkgRows+=`<tr>
         <td style="font-weight:600">${escHtml(change.product_name||'')}</td>
         <td style="font-size:12px;color:var(--gray-muted)">${segs.join(' | ')}</td>
-        <td style="text-align:right"><button class="btn btn-xs btn-outline" onclick="togglePkgDetail('${escHtml(change.entry_url||'')}')">详情</button></td>
+        <td style="text-align:right"><button class="btn btn-xs btn-outline" onclick="togglePkgDetail('${escAttr(change.entry_url||'')}')">详情</button></td>
       </tr>`;
       // Hidden detail rows
       pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" style="display:none;background:var(--gray-bg)">
