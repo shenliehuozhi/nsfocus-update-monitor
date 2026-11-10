@@ -29,13 +29,58 @@ Examples:
 """
 
 import argparse
+import os
 import shutil
 import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
 
-DB_PATH = Path('/root/nsfocus-monitor/data/nsfocus_monitor.db')
+# 备份保留份数(仅本脚本产出的 *_pre_delete_* 备份); 0 或负数 = 关闭轮转
+BAK_KEEP = int(os.getenv('MONITOR_DB_BAK_KEEP', '3'))
+
+
+def _resolve_db_path() -> Path:
+    """与 src/models/database.py 同源: MONITOR_DATA_DIR 优先, 否则仓库 data/。
+
+    原先这里硬编码 /root/nsfocus-monitor, 换台机器(或换部署目录)就会把别人的库
+    复制一份然后删行 —— 备份和删除同时失效。
+    """
+    data_dir = os.getenv('MONITOR_DATA_DIR')
+    if not data_dir:
+        data_dir = str(Path(__file__).resolve().parents[1] / 'data')
+    return Path(data_dir) / 'nsfocus_monitor.db'
+
+
+DB_PATH = _resolve_db_path()
+
+
+def rotate_backups(db_path: Path, keep: int = BAK_KEEP):
+    """只轮转本脚本自己产出的备份, 其他命名一律不碰。
+
+    匹配 `<db名>.bak.*_pre_delete_*`: 手工/其他迁移留下的 .db.bak.<其他后缀>
+    不在射程内(那种删除要人自己决定)。按文件名排序 —— 时间戳是
+    %Y%m%d_%H%M%S 定宽格式, 字典序即时间序, 不受 mtime 被 copy2 保留影响。
+    """
+    if keep <= 0:
+        print(f'  [轮转] MONITOR_DB_BAK_KEEP={keep} → 关闭轮转, 历史备份全部保留')
+        return []
+    baks = sorted(db_path.parent.glob(f'{db_path.name}.bak.*_pre_delete_*'),
+                  key=lambda p: p.name, reverse=True)
+    removed = []
+    for p in baks[keep:]:
+        if p.is_symlink() or not p.is_file():
+            print(f'  [轮转] 跳过非常规文件: {p.name}')
+            continue
+        try:
+            size_mb = p.stat().st_size / 1024 / 1024
+            p.unlink()
+            removed.append(p)
+            print(f'  [轮转] 删除旧备份 {p.name} ({size_mb:.1f}MB)')
+        except OSError as e:
+            print(f'  [轮转] 删除失败 {p.name}: {e}')
+    print(f'  [轮转] 保留最近 {keep} 份, 本次清理 {len(removed)} 份')
+    return removed
 
 
 def preview(conn, snap_id):
@@ -75,6 +120,7 @@ def apply(conn, snap_id, mode):
     )
     shutil.copy2(DB_PATH, backup)
     print(f'Backup created: {backup}')
+    rotate_backups(DB_PATH)
 
     if mode == 'delete-cascade':
         for table in ('delivery_log', 'delayed_queue', 'digest_queue'):
