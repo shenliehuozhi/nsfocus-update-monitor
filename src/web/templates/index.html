@@ -733,7 +733,6 @@ function showPage(n){
 function typeCN(t){const m={sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试'};return m[t]||t;}
 
 // ── Dashboard ──
-let _dashRange='7';
 // 全局浮窗: append 到 body, 避开所有祖先 overflow:hidden 裁切
 let _tipEl=null;
 function _showTip(target){
@@ -808,14 +807,17 @@ async function dashboard(range){
   const custRange=_dashRanges.cust;
   const tlRange=_dashRanges.tl;
   const pieRange=_dashRanges.pie;
-  const[dR,sR,hR,cR]=await Promise.all([
+  const[dR,hR,cR]=await Promise.all([
     api('/dashboard?range_recent='+custRange+'&range_tl='+tlRange+'&range_pie='+pieRange),
-    fetch(API+'/settings/scheduler',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
     fetch(API+'/system/health',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
     fetch(API+'/customers/push-summary?days='+custRange,{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{items:[]}}))
   ]);
   _dashData=dR.data||{};
-  const d=dR.data||{},sch=sR.data||{},h=hR.data||{},custs=cR.data?.items||[];
+  // 调度器状态直接复用 /system/health 返回的那份,省一次 /settings/scheduler 请求
+  const d=dR.data||{},h=hR.data||{},sch=h.scheduler||{},custs=cR.data?.items||[];
+  // 运维视角: 大字看成功率, 失败数单独标红
+  const pt=d.push_today||{};
+  const ptRate=(pt.total>0)?Math.round((pt.success||0)/pt.total*100):null;
 
   // 2026-09-02: 服务已运行时间 — process_start 是 UTC ISO,前端每秒重算
   if(d.process_start){ _processStartMs=new Date(d.process_start).getTime(); _tickUptime(); if(!_uptimeTimer){ _uptimeTimer=setInterval(_tickUptime,1000); } }
@@ -883,10 +885,10 @@ async function dashboard(range){
         <div class="label">已启用产品 / 总数</div>
         ${d.product_total>0 && d.product_active!==d.product_total?`<div style="font-size:11px;color:var(--muted);margin-top:6px">未启用 <b style="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
       </div>
-      <div class="stat ${d.push_today?.total>0?(d.push_today.failed>0?'tint-warn':'tint-success'):'tint-neutral'}">
-        <div class="num">${d.push_today?.success||0}</div>
-        <div class="label">${d.push_today?.total>0?`今日推送 ${d.push_today.total} 条`:'今日推送'}</div>
-        ${d.push_today?.failed>0?`<div style="font-size:11px;color:var(--muted);margin-top:6px"><b style="color:var(--danger)">${d.push_today.failed}</b> 失败</div>`:''}
+      <div class="stat ${pt.total>0?(pt.failed>0?'tint-warn':'tint-success'):'tint-neutral'}">
+        <div class="num">${ptRate===null?'—':ptRate+'%'}</div>
+        <div class="label">${pt.total>0?`今日推送 ${pt.total} 条`:'今日推送'}</div>
+        ${pt.failed>0?`<div style="font-size:11px;color:var(--muted);margin-top:6px"><b style="color:var(--danger)">${pt.failed}</b> 失败</div>`:''}
       </div>
     </div>
     <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
@@ -966,12 +968,17 @@ async function dashboard(range){
     <div class="card" style="grid-column:3;grid-row:1;display:flex;flex-direction:column;min-width:0">
       <div class="card-hd" style="color:var(--muted);font-size:11px;flex-shrink:0">📋 最近更新</div>
       <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
-        ${(d.recent_deliveries||[]).slice(0,8).map(r=>`
-          <div style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--gray-border);white-space:nowrap">
-            <span style="color:${r.delivery_status==='sent'?'var(--success)':r.delivery_status==='failed'?'var(--danger)':'var(--muted)'};flex-shrink:0;font-size:13px">${r.delivery_status==='sent'?'✓':r.delivery_status==='failed'?'✗':'·'}</span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${r.product_name||'—'} ${r.package_version||''} ${r.file_name?'('+r.file_name.slice(0,22)+')':''}</span>
-            <span style="color:var(--muted);font-size:11px;flex-shrink:0">${fmtTZ(r.sent_at,true)}</span>
-          </div>`).join('')}
+        ${_recentPackageGroups(d.recent_deliveries||[]).map(g=>{
+          const bad=g.failed>0, icon=bad?'✗':(g.sent>0?'✓':'·');
+          const color=bad?'var(--danger)':(g.sent>0?'var(--success)':'var(--muted)');
+          const tip=`推送 ${g.total} 次 · ${g.sent}✓ ${g.failed}✗\n${[...g.customers].join('、')||'—'}`;
+          return `<div class="pill-tip" data-tip="${escHtml(tip)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--gray-border);white-space:nowrap">
+            <span style="color:${color};flex-shrink:0;font-size:13px">${icon}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${escHtml(g.product||'—')} ${escHtml(g.ver||'')}${g.file?' ('+escHtml(g.file.slice(0,22))+')':''}</span>
+            <span style="color:var(--muted);font-size:11px;flex-shrink:0">${g.customers.size}客户</span>
+            <span style="color:var(--muted);font-size:11px;flex-shrink:0">${fmtTZ(g.sent_at,true)}</span>
+          </div>`;
+        }).join('')||'<div style="text-align:center;color:var(--muted);font-size:12px;padding:18px 0">暂无推送</div>'}
       </div>
     </div>
 
@@ -1124,8 +1131,8 @@ async function refreshEventsCenterCardIfVisible(){
   const body = document.getElementById('eventsCenterBody');
   if(!body) return;  // 当前不在仪表盘,跳过
   try{
-    const rng = _dashRange || '7';
-    const r = await api('/dashboard?range=' + rng + '&_t=' + Date.now());
+    // 只查事件表,不再为了刷新事件卡把 7/30/90 天统计全部重算一遍
+    const r = await api('/dashboard?events_only=1&_t=' + Date.now());
     if(r.code !== 0) return;
     const events = r.data && r.data.recent_events;
     if(events && typeof renderEventsCenterFromData === 'function'){
@@ -1753,6 +1760,23 @@ document.addEventListener('click',function(e){
 
 // ── Dashboard Charts ─────────────────────────────────────────────
 const PIE_COLORS = ['#4363e8','#f58536','#26a269','#e66100','#3d5afe','#bf4b8a','#00b8d4','#7cb101','#e6194b','#9e480e'];
+// 产品颜色唯一来源: 趋势曲线 / 图例 / 产品分布表必须用同一份按名称索引的色表,
+// 否则同一个产品在三处会显示成三种颜色(此前图例按数量排序、曲线按名称排序)
+const _PROD_PALETTE = [
+  '#4c78a8','#f58518','#54a24b','#e45756','#72b7b2',
+  '#e0a584','#b07aa1','#ff9da6','#9d755d','#bab0ac',
+  '#5e81ac','#d47e93','#a3be8b','#b48ead','#d08770',
+  '#729ece','#ff9e6c','#a4c969','#6cc3d5','#dba1bc',
+  '#cf9c5e','#7eb0d5','#d28b9b','#9bc995'
+];
+function _buildProdColorMap(names){
+  const sorted=[...new Set((names||[]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+  const map={};
+  sorted.forEach((p,i)=>{
+    map[p]= i<_PROD_PALETTE.length ? _PROD_PALETTE[i] : `hsl(${(i*137.508)%360}, 55%, 50%)`;
+  });
+  return map;
+}
 
 // ── Email provider templates ───────────────────────────────────────────────
 // Quick-select preset for common SMTP providers. User picks one to autofill
@@ -1792,27 +1816,28 @@ function _renderProdDistTable(data){
     container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无数据</div>'; return;
   }
   const total = data.reduce((s,e)=>s+e.count,0);
-  const max = data[0].count;
+  const cmap = _buildProdColorMap(data.map(d=>d.name));
   container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
     '<thead><tr style="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
       '<th style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">产品</th>'+
       '<th style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
       '<th style="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
     '</tr></thead><tbody>'+
-    data.map((item,i)=>{
+    data.map((item)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
+      const color = cmap[item.name] || 'var(--gray-disabled)';
       return `<tr style="border-bottom:1px solid var(--gray-bg)">
         <td style="padding:9px 12px">
           <div style="display:flex;align-items:center;gap:6px;min-width:0">
-            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${PIE_COLORS[i%PIE_COLORS.length]}"></span>
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${item.name}">${item.name}</span>
+            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
+            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
           </div>
         </td>
         <td style="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
         <td style="padding:9px 12px">
           <div style="display:flex;align-items:center;gap:6px">
             <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
-              <div style="width:${pct}%;height:100%;background:${PIE_COLORS[i%PIE_COLORS.length]};border-radius:4px"></div>
+              <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
             </div>
             <span style="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${pct}%</span>
           </div>
@@ -1820,6 +1845,28 @@ function _renderProdDistTable(data){
       </tr>`;
     }).join('')+
     '</tbody></table>';
+}
+
+// 最近更新按 snapshot 聚合: 同一包推给 N 个客户只占一行
+function _recentPackageGroups(list){
+  const map=new Map();
+  (list||[]).forEach(r=>{
+    const key=r.snapshot_id||`${r.product_name||''}|${r.package_version||''}|${r.file_name||''}`;
+    let g=map.get(key);
+    if(!g){
+      g={product:r.product_name,ver:r.package_version,file:r.file_name,sent_at:r.sent_at,total:0,sent:0,failed:0,customers:new Set()};
+      map.set(key,g);
+    }
+    g.total++;
+    if(r.delivery_status==='sent')g.sent++;
+    else if(r.delivery_status==='failed')g.failed++;
+    const cname=r.customer_name||(r.customer_id!=null?('#'+r.customer_id):'');
+    if(cname)g.customers.add(cname);
+    if(r.sent_at&&(!g.sent_at||String(r.sent_at)>String(g.sent_at)))g.sent_at=r.sent_at;
+  });
+  return [...map.values()]
+    .sort((a,b)=>String(b.sent_at||'').localeCompare(String(a.sent_at||'')))
+    .slice(0,8);
 }
 
 // feat/customer-push-card 2026-09-02: 客户维度推送聚合卡片
@@ -1920,27 +1967,8 @@ function _renderTimelineChart(canvasId, data, days, visible){
     ctx.fillText('请点击上方产品标签显示曲线', W/2, H/2); return;
   }
 
-  // 调色板: d3.schemeTableau10 风格,高对比度 + 视觉友好
-  // 原 10 色 (#4363e8 etc.) 饱和度过高,80 产品共用必然撞色难辨
-  // 现用 d3 default 风格, 蓝绿紫橘搭配, 后续产品用 HSL 调色互补
-  const PALETTE_SIZE = 24;  // 预生成 24 色, 超过 24 用 HSL 旋转
-  const PALETTE = [
-    '#4c78a8', '#f58518', '#54a24b', '#e45756', '#72b7b2',
-    '#e0a584', '#b07aa1', '#ff9da6', '#9d755d', '#bab0ac',
-    '#5e81ac', '#d47e93', '#a3be8b', '#b48ead', '#d08770',
-    '#729ece', '#ff9e6c', '#a4c969', '#6cc3d5', '#dba1bc',
-    '#cf9c5e', '#7eb0d5', '#d28b9b', '#9bc995'
-  ];
-  const prodColor = {};
-  allProducts.forEach((p, i) => {
-    if (i < PALETTE_SIZE) {
-      prodColor[p] = PALETTE[i];
-    } else {
-      // 超过 PALETTE_SIZE 用 HSL 旋转, 与 palette 区分明显
-      const hue = (i * 137.508) % 360;  // 黄金角
-      prodColor[p] = `hsl(${hue}, 55%, 50%)`;
-    }
-  });
+  // 与图例/产品分布表共用一份按产品名索引的色表
+  const prodColor = _buildProdColorMap(allProducts);
 
   // 填充日期空洞
   const today=new Date();
@@ -2198,30 +2226,14 @@ function _hideChartTooltip(e, canvas){
 function _renderTlLegend(allProducts, visible){
   const container = document.getElementById('tlLegend');
   if(!container) return;
-  // 调色板: d3.schemeTableau10 + 24 色扩展 + HSL 黄金角 (跟 chart 一致)
-  const PALETTE_SIZE = 24;
-  const PALETTE = [
-    '#4c78a8', '#f58518', '#54a24b', '#e45756', '#72b7b2',
-    '#e0a584', '#b07aa1', '#ff9da6', '#9d755d', '#bab0ac',
-    '#5e81ac', '#d47e93', '#a3be8b', '#b48ead', '#d08770',
-    '#729ece', '#ff9e6c', '#a4c969', '#6cc3d5', '#dba1bc',
-    '#cf9c5e', '#7eb0d5', '#d28b9b', '#9bc995'
-  ];
-  const prodColor = {};
-  allProducts.forEach((p, i) => {
-    if (i < PALETTE_SIZE) {
-      prodColor[p] = PALETTE[i];
-    } else {
-      const hue = (i * 137.508) % 360;
-      prodColor[p] = `hsl(${hue}, 55%, 50%)`;
-    }
-  });
-
-  container.innerHTML = allProducts.map((p,i) => {
+  const prodColor = _buildProdColorMap(allProducts);
+  // 图例固定按名称排序,与曲线色表同源,避免顺序变化导致颜色对不上
+  const sorted = [...new Set(allProducts||[])].sort((a,b)=>a.localeCompare(b,'zh'));
+  container.innerHTML = sorted.map((p) => {
     const on = visible[p];
     return `<span onclick="_toggleTlProd('${escAttr(p)}')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'var(--gray-disabled)'};text-decoration:${on?'none':'line-through'}">
       <span style="width:10px;height:2px;background:${prodColor[p]};display:inline-block;border-radius:4px"></span>
-      ${p}
+      ${escHtml(p)}
     </span>`;
   }).join('');
 }

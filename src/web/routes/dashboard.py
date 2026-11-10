@@ -10,6 +10,12 @@ bp = Blueprint('dashboard', __name__, url_prefix='/api')
 @bp.route('/dashboard', methods=['GET'])
 @require_auth
 def get_dashboard():
+    # 事件卡单独刷新时只查 system_event_log,不再连带重算 7/30/90 天统计
+    if request.args.get('events_only'):
+        return jsonify({'code': 0, 'data': {
+            'recent_events': _recent_events_for_dashboard(limit=10),
+        }})
+
     from src.models.user_session import count_by_status, get_expired_active_count
     from src.models.snapshot import list_sources as list_src
     from src.models.database import query

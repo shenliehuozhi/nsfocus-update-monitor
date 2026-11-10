@@ -4,6 +4,7 @@ from src.core.logger import get_log_dir
 import glob
 import json
 import os
+import re
 import sqlite3
 import threading
 from datetime import datetime
@@ -32,6 +33,56 @@ _PENDING_FILE = os.path.join(_PROJECT_ROOT, 'data', 'discover_pending.json')
 # 老实现是 open('a') 追加,跑久了会膨胀到几十 MB 还无法清理。
 _disc_logger = None
 _DISC_LOG_FILE = os.path.join(_PROJECT_ROOT, 'data', 'discover.log')
+
+# app.log 实际格式: "2026-11-10 16:54:24 [ERROR] monitor.detector: ..."
+# 兼容可能带 ISO 'T' 分隔符的外部日志
+_LOG_ALERT_RE = re.compile(
+    r'^(\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2})\s+\[(ERROR|WARNING)\]\s?(.*)$'
+)
+_LOG_TAIL_BYTES = 1024 * 1024
+# 生产 app.log 约 950 行/小时, 4000 行≈4h, 覆盖面板的 2h 口径且留余量
+_LOG_TAIL_LINES = 4000
+
+
+def _tail_lines(log_file: str, max_lines: int = _LOG_TAIL_LINES) -> list:
+    """只读文件尾部,避免把整个 10MB app.log readlines 进内存。"""
+    try:
+        with open(log_file, 'r', encoding='utf-8', errors='replace') as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            f.seek(max(0, size - _LOG_TAIL_BYTES))
+            return f.read().splitlines()[-max_lines:]
+    except OSError:
+        return []
+
+
+def _scan_recent_log_alerts(log_file: str, cutoff, tail_lines: int = _LOG_TAIL_LINES, limit: int = 20) -> list:
+    """从 app.log 尾部聚合 cutoff 之后的 WARNING/ERROR,供仪表盘运维健康卡使用。"""
+    alerts = []
+    for line in _tail_lines(log_file, tail_lines):
+        m = _LOG_ALERT_RE.match(line)
+        if not m:
+            continue
+        try:
+            if datetime.fromisoformat(m.group(1)) < cutoff:
+                continue
+        except (ValueError, TypeError):
+            pass
+        level = m.group(2)
+        msg = line.strip()
+        if '关键字段' in msg or '字段缺失' in msg or 'empty' in msg.lower() or 'null' in msg.lower():
+            kind = 'field_missing'
+        elif '采集失败' in msg or 'Collection failed' in msg:
+            kind = 'collection_failed'
+        elif 'Session' in msg and ('expired' in msg or 'exhausted' in msg):
+            kind = 'session_error'
+        elif '解析' in msg or 'parse' in msg.lower():
+            kind = 'parse_error'
+        else:
+            kind = 'other'
+        alerts.append({'level': level, 'kind': kind, 'msg': msg[-200:]})
+    return alerts[-limit:]
+
 
 def _disc_log_path():
     """返回当前 discover.log 文件路径(供 _disc_log lazy init 用)。"""
@@ -628,38 +679,10 @@ def health_check():
     # ── 5. 采集异常摘要（从 app.log 聚合最近2小时的 WARNING/ERROR）────────
     异常日志 = []
     try:
-        log_dir = get_log_dir()
-        log_file = os.path.join(log_dir, 'app.log')
+        log_file = os.path.join(get_log_dir(), 'app.log')
         if os.path.exists(log_file):
             cutoff = datetime.utcnow() - timedelta(hours=2)
-            # 读最后 500 行做采样，避免全文件扫描
-            with open(log_file, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-            recent = lines[-500:] if len(lines) > 500 else lines
-            for line in recent:
-                m = re.match(r'(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[^ ]*) (ERROR|WARNING)', line)
-                if not m:
-                    continue
-                try:
-                    t = datetime.fromisoformat(m.group(1))
-                    if t < cutoff:
-                        continue
-                except Exception:
-                    pass
-                level = m.group(2)
-                # 提取关键异常信息
-                msg = line.strip()
-                if '关键字段' in msg or '字段缺失' in msg or 'empty' in msg.lower() or 'null' in msg.lower():
-                    kind = 'field_missing'
-                elif '采集失败' in msg or 'Collection failed' in msg:
-                    kind = 'collection_failed'
-                elif 'Session' in msg and ('expired' in msg or 'exhausted' in msg):
-                    kind = 'session_error'
-                elif '解析' in msg or 'parse' in msg.lower():
-                    kind = 'parse_error'
-                else:
-                    kind = 'other'
-                异常日志.append({'level': level, 'kind': kind, 'msg': msg[-200:]})
+            异常日志 = _scan_recent_log_alerts(log_file, cutoff)
     except Exception:
         pass
 
