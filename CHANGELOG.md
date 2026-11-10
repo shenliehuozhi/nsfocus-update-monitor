@@ -20,6 +20,8 @@
 - **通知模板**（`base._format_template_strip` Stage 2）：desc 里没有「注意事项」时不再退化成一个只有空标题的「注意事项」头 —— 原先无条件走 stage 2，会让正文整段消失。现在仅在真的取到注意段时才用，否则继续下探到 brief 档补「详情见 URL」
 - **通知模板**（`base._fmt_meta_line`）：`MD5` 这行标签此前硬编码 `'MD5' + 6 空格`，比 `_pad_label` 的 4 字符对齐多出 4 列，冒号与其余 meta 行不同列（e2e34bc 统一对齐时漏改的第二个调用点）。现统一交给 `_pad_label`
 - **推送历史分页**：后端每页固定 200 个包，前端原先不传 `page`，第 2 页之后的数据永远看不到；且 `total` 用的是 `COUNT(dl.*)` 交付行数而非包数，同包推 3 个客户会被算成 3。现在 `total` 改 `COUNT(DISTINCT s.id)`（实测 7124 → 1187），页头新增「共 N 个包 · 第 x/y 页」+ 上/下一页，过滤条件变更自动回到第 1 页
+- **前端 · 内联事件属性转义**：`on*="foo('${esc(X)}')"` 这类写法里的 `esc()` 挡不住单引号。HTML 解析器先对属性值整体做实体解码、再交给 JS 编译，所以 `&#39;` 会被还原成裸 `'`（等于 `escHtml` 在属性里没起作用），而 `esc()` 干脆不处理 `'` —— 字段里一个撇号就让该按钮静默失效，`');代码//` 则是在页面全局作用域里执行 JS（`localStorage.token` 就在手边）。新增 `escAttr()`（`\` 与 `'` 出反斜杠形式，`& < > "` 出实体，`\n\r` 出字面量，单次遍历避免实体被二次编码），替换 4 个 handler 的 13 处调用点（客户列表「编辑」、数据页与下钻的「推送」弹窗）；另补 4 处完全裸插的远端版本串（rd 对比页 `data-ver` / `onchange` / 版本 chip —— `data-*` 用 `escHtml`，JS 实参用 `escAttr`）。全量校验：277 个 handler 过 V8 编译 0 失败，12 个对抗样本走「emit → HTML 解码 → JS 求值」完整管线还原一致
+- **前端 · 死代码**：删掉两个同名 `togglePkgType`（一个 `// Deprecated - no-op`、一个空体 `{}`，后者静默覆盖前者），全仓 0 调用点
 
 ### 改进
 - **性能 P0**：`delivery_log` 此前零索引，推送历史/客户推送分布/仪表盘 recent 全走全表扫。新增 `SCHEMA_DELIVERY_LOG_INDEXES`（`sent_at`、`(customer_id,sent_at)`、`(rule_id,sent_at)`、`snapshot_id`），启动期 `IF NOT EXISTS` 幂等建索引。实测（生产库副本）：`customers/push-summary` 2.77ms→0.02ms、dashboard `recent_deliveries` 3.02ms→0.04ms

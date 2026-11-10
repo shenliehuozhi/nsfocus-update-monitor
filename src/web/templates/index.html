@@ -2675,7 +2675,7 @@ function buildFlatVerTreeHtml(snapshots) {
         <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span style="font-size:11px;color:var(--muted)">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
-        <button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(s.product_name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
+        <button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();showPushModal(${s.id},'${escAttr(s.product_name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
       </div>
       <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
         <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
@@ -3791,7 +3791,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-soft-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
+          <button class="btn btn-xs btn-soft-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${escAttr(src.name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escHtml(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
@@ -3805,7 +3805,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
               <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
               ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
-              <button class="btn btn-xs btn-soft-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${esc(src.name)}','${esc(pushVer)}','${esc(pushPkg)}')">推送</button>
+              <button class="btn btn-xs btn-soft-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${escAttr(src.name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}
@@ -4844,7 +4844,7 @@ async function customers(){
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   custProdOpts=`<option value="">全部产品</option>`+PROD.map(p=>`<option>${p}</option>`).join('');
 
-  let rows=list.map(c=>`<tr><td style="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.attachment_max_mb?'<span style="font-size:11px;color:var(--muted)">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${esc(c.name)}','${esc(c.company||'')}','${esc(c.email||'')}','${esc(c.phone||'')}','${(c.owned_products||[]).join('|')}',${c.attachment_max_mb||0})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
+  let rows=list.map(c=>`<tr><td style="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.attachment_max_mb?'<span style="font-size:11px;color:var(--muted)">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${escAttr(c.name)}','${escAttr(c.company||'')}','${escAttr(c.email||'')}','${escAttr(c.phone||'')}','${escAttr((c.owned_products||[]).join('|'))}',${c.attachment_max_mb||0})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th style="width:50px">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
 function removeCProd(btn){
@@ -4908,6 +4908,12 @@ function openCModal(id,n,co,em,ph,pr,attMb){
 }
 
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+// 内联 on* 属性里 JS 字符串实参专用的转义。esc/escHtml 都挡不住: HTML 解析器先做
+// 属性整体实体解码、再把它当 JS 编译, 所以 &#39; 会被还原成裸 ' 照样截断字符串;
+// 只有反斜杠能活到 JS 层。换行同理会截断 JS 字面量, 一并转 \n。
+// 单次遍历替换, 避免实体里的 & 被二次编码成 &amp;quot;。data-* 之类的普通属性仍用
+// escHtml(读回 getAttribute 时实体已解码, 正好还原原文)。
+function escAttr(s){return String(s==null?'':s).replace(/[\\'&<>"\n\r]/g,c=>({'\\':'\\\\',"'":"\\'",'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\n':'\\n','\r':'\\r'}[c]));}
 async function saveC(){
   const id=document.getElementById('cid').value;
   const nm=document.getElementById('cnm').value.trim(),cm=document.getElementById('ccm').value.trim(),em=document.getElementById('cem').value.trim(),ph=document.getElementById('cph').value.trim();
@@ -7214,10 +7220,6 @@ function editPkgType(id){
   pt.types.forEach(t => { window._ptModes[t] = pt.modes && pt.modes[t] || 'auto'; });
 }
 
-function togglePkgType(cb){
-  // Deprecated - no-op
-}
-
 async function savePkgType(id){
   const modes = window._ptModes || {};
   // types 来自 modes 的 key（由树形控件的 mode selector 更新）
@@ -7374,8 +7376,6 @@ function showRefreshLog(id){
   const w=document.getElementById(`rlog-${id}`);
   if(w){ w.style.display=w.style.display==='none'?'block':'none'; }
 }
-
-function togglePkgType(cb){}
 
 function _renderProductRows(prods){
   if(!prods.length) return `<tr><td colspan="8" style="text-align:center;color:var(--gray-disabled);padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
@@ -9460,8 +9460,8 @@ function rdRenderPkgTable(){
   tbody.innerHTML = _rd.packages.map(p => {
     const isSel = _rd.selected.includes(p.package_version);
     const pubCST = p.published_at ? p.published_at.replace(' ', ' ').slice(0, 19) : '—';
-    return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${p.package_version}">
-      <td><input type="checkbox" class="rd-pkg-cb" data-ver="${p.package_version}" ${isSel ? 'checked' : ''} onchange="rdToggleSel('${p.package_version}')"></td>
+    return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${escHtml(p.package_version)}">
+      <td><input type="checkbox" class="rd-pkg-cb" data-ver="${escHtml(p.package_version)}" ${isSel ? 'checked' : ''} onchange="rdToggleSel('${escAttr(p.package_version)}')"></td>
       <td style="font-family:monospace">${p.package_version}</td>
       <td style="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
       <td style="font-size:12px">${pubCST}</td>
@@ -9563,8 +9563,8 @@ function rdRenderResult(){
     ${clickableVersions.length > 0
       ? `<div style="font-size:12px;color:var(--muted);margin-bottom:14px">
           📍 点击版本过滤结果:
-          ${intermediates.map(v => `<a href="javascript:void(0)" class="rd-version-chip" data-ver="${v}" onclick="rdApplyFilter('${v}')"><code>${v}</code></a>`).join(' ')}
-          <a href="javascript:void(0)" class="rd-version-chip rd-version-latest" data-ver="${toV}" onclick="rdApplyFilter('${toV}')"><code>最新 ${toV}</code></a>
+          ${intermediates.map(v => `<a href="javascript:void(0)" class="rd-version-chip" data-ver="${escHtml(v)}" onclick="rdApplyFilter('${escAttr(v)}')"><code>${v}</code></a>`).join(' ')}
+          <a href="javascript:void(0)" class="rd-version-chip rd-version-latest" data-ver="${escHtml(toV)}" onclick="rdApplyFilter('${escAttr(toV)}')"><code>最新 ${toV}</code></a>
         </div>`
       : ''}
     ${!stats.from_has_rule_blocks
@@ -9673,7 +9673,7 @@ function rdRenderGroups(){
                 return `<tr>
                   <td><code class="rd-cve">[${x.id}]</code></td>
                   <td>${escHtml(x.name)}</td>
-                  <td><a href="javascript:void(0)" class="rd-version-chip" onclick="rdApplyFilter('${x.first_added_in}')"><code>${x.first_added_in || ''}</code></a></td>
+                  <td><a href="javascript:void(0)" class="rd-version-chip" onclick="rdApplyFilter('${escAttr(x.first_added_in)}')"><code>${x.first_added_in || ''}</code></a></td>
                 </tr>`;
               } else if (typeKey === 'updated') {
                 const versions = (x.updated_in_versions || []).slice().sort(_rdVerCmpDesc);
