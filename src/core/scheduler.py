@@ -1604,6 +1604,14 @@ def refresh_scheduler_jobs():
                                 next_run_time=datetime.utcnow())
         else:
             _scheduler.reschedule_job('nsfocus_digest', trigger='interval', minutes=15)
+        # 延迟队列独立轮询：否则只能等下一轮采集（默认 4h）才处理到期/重试项，
+        # 重试退避也失去意义。5 分钟足够细，队列为空时开销仅一条 SQL。
+        if not _scheduler.get_job('nsfocus_delivery_queue'):
+            _scheduler.add_job(process_delayed_queue, 'interval', minutes=5,
+                               id='nsfocus_delivery_queue', name='Delivery Queue Retry',
+                               next_run_time=datetime.utcnow() + timedelta(seconds=30))
+        else:
+            _scheduler.reschedule_job('nsfocus_delivery_queue', trigger='interval', minutes=5)
         # 数据库清理：每天凌晨 3 点执行
         if not _scheduler.get_job('nsfocus_db_cleanup'):
             _scheduler.add_job(_run_db_cleanup, 'cron', hour=3, minute=0,
@@ -1626,7 +1634,8 @@ def refresh_scheduler_jobs():
         # nsfocus_health removed: _health_check is disabled
     else:
         for job_id in ['nsfocus_collect', 'nsfocus_heartbeat', 'nsfocus_digest',
-                       'nsfocus_db_cleanup', 'nsfocus_channel_health']:
+                       'nsfocus_delivery_queue', 'nsfocus_db_cleanup',
+                       'nsfocus_channel_health']:
             job = _scheduler.get_job(job_id)
             if job:
                 _scheduler.remove_job(job_id)

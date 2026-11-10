@@ -86,6 +86,6 @@ def _decrypt_config(row: dict) -> dict:
     if row.get('config'):
         try:
             row['config'] = json.loads(decrypt(row['config']))
-        except (json.JSONDecodeError, TypeError):
+        except (json.JSONDecodeError, TypeError, ValueError):
             row['config'] = {}
     return row

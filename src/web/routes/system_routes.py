@@ -642,9 +642,11 @@ def health_check():
     )
     queue_pending = queue_rows[0]['cnt'] if queue_rows else 0
 
+    # push_after 是 compute_push_time() 写入的本地时间，必须用本地时间比较，
+    # 否则 CST 服务器会把到期项误判为未到期（晚 8 小时）。
     queue_overdue = query(
         "SELECT COUNT(*) as cnt FROM delayed_queue "
-        "WHERE status = 'pending' AND push_after < datetime('now')"
+        "WHERE status = 'pending' AND push_after < datetime('now', 'localtime')"
     )
     queue_overdue_count = queue_overdue[0]['cnt'] if queue_overdue else 0
 

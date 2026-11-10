@@ -618,7 +618,11 @@ CREATE TABLE IF NOT EXISTS delayed_queue (
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'cancelled', 'pushed')),
     cancelled_reason TEXT DEFAULT '',
     pushed_at TEXT,
-    chain_json TEXT DEFAULT '[]'
+    chain_json TEXT DEFAULT '[]',
+    attempts INTEGER DEFAULT 0,
+    next_attempt_at TEXT DEFAULT '',
+    last_attempt_at TEXT DEFAULT '',
+    last_error TEXT DEFAULT ''
 )
 """
 
@@ -669,18 +673,62 @@ def cancel_for_snapshot(snapshot_id: int, reason: str = ''):
     )
 
 
-def get_due_items() -> list:
+def get_due_items(limit: int = 200) -> list:
+    """Return pending delayed items whose timer and retry backoff have elapsed.
+
+    push_after / next_attempt_at 均为服务器本地时间（compute_push_time 用
+    datetime.now()），历史上这里用 datetime('now')（UTC）比较，CST 服务器上
+    会把所有延迟推送硬生生拖后 8 小时。
+    """
     from src.models.database import query
+    from datetime import datetime
+    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     return query(
-        "SELECT * FROM delayed_queue WHERE status = 'pending' AND push_after <= datetime('now')"
+        """SELECT * FROM delayed_queue
+           WHERE status = 'pending' AND push_after <= ?
+             AND (next_attempt_at IS NULL OR next_attempt_at = '' OR next_attempt_at <= ?)
+           ORDER BY push_after, id
+           LIMIT ?""",
+        (now_local, now_local, limit)
     )
 
 
 def mark_pushed(queue_id: int):
     from src.models.database import execute
+    from datetime import datetime
+    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     execute(
-        "UPDATE delayed_queue SET status = 'pushed', pushed_at = datetime('now') WHERE id = ?",
-        (queue_id,)
+        "UPDATE delayed_queue SET status = 'pushed', pushed_at = ?, last_attempt_at = ? "
+        "WHERE id = ?",
+        (now_local, now_local, queue_id)
+    )
+
+
+def mark_delivery_retry(queue_id: int, attempts: int, next_attempt_at: str,
+                        error: str = ''):
+    """Keep the item pending and schedule the next attempt after a backoff."""
+    from src.models.database import execute
+    from datetime import datetime
+    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    execute(
+        """UPDATE delayed_queue
+           SET attempts = ?, next_attempt_at = ?, last_attempt_at = ?, last_error = ?
+           WHERE id = ? AND status = 'pending'""",
+        (attempts, next_attempt_at, now_local, (error or '')[:1000], queue_id)
+    )
+
+
+def mark_delivery_terminal(queue_id: int, reason: str, error: str = ''):
+    """Stop retrying an item that cannot be delivered (config error / exhausted)."""
+    from src.models.database import execute
+    from datetime import datetime
+    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    execute(
+        """UPDATE delayed_queue
+           SET status = 'cancelled', cancelled_reason = ?, last_error = ?,
+               last_attempt_at = ?
+           WHERE id = ? AND status = 'pending'""",
+        (reason[:200], (error or '')[:1000], now_local, queue_id)
     )
 
 
@@ -725,9 +773,17 @@ def create_tables(db):
     sync_table_columns(db, 'delivery_log', EXPECTED_DELIVERY_LOG_COLUMNS)
     sync_table_columns(db, 'delayed_queue', [
         ('chain_json', 'TEXT', "'[]'"),
+        ('attempts', 'INTEGER', '0'),
+        ('next_attempt_at', 'TEXT', "''"),
+        ('last_attempt_at', 'TEXT', "''"),
+        ('last_error', 'TEXT', "''"),
     ])
     sync_table_columns(db, 'digest_queue', [
         ('chain_json', 'TEXT', "'[]'"),
+        ('attempts', 'INTEGER', '0'),
+        ('next_attempt_at', 'TEXT', "''"),
+        ('last_attempt_at', 'TEXT', "''"),
+        ('last_error', 'TEXT', "''"),
     ])
 
     # 历史数据迁移: delay_hours → delay_days (小时/24)
@@ -757,7 +813,11 @@ CREATE TABLE IF NOT EXISTS digest_queue (
     period_key TEXT NOT NULL,
     status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'sent', 'cancelled')),
     created_at TEXT DEFAULT (datetime('now')),
-    chain_json TEXT DEFAULT '[]'
+    chain_json TEXT DEFAULT '[]',
+    attempts INTEGER DEFAULT 0,
+    next_attempt_at TEXT DEFAULT '',
+    last_attempt_at TEXT DEFAULT '',
+    last_error TEXT DEFAULT ''
 )
 """
 
@@ -873,6 +933,23 @@ def mark_digest_sent(rule_id: int, period_key: str = None, max_id: int = None):
             "UPDATE digest_queue SET status = 'sent' "
             "WHERE rule_id = ? AND status = 'pending'",
             (rule_id,))
+
+
+def defer_digest_items(rule_id: int, max_id: int, attempts: int,
+                       next_attempt_at: str, error: str = ''):
+    """Keep pending digest rows and schedule a retry (UTC timestamps).
+
+    max_id 限定本次已尝试的行，发送期间新入队的包不受影响。
+    """
+    from src.models.database import execute
+    from datetime import datetime
+    now_utc = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    execute(
+        """UPDATE digest_queue
+           SET attempts = ?, next_attempt_at = ?, last_attempt_at = ?, last_error = ?
+           WHERE rule_id = ? AND status = 'pending' AND id <= ?""",
+        (attempts, next_attempt_at, now_utc, (error or '')[:1000], rule_id, max_id)
+    )
 
 
 def get_rules_due_for_digest(now=None) -> list:

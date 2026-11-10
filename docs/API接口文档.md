@@ -770,8 +770,8 @@ data: {"processed": 3, "errors": 0}
       ]
     },
     "queues": {
-      "delayed": {"pending": 0, "overdue": 0, "oldest_age_minutes": null},
-      "digest": {"pending": 0, "by_rule": []}
+      "delayed": {"pending": 0, "overdue": 0, "retrying": 0, "oldest_age_minutes": null},
+      "digest": {"pending": 0, "retrying": 0, "by_rule": []}
     },
     "collection": {
       "enabled": true, "is_running": false, "last_run": null,
@@ -801,6 +801,7 @@ data: {"processed": 3, "errors": 0}
 - `delivery` 按 `COALESCE(created_at, sent_at)` 落在窗口内统计；`undated_failed` 是 `created_at` 上线前写入、无法定位时间的失败行，仅做总量参考。
 - `success_rate = sent / (sent + failed)`，窗口内没有已完成交付时为 `null`。
 - `queues.delayed.overdue` 用本地时间比较 `push_after`（`compute_push_time` 存的本地时间），不要与 UTC 的 `datetime('now')` 混比。
+- `queues.*.retrying` 统计 `attempts > 0` 的 pending 行（发送失败、等待退避重试）；重试上限由 `MONITOR_DELIVERY_MAX_ATTEMPTS` / `MONITOR_DIGEST_MAX_ATTEMPTS` 控制（默认 6），耗尽后行状态转为 `cancelled`，原因见 `cancelled_reason`。
 - `collection.last_duration_s` / `avg_duration_s` 取最近 20 条 `collection_summary` 系统事件，不受 `hours` 限制。
 - `collection.sources_stale` 统计 24 小时内未成功采集的启用源。
 - `scheduler_jobs` 仅在调度器运行时非空。

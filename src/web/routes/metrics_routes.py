@@ -136,6 +136,7 @@ def _queues() -> dict:
     delayed = query(
         """SELECT COUNT(*) AS pending,
                   SUM(CASE WHEN push_after < ? THEN 1 ELSE 0 END) AS overdue,
+                  SUM(CASE WHEN COALESCE(attempts, 0) > 0 THEN 1 ELSE 0 END) AS retrying,
                   MIN(created_at) AS oldest
            FROM delayed_queue WHERE status='pending'""",
         (now_local,),
@@ -143,7 +144,9 @@ def _queues() -> dict:
 
     digest_rows = query(
         """SELECT dq.rule_id, COALESCE(r.name, '') AS rule_name,
-                  COUNT(*) AS pending, MIN(dq.created_at) AS oldest
+                  COUNT(*) AS pending,
+                  SUM(CASE WHEN COALESCE(dq.attempts, 0) > 0 THEN 1 ELSE 0 END) AS retrying,
+                  MIN(dq.created_at) AS oldest
            FROM digest_queue dq
            LEFT JOIN subscription_rules r ON r.id = dq.rule_id
            WHERE dq.status='pending'
@@ -152,14 +155,17 @@ def _queues() -> dict:
            LIMIT 20"""
     )
     digest_pending = sum(r['pending'] for r in digest_rows)
+    digest_retrying = sum(r['retrying'] or 0 for r in digest_rows)
     return {
         'delayed': {
             'pending': delayed['pending'] or 0,
             'overdue': delayed['overdue'] or 0,
+            'retrying': delayed['retrying'] or 0,
             'oldest_age_minutes': _age_minutes(delayed['oldest']),
         },
         'digest': {
             'pending': digest_pending,
+            'retrying': digest_retrying,
             'by_rule': [{
                 'rule_id': r['rule_id'],
                 'rule_name': r['rule_name'],
@@ -382,6 +388,8 @@ def render_prometheus(data: dict) -> str:
     digest = data['queues']['digest']
     gauge('nsfocus_queue_pending', delayed['pending'], {'queue': 'delayed'})
     gauge('nsfocus_queue_pending', digest['pending'], {'queue': 'digest'})
+    gauge('nsfocus_queue_retrying', delayed['retrying'], {'queue': 'delayed'})
+    gauge('nsfocus_queue_retrying', digest['retrying'], {'queue': 'digest'})
     gauge('nsfocus_queue_overdue', delayed['overdue'], {'queue': 'delayed'})
     gauge('nsfocus_queue_oldest_age_minutes', delayed['oldest_age_minutes'], {'queue': 'delayed'})
     for r in digest['by_rule']:

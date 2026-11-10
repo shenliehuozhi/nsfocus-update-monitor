@@ -320,7 +320,9 @@ def test_process_delayed_queue_does_not_reference_undefined_user_chain(monkeypat
     import src.notifiers.router as router_mod
     import inspect
 
-    src = inspect.getsource(router_mod.process_delayed_queue)
+    # 处理逻辑已拆到 _process_delayed_item，两处合起来必须读取 chain_json
+    src = (inspect.getsource(router_mod.process_delayed_queue)
+           + inspect.getsource(router_mod._process_delayed_item))
     # The bare identifier `user_chain` (not `_send_immediate(user_chain=...)`)
     # must not appear as a NameError candidate
     # i.e. the body must NOT have a line like `_send_immediate(..., user_chain=user_chain)`
