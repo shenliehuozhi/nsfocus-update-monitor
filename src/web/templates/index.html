@@ -166,6 +166,14 @@ select:hover{border-color:var(--gray-disabled)}
 select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(67,97,238,.1)}
 select:disabled{background-color:var(--gray-bg-hover);color:var(--gray-disabled);cursor:not-allowed}
 select.sel-sm{padding:4px 26px 4px 8px;font-size:12px;border-radius:6px}
+/* 自定义下拉浮层(渐进增强): 只替换指针展开的选项列表, 原生 <select> 保留值/onchange/键盘语义 */
+.dd-pop{position:fixed;z-index:10000;padding:4px;background:#fff;border:1px solid var(--gray-border);border-radius:8px;box-shadow:0 8px 24px rgba(16,24,40,.14),0 2px 6px rgba(16,24,40,.06);max-height:264px;overflow-y:auto;animation:ddIn .1s ease-out}
+@keyframes ddIn{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+.dd-opt{display:flex;align-items:center;gap:6px;height:30px;padding:0 9px;border-radius:6px;font-size:12.5px;color:var(--text);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dd-opt:hover,.dd-opt.active{background:var(--primary-fade)}
+.dd-opt.on{color:var(--primary-text);font-weight:600}
+.dd-opt.on::after{content:"✓";margin-left:auto;font-size:11px}
+.dd-opt.off{color:var(--gray-disabled);cursor:not-allowed;background:none}
 select.ct[multiple]{display:none}
 .form-group input[required]{border-left:2.5px solid var(--primary)}
 .form-group input::placeholder{color:#b0b8c1}
@@ -599,6 +607,96 @@ document.addEventListener('click', (e) => {
   if(dd.style.display === 'none' || dd.style.display === '') return;
   if(!menu.contains(e.target)) dd.style.display = 'none';
 });
+
+/* ── 自定义下拉浮层(渐进增强) ──────────────────────────────────────────
+   原生 <select> 的选项列表由系统绘制, 无法跟随全站圆角/主色。这里只替换
+   指针展开的那一层: select 本身仍在 DOM 里持有 value, 选中后照常派发
+   change, 所以内联 onchange / 键盘操作 / 表单语义全部保持原样。
+   触屏设备不接管(系统 popup 在移动端更好用)。 */
+const _dd = { sel: null, pop: null, idx: -1 };
+const _ddTouch = () => matchMedia('(pointer: coarse)').matches;
+
+function ddClose(){
+  if(_dd.pop){ _dd.pop.remove(); _dd.pop = null; }
+  _dd.sel = null; _dd.idx = -1;
+}
+
+function _ddMark(){
+  if(!_dd.pop) return;
+  [..._dd.pop.children].forEach((d, i) => d.classList.toggle('active', i === _dd.idx));
+}
+
+function ddOpen(sel){
+  ddClose();
+  const items = [...sel.options];
+  if(!items.length) return;
+  const pop = document.createElement('div');
+  pop.className = 'dd-pop';
+  pop.setAttribute('role', 'listbox');
+  const cur = sel.selectedIndex;
+  items.forEach((o, i) => {
+    const d = document.createElement('div');
+    d.className = 'dd-opt' + (i === cur ? ' on' : '') + (o.disabled ? ' off' : '');
+    d.setAttribute('role', 'option');
+    d.setAttribute('aria-selected', i === cur ? 'true' : 'false');
+    d.dataset.i = i;
+    d.textContent = o.text;
+    pop.appendChild(d);
+  });
+  document.body.appendChild(pop);
+  const r = sel.getBoundingClientRect();
+  const w = Math.max(Math.round(r.width), 132);
+  const h = pop.offsetHeight;
+  const below = r.bottom + 4;
+  const above = r.top - h - 4;
+  pop.style.minWidth = w + 'px';
+  pop.style.top = (below + h > innerHeight - 8 && above > 8 ? above : below) + 'px';
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+  _dd.sel = sel; _dd.pop = pop; _dd.idx = Math.max(cur, 0);
+  _ddMark();
+  const on = pop.querySelector('.dd-opt.on') || pop.firstChild;
+  on.scrollIntoView({ block: 'nearest' });
+}
+
+function ddPick(i){
+  const sel = _dd.sel, o = sel && sel.options[i];
+  if(!sel || !o || o.disabled) return;
+  const changed = sel.value !== o.value;
+  sel.value = o.value;
+  ddClose();
+  if(sel.isConnected) sel.focus();
+  if(changed && sel.isConnected) sel.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+document.addEventListener('mousedown', e => {
+  const t = e.target;
+  if(!t || !t.closest || e.button !== 0) return;
+  const opt = t.closest('.dd-opt');
+  if(opt){ e.preventDefault(); ddPick(+opt.dataset.i); return; }
+  const sel = t.closest('select.dd');
+  if(sel && (sel.multiple || sel.size > 1)) return;   // 列表式 select 不是下拉, 不接管
+  if(_dd.pop && !t.closest('.dd-pop')){
+    const same = sel === _dd.sel;   // 点同一个控件 = 收起
+    ddClose();
+    if(same) return;
+  }
+  if(!sel || _ddTouch()) return;
+  e.preventDefault();              // 关掉系统 popup
+  sel.focus();
+  ddOpen(sel);
+}, true);
+
+document.addEventListener('keydown', e => {
+  if(!_dd.pop) return;             // 未展开时键盘完全交给原生 select
+  if(e.key === 'Escape'){ e.preventDefault(); const s = _dd.sel; ddClose(); if(s && s.isConnected) s.focus(); }
+  else if(e.key === 'ArrowDown'){ e.preventDefault(); _dd.idx = Math.min(_dd.idx + 1, _dd.pop.children.length - 1); _ddMark(); }
+  else if(e.key === 'ArrowUp'){ e.preventDefault(); _dd.idx = Math.max(_dd.idx - 1, 0); _ddMark(); }
+  else if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); ddPick(_dd.idx); }
+  else if(e.key === 'Tab') ddClose();
+});
+
+addEventListener('scroll', e => { if(_dd.pop && !_dd.pop.contains(e.target)) ddClose(); }, true);
+addEventListener('resize', ddClose);
 
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
@@ -5943,9 +6041,9 @@ async function history(){
   // 2026-11-09: 过滤条 — 订阅规则 / 客户 / 时间范围, 三者都写进 hash, 可分享也可从仪表盘卡片带 cust 下钻进来
   const _selCss='max-width:190px';
   const _opt=(v,l,sel)=>`<option value="${v}" ${String(v)===String(sel)?'selected':''}>${escHtml(l)}</option>`;
-  const ruleSel=`<select id="histRule" class="sel-sm" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
-  const custSel=`<select id="histCust" class="sel-sm" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
-  const daysSel=`<select id="histDays" class="sel-sm" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
+  const ruleSel=`<select id="histRule" class="sel-sm dd" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
+  const custSel=`<select id="histCust" class="sel-sm dd" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
+  const daysSel=`<select id="histDays" class="sel-sm dd" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
   // 分页条 (2026-11-09 P1): total 现在是包数, 每页 200 包。原先既不显示总数也无法翻到
   // 第 2 页, 用户以为 200 包就是全部 —— 这跟上次"客户显示不全"是同一类静默截断。
   const total=r.data?.total||0;
@@ -8650,9 +8748,9 @@ async function logs(){
       </span>
     </div><div class="card-bd">
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
-        <div class="form-group" style="margin-bottom:0;min-width:180px"><label>日志文件</label><select id="logFile">${fOpts}</select></div>
-        <div class="form-group" style="margin-bottom:0;min-width:120px"><label>级别</label><select id="logLevel"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
-        <div class="form-group" style="margin-bottom:0;min-width:80px"><label>行数</label><select id="logLines"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
+        <div class="form-group" style="margin-bottom:0;min-width:180px"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
+        <div class="form-group" style="margin-bottom:0;min-width:120px"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
+        <div class="form-group" style="margin-bottom:0;min-width:80px"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
         <div class="form-group" style="margin-bottom:0"><label>&nbsp;</label><div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" onclick="loadLogs()">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" onclick="toggleAutoRefresh()">自动刷新</button></div></div>
       </div>
       <div id="logContent" style="background:#0d1117;color:#c9d1d9;border-radius:8px;padding:14px;font:12px/1.6 'SF Mono','Fira Code','Consolas',monospace;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">
