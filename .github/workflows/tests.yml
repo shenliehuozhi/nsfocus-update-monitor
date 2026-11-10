@@ -50,6 +50,16 @@ jobs:
             exit 1
           fi
 
+      - name: Frontend syntax gate
+        # 前端拆成 static/js 经典脚本后没有构建步骤兜底；语法错误会让整页白屏。
+        # ubuntu-latest 自带 node，这里显式逐个 --check。
+        run: |
+          command -v node >/dev/null || { echo "::error::node not found"; exit 1; }
+          for f in src/web/static/js/*.js; do
+            echo "checking $f"
+            node --check "$f"
+          done
+
       - name: pytest
         env:
           # 写路径也隔离到临时目录,门禁自身绝不接触真实数据文件

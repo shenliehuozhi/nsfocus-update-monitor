@@ -1,6 +1,6 @@
 """内联 on* 事件属性的转义防线。
 
-背景(index.html 是 9761 行单文件 SPA, 277 个内联 on* 属性):
+背景(拆分前 index.html 是 9761 行单文件 SPA, 277 个内联 on* 属性):
 HTML 解析器先在属性值里做**实体解码**, 再把结果交给 JS 编译器。所以
 ``escHtml`` 把 ``'`` 转成 ``&#39;`` 对 JS 字符串字面量毫无保护 —— 解码回来
 就是个裸单引号, 照样把 handler 截断。2026-11-10 实测 13 个敌意样本, 旧写法
@@ -19,8 +19,12 @@ from pathlib import Path
 
 import pytest
 
-INDEX_HTML = Path(__file__).resolve().parents[1] / 'src' / 'web' / 'templates' / 'index.html'
-SOURCE = INDEX_HTML.read_text(encoding='utf-8')
+from tests.frontend_source import INDEX_HTML, js_source
+
+HTML_SOURCE = INDEX_HTML.read_text(encoding='utf-8')
+SOURCE = js_source()
+# 内联 on* 属性既可能写在 HTML 骨架里，也可能在 JS 模板字符串里生成
+ATTR_SOURCE = HTML_SOURCE + '\n' + SOURCE
 
 ATTR_RE = re.compile(r'\bon[a-z]+="([^"]*)"')
 
@@ -62,7 +66,7 @@ def test_no_esc_helper_in_js_string_argument_position():
     (渠道名 showTestLog、entry_url togglePkgDetail 等) —— 没有这条测试,
     同一类 bug 会一直漏。
     """
-    bad = _find_js_string_arg_sites(SOURCE)
+    bad = _find_js_string_arg_sites(ATTR_SOURCE)
     assert not bad, '内联属性 JS 字符串实参位转义写错:\n' + '\n'.join(
         f'  index.html:{ln}: {why}' for ln, why in bad)
 

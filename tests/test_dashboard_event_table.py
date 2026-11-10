@@ -4,15 +4,13 @@
 模板里混入了旧的字符串拼接片段（`'<thead ...>'+\n '<tr ...>'+ ...`），
 反引号内被当成纯文本输出，仪表盘卡片头部渲染成 "+ "+ "+ "+ ... 垃圾文本。
 """
-from pathlib import Path
-
 import pytest
 
-INDEX_HTML = Path(__file__).resolve().parents[1] / 'src/web/templates/index.html'
+from tests.frontend_source import js_source
 
 
 def _head_template(func_name: str) -> str:
-    src = INDEX_HTML.read_text(encoding='utf-8')
+    src = js_source()
     fstart = src.index(f'function {func_name}(')
     start = src.index('const head = `', fstart) + len('const head = `')
     end = src.index('`;', start)

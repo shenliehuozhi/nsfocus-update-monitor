@@ -16,15 +16,17 @@ import sys
 import subprocess
 from pathlib import Path
 
+from tests.frontend_source import js_source
 
-INDEX_HTML = str(Path(__file__).resolve().parents[1] / 'src' / 'web' / 'templates' / 'index.html')
+
+JS_SOURCE = js_source()
 
 
 def _extract_function(source: str, name: str) -> str:
-    """Extract a top-level function body from index.html as a string.
+    """Extract a top-level function body from the JS bundle as a string.
 
-    The file is one giant <script> block. We slice from `function NAME` to
-    the next `function ` or end-of-script. Crude but reliable for our test.
+    The bundle is split across static/js files; we slice from
+    `function NAME` to its matching brace. Crude but reliable for our test.
     """
     pattern = rf'function\s+{name}\s*\([^)]*\)\s*\{{'
     m = re.search(pattern, source)
@@ -50,8 +52,7 @@ def test_copyAboutToClipboard_no_textarea_leftover():
     `appendChild`/`removeChild` semantics, and a `document` global that
     exposes `createElement`/`execCommand`. This avoids a jsdom dependency.
     """
-    with open(INDEX_HTML) as f:
-        html = f.read()
+    html = JS_SOURCE
 
     func_src = _extract_function(html, 'copyAboutToClipboard')
     assert 'finally' in func_src, (
@@ -68,8 +69,7 @@ def test_copyAboutToClipboard_ta_is_invisible():
     """Even if cleanup races for some reason, the textarea must be styled
     invisible (1px, opacity 0) so the user never sees a stray box at the
     bottom-left of the page."""
-    with open(INDEX_HTML) as f:
-        html = f.read()
+    html = JS_SOURCE
 
     func_src = _extract_function(html, 'copyAboutToClipboard')
     # The fallback textarea must be styled to be invisible
@@ -92,8 +92,7 @@ def test_copyAboutToClipboard_full_flow_simulation(tmp_path):
     of the function: it must call removeChild somewhere reachable from
     the catch block (i.e. in a finally or in the catch body itself).
     """
-    with open(INDEX_HTML) as f:
-        html = f.read()
+    html = JS_SOURCE
 
     func_src = _extract_function(html, 'copyAboutToClipboard')
 
@@ -113,8 +112,7 @@ def test_showAboutModal_can_open_after_close():
     We assert the function no longer contains that buggy line as real code
     (occurrences in // comments are fine, just to be safe we strip comments).
     """
-    with open(INDEX_HTML) as f:
-        html = f.read()
+    html = JS_SOURCE
 
     func_src = _extract_function(html, 'showAboutModal')
 
@@ -138,8 +136,7 @@ def test_closeAboutModal_uses_simple_hide():
     """closeAboutModal should toggle display='none' on the modal. The
     showAboutModal function is responsible for showing it again.
     """
-    with open(INDEX_HTML) as f:
-        html = f.read()
+    html = JS_SOURCE
     func_src = _extract_function(html, 'closeAboutModal')
     assert "m.style.display='none'" in func_src
     assert 'if(m)' in func_src  # null-safety

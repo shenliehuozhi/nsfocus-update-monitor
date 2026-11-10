@@ -4,14 +4,14 @@
 否则正常保存/强制停止任一入口都会把该设置写丢。
 """
 import re
-from pathlib import Path
+
+from tests.frontend_source import js_source
 
 
 def test_settings_page_has_track_limit_select_wired():
-    html = (Path(__file__).parents[1] / 'src/web/templates/index.html').read_text(
-        encoding='utf-8')
-    assert 'id="cfg-pkg-track"' in html
-    assert re.search(r'<select id="cfg-pkg-track" class="dd">', html)
+    source = js_source()
+    assert 'id="cfg-pkg-track"' in source
+    assert re.search(r'<select id="cfg-pkg-track" class="dd">', source)
     # saveSettings + forceStopAndSave 两处都要带上该字段
-    assert html.count("pkg_track_limit:document.getElementById('cfg-pkg-track').value") == 2
-    assert all(v in html for v in ('value="5"', 'value="3"', 'value="10"', 'value="all"'))
+    assert source.count("pkg_track_limit:document.getElementById('cfg-pkg-track').value") == 2
+    assert all(v in source for v in ('value="5"', 'value="3"', 'value="10"', 'value="all"'))
