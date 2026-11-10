@@ -158,6 +158,14 @@ td{padding:8px 12px;border-bottom:1px solid var(--gray-border)}
 .form-group input,.form-group select{width:100%;padding:8px 12px;border:1px solid var(--gray-border);border-radius:8px;font-size:13px;background:#fff;color:var(--text);transition:.12s;line-height:1.5;font-family:inherit}
 .form-group input:focus,.form-group select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(67,97,238,.1)}
 .form-group select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+/* 下拉框全局基线：原先只有 .form-group select 关掉原生外观，散在工具条/标签行里的
+   select 仍是系统箭头 + 系统边框（Windows Chrome 上明显两套长相）。这里统一成
+   同一枚灰三角 + 边框/圆角/字号，.sel-sm 给密集工具条用。 */
+select{appearance:none;-webkit-appearance:none;background:#fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23999'/%3E%3C/svg%3E") no-repeat right 10px center;border:1px solid var(--gray-border);border-radius:8px;padding:7px 28px 7px 11px;font-size:13px;font-family:inherit;color:var(--text);line-height:1.5;cursor:pointer;transition:.12s}
+select:hover{border-color:var(--gray-disabled)}
+select:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(67,97,238,.1)}
+select:disabled{background-color:var(--gray-bg-hover);color:var(--gray-disabled);cursor:not-allowed}
+select.sel-sm{padding:4px 26px 4px 8px;font-size:12px;border-radius:6px}
 select.ct[multiple]{display:none}
 .form-group input[required]{border-left:2.5px solid var(--primary)}
 .form-group input::placeholder{color:#b0b8c1}
@@ -1174,7 +1182,7 @@ function openEventsCenterModal(){
           </div>
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
             <span style="color:var(--muted)">严重度</span>
-            <select id="eventsCenterModalSev" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="eventsCenterGoPage(0)">
+            <select id="eventsCenterModalSev" class="sel-sm" onchange="eventsCenterGoPage(0)">
               <option value="">全部</option>
               <option value="CRITICAL">🔴 CRITICAL</option>
               <option value="ERROR">🟠 ERROR</option>
@@ -1182,7 +1190,7 @@ function openEventsCenterModal(){
               <option value="INFO">ℹ️ INFO</option>
             </select>
             <span style="color:var(--muted)">时间范围</span>
-            <select id="eventsCenterModalHours" class="btn btn-xs btn-outline" style="padding:3px 8px;font-size:12px" onchange="eventsCenterGoPage(0)">
+            <select id="eventsCenterModalHours" class="sel-sm" onchange="eventsCenterGoPage(0)">
               <option value="24">近 24 小时</option>
               <option value="168" selected>近 7 天</option>
               <option value="720">近 30 天</option>
@@ -2237,7 +2245,7 @@ async function dataPage() {
 <div class="data-search-wrap">
         <span class="data-search-icon">🔍</span>
         <input class="data-search" id="dataSearch" placeholder="按所选字段搜索…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
-        <select id="dataSearchField" onchange="dataSearchFieldChange()" style="margin-left:6px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer">
+        <select id="dataSearchField" class="sel-sm" onchange="dataSearchFieldChange()" style="margin-left:6px">
           <option value="description" selected>描述</option>
           <option value="product_name">产品名</option>
           <option value="version_branch">版本号</option>
@@ -2249,7 +2257,7 @@ async function dataPage() {
       <div class="data-filters">
         <span class="data-filter-label">筛选:</span>
         ${filterHtml}
-        <select id="dataUrgencyFilter" onchange="dataUrgencyChange(this.value)" style="margin-left:8px;font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--border)">
+        <select id="dataUrgencyFilter" class="sel-sm" onchange="dataUrgencyChange(this.value)" style="margin-left:8px">
           <option value="">紧急度</option>
           <option value="critical">🔴 critical</option>
           <option value="high">⚠️ high</option>
@@ -4011,7 +4019,7 @@ async function loadPushChannelSelect(){
   const nsfocus=channels.find(c=>c.config?.smtp_host==='mail.nsfocus.com');
   const defaultCh=nsfocus||channels[0];
   _pushChannelId=defaultCh.id;
-  el.innerHTML='<select id="pushChannelDropdown" onchange="_pushChannelId=parseInt(this.value);updatePushConfirmState()" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;background:#fff">'
+  el.innerHTML='<select id="pushChannelDropdown" onchange="_pushChannelId=parseInt(this.value);updatePushConfirmState()" style="width:100%">'
     +channels.map(c=>`<option value="${c.id}" ${c.id===defaultCh.id?'selected':''}>${escHtml(c.name)} (${escHtml(c.config?.smtp_host||'')}:${c.config?.smtp_port||''})</option>`).join('')
     +'</select>';
 }
@@ -4493,11 +4501,11 @@ async function editSesType(id,curP,curM){
   overlay.innerHTML=`<div class="confirm-box" style="width:400px">
     <div class="confirm-title">修改 Session 类型</div>
     <div style="display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px">
-      <select id="etP" onchange="document.getElementById('etM').disabled=this.value==='discover';if(this.value==='discover')document.getElementById('etM').value='standard';" style="padding:7px 10px;border:1px solid var(--gray-border);border-radius:8px;font-size:13px">
+      <select id="etP" onchange="document.getElementById('etM').disabled=this.value==='discover';if(this.value==='discover')document.getElementById('etM').value='standard';">
         <option value="discover" ${p==='discover'?'selected':''}>发现</option>
         <option value="collect" ${p==='collect'?'selected':''}>采集</option>
       </select>
-      <select id="etM" ${p==='discover'?'disabled':''} style="padding:7px 10px;border:1px solid var(--gray-border);border-radius:8px;font-size:13px">
+      <select id="etM" ${p==='discover'?'disabled':''}>
         <option value="standard" ${m==='standard'?'selected':''}>标品</option>
         <option value="vm" ${m==='vm'?'selected':''}>虚拟化</option>
       </select>
@@ -4875,7 +4883,7 @@ function addCProd(p){
   }
   let c=document.getElementById('cprods');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
-  d.innerHTML=`<select class="cp2" style="flex:1;min-width:0" onchange="onCProdChange(this)">${custProdOpts}</select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
+  d.innerHTML=`<select class="cp2 sel-sm" style="flex:1;min-width:0" onchange="onCProdChange(this)">${custProdOpts}</select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
   c.appendChild(d);
   if(p){
     setTimeout(()=>{d.querySelector('.cp2').value=p;},80);
@@ -5449,7 +5457,7 @@ function addCond(p,v,t){
   let c=document.getElementById('rconds');
   let po=PROD.map(x=>`<option>${x}</option>`).join('');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center';
-  d.innerHTML=`<select class="cp" style="flex:1;min-width:0" onchange="loadCV(this)">${po}</select><select class="cv" style="flex:1;min-width:0"><option value="">全部版本</option></select><select class="ct" style="flex:1;min-width:0"><option value="">全部类型</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  d.innerHTML=`<select class="cp sel-sm" style="flex:1;min-width:0" onchange="loadCV(this)">${po}</select><select class="cv sel-sm" style="flex:1;min-width:0"><option value="">全部版本</option></select><select class="ct sel-sm" style="flex:1;min-width:0"><option value="">全部类型</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
   c.appendChild(d);
   if(p){setTimeout(()=>{d.querySelector('.cp').value=p;loadCV(d.querySelector('.cp'),true);},80);setTimeout(()=>{if(v)d.querySelector('.cv').value=v;if(t)d.querySelector('.ct').value=t;},160);}
   else{setTimeout(()=>loadCV(d.querySelector('.cp')),50);}
@@ -5491,7 +5499,7 @@ function renderChanTags(){
         <button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
       </div>`;
     }
-    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span><span style="font-size:11px;opacity:0.75">模板</span><select data-cid="${c.id}" data-field="template" onchange="onChanFieldChange(${c.id}, 'template', this.value)" style="font-size:12px;padding:2px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};min-width:140px">${opts}</select><button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
+    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span><span style="font-size:11px;opacity:0.75">模板</span><select class="sel-sm" data-cid="${c.id}" data-field="template" onchange="onChanFieldChange(${c.id}, 'template', this.value)" style="border-color:${bd};color:${fg};min-width:140px">${opts}</select><button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
   };
 
   robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span style="color:var(--muted);font-size:12px">未添加机器人渠道</span>';
@@ -5605,7 +5613,7 @@ function openChanSelModal(filterType){
 function addChan(cid){
   let c=document.getElementById('rchans');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center';
-  d.innerHTML=`<select class="chsel" style="flex:1;min-width:0">${window._chOpts||''}</select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  d.innerHTML=`<select class="chsel sel-sm" style="flex:1;min-width:0">${window._chOpts||''}</select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
   c.appendChild(d);
   if(cid){setTimeout(()=>{d.querySelector('.chsel').value=cid;},50);}
 }
@@ -5932,11 +5940,11 @@ async function history(){
     }
   });
   // 2026-11-09: 过滤条 — 订阅规则 / 客户 / 时间范围, 三者都写进 hash, 可分享也可从仪表盘卡片带 cust 下钻进来
-  const _selCss='padding:3px 8px;border:1px solid var(--border);border-radius:6px;font-size:11px;max-width:190px';
+  const _selCss='max-width:190px';
   const _opt=(v,l,sel)=>`<option value="${v}" ${String(v)===String(sel)?'selected':''}>${escHtml(l)}</option>`;
-  const ruleSel=`<select id="histRule" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
-  const custSel=`<select id="histCust" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
-  const daysSel=`<select id="histDays" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
+  const ruleSel=`<select id="histRule" class="sel-sm" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
+  const custSel=`<select id="histCust" class="sel-sm" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
+  const daysSel=`<select id="histDays" class="sel-sm" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
   // 分页条 (2026-11-09 P1): total 现在是包数, 每页 200 包。原先既不显示总数也无法翻到
   // 第 2 页, 用户以为 200 包就是全部 —— 这跟上次"客户显示不全"是同一类静默截断。
   const total=r.data?.total||0;
@@ -6465,7 +6473,7 @@ async function products(){
         <button class="btn btn-sm" id="btn-batch-disable" onclick="batchDisable()" disabled style="background:var(--danger);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量禁用</button>
         <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
           <input id="prod-search" placeholder="搜索产品…" oninput="filterProducts()" style="padding:4px 10px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;width:140px">
-          <select id="prod-filter" onchange="filterProducts()" style="padding:4px 8px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px">
+          <select id="prod-filter" class="sel-sm" onchange="filterProducts()">
             <option value="all">全部</option>
             <option value="enabled">仅启用</option>
             <option value="disabled">仅禁用</option>
@@ -6737,7 +6745,7 @@ function buildTreeHtml(pt, MAP) {
       html += badges;
       const modeKey = types[0];
       const mode = (pt.modes && pt.modes[modeKey]) || 'auto';
-      html += `<select data-type="${escHtml(modeKey)}" onchange="window._ptModes['${escAttr(modeKey)}']=this.value" style="margin-left:auto;flex:0 0 80px;padding:2px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:11px;cursor:pointer">
+      html += `<select class="sel-sm" data-type="${escHtml(modeKey)}" onchange="window._ptModes['${escAttr(modeKey)}']=this.value" style="margin-left:auto;flex:0 0 80px">
         <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
         <option value="full" ${mode==='full'?'selected':''}>全量</option>
         <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
@@ -7117,7 +7125,7 @@ function editPkgType(id){
       const mode=disc.modes[t]||'auto';
       modeRows+=`<div style="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:#f9fafb;border:1px solid var(--gray-border);margin-bottom:4px">
         <span style="flex:1;font-size:13px;color:var(--gray-disabled)">${label}</span>
-        <select data-type="${escHtml(t)}" style="flex:0 0 90px;padding:3px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:12px;cursor:pointer">
+        <select class="sel-sm" data-type="${escHtml(t)}" style="flex:0 0 90px">
           <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
           <option value="full" ${mode==='full'?'selected':''}>全量</option>
           <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
