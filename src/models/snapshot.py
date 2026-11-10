@@ -325,10 +325,10 @@ def save_snapshot(snap: dict) -> int:
     Three-tier identity matching (2026-07-22):
       1. active 命中 → UPDATE (status=active, first_seen 保留, last_seen=now)
          → detector 判 UNCHANGED → 不推 NEW ✓
-      2. superseded/withdrawn/rollback 命中 (第二查,仅当 1 没命中)
+      2. superseded/withdrawn 命中 (第二查,仅当 1 没命中)
          → UPDATE 但 status 按 old_status 决定:
               superseded → active(被取代的本次重现,复活为最新)
-              withdrawn/rollback → 保持原状态(撤回不复活)
+              withdrawn  → 保持 withdrawn(撤回不复活)
          → first_seen 保留, last_seen=now
          → detector 判 UNCHANGED → 不推 NEW ✓ (修场景 1 + 撤回撤销不复活误推)
       3. 都没命中 → INSERT (first_seen=last_seen=now)
@@ -489,11 +489,6 @@ def get_snapshot(snapshot_id: int) -> dict | None:
     from src.models.database import query
     rows = query("SELECT * FROM snapshots WHERE id = ?", (snapshot_id,))
     return rows[0] if rows else None
-
-
-def get_rollback_snapshots() -> list:
-    from src.models.database import query
-    return query("SELECT * FROM snapshots WHERE status = 'rollback' AND rollback_confirmed_at > datetime('now', '-1 day')")
 
 
 def get_new_since(since: str) -> list:

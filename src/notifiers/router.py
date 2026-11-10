@@ -385,8 +385,8 @@ def process_delayed_queue():
         if not snap:
             mark_pushed(item['id'])
             continue
-        # P1-2 fix: skip if snapshot is no longer active (package was withdrawn
-        # during the delay window — cancelled_reason is set by mark_rollback_pending)
+        # P1-2 fix: skip if snapshot is no longer active (包在延迟窗口内被撤回,
+        # 由 collector 当场把 status 标成 withdrawn/superseded)
         if snap.get('status') != 'active':
             logger.info(f'Skip delayed push {item["id"]}: snapshot status={snap.get("status")}')
             mark_pushed(item['id'])

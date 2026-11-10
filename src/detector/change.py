@@ -37,12 +37,15 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
     """Main detection entry point.
 
     1. Save/update all collected items as snapshots
-    2. Mark items NOT in this batch as rollback_pending
-    3. Confirm rollbacks after N consecutive misses
-    4. Return categorized results
+    2. 按 first_seen == last_seen 判 NEW / UNCHANGED
+    3. collector 报的撤回行进 result.rollback_items → scheduler 推 ⚠️ 撤回通知
 
     2026-07-22 改动 3: withdrawn_items 是 collector 报告的"刚被标 withdrawn 的行",
     这些行需要进 result.rollback_items 让 scheduler 推 ⚠️ 撤回通知。
+
+    ⚠️ rollback_confirm / check_rollback 是 2026-07-27 删掉"连续 N 次确认回退"路径后
+    留下的死参数,函数体从不读取 —— 但设置页「回退确认次数」仍把值传进来,
+    改了那个数字不会有任何效果。要恢复该语义需重新实现,或直接摘掉 UI 开关。
     """
     result = DetectionResult(source_id=source_id)
 
@@ -60,6 +63,8 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
     # Step 1: Save/update all collected items as snapshots
     processed_physical_keys: set = set()
     for item in items:
+        # to_snapshot_dict 自己也可能炸,先给 snap_dict 兜个空值让 except 里能安全引用
+        snap_dict = {}
         try:
             snap_dict = item.to_snapshot_dict()
             physical_key = (
@@ -104,7 +109,11 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
                 result.unchanged_items.append((sid, snap))
 
         except Exception as e:
-            logger.error(f'Failed to save snapshot: {e}')
+            # 带上是哪个包 + 完整 traceback: 原先只 log 一行 e, 像
+            # "CHECK constraint failed: status IN (...)" 这种就完全无法定位到具体条目
+            logger.error('Failed to save snapshot: file=%s md5=%s source_id=%s: %s',
+                         snap_dict.get('file_name', ''), snap_dict.get('md5_hash', ''),
+                         snap_dict.get('source_id', ''), e, exc_info=True)
             result.errors.append(str(e))
 
     # 2026-07-27: 删除 mark_rollback_pending + _confirm_rollbacks 跨 cycle 累积确认路径

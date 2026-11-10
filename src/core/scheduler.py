@@ -668,7 +668,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             from src.models.database import query as _db_q
             before_snaps = _db_q(
                 """SELECT id, file_name, md5_hash FROM snapshots
-                   WHERE source_id=? AND status IN ('active','rollback','rollback_pending')""",
+                   WHERE source_id=? AND status = 'active'""",
                 (src['id'],)
             )
             before_files = {s['file_name'] for s in before_snaps}
@@ -1125,7 +1125,7 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
             from src.models.database import query as _db_q
             before_snaps = _db_q(
                 """SELECT id, file_name, md5_hash FROM snapshots
-                   WHERE source_id=? AND status IN ('active','rollback','rollback_pending')""",
+                   WHERE source_id=? AND status = 'active'""",
                 (source_id,)
             )
             result = run_detection(source_id, items, ROLLBACK_CONFIRM,
@@ -2044,7 +2044,6 @@ def _run_db_cleanup():
 
         # 统计清理前
         before = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
-        before_rb = db_query("SELECT COUNT(*) as c FROM snapshots WHERE status = 'rollback'")[0]['c']
 
         deleted = 0
         # 对每个 source 分别处理（跨 source 的同组合并不合并）
@@ -2054,7 +2053,7 @@ def _run_db_cleanup():
         cur.execute("""
             SELECT source_id, path_id, version_branch, package_type, COUNT(*) as cnt
             FROM snapshots
-            WHERE status != 'rollback' AND path_id != ''
+            WHERE path_id != ''
             GROUP BY source_id, path_id, version_branch, package_type
             HAVING COUNT(*) > ?
         """, (per_group,))
@@ -2073,7 +2072,6 @@ def _run_db_cleanup():
                   AND path_id = ?
                   AND version_branch = ?
                   AND package_type = ?
-                  AND status != 'rollback'
                   AND id NOT IN (
                       SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
                   )
@@ -2083,7 +2081,6 @@ def _run_db_cleanup():
                         AND path_id = ?
                         AND version_branch = ?
                         AND package_type = ?
-                        AND status != 'rollback'
                       ORDER BY published_at DESC
                       LIMIT ?
                   )
@@ -2096,7 +2093,7 @@ def _run_db_cleanup():
         cur.execute("""
             SELECT source_id, version_branch, package_type, COUNT(*) as cnt
             FROM snapshots
-            WHERE status != 'rollback' AND path_id = ''
+            WHERE path_id = ''
             GROUP BY source_id, version_branch, package_type
             HAVING COUNT(*) > ?
         """, (per_group,))
@@ -2109,7 +2106,6 @@ def _run_db_cleanup():
                   AND version_branch = ?
                   AND package_type = ?
                   AND path_id = ''
-                  AND status != 'rollback'
                   AND id NOT IN (
                       SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
                   )
@@ -2119,21 +2115,19 @@ def _run_db_cleanup():
                         AND version_branch = ?
                         AND package_type = ?
                         AND path_id = ''
-                        AND status != 'rollback'
-                      ORDER BY published_at DESC
+                        ORDER BY published_at DESC
                       LIMIT ?
                   )
             """, (src_id, ver, pkgtype, src_id, ver, pkgtype, per_group))
             deleted += cur.rowcount
 
         after = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
-        after_rb = db_query("SELECT COUNT(*) as c FROM snapshots WHERE status = 'rollback'")[0]['c']
-        logger.info('snapshots 清理完成: 清理前 %d 条（含rollback %d），删除 %d 条，保留 %d 条（rollback %d），每组上限 %d',
-                    before, before_rb, deleted, after, after_rb, per_group)
+        logger.info('snapshots 清理完成: 清理前 %d 条，删除 %d 条，保留 %d 条，每组上限 %d',
+                    before, deleted, after, per_group)
         _record_step('snapshots', True,
-                     f'清理前 {before} 条（含 rollback {before_rb}），删除 {deleted} 条，保留 {after} 条，每组上限 {per_group}',
-                     before=before, before_rb=before_rb,
-                     after=after, after_rb=after_rb,
+                     f'清理前 {before} 条，删除 {deleted} 条，保留 {after} 条，每组上限 {per_group}',
+                     before=before,
+                     after=after,
                      deleted=deleted, per_group=per_group)
     except Exception as e:
         logger.warning('snapshots 清理失败: %s', e)
