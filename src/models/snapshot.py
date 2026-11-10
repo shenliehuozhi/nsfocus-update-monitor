@@ -319,30 +319,58 @@ def _add_column_if_missing(db, table: str, column: str, definition: str):
         db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+# 回填抑制窗口：发布时间比「开始监控该路径」还早 N 天以上 → 历史包，
+# 入库但不判 NEW、不推送（解析器升级后首次看到的历史包不再刷屏）。
+BACKFILL_GRACE_DAYS = 7
+# 同批次窗口：与路径内最新 active 包的发布间隔在 N 天以内视为同一批发布，
+# 都保留 active；更老的包标记 superseded（已替代）。
+RELEASE_BATCH_WINDOW_DAYS = 7
+
+
+def _norm_ts(value) -> str:
+    """统一成 'YYYY-MM-DD HH:MM:SS'，便于跨格式比较（DB 里 'T'/空格两种都有）。"""
+    if not value:
+        return ''
+    return str(value).strip().replace('T', ' ')[:19]
+
+
+def _parse_ts(value):
+    from datetime import datetime
+    v = _norm_ts(value)
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v)
+    except ValueError:
+        return None
+
+
 def save_snapshot(snap: dict) -> int:
     """Insert or update a snapshot. Match on unique key. Returns snapshot id.
 
     Three-tier identity matching (2026-07-22):
-      1. active 命中 → UPDATE (status=active, first_seen 保留, last_seen=now)
+      1. active 命中 → UPDATE (first_seen 保留, last_seen=now)
          → detector 判 UNCHANGED → 不推 NEW ✓
       2. superseded/withdrawn 命中 (第二查,仅当 1 没命中)
          → UPDATE 但 status 按 old_status 决定:
-              superseded → active(被取代的本次重现,复活为最新)
               withdrawn  → 保持 withdrawn(撤回不复活)
+              superseded → active(本次重现且仍是新包) / superseded(仍是老包)
          → first_seen 保留, last_seen=now
-         → detector 判 UNCHANGED → 不推 NEW ✓ (修场景 1 + 撤回撤销不复活误推)
-      3. 都没命中 → INSERT (first_seen=last_seen=now)
-         → detector 判 NEW → 推 NEW ✓ (真新包)
-         → 但: 如果 snap['is_resurrection']=True 且 cycle_resurrect_ts 非空,
-                INSERT 但 first_seen = cycle_resurrect_ts(老), last_seen = now(新)
-                → detector 判 UNCHANGED → 不推 NEW ✓ (修场景 2 冒泡接位)
+         → detector 判 UNCHANGED → 不推 NEW ✓
+      3. 都没命中 → INSERT
+         → 真新包: first_seen=last_seen=now → detector 判 NEW ✓
+         → 历史回填(发布时间早于本路径开始监控): first_seen=published_at
+           → detector 判 UNCHANGED,不推送 ✓
+         → 冒泡接位者(is_resurrection): first_seen=cycle_resurrect_ts → UNCHANGED ✓
 
-    这个改动处理三种边界:
-      A. 老 superseded 冒泡 (场景 1) → 走路径 2 → UNCHANGED
-      B. 全新 B 冒泡 (场景 2)     → 走路径 3 (is_resurrection=True) → UNCHANGED
-      C. 撤回后重发新版本(同 fn 不同 md5) → 走路径 3 (is_resurrection=False) → NEW
+    2026-11-10 多包页语义:
+      - 同一路径（同 URL）里只有「最新一批」发布包保持 active；
+        比最新 active 包早超过 RELEASE_BATCH_WINDOW_DAYS 的（典型是旧解析器
+        漏掉、现在才被全表解析看到的历史包）以 superseded 入库，不推 NEW。
+      - 同批发布（间隔 ≤ 窗口）全部 active，一次发 3 个包仍然 3 条 NEW。
     """
     import json
+    from datetime import timedelta
     from src.models.database import execute, query
 
     # ── Defensive guard: skip "half-parsed" items (file_name empty but md5 present) ──
@@ -353,57 +381,58 @@ def save_snapshot(snap: dict) -> int:
     if not isinstance(desc_parsed, str):
         desc_parsed = json.dumps(desc_parsed, ensure_ascii=False)
 
+    source_id = snap.get('source_id', 0)
+    source_url = snap.get('source_url', '')
+    path_id = snap.get('path_id', '')
+    pub = _norm_ts(snap.get('published_at', ''))
+    pub_dt = _parse_ts(pub)
+
+    # ── 路径上下文: 开始监控时间 + 当前最新 active 包的发布时间 ──────
+    path_row = query(
+        """SELECT MIN(first_seen_at) AS watch_start,
+                  MAX(CASE WHEN status = 'active' AND published_at <> ''
+                           THEN published_at END) AS max_pub
+           FROM snapshots
+           WHERE source_id = ? AND source_url = ? AND path_id = ?""",
+        (source_id, source_url, path_id))[0]
+    watch_start = _parse_ts(path_row['watch_start']) if path_row else None
+    max_pub = _norm_ts(path_row['max_pub']) if path_row else ''
+
+    # 发布时间早于开始监控该路径 → 历史回填
+    is_backfill = bool(
+        pub_dt and watch_start
+        and pub_dt < watch_start - timedelta(days=BACKFILL_GRACE_DAYS))
+
+    # 比路径内最新 active 包早超过一个发布批次 → 已是历史包，不能算 active/最新
+    target_status = 'active'
+    if pub_dt and max_pub:
+        max_dt = _parse_ts(max_pub)
+        if max_dt and pub_dt < max_dt - timedelta(days=RELEASE_BATCH_WINDOW_DAYS):
+            target_status = 'superseded'
+
     # ── 第一查: active (高频路径,99% 命中这里) ─────────────────────
     existing_active = query(
         """SELECT id, first_seen_at FROM snapshots
            WHERE source_id = ? AND source_url = ? AND path_id = ?
              AND file_name = ? AND md5_hash = ? AND status = 'active'""",
-        (snap.get('source_id', 0), snap.get('source_url', ''), snap.get('path_id', ''),
-         snap.get('file_name', ''), snap['md5_hash'])
+        (source_id, source_url, path_id, snap.get('file_name', ''), snap['md5_hash'])
     )
-
-    if existing_active:
-        sid = existing_active[0]['id']
-        execute("""
-            UPDATE snapshots SET
-                version_branch = ?, package_type = ?,
-                file_name = ?, package_version = ?, file_size = ?,
-                description_raw = ?, description_parsed = ?,
-                min_sys_version = ?, restart_required = ?, urgency = ?,
-                download_id = ?, published_at = ?, last_seen_at = datetime('now'),
-                status = 'active', rollback_cycles = 0, page_hash = ?, source_url = ?
-            WHERE id = ?
-        """, (
-            snap.get('version_branch', ''), snap.get('package_type', ''),
-            snap.get('file_name', ''), snap.get('package_version', ''), snap.get('file_size', 0),
-            snap.get('description_raw', ''),
-            desc_parsed, snap.get('min_sys_version', ''),
-            int(snap.get('restart_required', False)),
-            snap.get('urgency', 'normal'), snap.get('download_id', 0),
-            snap.get('published_at', ''), snap.get('page_hash', ''),
-            snap.get('source_url', ''),
-            sid
-        ))
-        return sid
 
     # ── 第二查: superseded/withdrawn (第一查没命中时) ─────
     # 处理: 老 superseded 冒泡(场景 1) + 撤回撤销(同 md5 又挂上)
     # 2026-07-27: 移除 rollback (跨 cycle 累积确认分支已删除,见 change.py A 方案)
-    existing_other = query(
-        """SELECT id, status, first_seen_at FROM snapshots
-           WHERE source_id = ? AND source_url = ? AND path_id = ?
-             AND file_name = ? AND md5_hash = ?
-             AND status IN ('superseded','withdrawn')""",
-        (snap.get('source_id', 0), snap.get('source_url', ''), snap.get('path_id', ''),
-         snap.get('file_name', ''), snap['md5_hash'])
-    )
+    existing_other = None
+    if not existing_active:
+        existing_other = query(
+            """SELECT id, status, first_seen_at FROM snapshots
+               WHERE source_id = ? AND source_url = ? AND path_id = ?
+                 AND file_name = ? AND md5_hash = ?
+                 AND status IN ('superseded','withdrawn')""",
+            (source_id, source_url, path_id, snap.get('file_name', ''), snap['md5_hash'])
+        )
 
-    if existing_other:
-        sid = existing_other[0]['id']
-        old_status = existing_other[0]['status']
-        # superseded → active (本次重现,复活为最新)
-        # withdrawn → 保持 withdrawn (撤回不复活)
-        new_status = 'active' if old_status == 'superseded' else 'withdrawn'
+    if existing_active:
+        sid = existing_active[0]['id']
         execute("""
             UPDATE snapshots SET
                 version_branch = ?, package_type = ?,
@@ -420,27 +449,54 @@ def save_snapshot(snap: dict) -> int:
             desc_parsed, snap.get('min_sys_version', ''),
             int(snap.get('restart_required', False)),
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
-            snap.get('published_at', ''), snap.get('page_hash', ''),
-            snap.get('source_url', ''),
-            new_status,
+            snap.get('published_at', ''), target_status, snap.get('page_hash', ''),
+            source_url,
             sid
         ))
-        return sid
+    elif existing_other:
+        sid = existing_other[0]['id']
+        old_status = existing_other[0]['status']
+        # 撤回不复活；superseded 只有仍是当前批次/最新包时才恢复 active
+        new_status = 'withdrawn' if old_status == 'withdrawn' else target_status
+        execute("""
+            UPDATE snapshots SET
+                version_branch = ?, package_type = ?,
+                file_name = ?, package_version = ?, file_size = ?,
+                description_raw = ?, description_parsed = ?,
+                min_sys_version = ?, restart_required = ?, urgency = ?,
+                download_id = ?, published_at = ?, last_seen_at = datetime('now'),
+                status = ?, rollback_cycles = 0, page_hash = ?, source_url = ?
+            WHERE id = ?
+        """, (
+            snap.get('version_branch', ''), snap.get('package_type', ''),
+            snap.get('file_name', ''), snap.get('package_version', ''), snap.get('file_size', 0),
+            snap.get('description_raw', ''),
+            desc_parsed, snap.get('min_sys_version', ''),
+            int(snap.get('restart_required', False)),
+            snap.get('urgency', 'normal'), snap.get('download_id', 0),
+            snap.get('published_at', ''), new_status, snap.get('page_hash', ''),
+            source_url,
+            sid
+        ))
+    else:
+        # ── 第三段: INSERT ──────────────────────────────────────────
+        # first_seen_at 默认 datetime('now')（真新包 → detector 判 NEW）；
+        # 历史回填用 published_at，冒泡接位者用 cycle_resurrect_ts（两者都不推 NEW）。
+        first_seen_override = None
+        if snap.get('is_resurrection') and snap.get('cycle_resurrect_ts'):
+            first_seen_override = snap['cycle_resurrect_ts']
+        elif is_backfill:
+            first_seen_override = pub
 
-    # ── 第三段: 都没命中 → INSERT ────────────────────────────────────
-    # 区分: 真新包 vs 冒泡接位者 (场景 2)
-    # 真新包: first_seen=last_seen=now → detector 推 NEW ✓
-    # 冒泡接位: first_seen=cycle_resurrect_ts(老), last_seen=now → detector 判 UNCHANGED ✓
-    if snap.get('is_resurrection') and snap.get('cycle_resurrect_ts'):
-        return execute("""
+        sid = execute("""
             INSERT INTO snapshots
             (source_id, product_name, version_branch, package_type,
              file_name, package_version, md5_hash, file_size,
              description_raw, description_parsed, min_sys_version,
              restart_required, urgency, download_id, published_at, page_hash, source_url, path_id,
-             first_seen_at, last_seen_at)
+             status, first_seen_at, last_seen_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                    ?, datetime('now'))
+                    ?, COALESCE(?, datetime('now')), datetime('now'))
         """, (
             snap['source_id'], snap['product_name'], snap['version_branch'],
             snap['package_type'], snap.get('file_name', ''),
@@ -450,26 +506,23 @@ def save_snapshot(snap: dict) -> int:
             snap.get('urgency', 'normal'), snap.get('download_id', 0),
             snap.get('published_at', ''), snap.get('page_hash', ''),
             snap.get('source_url', ''), snap.get('path_id', ''),
-            snap['cycle_resurrect_ts'],
+            target_status, first_seen_override,
         ))
-    else:
-        return execute("""
-            INSERT INTO snapshots
-            (source_id, product_name, version_branch, package_type,
-             file_name, package_version, md5_hash, file_size,
-             description_raw, description_parsed, min_sys_version,
-             restart_required, urgency, download_id, published_at, page_hash, source_url, path_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            snap['source_id'], snap['product_name'], snap['version_branch'],
-            snap['package_type'], snap.get('file_name', ''),
-            snap.get('package_version', ''), snap['md5_hash'], snap.get('file_size', 0),
-            snap.get('description_raw', ''), desc_parsed, snap.get('min_sys_version', ''),
-            int(snap.get('restart_required', False)),
-            snap.get('urgency', 'normal'), snap.get('download_id', 0),
-            snap.get('published_at', ''), snap.get('page_hash', ''),
-            snap.get('source_url', ''), snap.get('path_id', ''),
-        ))
+
+    # 保存了最新包 → 同路径更老的 active 行降级（窗口外的老 active 也要收口，
+    # 否则 track window 只处理最新 N 个，更老的 active 永远留在「最新包」）
+    if sid and target_status == 'active' and pub_dt:
+        cutoff = (pub_dt - timedelta(days=RELEASE_BATCH_WINDOW_DAYS)).strftime(
+            '%Y-%m-%d %H:%M:%S')
+        execute("""
+            UPDATE snapshots SET status = 'superseded'
+            WHERE source_id = ? AND source_url = ? AND path_id = ?
+              AND status = 'active' AND id <> ?
+              AND published_at <> ''
+              AND REPLACE(published_at, 'T', ' ') < ?
+        """, (source_id, source_url, path_id, sid, cutoff))
+
+    return sid
 
 
 # 2026-07-27: 删除 mark_rollback_pending 跨 cycle 累积确认分支

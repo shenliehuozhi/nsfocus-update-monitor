@@ -61,7 +61,10 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
         return result
 
     # Step 1: Save/update all collected items as snapshots
+    # 先全部入库、再统一判定 NEW：同一轮的包可能互相影响状态（同路径最新包会把
+    # 更老的 active 降级为 superseded），边存边判会把已被降级的包误推成 NEW。
     processed_physical_keys: set = set()
+    saved_sids = []
     for item in items:
         # to_snapshot_dict 自己也可能炸,先给 snap_dict 兜个空值让 except 里能安全引用
         snap_dict = {}
@@ -79,34 +82,7 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
             processed_physical_keys.add(physical_key)
             sid = snap_db.save_snapshot(snap_dict)
             seen_ids.add(sid)
-
-            # Check if this is NEW (first_seen_at == last_seen_at after save)
-            snap = snap_db.get_snapshot(sid)
-            if snap and snap.get('first_seen_at') == snap.get('last_seen_at'):
-                result.new_items.append((sid, snap))
-
-                # A shared URL may belong to several chains. Keep the
-                # physical snapshot event, but expose one event per chain.
-                from src.core.scheduler import _get_chain
-                snap_chains = _get_chain(
-                    snap.get('source_id', 0),
-                    snap.get('source_url', ''),
-                    snap.get('path_id'),
-                )
-                if not isinstance(snap_chains, list):
-                    snap_chains = [snap_chains] if snap_chains else []
-                seen_chains = set()
-                for chain in snap_chains:
-                    if not isinstance(chain, list) or not chain:
-                        continue
-                    chain_key = tuple(chain)
-                    if chain_key in seen_chains:
-                        continue
-                    seen_chains.add(chain_key)
-                    result.new_chain_items.append((sid, snap, chain))
-            else:
-                result.unchanged_count += 1
-                result.unchanged_items.append((sid, snap))
+            saved_sids.append(sid)
 
         except Exception as e:
             # 带上是哪个包 + 完整 traceback: 原先只 log 一行 e, 像
@@ -115,6 +91,39 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
                          snap_dict.get('file_name', ''), snap_dict.get('md5_hash', ''),
                          snap_dict.get('source_id', ''), e, exc_info=True)
             result.errors.append(str(e))
+
+    # Step 2: 全部入库后判定 NEW
+    # NEW = 本次首次入库（first_seen == last_seen）且最终状态仍是 active。
+    # 历史回填/被更新的同路径包替代的行是 superseded，或 first_seen 被回填成
+    # published_at，两种条件都不满足 → 不推送。
+    for sid in saved_sids:
+        snap = snap_db.get_snapshot(sid)
+        if (snap and snap.get('status') == 'active'
+                and snap.get('first_seen_at') == snap.get('last_seen_at')):
+            result.new_items.append((sid, snap))
+
+            # A shared URL may belong to several chains. Keep the
+            # physical snapshot event, but expose one event per chain.
+            from src.core.scheduler import _get_chain
+            snap_chains = _get_chain(
+                snap.get('source_id', 0),
+                snap.get('source_url', ''),
+                snap.get('path_id'),
+            )
+            if not isinstance(snap_chains, list):
+                snap_chains = [snap_chains] if snap_chains else []
+            seen_chains = set()
+            for chain in snap_chains:
+                if not isinstance(chain, list) or not chain:
+                    continue
+                chain_key = tuple(chain)
+                if chain_key in seen_chains:
+                    continue
+                seen_chains.add(chain_key)
+                result.new_chain_items.append((sid, snap, chain))
+        else:
+            result.unchanged_count += 1
+            result.unchanged_items.append((sid, snap))
 
     # 2026-07-27: 删除 mark_rollback_pending + _confirm_rollbacks 跨 cycle 累积确认路径
     # (ad203e5 设计意图保留,但因为 seen_ids 错位 + DB 永远没真写过 rollback 状态,

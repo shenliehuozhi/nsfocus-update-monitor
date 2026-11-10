@@ -31,6 +31,7 @@ def test_run_detection_emits_one_new_chain_event_per_chain():
         "file_name": "rule.wcl",
         "first_seen_at": "2026-08-21 00:00:00",
         "last_seen_at": "2026-08-21 00:00:00",
+        "status": "active",
     }
     chain_a = ["WAF", "V1", "pkg-a"]
     chain_b = ["WAF", "V1", "pkg-b"]
@@ -63,6 +64,7 @@ def test_run_detection_deduplicates_same_physical_file_before_saving(monkeypatch
         "file_name": "rule.wcl",
         "first_seen_at": "2026-08-21 00:00:00",
         "last_seen_at": "2026-08-21 00:00:00",
+        "status": "active",
     }
     monkeypatch.setattr(change.snap_db, "save_snapshot", save_snapshot)
     monkeypatch.setattr(change.snap_db, "get_snapshot", lambda sid: snap)
@@ -82,6 +84,7 @@ def test_run_detection_keeps_existing_result_fields():
         "file_name": "rule.wcl",
         "first_seen_at": "2026-08-21 00:00:00",
         "last_seen_at": "2026-08-21 00:00:01",
+        "status": "active",
     }
     with patch.object(change.snap_db, "save_snapshot", return_value=42), \
          patch.object(change.snap_db, "get_snapshot", return_value=snap), \
