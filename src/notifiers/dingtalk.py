@@ -7,7 +7,7 @@ import requests
 
 from src.core.logger import get_logger
 from src.notifiers._log import get_log_writer
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, format_template_bodies, _sign_url
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, format_template_bodies, _sign_url, _split_with_marker
 
 
 logger = get_logger('dingtalk')
@@ -123,15 +123,27 @@ class DingtalkNotifier(BaseNotifier):
         # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 毫秒 + base64 url-quote。
         url = _sign_url(webhook_url, secret, timestamp_unit='ms', url_quote=True)
         log.info(f'  signed URL tail: ...{url[-60:]}')
-        template = config.get('_template', 'full')
-        bodies = format_template_bodies(template, message,
-                                        for_rollback=message.is_rollback,
-                                        line_break='<br/>')
-        # 给 title 一行加 <font color> + 给每个 meta 行 label 染橙色
-        bodies = [self._wrap_labels_with_color(self._wrap_title_with_color(b, message))
-                  for b in bodies]
         name = config.get('name', '')
-        title = f'{"⚠️ 撤回" if message.is_rollback else "🔔 升级通知"} {message.product_name} {message.package_version}'
+
+        if not message.product_name:
+            # 系统通知(推送汇总/采集汇总/清理汇总):直接发 description_full。
+            # 走产品模板会在正文前渲染出 7 行空元数据(发布页面 :/文件名称 : …)。
+            content = message.description_full or ''
+            if not content:
+                log.error('消息体为空 (product_name 缺 + description_full 缺)')
+                return DeliveryResult(False, 'dingtalk', name, 'Empty message body')
+            # 钉钉 markdown 不渲染 '\n',逐行 <br/> 拼接后按 4KB 分片
+            bodies = [b.replace('\n', '<br/>') for b in _split_with_marker(content, 4000)]
+            title = message.title or '系统通知'
+        else:
+            template = config.get('_template', 'full')
+            bodies = format_template_bodies(template, message,
+                                            for_rollback=message.is_rollback,
+                                            line_break='<br/>')
+            # 给 title 一行加 <font color> + 给每个 meta 行 label 染橙色
+            bodies = [self._wrap_labels_with_color(self._wrap_title_with_color(b, message))
+                      for b in bodies]
+            title = f'{"⚠️ 撤回" if message.is_rollback else "🔔 升级通知"} {message.product_name} {message.package_version}'
         log.info(f'  parts={len(bodies)}, sizes={[len(b.encode("utf-8")) for b in bodies]}B')
 
         for i, body in enumerate(bodies):

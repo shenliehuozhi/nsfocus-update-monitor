@@ -1167,17 +1167,17 @@ function renderEventsCenterTable(events){
       <col style="width:100px">
       <col style="width:60px">
     </colgroup>
-    '<thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">'+
-      '<tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>'+
-      '</tr>'+
-    '</thead>'+
+    <thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
+      <tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
+      </tr>
+    </thead>
     <tbody>`;
   const rows = events.map(renderEventsCenterTableRow).join('');
   return head + rows + '</tbody></table>';
@@ -1427,17 +1427,17 @@ function renderEventsTable(events){
       <col style="width:110px">
       <col style="width:70px">
     </colgroup>
-    '<thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">'+
-      '<tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>'+
-        '<th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>'+
-      '</tr>'+
-    '</thead>'+
+    <thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
+      <tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>
+        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
+      </tr>
+    </thead>
     <tbody>`;
   const rows = events.map(renderEventsTableRow).join('');
   return head + rows + '</tbody></table>';
@@ -5924,6 +5924,7 @@ function onDigestModeChange(){
   }else if(m==='quarterly'){
     d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select class="dd" id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
   }
+  d.innerHTML+='<div style="margin-top:6px;color:#b45309">⚠️ 汇总只发企微/钉钉/飞书；规则里绑定的邮箱渠道会被跳过</div>';
 }
 function onWinToggle(){
   const w=document.getElementById('winCfg');
@@ -6277,9 +6278,9 @@ async function settings(){
           <div class="form-group"><label>通知渠道</label>
             <select class="dd" id="cfg-event-channel">
               <option value="">-- 选择渠道 --</option>
-              ${(cfg.channels||[]).map(ch=>`<option value="${ch.id}" ${cfg.event_channel_id==ch.id?'selected':''}>${ch.name} (${ch.type})</option>`).join('')}
+              ${(cfg.channels||[]).filter(ch=>ch.type!=='email').map(ch=>`<option value="${ch.id}" ${cfg.event_channel_id==ch.id?'selected':''}>${ch.name} (${ch.type})</option>`).join('')}
             </select>
-            <p class="cfg-hint">通知将发送到此渠道（需先在渠道管理中添加）</p>
+            <p class="cfg-hint">通知将发送到此渠道（需先在渠道管理中添加）。仅支持企微/钉钉/飞书：邮件渠道已不保存收件人，系统通知会发不出去</p>
           </div>
         </div>
         <div class="cfg-row">

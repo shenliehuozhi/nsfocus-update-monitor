@@ -560,7 +560,9 @@ def resend(sid: int):
     from src.notifiers.router import route_notifications
     from src.models.subscription import get_enabled_rules
     for rule in get_enabled_rules():
-        route_notifications(sid, rule['id'])
+        # 手动补推不计入下一轮采集的推送汇总;汇总模式规则也必须当场发,
+        # 否则只是再入队一次(本期已发过就永远发不出去)
+        route_notifications(sid, rule['id'], accumulate=False, force_immediate=True)
     return jsonify({'code': 0, 'message': '已重新推送'})
 
 

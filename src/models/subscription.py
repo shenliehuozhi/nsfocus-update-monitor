@@ -353,7 +353,8 @@ def get_rule_channels(rule_id: int) -> list:
            FROM rule_channels rc
            LEFT JOIN channels c ON rc.channel_id = c.id
            LEFT JOIN customers cu ON rc.customer_id = cu.id
-           WHERE rc.rule_id = ?""",
+           WHERE rc.rule_id = ?
+           ORDER BY rc.id""",
         (rule_id,)
     )
 
@@ -584,12 +585,17 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
 
 
 def clear_history(older_than_days: int = None) -> int:
-    """Delete delivery_log entries. If older_than_days is set, only delete older entries."""
+    """Delete delivery_log entries. If older_than_days is set, only delete older entries.
+
+    失败行 sent_at 为 NULL，旧 SQL 用 `OR sent_at IS NULL` 把它们每次清理都删光，
+    导致推送失败在历史里查不到。现在只按 sent_at 判断，失败行保留。
+    """
     from src.models.database import get_db
     db = get_db()
     if older_than_days:
         db.execute(
-            "DELETE FROM delivery_log WHERE sent_at < datetime('now', ?) OR sent_at IS NULL",
+            "DELETE FROM delivery_log WHERE sent_at IS NOT NULL "
+            "AND sent_at < datetime('now', ?)",
             (f'-{older_than_days} days',)
         )
     else:
@@ -706,6 +712,8 @@ def create_tables(db):
 
     for idx in SCHEMA_DELIVERY_LOG_INDEXES:
         db.execute(idx)
+    for idx in SCHEMA_DIGEST_QUEUE_INDEXES:
+        db.execute(idx)
 
     # 老 DB 自动补列 — sync 取代之前一长串 try/except ALTER TABLE。
     # 这样以后再加列,只需要在 EXPECTED_* 列表里加一行,启动期自动 ALTER。
@@ -750,6 +758,27 @@ CREATE TABLE IF NOT EXISTS digest_queue (
 )
 """
 
+SCHEMA_DIGEST_QUEUE_INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_digest_rule_status ON digest_queue(rule_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_digest_period ON digest_queue(period_key)",
+]
+
+
+def cleanup_digest_queue(older_than_days: int = 90) -> int:
+    """删除已发送/已取消的 digest_queue 行。
+
+    pending 行永不删除 —— 它们是未投递包的 outbox,清理掉就等于静默丢包。
+    """
+    from src.models.database import get_db
+    db = get_db()
+    before = db.total_changes
+    db.execute(
+        "DELETE FROM digest_queue WHERE status IN ('sent', 'cancelled') "
+        "AND created_at < datetime('now', ?)",
+        (f'-{older_than_days} days',)
+    )
+    return db.total_changes - before
+
 
 def enqueue_digest(
     rule_id: int,
@@ -773,8 +802,30 @@ def enqueue_digest(
         (rule_id, snapshot_id, period_key, chain_json or '[]'))
 
 
+def digest_period_key(mode: str, when=None) -> str:
+    """当前周期的 key。weekly 用 ISO 年,不是日历年。
+
+    12/31 与次年第一个周日同属一个 ISO 周,但 datetime.year 会给出
+    2026 / 2027 两个不同的 key(实测 2026-12-31 → 2026-W53、
+    2027-01-03 → 2027-W53),入队和发送对不上,那一周的包永远 pending。
+    """
+    from datetime import datetime as _dt
+    dt = when or _dt.now()
+    if mode == 'weekly':
+        iso = dt.isocalendar()
+        return f'{iso[0]}-W{iso[1]:02d}'
+    if mode == 'monthly':
+        return dt.strftime('%Y-%m')
+    return f'{dt.year}-Q{(dt.month - 1) // 3 + 1}'
+
+
 def get_digest_snapshots(rule_id: int = None, period_key: str = None) -> list:
-    """Get pending digest snapshots, optionally filtered by rule/period."""
+    """Get pending digest snapshots, optionally filtered by rule/period.
+
+    process_digests 不传 period_key: 所有 pending 行都要投递,包括过期周期
+    漏发的、以及上一周期汇总发出后才到货的。只取当前周期会让这些行永远
+    pending(既没有即时推送,也不会再进任何一期汇总)。
+    """
     from src.models.database import query
     conditions = ["dq.status = 'pending'"]
     params = []
@@ -796,26 +847,46 @@ def get_digest_snapshots(rule_id: int = None, period_key: str = None) -> list:
         tuple(params))
 
 
-def mark_digest_sent(rule_id: int, period_key: str):
-    """Mark all pending digest items as sent for a rule+period."""
+def mark_digest_sent(rule_id: int, period_key: str = None, max_id: int = None):
+    """Mark pending digest items as sent.
+
+    max_id: 只标记 id <= max_id 的行。发送侧把所有 pending(含往期漏发/
+    迟到)打进同一封汇总后按本次最大行号标记,发送期间新入队的包留到下一期。
+    period_key: 兼容旧调用,只标记该周期。两者都不传则标记全部 pending。
+    """
     from src.models.database import execute
-    execute(
-        "UPDATE digest_queue SET status = 'sent' WHERE rule_id = ? AND period_key = ? AND status = 'pending'",
-        (rule_id, period_key))
+    if max_id is not None:
+        execute(
+            "UPDATE digest_queue SET status = 'sent' "
+            "WHERE rule_id = ? AND status = 'pending' AND id <= ?",
+            (rule_id, max_id))
+    elif period_key:
+        execute(
+            "UPDATE digest_queue SET status = 'sent' "
+            "WHERE rule_id = ? AND period_key = ? AND status = 'pending'",
+            (rule_id, period_key))
+    else:
+        execute(
+            "UPDATE digest_queue SET status = 'sent' "
+            "WHERE rule_id = ? AND status = 'pending'",
+            (rule_id,))
 
 
-def get_rules_due_for_digest() -> list:
-    """Get rules with digest_mode that are due based on their schedule config."""
+def get_rules_due_for_digest(now=None) -> list:
+    """Get rules with digest_mode that are due based on their schedule config.
+
+    到期条件(满足其一):
+      1. 今天进入该规则配置的推送日/时段;
+      2. 队列里还有上个周期留下的 pending 行 —— 说明那一期因为进程没跑、
+         维护模式、窗口太窄等原因漏发了,现在补发(否则这些包永远不投递)。
+
+    幂等由 digest_last_sent 保证:同一 period_key 只发一次。
+    """
     from src.models.database import query
     from datetime import datetime
 
-    now = datetime.now()
+    now = now or datetime.now()
     today = now.date()
-
-    # Compute current period keys for default schedules
-    week_key = f"{now.year}-W{now.isocalendar()[1]:02d}"
-    month_key = now.strftime('%Y-%m')
-    quarter_key = f"{now.year}-Q{(now.month - 1) // 3 + 1}"
 
     rules = query(
         """SELECT * FROM subscription_rules 
@@ -827,24 +898,23 @@ def get_rules_due_for_digest() -> list:
         config = r.get('digest_config', {}) or {}
         mode = r['digest_mode']
         due_flag = False
-        period_key = ''
+        period_key = digest_period_key(mode, now)
 
         if mode == 'weekly':
             # Default: Sunday (weekday 6). Config: {"weekday": 1} = Monday
             target_weekday = config.get('weekday', 6)  # 0=Mon ... 6=Sun
-            period_key = week_key
-            if today.weekday() == target_weekday:
+            # >= 而不是 ==:目标日进程没跑时,同周后续的检查还能补发
+            if today.weekday() >= target_weekday:
                 due_flag = True
 
         elif mode == 'monthly':
             # Default: last day of month. Config: {"month_day": 15} or {"month_day": "last"}
             target_day = config.get('month_day', 'last')
-            period_key = month_key
             if target_day == 'last':
-                # Check if today is last day of month
                 import calendar
                 last_day = calendar.monthrange(today.year, today.month)[1]
-                if today.day == last_day:
+                # >=:与自定义日(如 15 号)语义一致,当月后续检查还能补
+                if today.day >= last_day:
                     due_flag = True
             elif isinstance(target_day, (int, float)):
                 target_day = int(target_day)
@@ -859,7 +929,6 @@ def get_rules_due_for_digest() -> list:
             # Default: last day of quarter.
             # Config: {"quarter_day": "last"} | {"quarter_day": "first"} | {"quarter_month": 1, "quarter_day": 15}
             import calendar
-            period_key = quarter_key
             q_start_month = ((today.month - 1) // 3) * 3 + 1
             q_end_month = q_start_month + 2
 
@@ -882,6 +951,15 @@ def get_rules_due_for_digest() -> list:
                 target = today.replace(month=actual_month, day=effective)
                 if today >= target:
                     due_flag = True
+
+        if not due_flag:
+            overdue = query(
+                """SELECT 1 FROM digest_queue
+                   WHERE rule_id = ? AND status = 'pending'
+                     AND period_key != ? LIMIT 1""",
+                (r['id'], period_key))
+            if overdue:
+                due_flag = True
 
         if due_flag and r.get('digest_last_sent', '') != period_key:
             r['_period_key'] = period_key

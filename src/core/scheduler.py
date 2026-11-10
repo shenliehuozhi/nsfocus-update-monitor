@@ -825,6 +825,13 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         net_errors = _scan_network_errors_from_log(summary['started_at'], summary.get('finished_at') or summary['started_at'])
         if net_errors:
             emit_network_error(net_errors)
+        # 异常中断也要把已发生的推送汇总出去并清空累加器,
+        # 否则旧条目会混进下一轮(带几小时前的时间戳)
+        try:
+            from src.notifiers.router import _emit_push_summary
+            summary['push_summaries'] = _emit_push_summary()
+        except Exception as se:
+            logger.warning(f'Failed to emit partial push summary: {se}')
         emit_collection_summary(summary, mode)
         return summary
 
@@ -1552,10 +1559,14 @@ def refresh_scheduler_jobs():
             if _scheduler.get_job('nsfocus_heartbeat'):
                 _scheduler.remove_job('nsfocus_heartbeat')
                 logger.info('[HEARTBEAT] nsfocus_heartbeat job REMOVED (heartbeat_enabled=0)')
+        # 15 分钟一轮:汇总规则可能配了很窄的发送窗口(如 09:00-12:00),
+        # 6 小时一轮的固定相位会让窗口被整周跳过
         if not _scheduler.get_job('nsfocus_digest'):
-            _scheduler.add_job(_digest_check, 'interval', hours=6,
+            _scheduler.add_job(_digest_check, 'interval', minutes=15,
                                 id='nsfocus_digest', name='Digest Summary Check',
                                 next_run_time=datetime.utcnow())
+        else:
+            _scheduler.reschedule_job('nsfocus_digest', trigger='interval', minutes=15)
         # 数据库清理：每天凌晨 3 点执行
         if not _scheduler.get_job('nsfocus_db_cleanup'):
             _scheduler.add_job(_run_db_cleanup, 'cron', hour=3, minute=0,
@@ -2030,7 +2041,24 @@ def _run_db_cleanup():
         _record_step('delivery_log', False, str(e))
 
     try:
-        # 4. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
+        # 4. digest_queue 只清已发送/已取消的 90 天前记录。
+        #    pending 是未投递包的 outbox,不能删。
+        from src.models.subscription import cleanup_digest_queue
+        before = query("SELECT COUNT(*) as c FROM digest_queue")[0]['c']
+        removed = cleanup_digest_queue(older_than_days=90)
+        after = query("SELECT COUNT(*) as c FROM digest_queue")[0]['c']
+        logger.info('digest_queue 清理完成: 清理前 %d 条，删除 %d 条（90天，仅 sent/cancelled）',
+                     before, removed)
+        _record_step('digest_queue', True,
+                     f'清理前 {before} 条，删除 {removed} 条（90天，仅 sent/cancelled）',
+                     before=before, after=after, deleted=removed)
+    except Exception as e:
+        logger.warning('digest_queue 清理失败: %s', e)
+        summary['errors'].append(f'digest_queue: {e}')
+        _record_step('digest_queue', False, str(e))
+
+    try:
+        # 5. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
         #    每组保留 N 条最新快照。
         #    关键：必须把 path_id 加进 group 维度。
         #    NSFocus 多 chain (海光/飞腾/鲲鹏/标准版/...) 共享同一升级文件，
@@ -2076,6 +2104,9 @@ def _run_db_cleanup():
                       SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
                   )
                   AND id NOT IN (
+                      SELECT snapshot_id FROM digest_queue WHERE snapshot_id IS NOT NULL
+                  )
+                  AND id NOT IN (
                       SELECT id FROM snapshots
                       WHERE source_id = ?
                         AND path_id = ?
@@ -2108,6 +2139,9 @@ def _run_db_cleanup():
                   AND path_id = ''
                   AND id NOT IN (
                       SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
+                  )
+                  AND id NOT IN (
+                      SELECT snapshot_id FROM digest_queue WHERE snapshot_id IS NOT NULL
                   )
                   AND id NOT IN (
                       SELECT id FROM snapshots

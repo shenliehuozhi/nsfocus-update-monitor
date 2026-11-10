@@ -137,7 +137,11 @@ class EmailNotifier(BaseNotifier):
         log.info('✅ 速率限制检查通过')
 
         # ── 5. 构建邮件主题 ──────────────────────────────────────
-        subject = f'{_rollback_prefix(message)}{message.product_name} {_pkg_type_label(message.package_type)} 发布了新版本'
+        if message.product_name:
+            subject = f'{_rollback_prefix(message)}{message.product_name} {_pkg_type_label(message.package_type)} 发布了新版本'
+        else:
+            # 系统通知(推送汇总等)没有产品字段:用消息标题,不要套"发布了新版本"
+            subject = message.title or '绿盟监控 - 系统通知'
         log.info(f'  主题: {subject}')
 
         # ── 6. 附件处理（新增详细日志）─────────────────────────
@@ -181,10 +185,20 @@ class EmailNotifier(BaseNotifier):
         else:
             log.info('⏭️ 不满足附件附加条件，跳过')
 
-        # 按钮只在无附件时显示;有附件时改为在 MD5 校验段后用文字提示兜底
-        html_body = _format_html_body(message, message.is_rollback, sender_contact=sender_contact, show_download_btn=not attachment_attached)
         # ── 7. 构建HTML正文（含下载提示）─────────────────────
-        if not message.is_rollback:
+        # 按钮只在无附件时显示;有附件时改为在 MD5 校验段后用文字提示兜底
+        if message.product_name:
+            html_body = _format_html_body(message, message.is_rollback, sender_contact=sender_contact, show_download_btn=not attachment_attached)
+        else:
+            # 系统通知:纯文本正文,不渲染产品元数据/MD5 校验段
+            import html as _html
+            html_body = (
+                '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
+                'sans-serif;font-size:14px;color:#333;line-height:1.6">'
+                + _html.escape(message.description_full or '').replace('\n', '<br/>')
+                + '</div>'
+            )
+        if message.product_name and not message.is_rollback:
             md5_guide = f'''
             <div style="margin-top:12px;padding:12px;background:#f0f8ff;border-radius:4px;border-left:4px solid #1e90ff;font-size:13px;color:#333">
                 <strong style="color:#1e90ff">🔍 MD5 校验</strong><br/>

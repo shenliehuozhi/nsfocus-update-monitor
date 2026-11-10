@@ -71,9 +71,11 @@ def _rule(rule_id=10, **overrides):
 def reset_router_state():
     """Clear rate-limit + summary state between tests."""
     router._last_send.clear()
+    router._recent_sends.clear()
     router._push_summary_accumulator.clear()
     yield
     router._last_send.clear()
+    router._recent_sends.clear()
     router._push_summary_accumulator.clear()
 
 
@@ -726,7 +728,7 @@ def test_push_summary_empty_summaries_sends_no_push_message():
     class _Notifier:
         def send(self, msg, config):
             sent.append(msg)
-            return DeliveryResult(success=True)
+            return DeliveryResult(True, 'wecom', 'notifier-under-test')
 
     with patch.object(eh, 'is_event_enabled', return_value=True), \
          patch.object(eh, 'get_notify_channel', return_value={'type': 'wecom', 'config': {}}), \

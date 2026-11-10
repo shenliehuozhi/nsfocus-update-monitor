@@ -7,7 +7,7 @@ from src.core.logger import get_logger
 from src.notifiers._log import get_log_writer
 from src.notifiers.base import (
     BaseNotifier, NotificationMessage, DeliveryResult,
-    _format_markdown_body, format_template_bodies,
+    _format_markdown_body, _split_with_marker, format_template_bodies,
 )
 
 
@@ -57,10 +57,10 @@ class WecomNotifier(BaseNotifier):
             if not content:
                 log.error('消息体为空 (product_name 缺 + description_full 缺)')
                 return DeliveryResult(False, 'wecom', name, 'Empty message body')
-            bodies = [content]   # 系统通知非切分:直接当 1 part 发
-
-        # 注意:前面 if message.product_name: 已经产出 bodies。
-        # 非 product 路径(content = description_full)走 else 分支后,此处不再重复切分。
+            # 系统通知(推送汇总/清理汇总等)同样受企微 4096 字节硬限。
+            # 汇总随包数/chain 数增长,曾整条超过 4096 → errcode 40058,
+            # 所以这里和产品推送一样分片,不再单条硬发。
+            bodies = _split_with_marker(content, 4000)
 
         log.info(f'  parts={len(bodies)}, sizes={[len(b.encode("utf-8")) for b in bodies]}B')
 

@@ -15,7 +15,8 @@ Deprecated:
 """
 
 import json
-from datetime import datetime, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -23,7 +24,9 @@ from src.core.logger import get_logger
 from src.models.event_log import (
     log_event, get_config, get_notify_channel, is_event_enabled
 )
-from src.notifiers.base import _utc_to_cst_display, resolve_chain_pkg, resolve_chain_ver
+from src.notifiers.base import (
+    DeliveryResult, _utc_to_cst_display, resolve_chain_pkg, resolve_chain_ver,
+)
 
 logger = get_logger('event_handler')
 
@@ -36,11 +39,76 @@ _PKG_TYPE_CN = {
     'merge': '合并', 'client': '客户端', 'av_stream': '流式病毒库',
 }
 
+# 汇总里每个 (rule, channel, chain) 组最多列多少条成功/失败;
+# 全表解析一个 cycle 可能出上百个包, 明细全列会把 markdown 撑到几十 KB。
+SUMMARY_MAX_ITEMS_PER_GROUP = 12
+SUMMARY_MAX_FAILED_PER_GROUP = 20
+
+_IM_CHANNEL_TYPES = ('wecom', 'dingtalk', 'feishu')
+
 
 def _get_notifier(channel: dict):
     """获取渠道对应的notifier实例"""
     from src.notifiers.router import NOTIFIERS
     return NOTIFIERS.get(channel.get('type'))
+
+
+def _recent_event_exists(event_type: str, minutes: int) -> bool:
+    """最近 N 分钟内是否已发过同类型事件(防重)。
+
+    created_at 有两代格式:SQLite 默认的 'YYYY-MM-DD HH:MM:SS' 和 2026-09-02
+    起的 Python ISO 'YYYY-MM-DDTHH:MM:SS.ffffff'。直接字符串比较会错
+    ('T' > ' ',ISO 行恒大于同时间戳的空格行),此前 `created_at>=datetime('now','-5 minutes')`
+    因此退化成"当天已发过就跳过",采集汇总一天只剩一条。用 SQLite 的
+    datetime() 把两种格式都归一化后再比较。
+    """
+    from src.models.database import query
+    rows = query(
+        "SELECT id FROM system_event_log WHERE event_type = ? "
+        "AND datetime(created_at) >= datetime('now', ?) LIMIT 1",
+        (event_type, f'-{int(minutes)} minutes'),
+    )
+    return bool(rows)
+
+
+def _deliver_event(channel: dict, title: str, text: str, *, tag: str):
+    """系统事件通知统一出口:IM 渠道节流 + 失败重试一次。
+
+    邮件渠道不能作为系统事件渠道 —— 渠道级 to_list 在启动迁移里已被剥掉,
+    发出去只会是收件人为空的"新版本"邮件。显式拒绝并给出可执行提示。
+
+    Returns DeliveryResult | None (None = 渠道不可用,未发送)。
+    """
+    if channel.get('type') == 'email':
+        logger.error(f'{tag}: 系统事件渠道不能是邮件渠道(渠道级收件人已废弃),'
+                     f'请在「系统设置 → 系统事件」改选企微/钉钉/飞书渠道')
+        return None
+    notifier = _get_notifier(channel)
+    if not notifier:
+        logger.error(f'{tag}: 未找到渠道 {channel.get("type")} 的 notifier')
+        return None
+
+    from src.notifiers.base import NotificationMessage
+    msg = NotificationMessage(title=title, description_full=text)
+
+    result = None
+    for attempt in (1, 2):
+        if channel.get('type') in _IM_CHANNEL_TYPES:
+            # 系统通知和产品推送共用同一个 bot 的每分钟限额,必须一起排队
+            from src.notifiers.router import _throttle_im
+            _throttle_im(channel['type'])
+        try:
+            result = notifier.send(msg, channel.get('config', {}))
+        except Exception as e:
+            result = DeliveryResult(False, channel.get('type', ''), '',
+                                    f'{type(e).__name__}: {e}')
+        if result.success:
+            return result
+        logger.warning(f'{tag}: 第 {attempt} 次发送失败: {result.error_message}')
+        if attempt == 1:
+            time.sleep(3)
+    logger.error(f'{tag}: 发送失败 {result.error_message}')
+    return result
 
 
 def _build_push_message(snap: dict, rule: dict, success: bool,
@@ -147,14 +215,24 @@ def emit_push(snap: dict, rule: dict, success: bool, error: str = None,
 
 
 def _build_push_summary_message(summaries: list) -> str:
-    """Build a consolidated push summary message from all channel summaries."""
+    """Build a consolidated push summary message from all channel summaries.
+
+    每组压成一行头（规则/客户/渠道/计数/时间），明细每行一个包；每组成功/失败
+    条目各有上限，超出的折叠成一行提示。消息整体仍可能超过渠道上限，由各
+    notifier 负责分片。
+
+    计数口径: total 是「渠道交付次数」（同一包发 N 个渠道 = N 条），不是包数。
+    邮件故障转移里被备用渠道补发的失败尝试单独记 fallback,不计入失败。
+    """
     total_all = sum(s['total'] for s in summaries)
     success_all = sum(s['success'] for s in summaries)
     failed_all = sum(s['failed'] for s in summaries)
+    fallback_all = sum(s.get('fallback', 0) for s in summaries)
 
-    lines = [
-        f"【推送汇总】共 {total_all} 个包 | 成功 {success_all} | 失败 {failed_all}",
-    ]
+    header = f"【推送汇总】共 {total_all} 条交付 | 成功 {success_all} | 失败 {failed_all}"
+    if fallback_all:
+        header += f" | 已补发 {fallback_all}"
+    lines = [header]
 
     for s in summaries:
         rule_name = s.get('rule_name', '')
@@ -162,35 +240,51 @@ def _build_push_summary_message(summaries: list) -> str:
         channel_type = s.get('channel_type', '')
         channel_name = s.get('channel_name', '')
         pushed_at = s.get('pushed_at', '')
-        # Format pushed_at to CST
-        try:
-            from datetime import datetime, timezone
-            dt = datetime.fromisoformat(pushed_at.replace('Z', '+00:00'))
-            pushed_cst = dt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-        except Exception:
-            pushed_cst = pushed_at
+        pushed_cst = _utc_to_cst_display(pushed_at) or pushed_at
 
         success = s.get('success', 0)
         failed = s.get('failed', 0)
+        fallback = s.get('fallback', 0)
 
-        # Channel label
         channel_label = {
             'wecom': '企微', 'dingtalk': '钉钉', 'feishu': '飞书',
             'email': '邮件', 'apprise': 'Apprise'
         }.get(channel_type, channel_type)
         channel_display = f"{channel_label} {channel_name}" if channel_name else channel_label
 
-        lines.append('─' * 30)
-        lines.append(f"规则：{rule_name} | 客户：{customer_name} | 渠道：{channel_display}")
-        lines.append(f"时间：{pushed_cst} | 成功：{success} | 失败：{failed}")
+        counts = f"{success}✓"
+        if failed:
+            counts += f" {failed}✗"
+        if fallback:
+            counts += f" {fallback}↻"
+        lines.append(f"─ {rule_name} / {customer_name} / {channel_display} · {counts} · {pushed_cst}")
 
-        items = s.get('items', [])
-        if items:
-            for item in items:
-                fn = item.get('file_name', '')
-                ok = '✓' if item.get('success') else '✗'
-                err = item.get('error', '')
-                lines.append(f"  {ok} {fn}" + (f" | {err}" if err else ""))
+        shown_success = 0
+        shown_failed = 0
+        folded_success = 0
+        folded_failed = 0
+        for item in s.get('items', []):
+            if item.get('success'):
+                if shown_success >= SUMMARY_MAX_ITEMS_PER_GROUP:
+                    folded_success += 1
+                    continue
+                shown_success += 1
+            elif not item.get('failover'):
+                if shown_failed >= SUMMARY_MAX_FAILED_PER_GROUP:
+                    folded_failed += 1
+                    continue
+                shown_failed += 1
+            fn = item.get('file_name', '')
+            ok = '✓' if item.get('success') else '✗'
+            err = item.get('error', '')
+            note = ' | ' + err if err else ''
+            if item.get('failover'):
+                note += '（已由备用渠道补发）'
+            lines.append(f"  {ok} {fn}{note}")
+        if folded_success:
+            lines.append(f"  … 另有 {folded_success} 个成功（详见推送历史）")
+        if folded_failed:
+            lines.append(f"  … 另有 {folded_failed} 个失败（详见推送历史）")
 
     return '\n'.join(lines)
 
@@ -209,38 +303,54 @@ def emit_push_summary(summaries: list):
     # 0 推送:发一条简短通知(让用户知道路径在跑)
     if not summaries:
         message_text = '【推送汇总】本次无推送(0 个 NEW 包)'
+        total_all = success_all = failed_all = fallback_all = 0
     else:
         message_text = _build_push_summary_message(summaries)
-
-    # 统计数(0 推送时都是 0)
-    if summaries:
         total_all = sum(s['total'] for s in summaries)
         success_all = sum(s['success'] for s in summaries)
         failed_all = sum(s['failed'] for s in summaries)
-    else:
-        total_all = success_all = failed_all = 0
+        fallback_all = sum(s.get('fallback', 0) for s in summaries)
 
-    # Send to notification channel（不依赖 DB 写入）
+    # 落库:事件中心此前完全没有 push_summary 记录,汇总发失败时只留在 app.log
+    try:
+        title = f'推送汇总: {total_all} 条交付 / 成功 {success_all} / 失败 {failed_all}'
+        if fallback_all:
+            title += f' / 已补发 {fallback_all}'
+        log_event(
+            event_type=event_type,
+            severity='WARNING' if failed_all else 'INFO',
+            message={
+                'title': title,
+                'total': total_all,
+                'success': success_all,
+                'failed': failed_all,
+                'fallback': fallback_all,
+                'groups': [
+                    {
+                        'rule_name': s.get('rule_name', ''),
+                        'customer_name': s.get('customer_name', ''),
+                        'channel_name': s.get('channel_name', ''),
+                        'channel_type': s.get('channel_type', ''),
+                        'total': s.get('total', 0),
+                        'success': s.get('success', 0),
+                        'failed': s.get('failed', 0),
+                        'fallback': s.get('fallback', 0),
+                    }
+                    for s in summaries
+                ],
+            },
+        )
+    except Exception as e:
+        logger.warning(f'Push summary log_event failed: {e}')
+
     channel = get_notify_channel()
     if not channel:
         return
-    notifier = _get_notifier(channel)
-    if notifier:
-        from src.notifiers.base import NotificationMessage
-        # push_summary 是系统级汇总通知,description_full 装实际内容
-        # (6 个必填字段在 NotificationMessage 已加 default='',无需手填)
-        msg = NotificationMessage(
-            title='绿盟监控 - 推送汇总',
-            description_full=message_text,
-        )
-        try:
-            result = notifier.send(msg, channel.get('config', {}))
-            if result.success:
-                logger.info(f'Push summary sent: total={total_all}, success={success_all}, failed={failed_all}')
-            else:
-                logger.error(f'Push summary failed: {result.error_message}')
-        except Exception as e:
-            logger.error(f'Failed to send push summary: {e}')
+    result = _deliver_event(channel, '绿盟监控 - 推送汇总', message_text,
+                            tag='Push summary')
+    if result is not None and result.success:
+        logger.info(f'Push summary sent: total={total_all}, success={success_all}, '
+                    f'failed={failed_all}')
 
 
 def emit_cleanup_summary(summary: dict):
@@ -259,13 +369,7 @@ def emit_cleanup_summary(summary: dict):
 
     # 防重：最近 1 分钟内已有相同事件跳过（cron 触发，可能与其他 cron 撞时间）
     try:
-        from src.models.database import query
-        rows = query(
-            "SELECT id FROM system_event_log WHERE event_type=? "
-            "AND created_at>=datetime('now','-1 minute') LIMIT 1",
-            (event_type,)
-        )
-        if rows:
+        if _recent_event_exists(event_type, 1):
             logger.debug(f'Skip duplicate {event_type} (recent event already sent)')
             return
     except Exception:
@@ -328,27 +432,10 @@ def emit_cleanup_summary(summary: dict):
 
     message_text = '\n'.join(lines)
 
-    notifier = _get_notifier(channel)
-    if notifier:
-        from src.notifiers.base import NotificationMessage
-        msg = NotificationMessage(
-            title='绿盟监控 - 数据清理汇总',
-            product_name='',
-            version_branch='',
-            package_type='',
-            file_name='',
-            package_version='',
-            md5_hash='',
-            description_full=message_text,
-        )
-        try:
-            result = notifier.send(msg, channel.get('config', {}))
-            if result.success:
-                logger.info(f'Cleanup summary notification sent: ok={ok}')
-            else:
-                logger.error(f'Cleanup summary notification failed: {result.error_message}')
-        except Exception as e:
-            logger.error(f'Failed to send cleanup summary: {e}')
+    result = _deliver_event(channel, '绿盟监控 - 数据清理汇总', message_text,
+                            tag='Cleanup summary')
+    if result is not None and result.success:
+        logger.info(f'Cleanup summary notification sent: ok={ok}')
 
 
 def _fmt_duration(seconds: int) -> str:
@@ -523,9 +610,13 @@ def _build_summary_message(summary: dict, mode: str) -> str:
         total_push = sum(s.get('total', 0) for s in push_summaries)
         total_success = sum(s.get('success', 0) for s in push_summaries)
         total_failed = sum(s.get('failed', 0) for s in push_summaries)
+        total_fallback = sum(s.get('fallback', 0) for s in push_summaries)
 
         lines.append('')
-        lines.append(f'推送结果汇总：成功 {total_success} / 失败 {total_failed}（共 {total_push} 条）')
+        result_line = f'推送结果汇总：成功 {total_success} / 失败 {total_failed}'
+        if total_fallback:
+            result_line += f' / 已补发 {total_fallback}'
+        lines.append(result_line + f'（共 {total_push} 条交付）')
 
         # 按 (客户 × 产品) 聚合
         cust_prod = {}
@@ -555,14 +646,8 @@ def emit_collection_summary(summary: dict, mode: str):
         return
 
     # 防重：最近 5 分钟内已有相同 event_type 的记录则跳过
-    # 注意：不再写 DB，只依赖通知渠道的去重能力
     try:
-        from src.models.database import query
-        rows = query(
-            "SELECT id FROM system_event_log WHERE event_type=? AND created_at>=datetime('now','-5 minutes') LIMIT 1",
-            (event_type,)
-        )
-        if rows:
+        if _recent_event_exists(event_type, 5):
             logger.debug(f'Skip duplicate collection_summary (recent event already sent)')
             return
     except Exception:
@@ -605,98 +690,10 @@ def emit_collection_summary(summary: dict, mode: str):
     if not channel:
         return
 
-    # 发送通知（不依赖 DB 写入）
-    notifier = _get_notifier(channel)
-    if notifier:
-        from src.notifiers.base import NotificationMessage
-        msg = NotificationMessage(
-            title=f'绿盟监控 - 采集任务完成',
-            product_name='',
-            version_branch='',
-            package_type='',
-            file_name='',
-            package_version='',
-            md5_hash='',
-            description_full=message_text,
-        )
-        try:
-            result = notifier.send(msg, channel.get('config', {}))
-            if result.success:
-                logger.info(f'Collection summary notification sent: {mode}, new={total_new}')
-            else:
-                logger.error(f'Collection summary notification failed: {result.error_message}')
-        except Exception as e:
-            logger.error(f'Failed to send collection summary: {e}')
-
-
-def _write_push_summary_from_delivery_log(finished_at: str = ''):
-    """采集结束时，将本次推送结果合并写入 system_event_log，不发通知。
-
-    只记录到日志表，供前端事件列表查看。是否发送企微通知由系统事件配置决定。
-
-    注意：此函数已废弃。推送汇总已由 emit_push_summary(summaries: list) 统一处理
-    （包含写日志 + 发企微通知），不再需要此版本。
-    """
-    from src.models.event_log import is_event_enabled, get_notify_channel, log_event
-    from src.models.database import query
-
-    event_type = 'push_summary'
-
-    if not is_event_enabled(event_type):
-        return
-
-    # 查 delivery_log 中本次采集窗口内的推送记录
-    # finished_at 是采集结束时间（UTC ISO 格式），取前后 5 分钟窗口
-    cutoff = finished_at[:19] if finished_at else datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')
-    rows = query(
-        """SELECT dl.snapshot_id, dl.rule_id, dl.channel_id, dl.channel_type,
-                  dl.channel_name, dl.customer_id, dl.delivery_status,
-                  dl.error_message, dl.sent_at,
-                  s.file_name, s.product_name, s.version_branch, s.package_type,
-                  s.package_version,
-                  cu.name as customer_name, cu.email as customer_email,
-                  sr.name as rule_name
-           FROM delivery_log dl
-           JOIN snapshots s ON dl.snapshot_id = s.id
-           LEFT JOIN customers cu ON dl.customer_id = cu.id
-           LEFT JOIN subscription_rules sr ON dl.rule_id = sr.id
-           WHERE dl.sent_at >= datetime(?)
-             AND dl.delivery_status IN ('sent', 'failed')
-           ORDER BY dl.sent_at DESC""",
-        (cutoff,)
-    )
-
-    if not rows:
-        return
-
-    total = len(rows)
-    success_count = sum(1 for r in rows if r['delivery_status'] == 'sent')
-    failed_count = total - success_count
-
-    log_event(
-        event_type=event_type,
-        severity='WARNING' if failed_count > 0 else 'INFO',
-        message={
-            'total': total,
-            'success': success_count,
-            'failed': failed_count,
-            'deliveries': [
-                {
-                    'file_name': r['file_name'],
-                    'product_name': r.get('product_name', ''),
-                    'customer_name': r.get('customer_name', ''),
-                    'channel_name': r.get('channel_name', ''),
-                    'channel_type': r.get('channel_type', ''),
-                    'customer_email': r.get('customer_email', ''),
-                    'sent_at': r.get('sent_at', ''),
-                    'status': r['delivery_status'],
-                    'error': r.get('error_message', ''),
-                }
-                for r in rows
-            ],
-        }
-    )
-    logger.info(f'Push summary logged: total={total}, success={success_count}, failed={failed_count}')
+    result = _deliver_event(channel, '绿盟监控 - 采集任务完成', message_text,
+                            tag='Collection summary')
+    if result is not None and result.success:
+        logger.info(f'Collection summary notification sent: {mode}, new={total_new}')
 
 
 def emit_session_error(username: str, product_name: str, reason: str, source: str = 'session'):

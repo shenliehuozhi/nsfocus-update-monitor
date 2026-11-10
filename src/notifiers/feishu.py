@@ -5,7 +5,7 @@ import requests
 
 from src.core.logger import get_logger
 from src.notifiers._log import get_log_writer
-from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _sign_url
+from src.notifiers.base import BaseNotifier, NotificationMessage, DeliveryResult, _sign_url, _split_with_marker
 
 
 logger = get_logger('feishu')
@@ -33,10 +33,38 @@ class FeishuNotifier(BaseNotifier):
         # 算法见 _sign_url (base.py) — 通用加签,本渠道参数:timestamp 秒 + base64 raw (不 quote)。
         url = _sign_url(webhook_url, secret, timestamp_unit='s', url_quote=False)
         log.info(f'  signed URL tail: ...{url[-60:]}')
+        name = config.get('name', '')
+
+        if not message.product_name:
+            # 系统通知(推送汇总/采集汇总/清理汇总):发纯文本,不要套产品富文本
+            # (套 post 会得到空标题 "🔔" + description 塞进正文的怪格式)
+            content = message.description_full or ''
+            if not content:
+                log.error('消息体为空 (product_name 缺 + description_full 缺)')
+                return DeliveryResult(False, 'feishu', name, 'Empty message body')
+            parts = _split_with_marker(content, 4000)
+            log.info(f'  system notification parts={len(parts)}')
+            for i, part in enumerate(parts):
+                payload = {'msg_type': 'text', 'content': {'text': part}}
+                try:
+                    resp = requests.post(url, json=payload, timeout=10)
+                    result = resp.json()
+                    log.info(f'  HTTP {resp.status_code}  code={result.get("code")} msg={result.get("msg", "")}')
+                    if result.get('code') == 0 or result.get('StatusCode') == 0:
+                        log.ok(f'part {i+1}/{len(parts)} sent')
+                        continue
+                    log.error(f'Feishu error [{i+1}/{len(parts)}]: {result.get("msg", "unknown")}')
+                    return DeliveryResult(False, 'feishu', name,
+                                          f"Feishu error [{i+1}/{len(parts)}]: {result.get('msg', 'unknown')}")
+                except Exception as e:
+                    log.error(f'HTTP exception: {type(e).__name__}: {e}')
+                    return DeliveryResult(False, 'feishu', name, str(e))
+            log.ok(f'全部 {len(parts)} 条推送成功')
+            return DeliveryResult(True, 'feishu', name,
+                                  f"Sent {len(parts)} message(s)" if len(parts) > 1 else '')
 
         # 飞书使用富文本 (post) 格式 — 一次可能返回多个 payload(长描述分多条)
         payloads = self._build_post(message)
-        name = config.get('name', '')
         log.info(f'  payloads={len(payloads)}, sizes={[len(json.dumps(p, ensure_ascii=False).encode("utf-8")) for p in payloads]}B')
 
         for i, content in enumerate(payloads):
