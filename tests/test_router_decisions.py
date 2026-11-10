@@ -704,13 +704,37 @@ def test_im_channel_rate_limit_sleep():
 # _emit_push_summary — summary aggregation
 # ============================================================================
 
-def test_emit_push_summary_no_accumulator_no_call():
-    """Empty accumulator → _emit_push_summary does nothing."""
-    # Ensure no accumulator
+def test_emit_push_summary_no_accumulator_still_emits_empty():
+    """Empty accumulator → 仍然调 emit_push_summary([]) —— 0 推送也要发"无推送"汇总。
+
+    2026-11-09 修:本用例原先断言 assert_not_called(),那是 6dbdea3 之前的旧契约
+    ("if not accumulator: return []")。该 commit 有意摘掉早退,让每个 cycle 都出
+    一条 push_summary,用户才能区分"没新包"和"汇总链路坏了",但测试没跟着改 →
+    从那天起一直红。改断言现在的契约。
+    """
     router._push_summary_accumulator.clear()
     with patch('src.core.event_handler.emit_push_summary') as mock_emit:
-        router._emit_push_summary()
-    mock_emit.assert_not_called()
+        assert router._emit_push_summary() == []
+    mock_emit.assert_called_once_with([])
+
+
+def test_push_summary_empty_summaries_sends_no_push_message():
+    """emit_push_summary([]) → 发「本次无推送」而不是静默丢弃(6dbdea3 的另一半)。"""
+    from src.core import event_handler as eh
+    sent = []
+
+    class _Notifier:
+        def send(self, msg, config):
+            sent.append(msg)
+            return DeliveryResult(success=True)
+
+    with patch.object(eh, 'is_event_enabled', return_value=True), \
+         patch.object(eh, 'get_notify_channel', return_value={'type': 'wecom', 'config': {}}), \
+         patch.object(eh, '_get_notifier', return_value=_Notifier()):
+        eh.emit_push_summary([])
+
+    assert len(sent) == 1, '0 推送也应发一条汇总通知'
+    assert '无推送' in sent[0].description_full
 
 
 def test_emit_push_summary_clears_accumulator_after_emit():

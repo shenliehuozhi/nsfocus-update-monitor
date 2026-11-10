@@ -13,8 +13,18 @@ non-empty; fall back to snapshots.package_type when chain_json is '[]'
 
 import json
 import sqlite3
+from datetime import datetime, timedelta
 
 import pytest
+
+
+def _recent(hours_ago: float) -> str:
+    """相对当前 UTC 的 sent_at 串。
+
+    2026-11-09 修: 原先硬编码 '2026-08-21 ...',而测试传 days=7 —— 日历一过
+    这两个用例就必然 0 行失败(测的是 fixture 的过期日期,不是被测行为)。
+    """
+    return (datetime.utcnow() - timedelta(hours=hours_ago)).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _seed_db() -> sqlite3.Connection:
@@ -106,7 +116,7 @@ def _seed_db() -> sqlite3.Connection:
            (snapshot_id, rule_id, channel_id, channel_type, channel_name,
             customer_id, delivery_status, sent_at, recipient, chain_json)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (100, 1015, 5, 'email', 'mail', 1, 'sent', '2026-08-21 09:08:44',
+        (100, 1015, 5, 'email', 'mail', 1, 'sent', _recent(2),
          'x@163.com', json.dumps(chain_a, ensure_ascii=False)),
     )
     conn.execute(
@@ -114,7 +124,7 @@ def _seed_db() -> sqlite3.Connection:
            (snapshot_id, rule_id, channel_id, channel_type, channel_name,
             customer_id, delivery_status, sent_at, recipient, chain_json)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (100, 1015, 5, 'email', 'mail', 1, 'sent', '2026-08-21 09:08:53',
+        (100, 1015, 5, 'email', 'mail', 1, 'sent', _recent(1),
          'x@163.com', json.dumps(chain_b, ensure_ascii=False)),
     )
 
@@ -125,7 +135,7 @@ def _seed_db() -> sqlite3.Connection:
            (id, snapshot_id, rule_id, channel_id, channel_type, channel_name,
             customer_id, delivery_status, sent_at, recipient, chain_json)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (7563, 100, 1015, 5, 'email', 'mail', 1, 'sent', '2026-08-20 09:37:00',
+        (7563, 100, 1015, 5, 'email', 'mail', 1, 'sent', _recent(5),
          'x@163.com', '[]'),
     )
 

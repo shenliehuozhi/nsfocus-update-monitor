@@ -341,8 +341,14 @@ def test_dingtalk_meta_labels_colored():
     for desc_line in ['第一段', '第二段', '注意段']:
         bad = '<font color="{c}">{d}'.format(c=color, d=desc_line)
         assert bad not in body
-    # MD5 padding stays OUTSIDE the font tag
-    assert '<font color="#c27800">MD5</font>       :' in body
+    # MD5 padding stays OUTSIDE the font tag,且冒号与其余 label 同列。
+    # (e2e34bc 起 MD5 也交给 _pad_label pad 到 4 字符宽,不再是硬编码 7 空格;
+    #  这里断言不变量而不是具体空格数)
+    assert '<font color="#c27800">MD5</font>' in body
+    plain = re.sub(r'<font color="[^"]*">([^<]*)</font>', r'\1', body)
+    cols = {line.index(':') for line in plain.split('<br/>')
+            if DingtalkNotifier._LABEL_RE.match(line)}
+    assert len(cols) == 1, f'所有 meta label 冒号应同列, 实际列号 {sorted(cols)}'
 
 
 def test_feishu_seven_field_layout_matches_dingtalk():
@@ -374,6 +380,7 @@ def test_feishu_seven_field_layout_matches_dingtalk():
     # text tag has exactly "<label> " (label + single space).
     expected_labels = {'发布页面', '文件名称', '版本信息', '文件大小', 'MD5', '发布时间', '下载地址'}
     labels_found = set()
+    label_tag_widths = set()
     for para in p['content']:
         if not para:
             continue
@@ -381,14 +388,22 @@ def test_feishu_seven_field_layout_matches_dingtalk():
         if first.get('tag') != 'text':
             continue
         text = first.get('text', '')
-        # text format: "<label> " (label followed by single space then value)
+        # 结构: 第 1 个 text tag = "<label><pad> ", 第 2 个 text tag 以 ':' 开头。
+        # e2e34bc 起 MD5 也由 _pad_label pad 到 4 字符宽,所以不变量是"label tag 等宽",
+        # 而不是"label 后恰好 1 空格"。
         for label in expected_labels:
-            if text == f'{label} ' or text == f'{label}':
+            if text.startswith(label):
                 labels_found.add(label)
+                label_tag_widths.add(len(text))
+                if len(para) > 1:
+                    assert para[1].get('text', '').startswith(':'), \
+                        '冒号应在紧随其后的 text tag: {}'.format(para)
                 break
     assert expected_labels.issubset(labels_found), \
         'feishu missing labels: got={}, expected={}'.format(
             sorted(labels_found), sorted(expected_labels))
+    assert len(label_tag_widths) == 1, \
+        '所有 meta label tag 应等宽(冒号同列), 实际宽度 {}'.format(sorted(label_tag_widths))
     # Sanity: no style field anywhere (would 19002 the call)
     for para in p['content']:
         for tag in para:

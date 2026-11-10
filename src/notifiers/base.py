@@ -591,10 +591,10 @@ def _build_markdown_head_lines(msg: NotificationMessage, for_rollback: bool = Fa
     header_lines.append(type_line)
 
     def _fmt_meta_line(label, val):
-        if label == 'MD5':
-            padded = 'MD5' + ' ' * 6
-        else:
-            padded = _pad_label(label)
+        # label 一律交给 _pad_label pad 到 _LABEL_PAD_WIDTH → 冒号同列。
+        # 原先这里给 MD5 硬编码 'MD5' + 6 空格,比其它 label 多出 4 列;
+        # e2e34bc 统一对齐时漏改了这一个调用点(_format_markdown_bodies 那份已改)。
+        padded = _pad_label(label)
         suffix = '   ' if label in ('发布页面', '下载地址') else ' '
         return f'{padded} :{suffix}{val or ""}'
 
@@ -852,12 +852,14 @@ def _format_template_strip(msg: NotificationMessage, *,
     if len(body1.encode('utf-8')) <= max_bytes:
         return [body1]
 
-    # Stage 2 — 仅注意事项段
+    # Stage 2 — 仅注意事项段。没有注意事项时不退化(那样只剩一个空头),
+    # 交给 Stage 3 brief 补「详情见 URL」,用户至少能点回原文。
     att_lines = attention_segment(stripped_lines)
-    desc2 = _highlight_attention_lines(line_break.join(att_lines), 'markdown') if att_lines else ''
-    body2 = _join_head_with_desc(head_lines, desc2, line_break)
-    if len(body2.encode('utf-8')) <= max_bytes:
-        return [body2]
+    if att_lines:
+        desc2 = _highlight_attention_lines(line_break.join(att_lines), 'markdown')
+        body2 = _join_head_with_desc(head_lines, desc2, line_break)
+        if len(body2.encode('utf-8')) <= max_bytes:
+            return [body2]
 
     # Stage 3 — brief 兜底(head + source_url 一行)
     return _format_template_brief(msg, line_break=line_break, max_bytes=max_bytes)

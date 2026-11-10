@@ -82,13 +82,6 @@ def test_strip_english_lines_single_english_kept():
     assert 'GeoIP library update' in joined, '单行英文应保留(burst 不命中)'
 
 
-def test_strip_english_lines_empty_and_blank():
-    src = ['', '   ', '中文', '', '', '英文 1', '英文 2', '']
-    out = strip_english_lines(src)
-    assert '中文' in out
-    assert not any(l.strip() == '' for l in out[-1:]), '末尾空行应被段吃掉'
-
-
 def test_strip_english_lines_min_run_threshold():
     """min_run=2 时,1 行英文 + 1 中文不会被 strip。"""
     src = ['中文段', 'Single English', '中文又来']
@@ -97,16 +90,24 @@ def test_strip_english_lines_min_run_threshold():
 
 
 def test_strip_english_lines_empty_and_blank():
-    """空行/空白行不视为英文段,段间空行被段吞掉。"""
-    src = ['', '   ', '中文', '', '', '英文 1', '英文 2', '']
+    """空行/空白行不视为英文段;连续 ≥2 行纯英文成段被剥,段内空行跟着被吞。
+
+    2026-11-09 修 fixture: 原来用 '英文 1'/'英文 2' 当"英文行",但那两串里含汉字,
+    strip_english_lines 按"无汉字"判定,自然不会剥 —— 测试测的是自己的假前提。
+    另外此处曾有两个同名 test_strip_english_lines_empty_and_blank,
+    前一个被后一个遮蔽从未执行,已合并。
+    """
+    src = ['', '   ', '中文', '', '', 'English line one', 'English line two', '']
     out = strip_english_lines(src)
     joined = '\n'.join(out)
-    assert '中文' in joined
-    # 段内空行被吞: 输出末尾不应是 '' (段内空白会被段吃掉)
-    # 但因为整个列表全由「中 + 英段(空白+英文+空白)」组成,strip 后应只保中文
-    # 即 out 至少 1 个 '中文',末尾不应有英文段残留
-    assert '英文 1' not in joined
-    assert '英文 2' not in joined
+    assert '中文' in out
+    assert 'English line one' not in joined, '连续 2 行纯英文应成段被剥'
+    assert 'English line two' not in joined
+    # 段内空白随段一起被吞 (只剩段前那几个分隔空行)
+    assert out.count('') == 3
+    # 段前的空行不属于英文段,strip 不负责清理 —— 交给 _join_head_with_desc
+    # 末尾的 rstrip('\n') 收口,这里只保证不残留英文内容
+    assert joined.strip() == '中文'
 
 
 def test_attention_segment_finds_chinese_keyword():
