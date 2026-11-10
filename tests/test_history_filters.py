@@ -75,12 +75,41 @@ def _run(conn, **kwargs):
         db_mod.query = orig
 
 
+def _run_counting(conn, **kwargs):
+    """同上，另外返回一次调用发出的 SQL 语句条数（用来盯住 N+1 回归）。"""
+    from src.models import database as db_mod
+    from src.models.subscription import get_history
+
+    orig = db_mod.query
+    counter = {'n': 0}
+
+    def fake_query(sql, params=()):
+        counter['n'] += 1
+        return [dict(zip(r.keys(), r)) for r in conn.execute(sql, params).fetchall()]
+    db_mod.query = fake_query
+    try:
+        rows, total = get_history(page=1, limit=20, **kwargs)
+    finally:
+        db_mod.query = orig
+    return rows, total, counter['n']
+
+
 def test_rule_filter_restricts_both_levels():
     conn = _seed_db()
     rows, total = _run(conn, rule_id=1)
-    assert total == 2
+    assert total == 1, 'total 是包数(distinct snapshot), 规则1 的 2 条交付同属 1 个包'
     assert len(rows) == 1  # 同一个 snapshot 只出一行
     assert [d['customer_id'] for d in rows[0]['deliveries']] == [11, 10]
+
+
+def test_total_counts_snapshots_not_deliveries():
+    """total 语义 (2026-11-09 P1): COUNT(DISTINCT s.id) = 页数基数, 不是交付行数。
+    同一包推 4 次(2 客户 × 2 规则)仍然只有 1 页 1 行。"""
+    conn = _seed_db()
+    rows, total = _run(conn)
+    assert total == 1
+    assert len(rows) == 1
+    assert len(rows[0]['deliveries']) == 4
 
 
 def test_customer_and_rule_combine():
@@ -94,5 +123,52 @@ def test_customer_and_rule_combine():
 def test_no_filter_returns_all_deliveries():
     conn = _seed_db()
     rows, total = _run(conn)
-    assert total == 4
+    assert total == 1
     assert len(rows[0]['deliveries']) == 4
+
+
+def _add_second_snapshot(conn):
+    """再加一个快照 + 两条交付,用来验证分组不串台。"""
+    conn.execute("INSERT INTO snapshots (id, product_name, package_type, file_name)"
+                 " VALUES (201, 'WAF', '规则', 'other.zip')")
+    for rule_id, cust_id, sent_at in ((1, 10, '2026-11-02 05:00:00'),
+                                      (2, 11, '2026-11-02 06:00:00')):
+        conn.execute(
+            "INSERT INTO delivery_log (snapshot_id, rule_id, channel_id, channel_type,"
+            " channel_name, customer_id, delivery_status, sent_at, recipient)"
+            " VALUES (201, ?, 5, 'email', 'mail', ?, 'sent', ?, 'y@163.com')",
+            (rule_id, cust_id, sent_at))
+    conn.commit()
+
+
+def test_deliveries_grouped_per_snapshot():
+    conn = _seed_db()
+    _add_second_snapshot(conn)
+    rows, total = _run(conn)
+    assert total == 2
+    by_id = {r['id']: r['deliveries'] for r in rows}
+    assert len(by_id[200]) == 4 and len(by_id[201]) == 2
+    assert all(d['snapshot_id'] == 200 for d in by_id[200])
+    # 每个快照内部仍按 sent_at 倒序
+    assert [d['sent_at'] for d in by_id[201]] == sorted(
+        [d['sent_at'] for d in by_id[201]], reverse=True)
+
+
+def test_rule_filter_survives_batching():
+    conn = _seed_db()
+    _add_second_snapshot(conn)
+    rows, total = _run(conn, rule_id=1)
+    # 规则1: 快照200 两条(客户10/11) + 快照201 一条(客户10) → 3 条交付 / 2 个包
+    assert total == 2
+    assert {r['id']: len(r['deliveries']) for r in rows} == {200: 2, 201: 1}
+
+
+def test_deliveries_query_is_batched_not_per_row():
+    """回归防线: deliveries 必须一次批量取,SQL 条数不随快照数增长。
+
+    2026-11-09 前是 N+1 (count + rows + 每行一条 deliveries = 2 + N)。
+    """
+    conn = _seed_db()
+    _add_second_snapshot(conn)
+    _rows, _total, n_sql = _run_counting(conn)
+    assert n_sql == 3, f'期望 3 条 SQL (count/rows/deliveries), 实际 {n_sql}'

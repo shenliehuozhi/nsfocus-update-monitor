@@ -383,6 +383,20 @@ CREATE TABLE IF NOT EXISTS delivery_log (
     chain_json TEXT DEFAULT '[]'
 )
 """
+# 2026-11-09 P0 性能: delivery_log 此前一个索引都没有,推送历史、客户推送分布、
+# 仪表盘 recent_deliveries 全部退化成 SCAN dl(EXPLAIN QUERY PLAN 实测)。
+# 行数已 7k+ 且 90 天就产生 5k+ 条,现在补上,IF NOT EXISTS 对老库幂等安全。
+SCHEMA_DELIVERY_LOG_INDEXES = [
+    # 时间范围过滤 + 倒序取最近 (get_history / dashboard recent / clear_history)
+    "CREATE INDEX IF NOT EXISTS idx_delivery_sent ON delivery_log(sent_at)",
+    # 按客户过滤/聚合 (get_history?customer_id= / customers/push-summary)
+    "CREATE INDEX IF NOT EXISTS idx_delivery_customer ON delivery_log(customer_id, sent_at)",
+    # 按订阅规则过滤 (get_history?rule_id=)
+    "CREATE INDEX IF NOT EXISTS idx_delivery_rule ON delivery_log(rule_id, sent_at)",
+    # snapshot → deliveries 关联 (get_history 批量取 / 重推前查重)
+    "CREATE INDEX IF NOT EXISTS idx_delivery_snapshot ON delivery_log(snapshot_id)",
+]
+
 # Schema-sync for delivery_log. Keep in sync with INSERT/UPDATE used by
 # log_delivery / update_delivery / get_history.
 EXPECTED_DELIVERY_LOG_COLUMNS = [
@@ -503,8 +517,11 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
         params.append(f'-{days} days')
     where = " AND ".join(conditions) if conditions else "1=1"
 
+    # 2026-11-09 P1: total 必须是"包数"(distinct 快照), 不是交付行数 —— 下面 rows
+    # 按 GROUP BY s.id 每包只出一行。原来 COUNT(dl.*) 在"同包推 3 个客户"时把 total
+    # 报成 3, 前端拿它算页数就会得到完全错误的页码 (7124 vs 实际 2464 包)。
     total = query(
-        f"""SELECT COUNT(*) as cnt
+        f"""SELECT COUNT(DISTINCT s.id) as cnt
             FROM delivery_log dl JOIN snapshots s ON dl.snapshot_id = s.id
             WHERE {where}""",
         tuple(params)
@@ -525,10 +542,14 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
     )
 
     # For each snapshot, get the delivery details.
-    # feat/customer-push-card 2026-09-02 修复: deliveries 也按 customer_id 过滤,避免显示其他客户的推送
-    for row in rows:
-        del_cond = "dl.snapshot_id = ?"
-        del_params = [row['id']]
+    # 2026-11-09 P0 性能: 原来每个快照行单查一次 deliveries —— limit=200 时实测
+    # 202 条 SQL / ~750ms。改成一次 IN (...) 批量取再按 snapshot_id 分组。
+    # feat/customer-push-card 2026-09-02 的语义保持不变: deliveries 仍按 customer_id /
+    # rule_id 过滤,避免列表行混入其他客户或其他规则的交付记录。
+    if rows:
+        snap_ids = [r['id'] for r in rows]
+        del_cond = "dl.snapshot_id IN (" + ','.join('?' * len(snap_ids)) + ")"
+        del_params = list(snap_ids)
         if customer_id:
             del_cond += " AND dl.customer_id = ?"
             del_params.append(customer_id)
@@ -536,7 +557,8 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
             del_cond += " AND dl.rule_id = ?"
             del_params.append(rule_id)
         deliveries = query(
-            f"""SELECT dl.channel_name, dl.channel_type, dl.delivery_status,
+            f"""SELECT dl.snapshot_id,
+                      dl.channel_name, dl.channel_type, dl.delivery_status,
                       dl.error_message, dl.sent_at, dl.channel_id, dl.customer_id,
                       dl.recipient, dl.sender, dl.chain_json,
                       c.name as customer_name, c.company as customer_company,
@@ -552,7 +574,11 @@ def get_history(page: int = 1, limit: int = 20, product: str = None,
                ORDER BY dl.sent_at DESC""",
             tuple(del_params)
         )
-        row['deliveries'] = [dict(d) for d in deliveries]
+        grouped = {}
+        for d in deliveries:
+            grouped.setdefault(d['snapshot_id'], []).append(dict(d))
+        for row in rows:
+            row['deliveries'] = grouped.get(row['id'], [])
 
     return rows, total
 
@@ -677,6 +703,9 @@ def create_tables(db):
     db.execute(SCHEMA_DELAYED_QUEUE)
     db.execute(SCHEMA_DIGEST_QUEUE)
     db.execute(SCHEMA_VERSION)
+
+    for idx in SCHEMA_DELIVERY_LOG_INDEXES:
+        db.execute(idx)
 
     # 老 DB 自动补列 — sync 取代之前一长串 try/except ALTER TABLE。
     # 这样以后再加列,只需要在 EXPECTED_* 列表里加一行,启动期自动 ALTER。
