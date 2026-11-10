@@ -9,6 +9,9 @@ venv/
 data/*.db
 data/*.db-*
 data/*.db.bak.*
+# 任何路径下的 SQLite 库及其 -wal/-shm/-journal 旁路文件都不入库
+*.db
+*.db-*
 data/discover.log
 data/discover_pending.json
 # Backups

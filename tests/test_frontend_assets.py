@@ -6,6 +6,7 @@
 - 不允许再把可执行脚本塞回 HTML；
 - script 顺序固定（经典脚本，跨文件共享全局作用域）；
 - 不许出现跨文件 const/let 重声明（浏览器会直接 SyntaxError，整页白屏）；
+- 不许出现重复的顶层 function 声明（后加载的定义会静默覆盖前一份）；
 - HTML / JS 模板里 163 个内联 on* 处理器必须都能找到定义；
 - 每个文件都能被解析（本机 esprima，CI 用 node --check）。
 """
@@ -78,6 +79,23 @@ def test_no_cross_file_lexical_redeclaration():
             seen[m.group(1)].append(path.name)
     dup = {k: v for k, v in seen.items() if len(set(v)) > 1}
     assert not dup, f'跨文件重复声明: {dup}'
+
+
+def test_no_duplicate_top_level_functions():
+    """顶层同名 function 会被后加载的定义静默覆盖，前一份成为死代码。
+
+    只匹配行首 0-1 个空格的 function（本仓库顶层函数最多缩进 1 格，
+    嵌套函数至少缩进 2 格），因此跨文件和单文件内的重复都能抓到。
+    """
+    seen = defaultdict(list)
+    for path in script_paths():
+        src = path.read_text(encoding='utf-8')
+        for m in re.finditer(
+                r'(?m)^ ?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', src):
+            line = src.count('\n', 0, m.start()) + 1
+            seen[m.group(1)].append(f'{path.name}:{line}')
+    dup = {k: v for k, v in seen.items() if len(v) > 1}
+    assert not dup, f'重复的顶层函数声明: {dup}'
 
 
 def _defined_names() -> set[str]:

@@ -797,10 +797,6 @@ function rdClearFilter(){
   rdRenderGroups();
 }
 
-function escHtml(s){
-  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-
 async function rdExport(fmt, copy=false){
   if (!_rd.diffResult) return;
   const from = _rd.diffResult.from_version, to = _rd.diffResult.to_version;

@@ -703,44 +703,6 @@ function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){c
 function _hlthColor(s){return{'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[s]||'var(--gray-muted)';}
 function _hlthLabel(s){return{'ok':'正常','error':'异常','unknown':'未知'}[s]||'未知';}
 
-// 从 typesObj.paths 统计所有唯一 type key，用 MAP 翻译显示
-// types.types 可能是 raw keys（如 ['sys','rule']）也可能是完整显示名（如 ['WAF V6.0.9系统升级包']）
-// 统一策略：统计 paths.types 中所有原始 key，按出现次数排序，MAP 翻译
-function _groupPkgTypes(typesObj) {
-  const MAP = {sys:'系统',rule:'规则',nti:'威胁情报',av:'病毒库',apprule:'应用规则',url:'URL库',wcs:'恶意站点',judge:'研判',geo:'地理库',interface:'接口',special:'特殊',other:'其他',merge:'合并',client:'客户端',av_stream:'流式病毒库',test:'测试'};
-  const {types, paths} = typesObj;
-  if (!types || !types.length) return '';
-
-  // 统计 paths.types 中每个 type key 的出现次数
-  const cnt = {};
-  if (paths && paths.length > 0) {
-    paths.forEach(p => { (p.types || []).forEach(t => { cnt[t] = (cnt[t]||0) + 1; }); });
-  }
-
-  // 如果 paths.types 全是完整显示名（不在 MAP 中），则统计 types.types 自身
-  const hasRawKeys = Object.keys(cnt).some(k => k in MAP);
-  if (hasRawKeys) {
-    const sorted = Object.keys(cnt).filter(k => k in MAP).sort((a,b) => (cnt[b]||0) - (cnt[a]||0));
-    return sorted.map(k => `${MAP[k]||k}(${cnt[k]})`).join(', ');
-  }
-
-  // 降级：paths.types 全是完整显示名，直接统计 types.types 各 key 的路径数
-  // 同时用完整显示名做 key（取 types.types 本身）
-  if (paths && paths.length > 0) {
-    const seen = new Set(types);
-    const fullCnt = {};
-    paths.forEach(p => {
-      (p.types || []).forEach(t => {
-        if (seen.has(t)) fullCnt[t] = (fullCnt[t]||0) + 1;
-      });
-    });
-    const sorted = [...types].sort((a,b) => (fullCnt[b]||0) - (fullCnt[a]||0));
-    return sorted.map(t => `${t}(${fullCnt[t]||0})`).join(', ');
-  }
-
-  return types.map(t => MAP[t] || t).join(', ');
-}
-
 function fmtPkgTypes(v){
   if(!v) return '';
   let types = v;

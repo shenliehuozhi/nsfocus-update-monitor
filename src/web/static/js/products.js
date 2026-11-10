@@ -1438,10 +1438,6 @@ async function saveProductForm(id){
 }
 
 function cancelProductForm(){ closeModal('pform'); }
-function escHtml(s){
-  if(s==null)return'';
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
 
 // ── Inline product edit (row-level) ──────────────────────────────────────────
 let _editRowId = null; // currently editing row id

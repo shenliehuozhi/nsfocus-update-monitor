@@ -20,14 +20,8 @@ function toast(m,s='success'){
   const e=document.createElement('div');e.className=`toast toast-${s}`;e.textContent=m;document.body.appendChild(e);setTimeout(()=>e.remove(),4000);
 }
 
-// showRichToast(html, level) — 与 toast() 同视觉,支持内嵌 HTML(用于嵌入链接/按钮)。
-// 8s 显示时长(比普通 toast 长,因为可能含交互元素)。
-function showRichToast(html, level='success'){
-  const e=document.createElement('div');
-  e.className=`toast toast-${level}`;
-  e.innerHTML=html;
-  document.body.appendChild(e);
-  setTimeout(()=>e.remove(),8000);
+function escHtml(s){
+  return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
 // confirmAct(msg, asyncFn) — shows modal, calls asyncFn() on confirm

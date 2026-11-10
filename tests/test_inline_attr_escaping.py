@@ -163,11 +163,10 @@ def test_eschtml_would_break_where_escattr_does_not():
     """
     node = _require_node()
 
-    # 文件里有两份 escHtml(8046 死代码 / 9720 生效), 同名函数声明后者覆盖前者,
-    # 所以运行时用的是**最后一份** —— 必须拿它来证明
+    # escHtml 只有一份(static/js/core.js), 用它证明实体解码后撇号/CRLF 仍会写坏
     hm = list(re.finditer(r'^function escHtml\(s\)\{(?:.|\n)*?^\}', SOURCE, re.M))
-    assert hm, 'escHtml 定义没找到'
-    esc_html_src = hm[-1].group(0)
+    assert len(hm) == 1, f'escHtml 应只有 1 份定义, 实际 {len(hm)} 份'
+    esc_html_src = hm[0].group(0)
 
     probe = (
         esc_html_src + '\n'

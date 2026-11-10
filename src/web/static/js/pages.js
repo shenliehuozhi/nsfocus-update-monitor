@@ -123,25 +123,6 @@ async function sessions(){
 
   <table><tr><th>ID</th><th>类型</th><th title="活跃=可用且心跳正常 | 失效=已过期或被污染 | 未知=从未验证">状态 ↕</th><th title="正常=心跳OK | 过期=302跳转/失效 | 污染=访问过虚拟化上传页面，上下文被Vm格式干扰 | 错误=网络问题">心跳 ↕</th><th>最近心跳</th><th>次数</th><th>最后有效</th><th>过期</th><th>操作</th></tr>${rows||'<tr><td colspan="9" class="empty">暂无</td></tr>'}</table></div></div>
   <div id="hbModal"></div>`;}
-function setPurpose(p){
-  window._sesPurpose=p;
-  document.getElementById('btnPurposeCollect').style.background=p==='collect'?'#fff':'transparent';
-  document.getElementById('btnPurposeCollect').style.color=p==='collect'?'var(--text)':'var(--gray-muted)';
-  document.getElementById('btnPurposeCollect').style.boxShadow=p==='collect'?'0 1px 3px rgba(0,0,0,.15)':'none';
-  document.getElementById('btnPurposeDiscover').style.background=p==='discover'?'#fff':'transparent';
-  document.getElementById('btnPurposeDiscover').style.color=p==='discover'?'var(--text)':'var(--gray-muted)';
-  document.getElementById('btnPurposeDiscover').style.boxShadow=p==='discover'?'0 1px 3px rgba(0,0,0,.15)':'none';
-  document.getElementById('modeSelector').style.display=p==='collect'?'flex':'none';
-}
-function setMode(m){
-  window._sesMode=m;
-  document.getElementById('btnModeStandard').style.background=m==='standard'?'#fff':'transparent';
-  document.getElementById('btnModeStandard').style.color=m==='standard'?'var(--text)':'var(--gray-muted)';
-  document.getElementById('btnModeStandard').style.boxShadow=m==='standard'?'0 1px 3px rgba(0,0,0,.15)':'none';
-  document.getElementById('btnModeVm').style.background=m==='vm'?'#fff':'transparent';
-  document.getElementById('btnModeVm').style.color=m==='vm'?'var(--text)':'var(--gray-muted)';
-  document.getElementById('btnModeVm').style.boxShadow=m==='vm'?'0 1px 3px rgba(0,0,0,.15)':'none';
-}
 window._sesPurpose='collect';window._sesMode='standard';
 
 function openAddSesModal(){
@@ -1516,12 +1497,6 @@ async function openRModal(id){
   }
 }
 
-function onWinToggle(){
-  const w=document.getElementById('winCfg');
-  const en=document.getElementById('rwin')?.checked;
-  if(en){w.classList.remove('hidden');}
-  else{w.classList.add('hidden');}
-}
 function onDigestModeChange(){
   const m=document.getElementById('rdm').value;
   const d=document.getElementById('dcfg');
