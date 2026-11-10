@@ -2,9 +2,8 @@
 
 This module is read-only with respect to the local DB:
 - /api/diff/fetch:  live-fetches HTML from vendor portal with PHPSESSID,
-                    parses ALL <table> blocks (vs NsfocusCollector._extract_table_items
-                    which reads only the first one — green-alliance rule-history pages
-                    have one <table> per historical upgrade package, often 100+).
+                    parses ALL <table> blocks (collection also reads every
+                    table now, then keeps only the newest N packages).
 - /api/diff/compare: parse rule added/updated blocks from two description strings,
                      return added / updated / persisted-added diff.
 
@@ -302,9 +301,9 @@ def diff_rules(
 
 # === Parse ALL <table> blocks of a vendor portal HTML page ===
 #
-# NSFocusCollector._extract_table_items only reads the first <table> per page.
-# But green-alliance rule-history pages (e.g. /update/listNewipsDetail/v/rule5.6.11_v2)
-# contain ONE <table> PER historical upgrade package, often 100+. We need all of them.
+# 绿盟规则历史页 (e.g. /update/listWafV67Detail/v/rule6070) 一个升级包一张
+# <table>, 常累积 100+ 张。采集侧已改为全表解析 + 最新 N 窗口, 这里保持独立
+# 的 dict 输出供 diff 前端逐包对比。
 
 def parse_rule_packages_from_html(html: str, page_url: str) -> List[Dict]:
     """Parse every <table> block on a vendor portal detail page into a list of

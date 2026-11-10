@@ -10,6 +10,7 @@
 - **CI 测试门禁**：新增 `.github/workflows/tests.yml`（本仓第一道自动化门禁）—— push/PR/手动触发跑 `python3 -m pytest`，Python 3.10 + `requirements.txt` 安装，另加两条 lint 守住「测试可移植」：`tests/` 里不许出现 `/root/nsfocus-monitor` 绝对路径、不许 `sqlite3.connect` 到生产库。为此先把 6 个绑定开发机的用例改成可离线自足：`test_user_upgrade_auto_migrate` 三个用例自建 `tmp_path` 库 + `monkeypatch` DB_PATH（原来直接读生产 `data/nsfocus_monitor.db`，31 个用例连带 collect 报错），`test_rule_1013_8703_chain` 把生产 chain 值内联并改调真正的 `detector/change._chain_matches`（原来各自复制一份局部实现，测的是副本不是产品代码），`test_subscription_match` 加 autouse fixture 清 `scheduler` 的 chain 缓存并 stub `_get_chain`，`test_about_modal_regression` / `test_scheduler_rollback_chain` / `test_version_info` 的绝对路径改 `Path(__file__).resolve().parents[1]`。离仓验证：仓库副本 tar 到 `/tmp`（排除 `data/` `logs/` `.git` `__pycache__`）+ `MONITOR_DATA_DIR`/`MONITOR_LOG_DIR` 指空目录 + 按 pin 装的依赖，371 passed
 
 ### 修复
+- **采集 · 一页多包漏采**：绿盟规则历史页是「一个升级包一张 `<table>`」（WAF `rule6070` 实测同一页 247 张表），旧解析器只读第一张表，一次发布多个包时只有最新那个能被看见，其余包永远不入库、不推送。现在逐表逐包解析，按 `published_at` 只跟踪最新 N 个；撤回/取代检测仍用全量 key，滑出窗口的老包不会被误标 withdrawn/superseded。快速采集同步改为读取完整页面（原来截断 50KB，第 20 个之后的表根本读不到）。实测 247 包页面全量解析 ≈722ms（每张表 4 行、单遍遍历）；回归见 `tests/test_multipkg_track_window.py`（2 表 4 包、一次 3 新包全判 NEW、窗口外不误撤回、描述正文含「名称：」不拆包）
 - **仪表盘 · 客户推送分布**：不再隐藏近 N 天 0 推送的客户（此前 `items.filter(c => c.total>0)` 把 5 个客户砍成 3 个）。后端 `LEFT JOIN customers` 本就返回全量，现在 0 推送客户置灰沉底、状态列显示「无推送」
 - **代码质量**：清理死代码和过时注释（database.py WAL 注释、subscription.py 死代码、router.py 重复声明、system_routes.py 重复 import）
 - **调度器**：`_shutdown_cleanup` 退出时清理 `collection_running` 标志，避免重启后误判

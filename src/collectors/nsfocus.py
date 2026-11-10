@@ -79,6 +79,43 @@ REQUEST_DELAY_MAX = _get_delay('collect_delay_max', 0.5)
 TIMEOUT = int(_get_delay('collect_timeout', 5))
 MAX_RETRIES = 2
 
+# 升级包跟踪数量：规则历史页会累积上百个包（WAF rule6070 实测 247 个），
+# 但一个采集周期真正需要盯的只有最新几个。默认跟最新 5 个，可在系统设置里
+# 改成 10 / 3 / 全部。全量解析始终进行（撤回检测需要全量 key），截断只影响
+# 入库与推送范围。
+TRACK_LIMIT_CHOICES = ('all', '10', '5', '3')
+TRACK_LIMIT_DEFAULT = '5'
+
+
+def _get_track_limit() -> str:
+    try:
+        from src.core.scheduler import _get_setting
+        raw = str(_get_setting('pkg_track_limit', TRACK_LIMIT_DEFAULT)).strip().lower()
+    except Exception:
+        raw = TRACK_LIMIT_DEFAULT
+    return raw if raw in TRACK_LIMIT_CHOICES else TRACK_LIMIT_DEFAULT
+
+
+def _select_track_window(items: list, limit: str) -> list:
+    """Return the newest `limit` items, preserving DOM order.
+
+    绿盟列表页按发布时间从新到旧排列，所以 published_at 缺失时靠 DOM 顺序
+    （索引越小越新）兜底。返回列表保持原顺序，方便日志按页面顺序阅读。
+    """
+    if str(limit).lower() == 'all':
+        return list(items)
+    try:
+        n = int(limit)
+    except (TypeError, ValueError):
+        n = int(TRACK_LIMIT_DEFAULT)
+    if n <= 0 or n >= len(items):
+        return list(items)
+    ranked = sorted(range(len(items)),
+                    key=lambda i: (items[i].published_at or '', -i),
+                    reverse=True)[:n]
+    keep = set(ranked)
+    return [it for i, it in enumerate(items) if i in keep]
+
 PRODUCTS = {
     'WAF':  '/update/wafIndex',
     'IPS':  '/update/listIps',
@@ -430,8 +467,8 @@ class NsfocusCollector(BaseCollector):
         # ── URL dedup cache: same URL across multiple chains fetched only once ──
         # NSFocus paths often map N chains to 1 URL (e.g. UTS /wcl2.0.0 has 13 chains).
         # We fetch the URL once, parse once, then attribute the same items to each chain.
-        # Note: NSFocus's _extract_table_items only reads the first <table> per page,
-        # so all chains sharing a URL get identical items — safe to dedup.
+        # _extract_table_items now reads every <table> on the page, so all chains
+        # sharing a URL still get identical (windowed) items — safe to dedup.
         # Cached value is a list of (file_name, md5_hash, package_version, file_size,
         # description_raw, ...) primitives — i.e. we DON'T cache UnifiedContentItem
         # objects directly because mutating them (ti.version_branch = ...) would corrupt
@@ -498,7 +535,9 @@ class NsfocusCollector(BaseCollector):
                     # Quick check: if page is small enough and has last_modified,
                     # we can compute a hash from headers alone
                     # For now: always do a light GET to read page hash
-                    html = resp.text[:50000]  # Read up to 50KB
+                    # 读取完整页面：同类规则历史页一个包一张表，截断到 50KB 会把
+                    # 第 N 个之后的包（以及撤回检测需要的旧包 key）全部丢掉。
+                    html = resp.text
                     resp.close()
 
                     # Also verify this isn't a login page by title
@@ -520,10 +559,18 @@ class NsfocusCollector(BaseCollector):
                     if full_url not in zero_hashes:
                         zero_hashes[full_url] = page_hash
 
-                    # Extract items from the page
+                    # Extract items from the page (all tables, every package row)
                     table_items = self._extract_table_items(
                         html, source_id, product_name, ver, pkg,
                         page_url=full_url, current_chain=chain)
+
+                    # 全量解析 → 只跟踪最新 N 个。撤回/取代检测仍然用全量 key，
+                    # 否则滑出窗口的老包会被误判成"从页面消失"。
+                    track_limit = _get_track_limit()
+                    window_items = _select_track_window(table_items, track_limit)
+                    if len(window_items) < len(table_items):
+                        logger.info(f'  [{product_name}] 页面共 {len(table_items)} 个包，'
+                                    f'跟踪数量={track_limit}，处理最新 {len(window_items)} 个')
 
                     # ── Clone items for cache (avoid shared-reference mutation) ──
                     # _extract_table_items returns the SAME item list shared across all
@@ -532,7 +579,7 @@ class NsfocusCollector(BaseCollector):
                     # with the LAST chain's ver/pkg, not the first. Clone via dataclass
                     # replace() so each chain works on its own copy.
                     from dataclasses import replace
-                    cached_items = [replace(ti) for ti in table_items]
+                    cached_items = [replace(ti) for ti in window_items]
 
                     # ── Log package-level diff (only on first fetch per URL) ──
                     # Query existing active snapshots for this URL + path_id as the
@@ -600,12 +647,14 @@ class NsfocusCollector(BaseCollector):
                         # 第二遍用三元组 (file_name, path_id, md5_hash) 做 key 跟第一遍对称 —
                         # 老行 md5 跟本次抓到任一新包都不同 = 真正被取代或撤回,单凭 (file_name, path_id)
                         # 会把"撤回重发"场景的老行错认为还在。
-                        new_keys = {(ti.file_name, ti.path_id, ti.md5_hash or '') for ti in cached_items}
+                        # 用全量解析结果做 key：滑出跟踪窗口的老包仍在页面上，
+                        # 不能因为没进窗口就被标 superseded/withdrawn。
+                        new_keys = {(ti.file_name, ti.path_id, ti.md5_hash or '') for ti in table_items}
                         # 拿本次所有新包 published_at,用于判定 OLD vs WITHDRAWN:
                         #   老行 pub 早于任一新包 → 被新版取代 → OLD
                         #   老行 pub 不早于任一新包 → 绿盟主动撤回/下架 → WITHDRAWN
                         #   缺 pub 数据 → 保守 OLD
-                        new_pubs = [ti.published_at for ti in cached_items if ti.published_at]
+                        new_pubs = [ti.published_at for ti in table_items if ti.published_at]
                         for (fname, pid, old_md5), old_s in old_map.items():
                             if (fname, pid, old_md5) not in new_keys:
                                 old_pub = old_s.get('published_at', '')
@@ -938,7 +987,6 @@ class NsfocusCollector(BaseCollector):
                              version_branch: str, package_type: str,
                              page_url: str = '', current_chain: list = None) -> list:
         import hashlib
-        import json as _json
         page_hash = hashlib.md5(html[:50000].encode()).hexdigest()
         # path_id = MD5(page_url)[:12] — stable identity for this final page
         # (v3 URL-based scheme). Multiple chains sharing one URL get the
@@ -951,74 +999,89 @@ class NsfocusCollector(BaseCollector):
         path_id = hashlib.md5(page_url.encode()).hexdigest()[:12]
         items = []
         soup = BeautifulSoup(html, 'html.parser')
-        table = soup.find('table')
-        if not table:
+        # 规则历史页是"一个升级包一张表"（WAF rule6070 实际 247 张表），老版本
+        # 只读第一张表，一次发布多个包时其余包永远看不见。这里逐表独立跑行
+        # 状态机；布局/导航表没有 MD5 行，不会产出条目。
+        tables = soup.find_all('table')
+        if not tables:
             return items
 
-        rows = table.find_all('tr')
-        current_item = {}
-        download_id = 0
+        def flush(raw: dict, dl_id: int):
+            if raw.get('file_name') and raw.get('md5_hash'):
+                items.append(self._build_item(
+                    raw, source_id, product_name,
+                    version_branch, package_type, dl_id,
+                    source_url=page_url, path_id=path_id))
 
-        for row in rows:
-            cells = row.find_all(['td', 'th'])
-            cell_texts = []
-            for cell in cells:
-                a_tag = cell.find('a', href=True)
-                if a_tag and ('/update/downloads/id/' in a_tag['href'] or '/update/downloadsVm/id/' in a_tag['href']):
-                    download_id = self._extract_download_id(a_tag['href'])
-                    cell_texts.append(cell.get_text(' ', strip=True))
+        for table in tables:
+            current_item = {}
+            download_id = 0
+
+            for row in table.find_all('tr'):
+                cells = row.find_all(['td', 'th'])
+                cell_texts = []
+                row_download_id = 0
+                for cell in cells:
+                    a_tag = cell.find('a', href=True)
+                    if a_tag and ('/update/downloads/id/' in a_tag['href'] or '/update/downloadsVm/id/' in a_tag['href']):
+                        row_download_id = self._extract_download_id(a_tag['href'])
+                        cell_texts.append(cell.get_text(' ', strip=True))
+                    else:
+                        # Preserve newlines for description cells
+                        raw_text = cell.get_text(' ', strip=True)
+                        if '描述：' in raw_text or '描述:' in raw_text:
+                            raw_text = cell.get_text('\n', strip=True)
+                        cell_texts.append(raw_text)
+
+                row_text = ' '.join(c for c in cell_texts if c).strip()
+                if not row_text:
+                    continue
+
+                # For description rows, preserve newlines for parsing
+                is_desc_row = any('描述：' in c or '描述:' in c for c in cell_texts)
+                has_kv = any(kw in row_text for kw in
+                             ['名称：', '版本：', 'MD5：', '大小：', '描述：', '文件名', '发布时间'])
+                complete = bool(current_item.get('file_name') and current_item.get('md5_hash'))
+                # 同一张表里可能连续放多个包：遇到新的"名称"行就把上一个包收尾。
+                # 描述正文里也可能出现"名称："字样，所以描述行不参与判定。
+                starts_pkg = (not is_desc_row) and bool(re.search(r'名称[：:]', row_text))
+
+                if starts_pkg:
+                    if complete:
+                        flush(current_item, download_id)
+                    current_item = {}
+                    download_id = 0
+                elif not has_kv and complete:
+                    # 下载链接单独成行的老版式：先把上一包收尾，再记本行链接
+                    if row_download_id:
+                        download_id = row_download_id
+                    flush(current_item, download_id)
+                    current_item = {}
+                    download_id = 0
+
+                if row_download_id:
+                    download_id = row_download_id
+
+                if is_desc_row:
+                    # 描述正文里可能出现"名称："等字样，只取描述字段，
+                    # 避免把正文里的"名称：xxx"误当包名。
+                    parsed = self._parse_kv_row(row_text)
+                    if parsed and parsed.get('description_raw'):
+                        current_item['description_raw'] = parsed['description_raw']
+                elif has_kv:
+                    for full_text in cell_texts:
+                        full_text = full_text.strip()
+                        if not full_text:
+                            continue
+                        parsed = self._parse_kv_row(full_text)
+                        if parsed:
+                            current_item.update(parsed)
                 else:
-                    # Preserve newlines for description cells
-                    raw_text = cell.get_text(' ', strip=True)
-                    if '描述：' in raw_text or '描述:' in raw_text:
-                        raw_text = cell.get_text('\n', strip=True)
-                    cell_texts.append(raw_text)
-
-            row_text = ' '.join(c for c in cell_texts if c).strip()
-            if not row_text:
-                continue
-
-            # For description rows, preserve newlines for parsing
-            is_desc_row = any('描述：' in c or '描述:' in c for c in cell_texts)
-
-            if any(kw in row_text for kw in ['名称：', '版本：', 'MD5：', '大小：', '描述：', '文件名', '发布时间']):
-                for full_text in cell_texts:
-                    full_text = full_text.strip()
-                    if not full_text:
-                        continue
-                    parsed = self._parse_kv_row(full_text)
+                    parsed = self._parse_kv_row(row_text)
                     if parsed:
                         current_item.update(parsed)
-                continue
 
-            if current_item.get('file_name') and current_item.get('md5_hash'):
-                item = self._build_item(current_item, source_id, product_name,
-                                        version_branch, package_type, download_id,
-                                        source_url=page_url,
-                                        path_id=path_id)
-                items.append(item)
-                current_item = {}
-                download_id = 0
-
-            if re.search(r'名称[：:]', row_text):
-                if current_item.get('file_name'):
-                    item = self._build_item(current_item, source_id, product_name,
-                                            version_branch, package_type, download_id,
-                                            source_url=page_url,
-                                            path_id=path_id)
-                    items.append(item)
-                current_item = {}
-
-            parsed = self._parse_kv_row(row_text)
-            if parsed:
-                current_item.update(parsed)
-
-        if current_item.get('file_name') and current_item.get('md5_hash'):
-            item = self._build_item(current_item, source_id, product_name,
-                                    version_branch, package_type, download_id,
-                                    source_url=page_url,
-                                    path_id=path_id)
-            items.append(item)
+            flush(current_item, download_id)
 
         for it in items:
             it.page_hash = page_hash
