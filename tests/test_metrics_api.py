@@ -176,6 +176,41 @@ def test_collection_duration_and_events(client):
     assert data['events']['unacked']['WARNING'] == 1
 
 
+def test_collection_last_run_hydrates_from_db(client, monkeypatch):
+    import src.core.scheduler as sched
+    from src.models.database import execute
+
+    ts = '2026-11-11T00:00:00.123456'
+    execute("INSERT OR REPLACE INTO system_settings (key, value) "
+            "VALUES ('last_quick_scan_at', ?)", (ts,))
+    monkeypatch.setattr(sched, '_last_quick_run', None)
+    monkeypatch.setattr(sched, '_last_full_run', None)
+
+    col = _get(client)['collection']
+    assert col['last_quick_run'] == ts
+    assert col['last_run'] == ts
+
+
+def test_collection_live_duration_and_next_run(client, monkeypatch):
+    import src.core.scheduler as sched
+
+    monkeypatch.setattr(sched, '_is_running', True)
+    monkeypatch.setattr(sched, '_progress', {
+        'active': True, 'mode': 'quick', 'phase': 'collecting',
+        'started_at': _ts(minutes=2).replace(' ', 'T'),
+        'duration_s': 0, 'items_collected': 107,
+    })
+    monkeypatch.setattr(sched, 'get_job_status', lambda: [
+        {'id': 'nsfocus_collect', 'next_run': '2026-11-11T05:00:00Z', 'seconds_until': 100},
+    ])
+
+    col = _get(client)['collection']
+    assert col['is_running'] is True
+    assert col['current']['items_collected'] == 107
+    assert col['current']['duration_s'] == pytest.approx(120, abs=5)
+    assert col['next_run'] == '2026-11-11T05:00:00Z'
+
+
 def test_rules_and_storage(client):
     data = _get(client)
     assert data['rules']['total'] == 1

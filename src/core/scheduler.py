@@ -447,15 +447,19 @@ def get_status() -> dict:
 
     # Compute next mode
     next_mode = 'full' if is_full_scan_due() else 'quick'
+    # 进程刚重启时内存态为空，回落到 system_settings 里持久化的完成时间，
+    # 否则仪表盘和 /api/metrics 在首轮采集结束前一直显示「从未采集」
+    last_full = _last_full_run or _load_last_full_scan()
+    last_quick = _last_quick_run or _load_last_quick_scan()
     # Compute next full scan time
     next_full = None
-    if _last_full_run:
-        next_full = (_last_full_run + timedelta(hours=full_interval_hours)).isoformat()
+    if last_full:
+        next_full = (last_full + timedelta(hours=full_interval_hours)).isoformat()
 
     return {
-        'last_full_run': _last_full_run.isoformat() if _last_full_run else None,
-        'last_quick_run': _last_quick_run.isoformat() if _last_quick_run else None,
-        'last_run': (_last_quick_run or _last_full_run).isoformat() if (_last_quick_run or _last_full_run) else None,
+        'last_full_run': last_full.isoformat() if last_full else None,
+        'last_quick_run': last_quick.isoformat() if last_quick else None,
+        'last_run': (last_quick or last_full).isoformat() if (last_quick or last_full) else None,
         'is_running': _is_running and _progress.get('active', False),  # True only when collection is actually in progress
         'current_mode': _progress.get('mode', ''),
         'interval_hours': interval_hours,
@@ -1271,10 +1275,19 @@ def is_full_scan_due() -> bool:
 
 def _load_last_full_scan() -> Optional[datetime]:
     """Load last full scan timestamp from system_settings."""
+    return _load_scan_ts('last_full_scan_at')
+
+
+def _load_last_quick_scan() -> Optional[datetime]:
+    """Load last quick scan timestamp from system_settings."""
+    return _load_scan_ts('last_quick_scan_at')
+
+
+def _load_scan_ts(key: str) -> Optional[datetime]:
     try:
         from src.models.database import query
-        rows = query("SELECT value FROM system_settings WHERE key = 'last_full_scan_at'")
-        if rows:
+        rows = query("SELECT value FROM system_settings WHERE key = ?", (key,))
+        if rows and rows[0]['value']:
             return datetime.fromisoformat(rows[0]['value'])
     except Exception:
         pass

@@ -188,23 +188,33 @@ def _collection() -> dict:
         'stale_after_hours': _STALE_SOURCE_HOURS,
     }
     try:
-        from src.core.scheduler import get_status, get_progress
+        from src.core.scheduler import get_status, get_progress, get_job_status
         st = get_status()
+        # 下一次采集取调度任务的实际时间（get_status 的 next_full_scan 是全量扫描，
+        # 当前配置下为 None）；没有任务时回落到全量扫描时间
+        next_collect = next(
+            (j['next_run'] for j in get_job_status() if j['id'] == 'nsfocus_collect'),
+            None,
+        )
         data.update({
             'enabled': st.get('enabled'),
             'is_running': st.get('is_running'),
             'last_run': st.get('last_run'),
             'last_full_run': st.get('last_full_run'),
             'last_quick_run': st.get('last_quick_run'),
-            'next_run': st.get('next_full_scan'),
+            'next_run': next_collect or st.get('next_full_scan'),
             'interval_hours': st.get('interval_hours'),
         })
         if st.get('is_running'):
             prog = get_progress()
+            duration = prog.get('duration_s')
+            if not duration and prog.get('started_at'):
+                age = _age_minutes(prog.get('started_at'))
+                duration = round(age * 60) if age is not None else None
             data['current'] = {
                 'mode': prog.get('mode'),
                 'phase': prog.get('phase'),
-                'duration_s': prog.get('duration_s'),
+                'duration_s': duration,
                 'items_collected': prog.get('items_collected'),
             }
     except Exception as e:
