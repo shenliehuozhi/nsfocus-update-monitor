@@ -381,7 +381,8 @@ CREATE TABLE IF NOT EXISTS delivery_log (
     retry_count INTEGER DEFAULT 0,
     recipient TEXT DEFAULT '',
     sender TEXT DEFAULT '',
-    chain_json TEXT DEFAULT '[]'
+    chain_json TEXT DEFAULT '[]',
+    created_at TEXT DEFAULT ''
 )
 """
 # 2026-11-09 P0 性能: delivery_log 此前一个索引都没有,推送历史、客户推送分布、
@@ -412,6 +413,9 @@ EXPECTED_DELIVERY_LOG_COLUMNS = [
     ('recipient', 'TEXT', "''"),
     ('sender', 'TEXT', "''"),
     ('chain_json', 'TEXT', "'[]'"),
+    # created_at — attempt timestamp (stamped on every insert, success or failure).
+    # 失败行 sent_at 为 NULL，没有 created_at 就无法按时间窗统计失败率。
+    ('created_at', 'TEXT', "''"),
     # sent_at — auto-stamped by app when status='sent', DEFAULT '' if not set
     ('sent_at', 'TEXT', "''"),
     # retry_count — DEFAULT 0, but only UPDATEd via update_delivery
@@ -455,16 +459,15 @@ def log_delivery(snapshot_id: int, channel_id: int, channel_type: str,
     from src.models.database import execute
     # 2026-07-11: 写入时把客户名拼进 channel_name (详见 _compose_channel_name)
     channel_name = _compose_channel_name(channel_name, customer_id)
-    sent_at = None
-    if status == 'sent':
-        from datetime import datetime
-        sent_at = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    from datetime import datetime
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    sent_at = now if status == 'sent' else None
     return execute(
         """INSERT INTO delivery_log
            (snapshot_id, rule_id, channel_id, channel_type, channel_name,
-            customer_id, delivery_status, error_message, sent_at, recipient, sender, chain_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at, recipient, sender, chain_json or '[]')
+            customer_id, delivery_status, error_message, sent_at, recipient, sender, chain_json, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (snapshot_id, rule_id, channel_id, channel_type, channel_name, customer_id, status, error, sent_at, recipient, sender, chain_json or '[]', now)
     )
 
 

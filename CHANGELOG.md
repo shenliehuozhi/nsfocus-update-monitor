@@ -3,6 +3,8 @@
 ## [Unreleased]
 
 ### 新增
+- **运行指标接口 `GET /api/metrics`**：一次返回投递成功率（按 `?hours=` 窗口、分渠道，含 `undated_failed` 口径说明）、`delayed_queue`/`digest_queue` 积压与最老等待时长（digest 细分到规则）、采集耗时（取最近 20 条 `collection_summary` 事件）与源新鲜度、规则数、未确认告警、库大小/表行数、调度任务下次运行秒数。鉴权沿用 JWT，另支持 `X-Metrics-Token` 静态头（`MONITOR_METRICS_TOKEN`，未配置则不启用）供 Prometheus 抓取；`format=prometheus` 输出 `text/plain` 指标。`hours` 非法或超出 1–720 时回退 24
+- **`delivery_log.created_at`**：失败交付行 `sent_at` 恒为 NULL，此前没有任何时间戳，失败率无法按窗口统计。新增 `created_at`（启动期 `sync_table_columns` 自动补列），`log_delivery` 每次写入都打点；指标按 `COALESCE(created_at, sent_at)` 过滤，历史 sent 行回退 `sent_at`，历史失败行单列 `undated_failed`
 - **升级包跟踪数量（系统设置）**：设置页「📡 采集设置」新增下拉，可选最新 3 / 5 / 10 个或全部，默认 5，配置键 `pkg_track_limit`。规则历史页会累积上百个包，每轮只入库/推送最新的 N 个；改动在下一轮采集生效，无需重启
 - **推送历史过滤**：页面头部过滤条新增「订阅规则」+「客户」两个下拉（与原有时间范围并列），条件写进 URL hash 可分享；后端 `GET /api/history` 新增 `rule_id` 参数，`subscription.get_history()` 按 `delivery_log.rule_id` 过滤并同时下推到每个快照的 deliveries 子查询（否则列表行会混入其他规则/客户的交付记录）
 - **渠道体检**：新增每日邮件渠道凭据探测 `scheduler._channel_health_check`（04:00，只做 SMTP 连接+登录、不发信）。此前邮箱密码/授权码过期只有被动路径（`delivery_log` 留痕 + 仪表盘失败数 + 人工「测试渠道」），若期间无新包发布则完全静默；现在失败会汇总成一条 `channel_error` 系统事件（`emit_channel_error`）经系统事件渠道告警。开关 `channel_health_enabled`（默认开）

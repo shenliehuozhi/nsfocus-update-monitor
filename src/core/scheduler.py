@@ -10,7 +10,7 @@ import random
 import time
 import threading
 import atexit
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from src.core.logger import get_logger
@@ -464,6 +464,30 @@ def get_status() -> dict:
         'next_full_scan': next_full,
         'enabled': _get_setting('scheduler_enabled', '1') == '1',
     }
+
+
+def get_job_status() -> list:
+    """Return scheduled jobs with their next run (for /api/metrics).
+
+    Empty list when the scheduler is not running (e.g. under pytest or
+    before start_scheduler()).
+    """
+    if not _scheduler:
+        return []
+    now = datetime.utcnow()
+    jobs = []
+    for job in _scheduler.get_jobs():
+        nrt = getattr(job, 'next_run_time', None)
+        if nrt is None:
+            continue
+        nrt_utc = nrt.astimezone(timezone.utc).replace(tzinfo=None) if nrt.tzinfo else nrt
+        jobs.append({
+            'id': job.id,
+            'next_run': nrt_utc.isoformat() + 'Z',
+            'seconds_until': round((nrt_utc - now).total_seconds()),
+        })
+    jobs.sort(key=lambda j: j['seconds_until'])
+    return jobs
 
 
 def run_now(mode: str = 'delta', progress_callback=None) -> dict:

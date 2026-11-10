@@ -1,0 +1,406 @@
+"""Metrics — machine-readable delivery / queue / collection / storage gauges.
+
+GET /api/metrics?hours=24                → JSON
+GET /api/metrics?hours=24&format=prometheus → Prometheus text
+
+Auth: JWT Bearer (same as other APIs). For Prometheus scraping, set
+MONITOR_METRICS_TOKEN and send it as `X-Metrics-Token`; JWT expires every
+24h so it is impractical as a scrape credential. When the env var is unset,
+the static-token path is disabled.
+"""
+
+import functools
+import json
+import os
+import secrets
+from datetime import datetime, timedelta, timezone
+
+from flask import Blueprint, Response, g, jsonify, request
+
+from src.core.logger import get_logger
+from src.web.auth import decode_token
+
+bp = Blueprint('metrics', __name__, url_prefix='/api/metrics')
+logger = get_logger('metrics')
+
+_DEFAULT_WINDOW_HOURS = 24
+_MAX_WINDOW_HOURS = 24 * 30
+_STALE_SOURCE_HOURS = 24
+
+
+def _auth(f):
+    """JWT bearer or (when configured) static X-Metrics-Token."""
+    @functools.wraps(f)
+    def wrapper(*args, **kwargs):
+        expected = os.getenv('MONITOR_METRICS_TOKEN', '')
+        if expected:
+            got = request.headers.get('X-Metrics-Token', '')
+            if got and secrets.compare_digest(got, expected):
+                g.user_id, g.username = 0, 'metrics-token'
+                return f(*args, **kwargs)
+
+        header = request.headers.get('Authorization', '')
+        if header.startswith('Bearer '):
+            payload = decode_token(header[len('Bearer '):])
+            if payload:
+                g.user_id = payload['user_id']
+                g.username = payload['username']
+                return f(*args, **kwargs)
+        return jsonify({'code': 40100, 'message': '请先登录'}), 401
+    return wrapper
+
+
+def _window_hours(raw) -> int:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return _DEFAULT_WINDOW_HOURS
+    if value < 1 or value > _MAX_WINDOW_HOURS:
+        return _DEFAULT_WINDOW_HOURS
+    return value
+
+
+def _utc_cutoff(hours: int) -> str:
+    return (datetime.utcnow() - timedelta(hours=hours)).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _age_minutes(ts) -> float | None:
+    """Age of a UTC timestamp (SQLite space format or ISO with T/Z) in minutes."""
+    if not ts:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(ts).replace('Z', '+00:00'))
+    except ValueError:
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+    return round(max(0.0, (datetime.utcnow() - dt).total_seconds() / 60), 1)
+
+
+def _rate(sent: int, failed: int) -> float | None:
+    done = sent + failed
+    return round(sent / done, 4) if done else None
+
+
+def _delivery(hours: int) -> dict:
+    from src.models.database import query
+    cutoff = _utc_cutoff(hours)
+    rows = query(
+        """SELECT channel_type,
+                  COUNT(*) AS total,
+                  SUM(CASE WHEN delivery_status='sent' THEN 1 ELSE 0 END) AS sent,
+                  SUM(CASE WHEN delivery_status='failed' THEN 1 ELSE 0 END) AS failed,
+                  SUM(CASE WHEN delivery_status='pending' THEN 1 ELSE 0 END) AS pending
+           FROM delivery_log
+           WHERE datetime(COALESCE(NULLIF(created_at, ''), sent_at)) >= datetime(?)
+           GROUP BY channel_type
+           ORDER BY total DESC""",
+        (cutoff,),
+    )
+    by_channel = []
+    for r in rows:
+        sent = r['sent'] or 0
+        failed = r['failed'] or 0
+        by_channel.append({
+            'channel_type': r['channel_type'],
+            'total': r['total'] or 0,
+            'sent': sent,
+            'failed': failed,
+            'pending': r['pending'] or 0,
+            'success_rate': _rate(sent, failed),
+        })
+
+    sent = sum(r['sent'] for r in by_channel)
+    failed = sum(r['failed'] for r in by_channel)
+    undated = query(
+        """SELECT COUNT(*) AS c FROM delivery_log
+           WHERE delivery_status='failed'
+             AND COALESCE(created_at, '')='' AND COALESCE(sent_at, '')=''"""
+    )[0]['c'] or 0
+    return {
+        'total': sum(r['total'] for r in by_channel),
+        'sent': sent,
+        'failed': failed,
+        'pending': sum(r['pending'] for r in by_channel),
+        'success_rate': _rate(sent, failed),
+        # 失败行 sent_at 为 NULL，created_at 上线前的历史失败没有时间戳
+        'undated_failed': undated,
+        'by_channel': by_channel,
+    }
+
+
+def _queues() -> dict:
+    from src.models.database import query
+    # push_after 由 datetime.now() 生成本地时间，不能用 datetime('now') (UTC) 比较
+    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    delayed = query(
+        """SELECT COUNT(*) AS pending,
+                  SUM(CASE WHEN push_after < ? THEN 1 ELSE 0 END) AS overdue,
+                  MIN(created_at) AS oldest
+           FROM delayed_queue WHERE status='pending'""",
+        (now_local,),
+    )[0]
+
+    digest_rows = query(
+        """SELECT dq.rule_id, COALESCE(r.name, '') AS rule_name,
+                  COUNT(*) AS pending, MIN(dq.created_at) AS oldest
+           FROM digest_queue dq
+           LEFT JOIN subscription_rules r ON r.id = dq.rule_id
+           WHERE dq.status='pending'
+           GROUP BY dq.rule_id
+           ORDER BY oldest ASC
+           LIMIT 20"""
+    )
+    digest_pending = sum(r['pending'] for r in digest_rows)
+    return {
+        'delayed': {
+            'pending': delayed['pending'] or 0,
+            'overdue': delayed['overdue'] or 0,
+            'oldest_age_minutes': _age_minutes(delayed['oldest']),
+        },
+        'digest': {
+            'pending': digest_pending,
+            'by_rule': [{
+                'rule_id': r['rule_id'],
+                'rule_name': r['rule_name'],
+                'pending': r['pending'],
+                'oldest_age_minutes': _age_minutes(r['oldest']),
+            } for r in digest_rows],
+        },
+    }
+
+
+def _collection() -> dict:
+    from src.models.database import query
+    data = {
+        'enabled': None,
+        'is_running': None,
+        'last_run': None,
+        'last_full_run': None,
+        'last_quick_run': None,
+        'next_run': None,
+        'interval_hours': None,
+        'current': None,
+        'last_duration_s': None,
+        'avg_duration_s': None,
+        'sources_total': 0,
+        'sources_stale': 0,
+        'stale_after_hours': _STALE_SOURCE_HOURS,
+    }
+    try:
+        from src.core.scheduler import get_status, get_progress
+        st = get_status()
+        data.update({
+            'enabled': st.get('enabled'),
+            'is_running': st.get('is_running'),
+            'last_run': st.get('last_run'),
+            'last_full_run': st.get('last_full_run'),
+            'last_quick_run': st.get('last_quick_run'),
+            'next_run': st.get('next_full_scan'),
+            'interval_hours': st.get('interval_hours'),
+        })
+        if st.get('is_running'):
+            prog = get_progress()
+            data['current'] = {
+                'mode': prog.get('mode'),
+                'phase': prog.get('phase'),
+                'duration_s': prog.get('duration_s'),
+                'items_collected': prog.get('items_collected'),
+            }
+    except Exception as e:
+        logger.debug(f'metrics: scheduler status unavailable: {e}')
+
+    summaries = query(
+        """SELECT created_at, message FROM system_event_log
+           WHERE event_type='collection_summary'
+           ORDER BY id DESC LIMIT 20"""
+    )
+    durations = []
+    for row in summaries:
+        try:
+            value = json.loads(row['message'] or '{}').get('duration_s')
+        except (TypeError, ValueError):
+            continue
+        if isinstance(value, (int, float)):
+            durations.append(float(value))
+    if durations:
+        data['last_duration_s'] = durations[0]
+        data['avg_duration_s'] = round(sum(durations) / len(durations), 1)
+
+    stale_cutoff = _utc_cutoff(_STALE_SOURCE_HOURS)
+    src = query(
+        """SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN last_collected_at IS NULL
+                            OR datetime(last_collected_at) < datetime(?)
+                           THEN 1 ELSE 0 END) AS stale
+           FROM content_sources
+           WHERE source_type='nsfocus' AND is_active=1""",
+        (stale_cutoff,),
+    )[0]
+    data['sources_total'] = src['total'] or 0
+    data['sources_stale'] = src['stale'] or 0
+    return data
+
+
+def _rules() -> dict:
+    from src.models.database import query
+    row = query(
+        """SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN enabled=1 THEN 1 ELSE 0 END) AS enabled,
+                  SUM(CASE WHEN enabled=1 AND COALESCE(digest_mode, '')!='' THEN 1 ELSE 0 END) AS digest_enabled
+           FROM subscription_rules"""
+    )[0]
+    return {
+        'total': row['total'] or 0,
+        'enabled': row['enabled'] or 0,
+        'digest_enabled': row['digest_enabled'] or 0,
+    }
+
+
+def _events(hours: int) -> dict:
+    from src.models.database import query
+    rows = query(
+        """SELECT severity, COUNT(*) AS c FROM system_event_log
+           WHERE datetime(created_at) >= datetime(?)
+           GROUP BY severity""",
+        (_utc_cutoff(hours),),
+    )
+    by_severity = {r['severity']: r['c'] for r in rows}
+    # acked_at 由 system_routes._ensure_acked_at 懒迁移，老库/测试库里可能还没有
+    cols = {r['name'] for r in query("PRAGMA table_info(system_event_log)")}
+    acked_filter = 'acked_at IS NULL AND ' if 'acked_at' in cols else ''
+    unacked = query(
+        f"""SELECT severity, COUNT(*) AS c FROM system_event_log
+            WHERE {acked_filter}severity IN ('ERROR', 'CRITICAL', 'WARNING')
+            GROUP BY severity"""
+    )
+    return {
+        'window_total': sum(by_severity.values()),
+        'by_severity': by_severity,
+        'unacked': {r['severity']: r['c'] for r in unacked},
+    }
+
+
+def _storage() -> dict:
+    from src.models import database as db_mod
+    from src.models.database import query
+    try:
+        db_size = os.path.getsize(db_mod.DB_PATH)
+    except (OSError, TypeError):
+        db_size = None
+    snap = query(
+        """SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN status='active' THEN 1 ELSE 0 END) AS active
+           FROM snapshots"""
+    )[0]
+    return {
+        'db_size_bytes': db_size,
+        'snapshots_total': snap['total'] or 0,
+        'snapshots_active': snap['active'] or 0,
+        'delivery_log_rows': query("SELECT COUNT(*) AS c FROM delivery_log")[0]['c'] or 0,
+        'digest_queue_rows': query("SELECT COUNT(*) AS c FROM digest_queue")[0]['c'] or 0,
+        'system_event_log_rows': query("SELECT COUNT(*) AS c FROM system_event_log")[0]['c'] or 0,
+    }
+
+
+def _scheduler_jobs() -> list:
+    try:
+        from src.core.scheduler import get_job_status
+        return get_job_status()
+    except Exception as e:
+        logger.debug(f'metrics: scheduler jobs unavailable: {e}')
+        return []
+
+
+def collect_metrics(hours: int) -> dict:
+    return {
+        'generated_at': datetime.now().astimezone().isoformat(timespec='seconds'),
+        'window_hours': hours,
+        'delivery': _delivery(hours),
+        'queues': _queues(),
+        'collection': _collection(),
+        'rules': _rules(),
+        'events': _events(hours),
+        'storage': _storage(),
+        'scheduler_jobs': _scheduler_jobs(),
+    }
+
+
+# ── Prometheus exposition ────────────────────────────────────
+
+def _label(key: str, value) -> str:
+    escaped = str(value).replace('\\', '\\\\').replace('"', '\\"')
+    return f'{key}="{escaped}"'
+
+
+def _fmt(value) -> str:
+    if value is None:
+        return 'NaN'
+    if isinstance(value, bool):
+        return '1' if value else '0'
+    return str(value)
+
+
+def render_prometheus(data: dict) -> str:
+    lines = []
+
+    def gauge(name: str, value, labels: dict | None = None):
+        if labels:
+            lbl = '{' + ','.join(_label(k, v) for k, v in labels.items()) + '}'
+        else:
+            lbl = ''
+        lines.append(f'{name}{lbl} {_fmt(value)}')
+
+    window = {'window_hours': data['window_hours']}
+    delivery = data['delivery']
+    gauge('nsfocus_delivery_events_total', delivery['total'], {**window})
+    gauge('nsfocus_delivery_success_rate', delivery['success_rate'], {**window})
+    gauge('nsfocus_delivery_undated_failed_total', delivery['undated_failed'])
+    for ch in delivery['by_channel']:
+        tags = {'channel_type': ch['channel_type'], 'window_hours': data['window_hours']}
+        gauge('nsfocus_delivery_channel_events_total', ch['total'], tags)
+        gauge('nsfocus_delivery_channel_sent_total', ch['sent'], tags)
+        gauge('nsfocus_delivery_channel_failed_total', ch['failed'], tags)
+
+    delayed = data['queues']['delayed']
+    digest = data['queues']['digest']
+    gauge('nsfocus_queue_pending', delayed['pending'], {'queue': 'delayed'})
+    gauge('nsfocus_queue_pending', digest['pending'], {'queue': 'digest'})
+    gauge('nsfocus_queue_overdue', delayed['overdue'], {'queue': 'delayed'})
+    gauge('nsfocus_queue_oldest_age_minutes', delayed['oldest_age_minutes'], {'queue': 'delayed'})
+    for r in digest['by_rule']:
+        gauge('nsfocus_digest_pending', r['pending'],
+              {'rule_id': r['rule_id'], 'rule_name': r['rule_name']})
+
+    col = data['collection']
+    gauge('nsfocus_collection_enabled', col['enabled'])
+    gauge('nsfocus_collection_running', col['is_running'])
+    gauge('nsfocus_collection_last_duration_seconds', col['last_duration_s'])
+    gauge('nsfocus_collection_avg_duration_seconds', col['avg_duration_s'])
+    gauge('nsfocus_collection_last_run_age_minutes', _age_minutes(col['last_run']))
+    gauge('nsfocus_collection_sources_total', col['sources_total'])
+    gauge('nsfocus_collection_sources_stale', col['sources_stale'])
+
+    for severity, count in data['events']['unacked'].items():
+        gauge('nsfocus_unacked_events', count, {'severity': severity})
+
+    storage = data['storage']
+    gauge('nsfocus_db_size_bytes', storage['db_size_bytes'])
+    gauge('nsfocus_snapshots', storage['snapshots_active'], {'status': 'active'})
+    gauge('nsfocus_snapshots', storage['snapshots_total'], {'status': 'total'})
+    gauge('nsfocus_delivery_log_rows', storage['delivery_log_rows'])
+
+    for job in data['scheduler_jobs']:
+        gauge('nsfocus_scheduler_job_seconds_until', job['seconds_until'], {'job': job['id']})
+
+    return '\n'.join(lines) + '\n'
+
+
+@bp.route('', methods=['GET'])
+@_auth
+def metrics():
+    hours = _window_hours(request.args.get('hours'))
+    data = collect_metrics(hours)
+    if request.args.get('format') == 'prometheus':
+        return Response(render_prometheus(data), mimetype='text/plain; version=0.0.4')
+    return jsonify({'code': 0, 'data': data})

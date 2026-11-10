@@ -739,3 +739,68 @@ data: {"processed": 3, "errors": 0}
 
 ### POST /api/settings/scheduler/disable
 关闭调度器（scheduler_enabled=0），当前采集任务继续完成但不排下次。
+
+---
+
+## 13. 运行指标
+
+### GET /api/metrics
+
+机器可读的运行指标，用于排障、看板或 Prometheus 抓取。
+
+| 参数 | 说明 |
+|------|------|
+| `hours` | 统计窗口小时数，默认 24，范围 1–720；非法值回退 24 |
+| `format` | `prometheus` 时返回 `text/plain` 指标，否则返回 JSON |
+
+鉴权：`Authorization: Bearer <JWT>`；配置 `MONITOR_METRICS_TOKEN` 后也可用 `X-Metrics-Token: <token>`（便于长期抓取，JWT 24h 过期不适合）。
+
+```json
+{
+  "code": 0,
+  "data": {
+    "generated_at": "2026-11-11T01:17:25+08:00",
+    "window_hours": 24,
+    "delivery": {
+      "total": 575, "sent": 575, "failed": 0, "pending": 0,
+      "success_rate": 1.0, "undated_failed": 0,
+      "by_channel": [
+        {"channel_type": "wecom", "total": 570, "sent": 570, "failed": 0,
+         "pending": 0, "success_rate": 1.0}
+      ]
+    },
+    "queues": {
+      "delayed": {"pending": 0, "overdue": 0, "oldest_age_minutes": null},
+      "digest": {"pending": 0, "by_rule": []}
+    },
+    "collection": {
+      "enabled": true, "is_running": false, "last_run": null,
+      "last_full_run": null, "last_quick_run": null, "next_run": null,
+      "interval_hours": 4, "current": null,
+      "last_duration_s": 1012.0, "avg_duration_s": 565.4,
+      "sources_total": 80, "sources_stale": 0, "stale_after_hours": 24
+    },
+    "rules": {"total": 8, "enabled": 5, "digest_enabled": 0},
+    "events": {
+      "window_total": 4,
+      "by_severity": {"INFO": 3, "WARNING": 1},
+      "unacked": {"WARNING": 11}
+    },
+    "storage": {
+      "db_size_bytes": 22532096, "snapshots_total": 3571,
+      "snapshots_active": 725, "delivery_log_rows": 7596,
+      "digest_queue_rows": 0, "system_event_log_rows": 412
+    },
+    "scheduler_jobs": []
+  }
+}
+```
+
+口径说明：
+
+- `delivery` 按 `COALESCE(created_at, sent_at)` 落在窗口内统计；`undated_failed` 是 `created_at` 上线前写入、无法定位时间的失败行，仅做总量参考。
+- `success_rate = sent / (sent + failed)`，窗口内没有已完成交付时为 `null`。
+- `queues.delayed.overdue` 用本地时间比较 `push_after`（`compute_push_time` 存的本地时间），不要与 UTC 的 `datetime('now')` 混比。
+- `collection.last_duration_s` / `avg_duration_s` 取最近 20 条 `collection_summary` 系统事件，不受 `hours` 限制。
+- `collection.sources_stale` 统计 24 小时内未成功采集的启用源。
+- `scheduler_jobs` 仅在调度器运行时非空。
