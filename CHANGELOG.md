@@ -17,10 +17,18 @@
 - **推送历史**（`resend-targeted`）：补写 `recipient` 字段，前端不再 fallback 到 `channel_name` 显示（commit 48be988）
 - **推送历史 UI**：重推期间区分当前按钮（"⏳ 推送中..."）和同 snapshot 其他按钮（灰色禁用保留 "📤 重推"），避免用户以为推了多次（commit 48be988）
 - **UI**：`confirmAct` 确认按钮加防双击/防重复触发（同步 disable + delete _confirmCBs 双保险，commit 3d12f1f）
+- **通知模板**（`base._format_template_strip` Stage 2）：desc 里没有「注意事项」时不再退化成一个只有空标题的「注意事项」头 —— 原先无条件走 stage 2，会让正文整段消失。现在仅在真的取到注意段时才用，否则继续下探到 brief 档补「详情见 URL」
+- **通知模板**（`base._fmt_meta_line`）：`MD5` 这行标签此前硬编码 `'MD5' + 6 空格`，比 `_pad_label` 的 4 字符对齐多出 4 列，冒号与其余 meta 行不同列（e2e34bc 统一对齐时漏改的第二个调用点）。现统一交给 `_pad_label`
+- **推送历史分页**：后端每页固定 200 个包，前端原先不传 `page`，第 2 页之后的数据永远看不到；且 `total` 用的是 `COUNT(dl.*)` 交付行数而非包数，同包推 3 个客户会被算成 3。现在 `total` 改 `COUNT(DISTINCT s.id)`（实测 7124 → 1187），页头新增「共 N 个包 · 第 x/y 页」+ 上/下一页，过滤条件变更自动回到第 1 页
 
 ### 改进
+- **性能 P0**：`delivery_log` 此前零索引，推送历史/客户推送分布/仪表盘 recent 全走全表扫。新增 `SCHEMA_DELIVERY_LOG_INDEXES`（`sent_at`、`(customer_id,sent_at)`、`(rule_id,sent_at)`、`snapshot_id`），启动期 `IF NOT EXISTS` 幂等建索引。实测（生产库副本）：`customers/push-summary` 2.77ms→0.02ms、dashboard `recent_deliveries` 3.02ms→0.04ms
+- **性能 P0**：`subscription.get_history()` 去掉 N+1 —— 原来每个快照行单查一次 deliveries（`limit=200` 时 202 条 SQL / ~750ms），改为一次 `snapshot_id IN (...)` 批量取再分组，实测 3 条 SQL / ~75ms；`deliveries` 仍按 `customer_id`/`rule_id` 过滤，语义不变，回归防线见 `tests/test_history_filters.py`
 - **文档**：API 接口文档、用户手册、部署运维、系统架构全面校准（产品名称、采集模式、订阅字段、路径引用）
 - **文档**：删除重复的「采集异常诊断三步法」章节
+- **死代码**：删除 rollback 相关的永不命中分支 —— `snapshots.status` 的 CHECK 枚举只有 `active/superseded/withdrawn`，因此 `status IN ('active','rollback','rollback_pending')`（scheduler 2 处）、清理任务里的 6 个 `status != 'rollback'` 谓词、`snapshot.get_rollback_snapshots()` 全都等价于无条件版本，保留只会误导阅读。⚠️ 设置页「回退确认次数」`rollback_confirm` 仍是死开关：值一路传进 `run_detection(rollback_confirm=…)` 但函数体从不读取（改数字无效果），已在 docstring 标注，是否摘掉 UI 开关待定
+- **可诊断性**：`detector/change.py` 保存快照失败的 except 现在带上 `file_name / md5_hash / source_id` 与完整 traceback（`exc_info=True`）。生产日志里出现过一次 `Failed to save snapshot: CHECK constraint failed: status IN ('active','superseded','withdrawn')`，原先只有一行异常文本、无包标识无栈，事后无法定位是哪个条目；当前代码所有 status 写入都是合法字面量，故只加取证手段、不臆测修法
+- **测试**：`python3 -m pytest` 由 7 failed / 359 passed 恢复到 **367 passed 全绿**。5 个用例是测自己的假前提或已腐化的 fixture：`test_history_chain_package_type` 硬编码 `sent_at='2026-08-21'` 配 `days=7`，日历一过必挂（改相对时间 helper）；`test_template_strip` 有两个同名函数互相遮蔽，且拿含汉字的 `'英文 1'` 当纯英文行样本；`test_router_decisions` 断言的是 `6dbdea3` 之前的旧契约（0 推送不发汇总），现补上用例守住"0 推送也要发「本次无推送」"这条产品语义
 
 ---
 
