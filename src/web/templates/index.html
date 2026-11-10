@@ -6158,6 +6158,17 @@ async function settings(){
         <div class="form-group"><label>速率下限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机下限，建议0.3-1秒</p></div>
         <div class="form-group"><label>速率上限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-max" type="number" value="${cfg.collect_delay_max||3.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机上限，建议不超过5秒</p></div>
       </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>升级包跟踪数量</label>
+          <select id="cfg-pkg-track" class="dd">
+            <option value="5" ${(cfg.pkg_track_limit||'5')==='5'?'selected':''}>最新 5 个（默认）</option>
+            <option value="3" ${cfg.pkg_track_limit==='3'?'selected':''}>最新 3 个</option>
+            <option value="10" ${cfg.pkg_track_limit==='10'?'selected':''}>最新 10 个</option>
+            <option value="all" ${cfg.pkg_track_limit==='all'?'selected':''}>全部（不推荐）</option>
+          </select>
+          <p class="cfg-hint">规则历史页会累积上百个包，每轮只入库/推送最新的 N 个（同一页一次发布多个包时按发布时间取前 N）。改动下一轮采集生效，无需重启。</p>
+        </div>
+      </div>
     </div>
 
     <div class="cfg-section">
@@ -8482,6 +8493,7 @@ async function handleSchedulerToggle(cb){
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
+    pkg_track_limit:document.getElementById('cfg-pkg-track').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
@@ -8542,6 +8554,7 @@ function lockHeartbeatUrl(){
 
 async function saveSettings(){
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
+    pkg_track_limit:document.getElementById('cfg-pkg-track').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
