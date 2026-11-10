@@ -939,6 +939,7 @@ async function dashboard(range){
     // 高亮当前选中范围按钮
     document.querySelectorAll('#pieRange .btn, #tlRange .btn').forEach(b => {
       const v = b.textContent.trim();
+      const rng = b.closest('#tlRange') ? _dashRanges.tl : _dashRanges.pie;
       b.className = 'btn btn-xs ' + (v === rng + '天' ? 'btn-primary' : 'btn-outline');
     });
 
