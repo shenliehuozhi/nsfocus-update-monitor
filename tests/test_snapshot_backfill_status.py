@@ -152,8 +152,8 @@ def test_same_batch_packages_all_active_and_new(fresh_db):
     assert old['status'] == 'superseded'
 
 
-def test_new_path_full_old_page_pushes_only_latest(fresh_db):
-    """首次接入一个只有历史包的路径：只把当前最新包推一次，其余 superseded。"""
+def test_new_path_old_backlog_is_not_pushed(fresh_db):
+    """首次接入一个只有历史包的路径：整页都不推（最新那个也只是 active 不 NEW）。"""
     from src.models.database import query
 
     newest = _item('B-2020.bin', 'b' * 32, '2020-01-01T00:00:00')
@@ -162,9 +162,19 @@ def test_new_path_full_old_page_pushes_only_latest(fresh_db):
     # 绿盟列表页按发布时间新→旧排列，采集窗口保持 DOM 顺序
     result = run_detection(1, [newest, oldest])
 
-    assert [s['file_name'] for _sid, s in result.new_items] == ['B-2020.bin']
+    assert result.new_items == []
     statuses = {
         r['file_name']: r['status']
         for r in query("SELECT file_name, status FROM snapshots ORDER BY file_name")
     }
     assert statuses == {'A-2019.bin': 'superseded', 'B-2020.bin': 'active'}
+
+
+def test_new_path_recent_release_is_new(fresh_db):
+    """首次接入路径时，7 天内发布的包仍算新包并推送。"""
+    from datetime import datetime, timedelta
+
+    recent = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%S')
+    result = run_detection(1, [_item('RECENT.bin', 'r' * 32, recent)])
+
+    assert [s['file_name'] for _sid, s in result.new_items] == ['RECENT.bin']

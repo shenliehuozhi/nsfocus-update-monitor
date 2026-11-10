@@ -188,6 +188,13 @@ def test_three_new_packages_all_detected_as_new(fresh_db, monkeypatch):
     items, _ = _run_quick(monkeypatch, '5')
     assert [i.file_name for i in items] == [N1, N2, N3, OLD]
 
+    # fixture 里的发布时间是固定值，跑久了会超出「7 天内才是新包」的回填宽限期；
+    # 这里按当前时间重写，保持「一次发布 3 个包」的语义。
+    from datetime import datetime, timedelta
+    now = datetime.utcnow()
+    items = [replace(i, published_at=(now - timedelta(hours=h)).strftime('%Y-%m-%dT%H:%M:%S'))
+             for i, h in zip(items, [0, 1, 2, 240])]
+
     from src.models.snapshot import save_snapshot, get_snapshot
     new_flags = {}
     for item in items:

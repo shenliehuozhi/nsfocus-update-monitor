@@ -370,7 +370,7 @@ def save_snapshot(snap: dict) -> int:
       - 同批发布（间隔 ≤ 窗口）全部 active，一次发 3 个包仍然 3 条 NEW。
     """
     import json
-    from datetime import timedelta
+    from datetime import datetime, timedelta
     from src.models.database import execute, query
 
     # ── Defensive guard: skip "half-parsed" items (file_name empty but md5 present) ──
@@ -398,10 +398,12 @@ def save_snapshot(snap: dict) -> int:
     watch_start = _parse_ts(path_row['watch_start']) if path_row else None
     max_pub = _norm_ts(path_row['max_pub']) if path_row else ''
 
-    # 发布时间早于开始监控该路径 → 历史回填
+    # 历史回填：发布时间早于开始监控该路径，或早于当前时间一个宽限期。
+    # 后者覆盖「首次接入某路径，整页都是历史包」——此时 watch_start 还不存在，
+    # 不能让路径里最新那个老包以 NEW 推送（线上首轮实测仍有 2010 年的包被推）。
     is_backfill = bool(
-        pub_dt and watch_start
-        and pub_dt < watch_start - timedelta(days=BACKFILL_GRACE_DAYS))
+        pub_dt and pub_dt < (watch_start or datetime.utcnow())
+        - timedelta(days=BACKFILL_GRACE_DAYS))
 
     # 比路径内最新 active 包早超过一个发布批次 → 已是历史包，不能算 active/最新
     target_status = 'active'
