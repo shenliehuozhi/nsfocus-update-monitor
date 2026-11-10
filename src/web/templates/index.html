@@ -5862,7 +5862,9 @@ async function history(){
   // feat/customer-push-card 2026-09-02: 支持 cust query 下钻 (来自 dashboard 客户推送卡片)
   const cust=_q.get('cust')||'';
   const rule=_q.get('rule')||'';
-  let _apiUrl='/history?limit=200&days='+days;
+  // 2026-11-09 P1: 后端每页固定 200 个包,原先没有 page → 第 2 页之后的数据永远看不到
+  const page=Math.max(1,parseInt(_q.get('page')||'1',10)||1);
+  let _apiUrl='/history?limit=200&page='+page+'&days='+days;
   if(cust) _apiUrl+='&customer_id='+encodeURIComponent(cust);
   if(rule) _apiUrl+='&rule_id='+encodeURIComponent(rule);
   // 过滤下拉的候选项: 客户全量 + 订阅规则全量 (与列表并行拉取,不额外等一轮)
@@ -5929,7 +5931,22 @@ async function history(){
   const ruleSel=`<select id="histRule" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
   const custSel=`<select id="histCust" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
   const daysSel=`<select id="histDays" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table></div></div>`;
+  // 分页条 (2026-11-09 P1): total 现在是包数, 每页 200 包。原先既不显示总数也无法翻到
+  // 第 2 页, 用户以为 200 包就是全部 —— 这跟上次"客户显示不全"是同一类静默截断。
+  const total=r.data?.total||0;
+  const pages=Math.max(1,Math.ceil(total/200));
+  const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" style="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
+  const pager=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)"><span>共 <b style="color:var(--text)">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} onclick="histSetPage(${page-1})">← 上一页</button><button ${_pgBtn(page>=pages)} onclick="histSetPage(${page+1})">下一页 →</button></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
+}
+
+// 翻页: 只改 page, 保留当前过滤条件
+function histSetPage(n){
+  const q=new URLSearchParams(location.hash.split('?')[1]||'');
+  if(!q.get('days'))q.set('days','30');
+  q.set('page',String(Math.max(1,n|0)));
+  location.hash='history?'+q.toString();
+  history();
 }
 
 // 改写 hash 里的过滤条件再重渲染;val 为空 = 清除该条件
@@ -5937,6 +5954,7 @@ function histSetFilter(key,val){
   const q=new URLSearchParams(location.hash.split('?')[1]||'');
   if(!q.get('days'))q.set('days','30');
   if(val)q.set(key,val);else q.delete(key);
+  q.delete('page');   // 换过滤条件后回到第 1 页,否则会停在一张空页
   location.hash='history?'+q.toString();
   history();
 }
