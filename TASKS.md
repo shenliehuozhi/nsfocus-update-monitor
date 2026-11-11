@@ -34,7 +34,8 @@
 - [ ] **首屏接口体积**：`/api/latest/snapshots` 约 2.38MB、`/api/system/products` 约 956KB，采集数据页完整渲染约 1s；考虑按版本裁剪字段/分页，或让前端只取当前分组
 - [ ] **资源版本化与 ESM**：给 `index.html` 的 css/js 加内容哈希或版本参数（当前靠 `no-cache` 回源）；后续再评估经典脚本 → ESM
 - [ ] **Prometheus 对接**：用户明确暂缓（`/api/metrics` 与静态令牌已就绪，缺抓取配置与告警规则）
-- [ ] **生产密钥仍是开发兜底（安全）**：`.env` 存在但未定义 `MONITOR_JWT_SECRET` / `MONITOR_SECRET_KEY`，启动告警确认在用 dev fallback；`CORS_ORIGINS` 也未设置（允许所有来源）。建议生成 32+ 随机值写入 `.env`（chmod 600）后重启——会使现有登录会话全部失效，需要用户确认时间窗
+- [x] **密钥轮换工具（2026-11-11）**：`scripts/rotate_encryption_key.py` 默认 dry-run，`--apply --yes` 时先做一致性备份、再单事务把 `channels.config` / `user_sessions.cookie_value` 从旧密钥重加密到新密钥，逐行校验并用新密钥回读；`src/core/crypto.py` 增加显式密钥的 `encrypt_with_key` / `decrypt_with_key`。6 个单测通过；在生产库副本上演练 16/16 行迁移成功、旧密钥全部失效、应用以新密钥启动后渠道 7 条与会话 9 条均正常解密
+- [ ] **生产密钥仍是开发兜底（安全，待维护窗口）**：`.env` 未定义 `MONITOR_JWT_SECRET` / `MONITOR_SECRET_KEY`，`CORS_ORIGINS` 也未设置。`MONITOR_JWT_SECRET` 可直接轮换（仅会话失效）；`MONITOR_SECRET_KEY` 必须按 `docs/部署运维.md「密钥轮换」` 用脚本重加密。执行顺序：停服务 → 轮换密钥 → 写 `.env`（chmod 600）→ 启动 → 验证渠道/会话。需要用户确认重启时间窗
 
 ## 环境 / 运维备注
 

@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### 新增
+- **运维 · 加密密钥轮换工具**：`scripts/rotate_encryption_key.py` 解决「`MONITOR_SECRET_KEY` 一改，`channels.config`（SMTP/webhook 凭据）与 `user_sessions.cookie_value`（PHPSESSID）就再也解不开」的问题。默认 dry-run 只统计；`--apply --yes` 时先用 SQLite backup API 做一致性备份（保留最近 3 份 `_pre_rotate_enc`），再在 `BEGIN IMMEDIATE` 单事务里逐行用旧密钥解密、新密钥重加密并回读校验，任一行新旧密钥都解不开会列出且退出码 2、不影响其余行；重复执行幂等。`crypto.py` 增加显式密钥的 `encrypt_with_key` / `decrypt_with_key`，原 `encrypt` / `decrypt` 行为不变。6 个单测；生产库副本演练 16/16 迁移、旧密钥全部失效、应用以新密钥启动后渠道 7 条 / 会话 9 条正常解密。运维步骤见 `docs/部署运维.md「密钥轮换」`
 - **前端拆分 · data.js 再拆推送弹窗**：`data.js` 2697 行逼近静态门禁 3000 行上限，把推送弹窗整块（`manualPush` / `showPushModal` / 收件人选择 / `confirmPush` / 结果提示 / `showRichToast` / `startBanCountdown` / `resendTargeted`，377 行）移到新经典脚本 `data_push.js`，加载顺序紧跟 `data.js`。纯代码搬移、无逻辑改动，跨文件仍共享全局作用域；`data.js` 降至 2321 行。`tests/test_frontend_assets.py` 的加载顺序门禁同步更新
 - **可观测性页面**：主导航新增「可观测」，把 `GET /api/metrics` 的结果直接可视化——投递成功率（分渠道进度条、失败数标红）、即时/汇总队列积压与最久等待、采集健康（上次/下次、近 20 轮均值、数据源新鲜度）、未确认告警、存储体积与表行数、后台任务倒计时；默认最近 24 小时，可切 6h/7d/30d，30 秒自动刷新，切页或退出登录即停表。页面底部给出 Prometheus 抓取地址与 `MONITOR_METRICS_TOKEN` 鉴权说明，只复制地址、不暴露令牌；静态令牌同时接受 `X-Metrics-Token` 与 `Authorization: Bearer <token>`（Prometheus `authorization.credentials_file` 原生只发 Bearer，不再需要反向代理注入自定义头）。新增 `observability.js`（加载顺序在 bootstrap 之前）与 `tests/test_observability_page.py` 门禁
 - **投递终止告警**：延迟队列重试耗尽（`retry_exhausted(N)`）或无可用渠道（`no_active_channel`）时，此前只写 logger，网页/事件中心完全看不到丢包。现在 `process_delayed_queue` 每轮把终止项合并写一条 `ERROR` 级 `delivery_error` 系统事件（含队列号、规则/客户/产品、原因、最后错误），系统事件通知开启时同步推送到配置渠道；设置页事件类型新增「投递终止」开关
