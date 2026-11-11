@@ -132,7 +132,7 @@ function buildTreeHtml(pt, MAP) {
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = MAP[name] || name;
     const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
-    html += `<span data-css="font-size:13px;color:var(--gray-muted);flex-shrink:0">${icon} ${escHtml(label)}${childCount}</span>`;
+    html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}</span>`;
 
     if (isPkg && types.length > 0) {
       const badges = types.map(t => `<span data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px;padding:1px 6px;border-radius:8px;margin-left:2px;flex-shrink:0">${MAP[t]||escHtml(t)}</span>`).join('');
@@ -159,7 +159,7 @@ function buildTreeHtml(pt, MAP) {
     return html;
   }
 
-  let treeHtml = '<div data-css="font-family:system-ui">';
+  let treeHtml = '<div class="font-system">';
   const rootChildren = root._children ? Object.entries(root._children).sort(([a],[b]) => {
     const aV = /\d/.test(a); const bV = /\d/.test(b);
     if (aV && !bV) return -1; if (!aV && bV) return 1;
@@ -384,7 +384,7 @@ function attach(node) {
       : `<span data-css="width:13px;flex-shrink:0;margin-right:4px"></span>`;
     let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" data-pathid="${escHtml(nodePathId)}" data-css="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
     html += arrow;
-    html += `<span data-css="font-size:13px;color:var(--gray-muted);flex-shrink:0">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
+    html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
     html += `</div>`;
 
     if (hasChildren) {
@@ -412,7 +412,7 @@ function attach(node) {
     return html;
   }
 
-  let treeHtml = '<div data-css="font-family:system-ui">';
+  let treeHtml = '<div class="font-system">';
   const rootChildren = root.__children ? Object.entries(root.__children).sort(([a],[b]) => {
     const aV = /\d/.test(a); const bV = /\d/.test(b);
     if (aV && !bV) return -1; if (!aV && bV) return 1;
@@ -555,7 +555,7 @@ function editPkgType(id){
 
     _showModal('pkgtype');
     modalBody('pkgtype',`<div data-css="padding:24px;max-height:80vh;overflow-y:auto">
-      <div data-css="font-size:15px;font-weight:600;margin-bottom:16px">⚠️ 包类型检测到变化 <span data-css="font-weight:400;font-size:12px;color:var(--gray-muted)">「${escHtml(p.name)}」</span></div>
+      <div class="title-15">⚠️ 包类型检测到变化 <span class="gray-muted-12-400">「${escHtml(p.name)}」</span></div>
       <div data-css="background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:14px;margin-bottom:16px">
         <div data-css="font-size:12px;color:#92400e;font-weight:600;margin-bottom:8px">📊 变更明细</div>
         <div>${diffRows}</div>
@@ -577,8 +577,8 @@ function editPkgType(id){
   // ── 正常编辑模式 ────────────────────────────────────────────
   if(pt.types.length===0){
     _showModal('pkgtype');
-    modalBody('pkgtype',`<div data-css="padding:24px">
-      <div data-css="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span data-css="font-weight:400;font-size:12px;color:var(--gray-muted)">「${escHtml(p.name)}」</span></div>
+    modalBody('pkgtype',`<div class="p24">
+      <div class="title-15">📦 包类型设置 <span class="gray-muted-12-400">「${escHtml(p.name)}」</span></div>
       <div data-css="color:var(--gray-disabled);font-size:13px;text-align:center;padding:12px">
         尚未发现包类型，请先对该产品进行<span data-css="color:#7c3aed;cursor:pointer" data-on-click="_applyAndRefreshPkgType" data-args='${_dataArgs(id)}'>全量采集</span>
       </div>
@@ -603,7 +603,7 @@ function editPkgType(id){
   // 弹窗内容：目录树 + mode 选择 + 保存/取消
   _showModal('pkgtype');
   modalBody('pkgtype',`<div data-css="padding:24px;max-height:80vh;overflow-y:auto">
-    <div data-css="font-size:15px;font-weight:600;margin-bottom:16px">📦 包类型设置 <span data-css="font-weight:400;font-size:12px;color:var(--gray-muted)">「${escHtml(p.name)}」</span></div>
+    <div class="title-15">📦 包类型设置 <span class="gray-muted-12-400">「${escHtml(p.name)}」</span></div>
     <div data-css="margin-bottom:14px;font-size:12px;color:#7c3aed;background:#f5f3ff;padding:8px 12px;border-radius:6px">
       共 ${pt.types.length} 种包类型，${(pt.paths||[]).length} 条路径
     </div>
@@ -793,7 +793,7 @@ function _renderProductRows(prods){
     const rowClass=p.is_active?'':'opacity:0.6';
     h+=`<tr id="pr-${p.id}" data-css="${rowClass}">
       <td>${p.id}</td>
-      <td><input type="checkbox" class="prod-cb" value="${p.id}" data-css="cursor:pointer"></td>
+      <td><input type="checkbox" class="prod-cb pointer" value="${p.id}"></td>
       <td>
         <span class="active-badge" data-css="font-size:11px;color:${p.is_active?'var(--success-text)':'var(--danger)'};cursor:pointer" data-on-click="confirmToggleActive" data-args='${_dataArgs(p.id, !p.is_active, 'pr-'+p.id)}'>${p.is_active?'● 启用':'● 禁用'}</span>
       </td>
@@ -850,14 +850,14 @@ async function _handleDiscBtn(){
        <div data-css="display:flex;align-items:flex-start;gap:8px">
          <span data-css="font-size:16px;line-height:1">🔍</span>
          <div class="flex-1">
-           <div data-css="font-weight:600;margin-bottom:4px">什么时候用自动发现?</div>
+           <div class="fw600-mb4">什么时候用自动发现?</div>
            <div data-css="line-height:1.7">
              • <b>用途:</b>扫描绿盟更新站点,自动发现新增/下线产品 + 重新发现每个产品的包类型路径<br>
              • <b>场景:</b><br>
                &nbsp;&nbsp;◦ 首次接入系统初始化产品库<br>
                &nbsp;&nbsp;◦ 绿盟上线新产品,要纳入订阅<br>
-               &nbsp;&nbsp;◦ <b>没找到自己想要关注的产品 / 包类型时</b> — 用「<span data-css="color:#7c3aed">🔍 自动发现</span>」全量扫描
-                 或在产品列表点 <span data-css="color:#7c3aed">🔄 刷新</span> 重采单个产品<br>
+               &nbsp;&nbsp;◦ <b>没找到自己想要关注的产品 / 包类型时</b> — 用「<span class="text-purple">🔍 自动发现</span>」全量扫描
+                 或在产品列表点 <span class="text-purple">🔄 刷新</span> 重采单个产品<br>
              • <b>耗时:</b>长任务,后台跑,可中途停止<br>
              <small data-css="color:var(--gray-disabled);display:block;margin-top:6px">
                💡 后台每 4 小时自动轮询已发现产品(quick cycle,见「系统配置」可调)。<br>
@@ -995,7 +995,7 @@ async function discoverProducts(){
       return;
     }
   } else if(r.code!==0){
-    modalBody('disc',`<div data-css="padding:24px"><div data-css="color:var(--danger);font-weight:600;margin-bottom:8px">启动失败</div><div data-css="color:var(--gray-muted);font-size:13px">${escHtml(r.message||'')}</div><div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div></div>`);
+    modalBody('disc',`<div class="p24"><div data-css="color:var(--danger);font-weight:600;margin-bottom:8px">启动失败</div><div data-css="color:var(--gray-muted);font-size:13px">${escHtml(r.message||'')}</div><div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div></div>`);
     return;
   }
 
@@ -1070,7 +1070,7 @@ function showDiscoverResult(result, isStale){
     <span class="text-success-text">🆕 新增产品 <b>${added.length}</b></span>
     <span class="text-danger">⛔ 下线产品 <b>${removed.length}</b></span>
     <span class="text-disabled">✔️ 未变 <b>${unchanged.length}</b></span>
-    ${totalPkgChanges>0?`<span data-css="color:#7c3aed">📦 包类型变更 <b>${totalPkgChanges}</b> 项 (<b>${pkgChangedProducts.length}</b> 个产品)</span>`:''}
+    ${totalPkgChanges>0?`<span class="text-purple">📦 包类型变更 <b>${totalPkgChanges}</b> 项 (<b>${pkgChangedProducts.length}</b> 个产品)</span>`:''}
   </div>`;
 
   function toggleSection(key){
@@ -1091,7 +1091,7 @@ function showDiscoverResult(result, isStale){
         <span id="sec-icon-add-prod">▾</span>🆕 新增产品 <span data-css="background:var(--success-text)20;color:var(--success-text);padding:1px 7px;border-radius:10px;font-size:11px">${added.length}</span>
       </div>
       <div id="sec-body-add-prod" data-css="border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
-        <table class="table" data-css="margin:0;font-size:13px"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
+        <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     </div>`;
   }
@@ -1103,7 +1103,7 @@ function showDiscoverResult(result, isStale){
         <span id="sec-icon-rem-prod">▾</span>⛔ 下线产品 <span data-css="background:var(--danger)20;color:var(--danger);padding:1px 7px;border-radius:10px;font-size:11px">${removed.length}</span>
       </div>
       <div id="sec-body-rem-prod" data-css="border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
-        <table class="table" data-css="margin:0;font-size:13px"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
+        <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     </div>`;
   }
@@ -1119,15 +1119,15 @@ function showDiscoverResult(result, isStale){
       if(delCount) segs.push(`<span class="text-danger">-${delCount} 删除</span>`);
       if(modCount) segs.push(`<span data-css="color:#f59e0b">±${modCount} 修改</span>`);
       pkgRows+=`<tr>
-        <td data-css="font-weight:600">${escHtml(change.product_name||'')}</td>
+        <td class="fw600">${escHtml(change.product_name||'')}</td>
         <td class="gray-muted-12">${segs.join(' | ')}</td>
         <td data-css="text-align:right"><button class="btn btn-xs btn-outline" data-on-click="togglePkgDetail" data-args='${_dataArgs(change.entry_url||'')}'>详情</button></td>
       </tr>`;
       // Hidden detail rows
       pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" data-css="display:none;background:var(--gray-bg)">
         <td colspan="3" data-css="padding:8px 12px;font-size:12px">
-          ${addedCount?`<div class="mb4"><span data-css="color:var(--success-text);font-weight:600">+ 新增路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.added_paths.map(p=>`<li data-css="word-break:break-all"><span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
-          ${delCount?`<div class="mb4"><span data-css="color:var(--danger);font-weight:600">- 删除路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.deleted_paths.map(p=>`<li data-css="word-break:break-all"><span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+          ${addedCount?`<div class="mb4"><span data-css="color:var(--success-text);font-weight:600">+ 新增路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.added_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+          ${delCount?`<div class="mb4"><span class="danger-600">- 删除路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.deleted_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
           ${modCount?`<div><span data-css="color:#f59e0b;font-weight:600">± 修改类型</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.modified_paths.map(p=>{
             // 多字段 diff:chain / url / types(后端目前只对比 types,所以 chain/url 通常不变)
             // 前端从 entry 自身推老值(chain 从 chain 数组隐含,url 从当前 entry)
@@ -1142,7 +1142,7 @@ function showDiscoverResult(result, isStale){
             if(chainLenChanged) diffs.push(`chain 长度: <span class="text-danger">${oldChainLen}</span> → <span class="text-success-text">${p.chain?.length||0}</span>`);
             if(diffs.length === 0) diffs.push(`类型: ${escHtml((p.old_types||[]).join(','))} → ${escHtml((p.new_types||[]).join(','))}`);
             const warn = urlChanged ? '<span data-css="color:var(--danger);font-weight:700" title="URL 变化属于重大变更,确认前请核对">⚠️</span> ' : '';
-            return `<li data-css="word-break:break-all">${warn}<span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span> — ${diffs.join('; ')}</li>`;
+            return `<li class="break-all">${warn}<span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span> — ${diffs.join('; ')}</li>`;
           }).join('')}</ul></div>`:''}
         </td>
       </tr>`;
@@ -1152,7 +1152,7 @@ function showDiscoverResult(result, isStale){
         <span id="sec-icon-pkg-chg">▾</span>📦 包类型变更 <span data-css="background:#7c3aed20;color:#7c3aed;padding:1px 7px;border-radius:10px;font-size:11px">${pkgChangedProducts.length} 个产品</span>
       </div>
       <div id="sec-body-pkg-chg" data-css="border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
-        <table class="table" data-css="margin:0;font-size:13px"><thead><tr><th>产品</th><th>变更</th><th></th></tr></thead><tbody>${pkgRows}</tbody></table>
+        <table class="table m0 fs13"><thead><tr><th>产品</th><th>变更</th><th></th></tr></thead><tbody>${pkgRows}</tbody></table>
       </div>
     </div>`;
   }
@@ -1171,13 +1171,13 @@ function showDiscoverResult(result, isStale){
         <span id="sec-icon-unchanged">▸</span>✔️ 未变化产品 <span data-css="background:var(--gray-disabled)20;color:var(--gray-disabled);padding:1px 7px;border-radius:10px;font-size:11px">${unchanged.length}</span>
       </div>
       <div id="sec-body-unchanged" data-css="display:none;border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
-        <table class="table" data-css="margin:0;font-size:13px"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
+        <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     </div>`;
   }
 
   let html=`<div data-css="padding:20px">
-    <div data-css="font-size:15px;font-weight:600;margin-bottom:16px">🔍 自动发现结果</div>
+    <div class="title-15">🔍 自动发现结果</div>
     ${staleWarning}
     ${summaryHtml}
     <div data-css="max-height:420px;overflow-y:auto;border:1px solid var(--gray-border);border-radius:8px;padding:8px">
@@ -1400,13 +1400,13 @@ function showProductForm(p){
 
   _showModal('pform');
   const isManual = p ? p.is_manual !== false : true; // default to true for new add
-  modalBody('pform',`<div data-css="padding:24px">
+  modalBody('pform',`<div class="p24">
     <div data-css="font-size:15px;font-weight:600;margin-bottom:20px">${isEdit?'✏️ 编辑产品':'➕ 手动添加产品'}</div>
     <div class="info-bar">
       <div data-css="display:flex;align-items:flex-start;gap:8px">
         <span data-css="font-size:16px;line-height:1">💡</span>
         <div class="flex-1">
-          <div data-css="font-weight:600;margin-bottom:4px">什么时候用手动添加?</div>
+          <div class="fw600-mb4">什么时候用手动添加?</div>
           <div data-css="line-height:1.7">
             • <b>用途:</b>自动发现没扫到的产品(自定义 / 灰度 / 私有 / 内部测试)<br>
             • <b>建议:</b>绿盟标准产品 — 用「自动发现」批量加<br>

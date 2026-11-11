@@ -49,9 +49,9 @@ function _renderSingleBanner(state){
   const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
   banner.innerHTML=`
     <div data-css="display:flex;align-items:center;gap:10px">
-      <div data-banner-role="phase-icon" data-css="font-size:15px">${phaseIcon}</div>
+      <div class="fs15" data-banner-role="phase-icon">${phaseIcon}</div>
       <div class="flex-1">
-        <div data-banner-role="title" data-css="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
+        <div class="fw600" data-banner-role="title">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
         <div data-banner-role="sub-title" data-css="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
       </div>
       <div id="single-banner-log-btn" data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
@@ -77,7 +77,7 @@ function _renderSingleBanner(state){
         _renderSingleLog(state);
         return;
       }
-      log.innerHTML = '<div data-css="opacity:0.6">⏳ 加载日志...</div>';
+      log.innerHTML = '<div class="opacity-60">⏳ 加载日志...</div>';
       const sid = state.source_id;
       const params = new URLSearchParams({file:'app.log', lines:2000});
       if(sid) params.set('source_id', String(sid));
@@ -387,13 +387,13 @@ function pollProgress(){
       html+=`<div data-css="font-size:10px;color:var(--muted);text-align:center;margin-top:4px">已采集 ${p.items_collected||0} 项</div>`;
       html+=`<button class="btn btn-xs btn-outline" data-css="margin-top:10px;width:100%" data-on-click="closeCollectModal">后台运行</button>`;
     }else if(p.phase==='detecting'){
-      html+=`<div data-css="text-align:center;font-size:32px;margin-bottom:8px">🔍</div><p data-css="text-align:center;font-size:13px">正在检测变化...</p>`;
+      html+=`<div class="empty-icon">🔍</div><p class="empty-text">正在检测变化...</p>`;
     }else if(p.phase==='notifying'){
-      html+=`<div data-css="text-align:center;font-size:32px;margin-bottom:8px">📨</div><p data-css="text-align:center;font-size:13px">正在推送通知...</p>`;
+      html+=`<div class="empty-icon">📨</div><p class="empty-text">正在推送通知...</p>`;
     }else if(p.phase==='done'){
       const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
       const ok=p.errors&&p.errors.length>0?'warn':'ok';
-      html+=`<div data-css="text-align:center;font-size:32px;margin-bottom:8px">${ok==='ok'?'✅':'⚠️'}</div>`;
+      html+=`<div class="empty-icon">${ok==='ok'?'✅':'⚠️'}</div>`;
       html+=`<p data-css="text-align:center;font-size:14px;font-weight:600">采集完成</p>`;
       html+=`<div class="grid2" data-css="margin-top:10px"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
       html+=`<p data-css="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;

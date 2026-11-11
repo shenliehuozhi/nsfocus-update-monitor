@@ -121,7 +121,7 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
           <div id="rdSummary"></div>
           <div id="rdFilterBar" data-css="display:none;margin-bottom:14px;font-size:12px;color:var(--muted)">
             当前过滤: <code id="rdFilterLabel" data-css="background:var(--primary-light);padding:2px 6px;border-radius:4px;color:var(--primary)"></code>
-            <button class="btn btn-outline btn-xs" data-css="margin-left:8px" data-on-click="rdClearFilter">清除过滤</button>
+            <button class="btn btn-outline btn-xs ml8" data-on-click="rdClearFilter">清除过滤</button>
           </div>
           <div id="rdResultGroups"></div>
           <div data-css="display:flex;gap:8px;align-items:center;margin-top:14px">
@@ -411,7 +411,7 @@ async function rdUrlValidate(){
     if (fetchBtn) fetchBtn.disabled = true;
     if (forceBtn) forceBtn.disabled = true;
     hint.style.display = 'block';
-    hint.innerHTML = `<span data-css="color:var(--danger);font-weight:600">🚫 入口跟 URL 不匹配</span> · 当前是 <b>${_rdKindLabel[expected]}</b> 工具,但 URL 是 <b>${_rdKindLabel[sniffKind]}</b> 链接。请点 ← 返回切到 <b>${_rdKindLabel[sniffKind]}</b> 工具,或改正 URL`;
+    hint.innerHTML = `<span class="danger-600">🚫 入口跟 URL 不匹配</span> · 当前是 <b>${_rdKindLabel[expected]}</b> 工具,但 URL 是 <b>${_rdKindLabel[sniffKind]}</b> 链接。请点 ← 返回切到 <b>${_rdKindLabel[sniffKind]}</b> 工具,或改正 URL`;
     return;
   } else {
     if (fetchBtn) fetchBtn.disabled = false;
@@ -491,7 +491,7 @@ async function rdUrlValidate(){
       chainHtml += `<button class="btn btn-xs btn-outline" data-on-click="rdCopyChains" data-args='${_dataArgs(headerText + '\n' + plainText)}' title="复制为纯文本(可贴工单/微信)">📋 复制链路</button>`;
       chainHtml += `</div>`;
       matches.forEach((m, i) => {
-        const segments = m.chain.map(s => `<span data-css="color:var(--primary)">${escHtml(s)}</span>`).join(` <span class="text-muted">›</span> `);
+        const segments = m.chain.map(s => `<span class="text-primary">${escHtml(s)}</span>`).join(` <span class="text-muted">›</span> `);
         const srcLabel = m.srcName ? `<span class="muted-11"> [${escHtml(m.srcName)}]</span>` : '';
         chainHtml += `<div data-css="margin-top:2px;padding-left:14px">${i + 1}. ${segments}${srcLabel}</div>`;
       });
@@ -537,7 +537,7 @@ function rdRenderPkgTable(){
     const pubCST = p.published_at ? p.published_at.replace(' ', ' ').slice(0, 19) : '—';
     return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${escHtml(p.package_version)}">
       <td><input type="checkbox" class="rd-pkg-cb" data-ver="${escHtml(p.package_version)}" ${isSel ? 'checked' : ''} data-on-change="rdToggleSel" data-args='${_dataArgs(p.package_version)}'></td>
-      <td data-css="font-family:monospace">${escHtml(p.package_version)}</td>
+      <td class="font-mono">${escHtml(p.package_version)}</td>
       <td data-css="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
       <td class="fs12">${pubCST}</td>
       <td class="fs12">${p.file_size_raw || '—'}</td>
@@ -566,7 +566,7 @@ function rdToggleSel(ver){
     bar.style.display = 'flex';
     reselectBtn.style.display = 'inline-flex';
     document.getElementById('rdSelectedText').innerHTML =
-      `已选: <b data-css="font-family:monospace">${_rd.selected[0]}</b>  →  <b data-css="font-family:monospace">${_rd.selected[1]}</b>`;
+      `已选: <b class="font-mono">${_rd.selected[0]}</b>  →  <b class="font-mono">${_rd.selected[1]}</b>`;
   } else {
     rdRenderPkgTable();  // 展开状态需要刷新表格来更新选中样式
     table.style.display = 'block';
@@ -630,7 +630,7 @@ function rdRenderResult(){
       <div class="rd-summary-item"><span class="label">TO 版本</span><span class="val">${toV}</span></div>
       <div class="rd-summary-item"><span class="label">中间版本数</span><span class="val">${intermediates.length}</span></div>
       <div class="rd-summary-item text-success"><span class="label">新增</span><span class="val">${(r.pure_new||[]).length}</span></div>
-      <div class="rd-summary-item" data-css="color:var(--primary)"><span class="label">修改</span><span class="val">${(r.pure_updated||[]).length}</span></div>
+      <div class="rd-summary-item text-primary"><span class="label">修改</span><span class="val">${(r.pure_updated||[]).length}</span></div>
       <div class="rd-summary-item text-danger"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
     </div>
     ${clickableVersions.length > 0

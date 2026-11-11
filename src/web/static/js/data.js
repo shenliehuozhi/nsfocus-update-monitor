@@ -129,7 +129,7 @@ function _renderProdDistTable(data){
   const cmap = _buildProdColorMap(data.map(d=>d.name));
   container.innerHTML='<table data-css="width:100%;border-collapse:collapse;font-size:12px">'+
     '<thead><tr data-css="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
-      '<th data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">产品</th>'+
+      '<th class="data-th">产品</th>'+
       '<th data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
       '<th data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
     '</tr></thead><tbody>'+
@@ -199,8 +199,8 @@ function _renderCustPushTable(items, days){
   // 用 table-layout:fixed + JS 设 th/td width (table-layout:auto 下 td 内容长度会破坏比例)
   container.innerHTML='<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
 '<thead><tr data-css="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
-      '<th data-col="0" data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
-      '<th data-col="1" data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">推送</th>'+
+      '<th class="data-th" data-col="0">客户</th>'+
+      '<th class="data-th" data-col="1">推送</th>'+
       '<th data-col="2" data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">状态</th>'+
     '</tr></thead><tbody>'+
     items.map((c,i)=>{
@@ -219,7 +219,7 @@ function _renderCustPushTable(items, days){
         <td data-col="0" data-css="padding:9px 12px;box-sizing:border-box">
           <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
             <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${isZero?'var(--gray-disabled)':color}"></span>
-            <span data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
+            <span class="ellipsis" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
         <td data-col="1" data-css="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${isZero?'var(--gray-disabled)':(failed>0?'var(--danger)':'var(--success)')};font-variant-numeric:tabular-nums">${total}</td>
@@ -684,7 +684,7 @@ async function dataPage() {
       <div class="data-filters">
         <span class="data-filter-label">筛选:</span>
         ${filterHtml}
-        <select id="dataUrgencyFilter" class="sel-sm dd" data-on-change="dataUrgencyChange" data-args='${_dataArgs('$value')}' data-css="margin-left:8px">
+        <select id="dataUrgencyFilter" class="sel-sm dd ml8" data-on-change="dataUrgencyChange" data-args='${_dataArgs('$value')}'>
           <option value="">紧急度</option>
           <option value="critical">🔴 critical</option>
           <option value="high">⚠️ high</option>
@@ -1199,7 +1199,7 @@ function dataRenderLeft() {
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
     html += `<div class="card mb10" id="${cardId}">
-      <div class="card-hd" data-css="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
+      <div class="card-hd pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge && `<span class="ml-auto">${freshBadge}</span>`}
         <button class="hover-primary" data-css="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
@@ -1939,7 +1939,7 @@ if (!matchedPath && snap.source_url) {
     <span class="data-detail-k">首次发现</span><span class="fs125">${fmtTZ(snap.first_seen_at, true)}</span>
     <span class="data-detail-k">最近采集</span><span class="fs125">${fmtTZ(snap.last_seen_at, true)}</span>
     <span class="data-detail-k">下载地址</span><span class="fs125"><a class="text-success" href="${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}" target="_blank">${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}</a></span>
-    <span class="data-detail-k">发布地址</span><span class="fs125"><a href="${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}" target="_blank" data-css="color:var(--primary)">${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}</a></span>
+    <span class="data-detail-k">发布地址</span><span class="fs125"><a class="text-primary" href="${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}" target="_blank">${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}</a></span>
     ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span data-css="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
     <span class="data-detail-k">MD5</span><span class="fs125" id="snap-md5-${snapId}">—</span>
     <span class="data-detail-k">页面哈希</span><span data-css="font-size:12.5px;word-break:normal;overflow-x:auto" id="snap-ph-${snapId}">—</span>
@@ -2187,7 +2187,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
 
     const verFlags = [];
     if (hasCritical) verFlags.push('<span class="badge badge-err badge-xs">🔴critical</span>');
-    if (hasRb) verFlags.push('<span data-css="color:var(--danger);font-size:11px">含撤回</span>');
+    if (hasRb) verFlags.push('<span class="danger-11">含撤回</span>');
     if (hasNew) verFlags.push('<span data-css="color:var(--primary);font-size:11px">有未推送</span>');
 
     // 用 _dataSelectedChain[-1] 作 pkgType group key(用户点的 chain 的最深层),不读 snap.package_type

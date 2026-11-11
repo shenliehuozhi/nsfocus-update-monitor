@@ -136,7 +136,7 @@ async function loadPushChannelSelect(){
   const nsfocus=channels.find(c=>c.config?.smtp_host==='mail.nsfocus.com');
   const defaultCh=nsfocus||channels[0];
   _pushChannelId=defaultCh.id;
-  el.innerHTML='<select class="dd" id="pushChannelDropdown" data-on-change="_pushChannelChanged" data-args=\'["$value"]\' data-css="width:100%">'
+  el.innerHTML='<select class="dd w-full" id="pushChannelDropdown" data-on-change="_pushChannelChanged" data-args=\'["$value"]\'>'
     +channels.map(c=>`<option value="${c.id}" ${c.id===defaultCh.id?'selected':''}>${escHtml(c.name)} (${escHtml(c.config?.smtp_host||'')}:${c.config?.smtp_port||''})</option>`).join('')
     +'</select>';
 }
@@ -154,10 +154,10 @@ async function loadPushCustomerList(){
     }
     el.innerHTML=list.map(c=>`<label class="item" data-custid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px">
       <input type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" data-on-change="onCustomerCheck" data-args='${_dataArgs('$el')}' data-css="flex-shrink:0">
-      <span data-css="flex:1;min-width:0">
+      <span class="flex1">
         <span data-css="font-weight:500">${escHtml(c.name)}</span>
-        <span data-css="color:var(--muted);font-size:11px;margin-left:6px">${escHtml(c.email)}</span>
-        ${c.company?`<span data-css="color:var(--muted);font-size:11px;margin-left:6px">· ${escHtml(c.company)}</span>`:''}
+        <span class="muted-11-ml6">${escHtml(c.email)}</span>
+        ${c.company?`<span class="muted-11-ml6">· ${escHtml(c.company)}</span>`:''}
       </span>
     </label>`).join('');
   }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
@@ -183,9 +183,9 @@ async function loadPushBotChannels(){
       : typeLabel[c.type]||c.type;
     return `<label class="item" data-botchid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 12px">
       <input type="radio" name="botch" value="${c.id}" data-on-change="onBotChannelCheck" data-args='${_dataArgs('$el')}' data-css="flex-shrink:0">
-      <span data-css="flex:1;min-width:0">
+      <span class="flex1">
         <span data-css="font-weight:500">${escHtml(c.name)}</span>
-        <span data-css="color:var(--muted);font-size:11px;margin-left:6px">${sub}</span>
+        <span class="muted-11-ml6">${sub}</span>
       </span>
     </label>`;
   }).join('');
@@ -282,7 +282,7 @@ function showPushResult(data, success){
       ? ` <a href="#" data-on-click="showPushLogByPath" data-prevent data-args='${_dataArgs(r.log_path, r.channel || '')}' data-css="color:var(--primary);font-size:11px;margin-left:6px">📋 日志</a>`
       : '';
     return `<div data-css="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#ffffff">
-      <span data-css="font-weight:600">${icon}</span>
+      <span class="fw600">${icon}</span>
       <span>${escHtml(r.channel||'')}</span>
       ${r.error ? `<span data-css="color:rgba(255,255,255,.7);font-size:11px">${escHtml(r.error)}</span>` : ''}
       ${logBtn}

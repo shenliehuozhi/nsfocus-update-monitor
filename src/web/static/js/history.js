@@ -385,7 +385,7 @@ function _hideDiscBanner(){
   const mini=document.createElement('div');
   mini.id='disc-mini-btn';
   mini.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:24px;padding:8px 16px;box-shadow:0 4px 16px rgba(124,58,237,0.4);z-index:3000;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px';
-  mini.innerHTML='<span data-css="font-size:15px">🔍</span><span>自动发现进行中…</span>';
+  mini.innerHTML='<span class="fs15">🔍</span><span>自动发现进行中…</span>';
   mini.onclick=async()=>{
     mini.remove();
     const s=await api('/system/products/discover/status');
@@ -433,7 +433,7 @@ function _collectBannerHtml(state) {
   const warnSuffix = isDone ? '' :
     ' <span data-css="color:#ff5757;font-weight:600">⚠️ 请勿增删改配置</span>';
   return `
-    <div data-css="flex:1;min-width:0">
+    <div class="flex1">
       <div data-css="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}${warnSuffix}</div>
       <div id="collect-banner-phase" data-css="opacity:0.9;font-size:12px;line-height:1.5">
         <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>
@@ -503,7 +503,7 @@ function _showDiscBanner(state){
   banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:10px;padding:10px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:320px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px';
   banner.innerHTML=`
     <div class="flex-1">
-      <div data-css="font-weight:600;margin-bottom:4px">🔍 自动发现任务进行中</div>
+      <div class="fw600-mb4">🔍 自动发现任务进行中</div>
       <div id="disc-banner-phase" data-css="opacity:0.9;font-size:12px">${formatDiscPhase(state)}</div>
       <div data-css="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="disc-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
@@ -650,7 +650,7 @@ async function products(){
       <table class="table" data-css="table-layout:auto;width:100%">
         <thead><tr>
           <th data-css="width:36px">#</th>
-          <th data-css="width:40px"><input type="checkbox" id="prod-sel-all" data-on-change="toggleAllProds" data-args='${_dataArgs('$checked')}' data-css="cursor:pointer" title="全选/取消全选"></th>
+          <th data-css="width:40px"><input class="pointer" type="checkbox" id="prod-sel-all" data-on-change="toggleAllProds" data-args='${_dataArgs('$checked')}' title="全选/取消全选"></th>
           <th data-css="width:64px">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
