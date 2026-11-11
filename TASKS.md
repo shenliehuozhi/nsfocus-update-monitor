@@ -1,6 +1,6 @@
 # 任务看板
 
-> 更新时间：2026-11-11　｜　全量测试：`522 passed, 1 skipped`　｜　生产服务：`active`（127.0.0.1:9999）
+> 更新时间：2026-11-11　｜　全量测试：`547 passed, 1 skipped`　｜　生产服务：`active`（127.0.0.1:9999）
 >
 > 规则：每完成/新增任务都更新本文件；命令、验证结果和改动文件写在这里，不依赖聊天记录。
 
@@ -34,7 +34,7 @@
 - [x] **首屏接口优化（2026-11-11）**：实测 `/api/latest/snapshots` raw 2.38MB / gzip 205KB、TTFB 0.39–0.57s（SQL 75ms、JSON 55ms）；`/api/system/products` raw 956KB / gzip 51KB、85ms。已做：DB 文件戳缓存（重复进入页面 183ms→6ms，任何写入自动失效）、`ensure_ascii=False` + 紧凑分隔符（raw 2.38MB→2.03MB）、移除前端未使用的 `source_id`；顺带修复跳转详情 `file_size` 被裁后显示 `NaN K` 的回归。生产已于 2026-11-11 重启部署并验证：`active`、首页 200、接口 2,034,502B（gzip 199KB）、缓存命中 17–88ms、响应中 `source_id` 已消失
 - [x] **接口条件请求 ETag/304（2026-11-11）**：本机真实浏览器实测（Chrome headless + CDP，实例 `a860937`）二次进入采集数据页仍完整传输 199KB gzip、接口 888→260ms，响应没有 validator。现在以 DB 文件戳生成强 ETag + `Cache-Control: private, no-cache`，数据未变回 304（生产库副本实测 1ms / 0B），任何写库后 ETag 变化并重新构建；同时识别 Flask-Compress 的 `:gzip` ETag 变体，避免为回 304 仍压缩 2MB。4 个回归测试覆盖 200 / 304 / gzip 变体 / 写后失效 / 空数据。生产已重启 `b6995f5` 验证：gzip 条件请求 304 为 5–6ms / 0B（未短接时 184ms）、identity 缓存命中 18ms、首页 200。本机浏览器复测（`b6995f5`）：首次 200 / 199,540B / 530ms，第二、三次为真实 HTTP 304（已发送 If-None-Match、transferSize 300B、46–48ms、服务端 1–8ms），fetch 透明拿到完整数据，50 行 / 61 页 / 登录后 0 错误；采集写库窗口内 ETag 会变化并退化为 200 全量，属预期设计。ETag 稳定性跟随写库：30s HEAD 轮询中观察到 25.2s 连续不变，也观察到 2.5s 内变化；要稳定复现 304，需取 ≥3.6s 的无写入窗口。同次实测确认 NaN 修复生效（详情“文件大小”5.5MB、无字面量 NaN）、50 行 feed / 10,017 DOM 节点 / 页面自报 167–212ms
 - [ ] **首屏客户端渲染 / 历史懒加载**：真实浏览器实测页面自报 167–185ms、`.feed-row` 仅 50 行、DOM 约 1 万节点，客户端分组不是当前瓶颈；若后续数据量再翻倍，再考虑按源懒加载历史并由服务端返回统计
-- [ ] **资源版本化与 ESM**：给 `index.html` 的 css/js 加内容哈希或版本参数（当前靠 `no-cache` 回源）；后续再评估经典脚本 → ESM
+- [x] **资源版本化与 ESM（2026-11-11）**：`index.html` 里的 css/js 改由服务端按内容哈希输出 `?v=<sha256前12位>`（`src/web/asset_versioning.py`），哈希命中当前内容时 `/static` 返回 `public, max-age=31536000, immutable`，缺失/过期仍 `no-cache`；首页保持 `no-cache` 并带响应体 ETag，条件请求 304。哈希缓存按文件戳失效，2 秒内刚改过的文件强制重算（规避同尺寸快速改写撞时间戳粒度）。7 个测试覆盖哈希内容变化、路径逃逸、首页 URL、静态缓存头、首页 304；全量 `547 passed, 1 skipped`。ESM 未迁移：经典脚本零构建且跨文件共享全局作用域，切换需同时重构加载顺序与全局依赖，留待后续单独评估
 - [ ] **Prometheus 对接**：用户明确暂缓（`/api/metrics` 与静态令牌已就绪，缺抓取配置与告警规则）
 - [x] **密钥轮换工具（2026-11-11）**：`scripts/rotate_encryption_key.py` 默认 dry-run，`--apply --yes` 时先做一致性备份、再单事务把 `channels.config` / `user_sessions.cookie_value` 从旧密钥重加密到新密钥，逐行校验并用新密钥回读；`src/core/crypto.py` 增加显式密钥的 `encrypt_with_key` / `decrypt_with_key`。6 个单测通过；在生产库副本上演练 16/16 行迁移成功、旧密钥全部失效、应用以新密钥启动后渠道 7 条与会话 9 条均正常解密
 - [x] **生产密钥轮换（2026-11-11 11:57）**：`.env` 原先未定义 `MONITOR_JWT_SECRET` / `MONITOR_SECRET_KEY`，且 `CORS_ORIGINS` 为空（允许所有来源）。已停服务 → 用 `scripts/rotate_encryption_key.py` 把 16 条密文（渠道 7 + Session 9）从开发兜底密钥迁移到新密钥（备份 `data/nsfocus_monitor.db.bak.20261111_115715_pre_rotate_enc`）→ 生成 JWT 新密钥 → `.env` 补齐两密钥并 `chmod 600`，`CORS_ORIGINS` 限制为 `http://10.10.10.109:29999,http://127.0.0.1:9999,http://localhost:9999` → 启动。验证：`active`、首页/静态资源 200、登录 `code=0`、渠道 7 条与会话 9 条正常解密、旧密钥 16/16 失效、新密钥 16/16 可读、非白名单 Origin 不返回 CORS 头、重启后无 fallback 告警。本机（Qoder 电脑）只读复验同样通过：登录/channels/sessions/latest-snapshots/data_push.js 均 200，`code=0`，渠道 7、会话 9、快照 80 个源。`/root/.env.before-secret-rotate` 为改前备份（chmod 600）

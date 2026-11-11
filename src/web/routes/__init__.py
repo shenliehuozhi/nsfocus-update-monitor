@@ -1,7 +1,9 @@
 """Register all API routes on the Flask app."""
 
-from flask import Flask, send_from_directory
+import hashlib
 import os
+
+from flask import Flask, request, send_from_directory
 
 
 def register_routes(app: Flask):
@@ -36,12 +38,19 @@ def register_routes(app: Flask):
 
     # Serve SPA index
     templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')
+    static_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'web', 'static')
 
     @app.route('/')
     def index():
-        return send_from_directory(templates_dir, 'index.html')
+        from src.web.asset_versioning import versioned_index
+        with open(os.path.join(templates_dir, 'index.html'), encoding='utf-8') as f:
+            html = f.read()
+        body = versioned_index(html, static_dir)
+        resp = app.response_class(body, content_type='text/html; charset=utf-8')
+        resp.headers['Cache-Control'] = 'no-cache'
+        resp.set_etag(hashlib.sha256(body.encode('utf-8')).hexdigest()[:16])
+        return resp.make_conditional(request)
 
     @app.route('/favicon.ico')
     def serve_favicon():
-        static_dir = os.path.join(os.path.dirname(__file__), '..', '..', 'web', 'static')
         return send_from_directory(static_dir, 'favicon.ico')

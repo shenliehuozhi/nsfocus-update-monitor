@@ -398,6 +398,17 @@ def create_app(config_path=None):
     def _security_headers(response):
         return apply_security_headers(response)
 
+    @app.after_request
+    def _static_asset_cache(response):
+        # 只有 ?v= 命中当前内容哈希才长缓存；否则维持 send_from_directory 的 no-cache。
+        if request.endpoint == 'static':
+            from src.web.asset_versioning import static_cache_control
+            rel = (request.view_args or {}).get('filename', '')
+            value = static_cache_control(app.static_folder, rel, request.args.get('v'))
+            if value:
+                response.headers['Cache-Control'] = value
+        return response
+
     # Initialize database
     from src.models.database import init_db
     init_db(app.config['DATA_DIR'])
