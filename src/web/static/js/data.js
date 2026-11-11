@@ -288,7 +288,6 @@ function _renderTimelineChart(canvasId, data, days, visible){
 
   // 与图例/产品分布表共用一份按产品名索引的色表
   const prodColor = _buildProdColorMap(allProducts);
-  const prodIdx = _buildProdColorIdxMap(allProducts);
 
   // 填充日期空洞
   const today=new Date();
@@ -363,7 +362,7 @@ function _renderTimelineChart(canvasId, data, days, visible){
   ctx.globalAlpha=1;
 
   // 保存数据供 tooltip 使用
-  canvas._chartData = { points, allProducts, visibleProds, prodColor, max, pad, top, bot, chartW, chartH, xStep, days, chartH, W, right };
+  canvas._chartData = { points, allProducts, visibleProds, prodColor, max, pad, top, bot, chartW, chartH, xStep, days, W, right };
   canvas.onmousemove = (ev) => _showChartTooltip(ev, canvas);
   canvas.onmouseleave = (ev) => _hideChartTooltip(ev, canvas);
 }
@@ -407,12 +406,11 @@ function _renderTimelineChart_Redraw(d, mx, e){
   const canvas = document.getElementById('chartTimeline');
   if(!canvas) return;
   const ctx = canvas.getContext('2d');
-  const dpr = window.devicePixelRatio || 1;
   const W = canvas.offsetWidth || 700;
   const H = 200;
   ctx.clearRect(0,0,W,H);
   const pad=d.pad, top=d.top, bot=d.bot, chartH=d.chartH, chartW=d.chartW, right=d.right;
-  const max=d.max, points=d.points, visibleProds=d.visibleProds, prodColor=d.prodColor, days=d.days;
+  const max=d.max, points=d.points, visibleProds=d.visibleProds, prodColor=d.prodColor;
   const xStep=d.xStep;
 
   // 重新绘制网格和轴
@@ -1080,7 +1078,6 @@ function buildFlatVerTreeHtml(snapshots) {
     const snaps = byVer[ver];
     const blockId = 'fv_' + ver.replace(/\W/g, '_');
     const isRb = snaps.some(s => s.status === 'withdrawn');
-    const newCount = snaps.filter(s => s.status === 'active' && !s.last_delivered_at).length;
     const badge = isRb ? ' <span class="danger-10">↩</span>' : '';
     const freshSnap = snaps.reduce((latest, s) => {
       if (!s.published_at) return latest;
@@ -1192,7 +1189,7 @@ function dataRenderLeft() {
     } else {
       treeHtml = buildDataTreeHtml(pt, src.snapshots_map, typeCN, src.ver_type_map || {}, src.name || '', sid);
     }
-    const { hasRb, freshness } = dataSourceFlags(src);
+    const { freshness } = dataSourceFlags(src);
     const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok badge-xs">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn badge-xs">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey badge-xs">沉寂</span>' : ''));
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
@@ -1546,60 +1543,12 @@ function dataBuildFeed() {
 }
 
 function dataRenderRight(sch, p, info) {
-  if (!sch) sch = {};
-  if (!p) p = {};
-  if (!info) info = {};
-  // sch may be undefined when called from dataSearch/dataToggleFilter without args — fallback to cached _lastScheduler
-  const _sch = sch || _lastScheduler || {};
-  const mode_label = { quick: '⚡Quick', full: '🔍Full', '': '' };
-  const {
-    lastText = _sch.last_run ? fmtTZ(_sch.last_run, true) : '—',
-    nextText = _sch.last_run ? (() => {
-      const d = new Date(_sch.last_run + 'Z');
-      d.setUTCHours(d.getUTCHours() + (_sch.interval_hours || 24));
-      return fmtTZ(d.toISOString().substring(0, 19), true);
-    })() : '—',
-    isRunning = !!_sch.is_running,
-    curMode = mode_label[_sch.current_mode] || '',
-    progressHtml = ''
-  } = info;
   const { rows, MAP } = dataBuildFeed();
   const totalPages = Math.max(1, Math.ceil(rows.length / FEED_PAGE_SIZE));
   if (_dataFeedPage > totalPages) _dataFeedPage = totalPages;
   const page = _dataFeedPage;
   const start = (page - 1) * FEED_PAGE_SIZE;
   const pageSlice = rows.slice(start, start + FEED_PAGE_SIZE);
-
-  const src = _dataSelectedSid ? (_dataAll[_dataSelectedSid] || {}) : null;
-  const srcName = src ? (src.display_name || src.name || '') : '';
-  const hasFilter = !!_dataSelectedSid;
-  let hdPathHtml = '';
-  if (srcName && _dataSelectedChain && _dataSelectedChain.length > 0) {
-    const chainParts = _dataSelectedChain.slice(1);
-    chainParts.forEach((segment, i) => {
-      const segChain = _dataSelectedChain.slice(0, i + 2);
-      const mapKey = _dataSelectedSid + '|' + segChain.join('/');
-      const segUrl = _chainToUrlMap[mapKey] || '';
-      if (segUrl) {
-        hdPathHtml += `<a href="https://update.nsfocus.com${escHtml(segUrl)}" target="_blank" class="data-hd-path-seg">${esc(segment)}</a>`;
-      } else {
-        hdPathHtml += `<span class="data-hd-path-seg">${esc(segment)}</span>`;
-      }
-      if (i < chainParts.length - 1) hdPathHtml += ' <span class="text-muted">→</span> ';
-    });
-  }
-  const hdLabel = srcName ? `${esc(srcName)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
-  const resetBtn = hasFilter ? `<button class="btn btn-xs flag-warn-badge" data-on-click="dataClearFilter">重置筛选</button>` : '';
-  const lastMode = mode_label[sch.last_mode] || '';
-  const nextMode = mode_label[sch.next_mode] || '';
-  // Build header: left=label, center=last/next timeline, right=progress+btn
-  const hdrRight = `<div class="hdr-right snap-filter-bar">
-    <span class="text-muted">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
-    <span class="text-border">|</span>
-    <span class="text-muted">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
-    ${progressHtml}
-    <button class="btn btn-xs btn-soft-primary" data-on-click="triggerCollect">🔄 手动采集</button>${resetBtn}
-  </div>`;
 
   if (rows.length === 0) {
     document.getElementById('dataRight').innerHTML = `<div class="data-right-empty">暂无数据</div>`;

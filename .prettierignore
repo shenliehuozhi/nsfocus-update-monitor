@@ -1,0 +1,22 @@
+# Legacy build-free assets are intentionally compact and are gated by
+# node --check + eslint instead of a full reformat. Prettier applies to new
+# JS/config files only.
+src/web/static/js/
+src/web/static/css/
+src/web/templates/
+docs/
+references/
+migrations/
+tmp_release_notes/
+tests/reports/
+tests/fixtures/
+tests/MIGRATION_TEST_REPORT_2026-07-22.md
+.github/
+data/
+logs/
+node_modules/
+CHANGELOG.md
+INSTALL.md
+README.md
+TASKS.md
+docker-compose.yml

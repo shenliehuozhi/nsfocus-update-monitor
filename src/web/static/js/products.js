@@ -332,21 +332,6 @@ function attach(node) {
     const isPkg = node.__isPkg;
     const snaps = node.__snapshots || [];
 
-    // Determine target div to toggle (both empty and non-empty pkg nodes need IDs)
-    // Use __pathId (URL) for targetId to ensure uniqueness — same leaf name across different
-    // versions (e.g. "引擎升级包" x16) must not share the same ID. __pathId is unique per path.
-    // For paths with empty URLs (NF-B/NF-D, etc.), include __pathIdx in the ID to distinguish
-    // duplicate chains that share the same empty URL (e.g. NF-B "引擎库升级包" ×3).
-    let targetId = null;
-    if (isPkg) {
-      const rawId = node.__pathId
-        ? node.__pathId
-        : ('|' + (node.__chain || []).join('|') + '|idx=' + node.__pathIdx);
-      targetId = 'pktbl_' + rawId
-          .replace(/[^\x00-\x7F]/g, function(m) { return '_' + m.charCodeAt(0).toString(16) + '_'; })
-          .replace(/\W/g, '_');
-    }
-
     // Clicking any node: filter right panel to that product/sub-category/version
     // Clicking a leaf node: also expand the corresponding row in the right panel
     // data attributes for event delegation
@@ -418,7 +403,7 @@ function attach(node) {
   }) : [];
   // Skip the top-level product name node if it's the only child (duplicates card title)
   if (rootChildren.length === 1) {
-    const [topName, topNode] = rootChildren[0];
+    const [, topNode] = rootChildren[0];
     const topChildren = topNode.__children ? Object.entries(topNode.__children).sort(([a],[b]) => {
       const aV = /\d/.test(a); const bV = /\d/.test(b);
       if (aV && !bV) return -1; if (!aV && bV) return 1;
@@ -510,21 +495,6 @@ function editPkgType(id){
       diffRows=`<span class="disabled-13">包类型集合无变化，但采集时检测到差异</span>`;
     }
 
-    // diff 模式下的 modes 编辑
-    let modeRows='';
-    disc.types.forEach(t=>{
-      const label=MAP[t]||t;
-      const mode=disc.modes[t]||'auto';
-      modeRows+=`<div class="discover-row">
-        <span class="flex-1 disabled-13">${label}</span>
-        <select class="sel-sm dd fixed-90" data-type="${escHtml(t)}">
-          <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
-          <option value="full" ${mode==='full'?'selected':''}>全量</option>
-          <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
-        </select>
-      </div>`;
-    });
-
     // 目录树展示 disc.paths（复用新的树形渲染）
     let pathTreeHtml = '';
     if (disc.paths && disc.paths.length) {
@@ -586,14 +556,6 @@ function editPkgType(id){
     </div>`);
     return;
   }
-
-  // 计算每种类型的路径覆盖数
-  const pathCount={};
-  pt.types.forEach(t=>{ pathCount[t]=0; });
-  (pt.paths||[]).forEach(p=>{
-    (p.types||[]).forEach(t=>{ if(t in pathCount) pathCount[t]++; });
-  });
-  const sortedTypes=[...pt.types].sort((a,b)=>(pathCount[b]||0)-(pathCount[a]||0));
 
   // 构建目录树（使用独立函数）
   const treeHtml = buildTreeHtml(pt, MAP);
@@ -1060,7 +1022,6 @@ function showDiscoverResult(result, isStale){
   const removed=prod.removed||[];
   const unchanged=prod.unchanged||[];
   const pkgChangedProducts=Object.values(pkgChanges);
-  const totalProdChanges=added.length+removed.length;
   const totalPkgChanges=pkgChangedProducts.reduce((n,c)=>n+(c.added_paths?.length||0)+(c.deleted_paths?.length||0)+(c.modified_paths?.length||0),0);
 
   const staleWarning=isStale?'<div class="warn-banner"><span class="fs16">⚠️</span><div><b>发现结果已从临时文件恢复</b>（服务重启前未执行确认），请检查以下变更后点击「确认应用变更」。</div></div>':'';
@@ -1071,15 +1032,6 @@ function showDiscoverResult(result, isStale){
     <span class="text-disabled">✔️ 未变 <b>${unchanged.length}</b></span>
     ${totalPkgChanges>0?`<span class="text-purple">📦 包类型变更 <b>${totalPkgChanges}</b> 项 (<b>${pkgChangedProducts.length}</b> 个产品)</span>`:''}
   </div>`;
-
-  function toggleSection(key){
-    const body=document.getElementById('sec-body-'+key);
-    const icon=document.getElementById('sec-icon-'+key);
-    if(!body) return;
-    const open=!body.classList.contains('hidden');
-    body.classList.toggle('hidden', open);
-    if(icon) icon.textContent=open?'▸':'▾';
-  }
 
   let sectionsHtml='';
   // 产品新增
@@ -1387,10 +1339,8 @@ function showProductForm(p){
   const id=p?.id||'';
   const name=p?.name||'';
   const url=p?.entry_url||'';
-  const strat=p?.strategy||'standard';
 
   _showModal('pform');
-  const isManual = p ? p.is_manual !== false : true; // default to true for new add
   modalBody('pform',`<div class="p24">
     <div class="fs15 fw600 mb20">${isEdit?'✏️ 编辑产品':'➕ 手动添加产品'}</div>
     <div class="info-bar">

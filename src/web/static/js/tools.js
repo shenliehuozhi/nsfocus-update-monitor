@@ -720,11 +720,6 @@ function rdRenderGroups(){
       updated: ['规则号', '规则名称', '更新于'],
       deleted: ['规则号', '规则名称', 'FROM 中归属'],
     }[typeKey];
-    const widths = {
-      new:     '140px',
-      updated: '200px',
-      deleted: '100px',
-    }[typeKey];
     return `
       <div class="rd-group mb18">
         <div class="rd-group-title rd-group-${typeKey}">

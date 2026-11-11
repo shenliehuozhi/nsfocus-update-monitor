@@ -23,6 +23,10 @@ logs/
 # Environment
 .env
 
+# Node tooling (lint/format only, no build step)
+node_modules/
+.eslintcache
+
 # Temp
 *.swp
 *.swo

@@ -207,9 +207,9 @@ function onBotChannelCheck(rb){
 function updatePushConfirmState(){
   const btn=document.getElementById('pushConfirmBtn');
   if(!btn) return;
-  let ready=false;
+  let ready;
   if(_pushTab==='email'){
-    let hasRecipients=false;
+    let hasRecipients;
     if(_pushRecipientMode==='customer'){
       hasRecipients=_pushSelectedCustomers.size>0;
     }else{
@@ -277,7 +277,6 @@ function showPushResult(data, success){
   const lines = results.map(r => {
     const ok = r.success;
     const icon = ok ? '✓' : '✗';
-    const color = ok ? 'var(--success)' : 'var(--danger)';
     const logBtn = (!ok && r.log_path)
       ? ` <a class="text-primary fs11 ml6" href="#" data-on-click="showPushLogByPath" data-prevent data-args='${_dataArgs(r.log_path, r.channel || '')}'>📋 日志</a>`
       : '';

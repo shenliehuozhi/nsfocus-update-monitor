@@ -1,0 +1,16 @@
+{
+  "name": "nsfocus-monitor-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Lint/format gates for the build-free classic scripts in src/web/static/js",
+  "scripts": {
+    "lint": "eslint src/web/static/js",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.14.0",
+    "globals": "^17.14.0",
+    "prettier": "^3.9.10"
+  }
+}

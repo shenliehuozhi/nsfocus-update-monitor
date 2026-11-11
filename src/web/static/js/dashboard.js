@@ -96,14 +96,6 @@ async function dashboard(range){
   if(d.process_start){ _processStartMs=new Date(d.process_start).getTime(); _tickUptime(); if(!_uptimeTimer){ _uptimeTimer=setInterval(_tickUptime,1000); } }
 
   // Session status line
-  let sesLine='';
-  if(d.session_detail&&d.session_detail.length){
-    sesLine=d.session_detail.map(s=>{
-      let hbIcon=s.heartbeat_status==='正常'?'💚':s.heartbeat_status==='过期'?'❤️‍🔥':s.heartbeat_status==='污染'?'🟠':'⚠️';
-      let hbTime=s.last_heartbeat_at?fmtTZ(s.last_heartbeat_at,true):'—';
-      return `${hbIcon} #${s.id} ${hbTime}(${s.heartbeat_count||0}次)`;
-    }).join(' · ');
-  }
   let sesWarn='';
   const _ss=d.session_status||{};
   const _cTotal=_ss.collect_total||0;
@@ -500,7 +492,7 @@ function renderEventsCenterTableRow(e){
   const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
   const sevTone = _sevTone(e.severity);
   // 标题提取 — 与弹窗表格保持完全一致
-  let title = '';
+  let title;
   if(m.title) title = String(m.title);
   else if(t === 'session_error') title = (m.username?`Session 污染 (${m.username})`:'Session 污染')+': '+(m.reason||'未知');
   else if(t === 'session_expired') title = (m.session_id?`Session ${m.session_id} 失效`:'Session 失效')+': '+(m.reason||'');
@@ -750,7 +742,7 @@ function renderEventsTableRow(e){
   const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
   const sevTone = _sevTone(e.severity);
   // 标题提取
-  let title = '';
+  let title;
   if(m.title) title = String(m.title);
   else if(t === 'session_error') title = (m.username?`Session 污染 (${m.username})`:'Session 污染')+': '+(m.reason||'未知');
   else if(t === 'session_expired') title = (m.session_id?`Session ${m.session_id} 失效`:'Session 失效')+': '+(m.reason||'');

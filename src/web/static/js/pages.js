@@ -283,9 +283,7 @@ function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=
 async function channels(){
   const _seq=_navSeq;
   const r=await api('/channels');chList=r.data||[];
-  const typeMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
-  const typeCNMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
-let rows=chList.map(c=>{let typeLabel=escHtml(typeMap[c.type]||c.type);let extra='';if(c.type==='email'&&c.config){extra=`<br><span class="muted-11">SMTP:${escHtml(c.config.smtp_host||'-')}:${escHtml(c.config.smtp_port||'-')} 发件人:${escHtml(c.config.smtp_user||'-')}</span>`;}
+let rows=chList.map(c=>{let extra='';if(c.type==='email'&&c.config){extra=`<br><span class="muted-11">SMTP:${escHtml(c.config.smtp_host||'-')}:${escHtml(c.config.smtp_port||'-')} 发件人:${escHtml(c.config.smtp_user||'-')}</span>`;}
   // 5 个渠道(dingtalk/feishu/wecom/apprise/email)都支持「📋 日志」按钮 — 测试按钮触发后写入 /tmp/<type>_test_<id>.log,失败时常驻可见
   const testLogBtn=`<button class="btn btn-xs btn-outline" data-on-click="showTestLog" data-args='${_dataArgs(c.id, c.name)}'>📋 日志</button>`;
   return `<tr><td class="muted-12-w50">${c.id}</td><td>${escHtml(c.name)}${extra}</td><td>${chTypeChip(c.type)}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openChModal" data-args='${_dataArgs(c.id)}'>编辑</button> <button class="btn btn-xs btn-success" data-on-click="testCh" data-args='${_dataArgs(c.id, c.type)}'>测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" data-on-click="delCh" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`;}).join('');
@@ -511,7 +509,7 @@ function openChModal(id){
 async function saveCh(){
   const t=document.getElementById('cht').value,n=document.getElementById('chn').value.trim();
   if(!n){toast('请输入渠道名称','error');return}
-  let c={},eh=0,ed=0;
+  let c,eh=0,ed=0;
   if(t==='email'){
     const pw=document.getElementById('sw')?.value||'';
     c={
@@ -534,7 +532,7 @@ async function saveCh(){
     if(!c.smtp_host||!c.smtp_user){toast('请填写 SMTP 服务器和用户','error');return}
     if(!c.smtp_user.includes('@')){toast('用户名必须是完整邮箱地址(含 @domain 后缀),如 user@163.com','error');return}
   }else{
-    const wu=document.getElementById('cw')?.value||'';
+    let wu=document.getElementById('cw')?.value||'';
     if(wu&&_origChConfig.webhook_url&&wu===_maskWebhook(_origChConfig.webhook_url))wu=_origChConfig.webhook_url;
     c={webhook_url:wu||(_origChConfig.webhook_url||''),secret:document.getElementById('cs')?.value||(_origChConfig.secret||'')}
   }
@@ -785,9 +783,7 @@ async function subscriptions(){
   const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
-  let pOpts=PROD.map(p=>`<option>${p}</option>`).join('');
   let chOpts=channels.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
-  let custOpts=list.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
 
 let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span class="match-badge-sm ${isLeaf?'match-leaf':'match-sub'}">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
@@ -925,7 +921,6 @@ async function openChainSelectorModal(existingChains) {
     const paths = pt.paths || [];
     if (!paths.length) return;
 
-    const sidNum = String(sid).replace(/\D/g, '') || sid;
     const emptyMap = {};  // 订阅选择器不需要 snapshotsMap
     const alias = src.display_name || src.name || '';
     const verTypeMap = src.ver_type_map || {};
@@ -945,7 +940,6 @@ async function openChainSelectorModal(existingChains) {
 // nodeEl: 被点击的 tree-node div 元素
 function csTreeNodeClick(nodeEl) {
   const chain = JSON.parse(nodeEl.getAttribute('data-chain') || '[]');
-  const url = nodeEl.getAttribute('data-url') || '';
   const isLeafNode = nodeEl.getAttribute('data-is-leaf') === '1';
   const match = isLeafNode ? 'leaf' : 'subtree';
   const chainKey = JSON.stringify(chain);
@@ -1024,7 +1018,6 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
   });
 
   function renderNode(node, name, depth) {
-    const indent = depth * 16;
     const children = node.__children ? Object.entries(node.__children) : [];
     const hasChildren = children.length > 0;
     const isPkg = node.__isPkg;
@@ -1076,9 +1069,6 @@ document.addEventListener('click', function(e) {
   // 链选择器模态框内的树节点点击
   const csNode = e.target.closest('[data-action="csTreeNode"]');
   if (csNode) {
-    const chainStr = csNode.getAttribute('data-chain');
-    const isLeaf = csNode.getAttribute('data-isleaf') === '1';
-    const chain = JSON.parse(chainStr || '[]');
     const isSelected = csNode.getAttribute('data-sel') === '1';
     // Toggle: 选中→取消，取消→选中
     const newSel = isSelected ? '0' : '1';

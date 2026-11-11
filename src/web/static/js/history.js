@@ -130,7 +130,6 @@ function _renderRecentDeliveries(deliveries,range){
     if(d.sent_at>agg[key].last)agg[key].last=d.sent_at;
   });
   let rows=Object.values(agg).sort((a,b)=>b.last.localeCompare(a.last)).slice(0,15).map(a=>{
-    let stIcon=a.status==='sent'?'✅':'❌';
     return `<tr><td>${escHtml(a.cust)}</td><td>${escHtml(a.prod)}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${escHtml([...a.channels].join(', '))}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
   }).join('');
   return `<div class="card mt14"><div class="card-hd">📨 最近推送明细 <span class="ml-auto fw400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
@@ -588,14 +587,12 @@ async function products(){
   const _seq=_navSeq;
   // 检查是否有待确认的发现结果（来自temp file）
   let pendingDiscResult = null;
-  let pendingDiscStale = false;
   console.log('[products] checking discover status...');
   try {
     const s=await api('/system/products/discover/status');
     console.log('[products] discover status result:', JSON.stringify(s));
     if(s.code===0 && s.data?.phase==='done' && s.data?.result && !s.data?.active){
       pendingDiscResult = s.data.result;
-      pendingDiscStale = !!s.data.is_stale;
       window._pendingDiscResult = s.data.result;
       window._pendingDiscStale = !!s.data.is_stale;
       updateNavPendingBadge();
