@@ -202,7 +202,7 @@ function discConfirmAct(msg, asyncFn, icon='🗂️', okLabel='确认', bodyHtml
   window._confirmCBs[ctr] = asyncFn;
   // 复用 _showModal 的 disc 主题样式
   document.getElementById('app').insertAdjacentHTML('beforeend',
-    `<div id="${id}-overlay" data-on-click="closeDiscConfirm" data-self data-css="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">
+    `<div class="overlay-1000" id="${id}-overlay" data-on-click="closeDiscConfirm" data-self>
        <div id="${id}-box" data-css="background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto;padding:24px">
          <div data-css="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
            <div data-css="font-size:36px;line-height:1;flex-shrink:0">${icon}</div>

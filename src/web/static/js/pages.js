@@ -149,26 +149,26 @@ function openAddSesModal(){
   if(existing)existing.remove();
   const m=document.createElement('div');
   m.id='addSesModal';
-  m.innerHTML=`<div data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" data-on-click="_removeSelf" data-self>
+  m.innerHTML=`<div class="overlay-998" data-on-click="_removeSelf" data-self>
     <div class="card w420" >
       <div class="card-hd">添加 Session <button data-on-click="_removeClosestId" class="icon-btn">×</button></div>
       <div class="card-bd p16">
-        <div data-css="margin-bottom:12px">
+        <div class="mb12">
           <div data-css="font-size:11px;color:var(--muted);margin-bottom:4px">PHPSESSID <span data-css="color:#d97706">★ 必填</span></div>
           <input id="addSesCookie" placeholder="粘贴 PHPSESSID 值" data-css="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
         </div>
         <div data-css="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
           <div>
-            <div data-css="font-size:10px;color:var(--muted);margin-bottom:3px">用途</div>
-            <div data-css="display:flex;background:var(--gray-border);border-radius:8px;padding:3px">
-              <button id="modalBtnCollect" data-on-click="setPurpose" data-args='${_dataArgs('collect')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)">采集</button>
+            <div class="muted-10 mb3">用途</div>
+            <div class="seg">
+              <button class="seg-btn-active" id="modalBtnCollect" data-on-click="setPurpose" data-args='${_dataArgs('collect')}'>采集</button>
               <button id="modalBtnDiscover" data-on-click="setPurpose" data-args='${_dataArgs('discover')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-muted)">发现</button>
             </div>
           </div>
           <div id="modalModeRow">
-            <div data-css="font-size:10px;color:var(--muted);margin-bottom:3px">格式 <span data-css="font-weight:400;font-size:9px">标品稳定，虚拟化预留</span></div>
-            <div data-css="display:flex;background:var(--gray-border);border-radius:8px;padding:3px">
-              <button id="modalBtnStandard" data-on-click="setMode" data-args='${_dataArgs('standard')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)">标品</button>
+            <div class="muted-10 mb3">格式 <span data-css="font-weight:400;font-size:9px">标品稳定，虚拟化预留</span></div>
+            <div class="seg">
+              <button class="seg-btn-active" id="modalBtnStandard" data-on-click="setMode" data-args='${_dataArgs('standard')}'>标品</button>
               <button id="modalBtnVm" data-on-click="setMode" data-args='${_dataArgs('vm')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-disabled);text-decoration:line-through" title="虚拟化暂未支持，预留">虚拟化</button>
             </div>
           </div>
@@ -270,7 +270,7 @@ async function showHbHistory(sid){
     return `<tr><td class="fs11">${fmtTZ(h.created_at,true)||h.created_at||''}</td><td><span class="badge badge-${stColor}">${label}</span></td><td>${h.latency_ms||0}ms</td><td class="fs11">${h.error_msg||h.error_message||'—'}</td></tr>`;
   }).join('');
   document.getElementById('hbModal').innerHTML=`
-    <div data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" data-on-click="_clearHtmlById" data-self data-args='${_dataArgs('hbModal')}'>
+    <div class="overlay-998" data-on-click="_clearHtmlById" data-self data-args='${_dataArgs('hbModal')}'>
       <div class="card" data-css="width:600px;max-height:80vh;overflow-y:auto" >
         <div class="card-hd">💓 心跳历史 — Session #${sid} <button class="btn btn-xs btn-outline ml-auto" data-on-click="_clearHtmlById" data-args='${_dataArgs('hbModal')}'>关闭</button></div>
         <div class="card-bd pt0"><table><tr><th>时间</th><th>状态</th><th>延迟</th><th>说明</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无心跳记录</td></tr>'}</table></div>
@@ -328,11 +328,11 @@ function chTypeCh(){
       <div class="form-group"><label>密码</label><input id="sw" type="password" placeholder="留空则不修改"></div>
     </div>
     <p class="cfg-hint" data-css="margin-top:-6px;color:#c27800">⚠️ 用户名必须填写完整邮箱地址(含 @domain 后缀),SMTP 服务器会用它作为登录账号和发件人。</p>
-    <p id="emailTmplHint" class="cfg-hint" data-css="margin-top:-6px;color:var(--gray-muted)"></p>
+    <p id="emailTmplHint" class="cfg-hint mt-neg6 text-gray-muted"></p>
     <div class="cfg-row">
       <div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div>
     </div>
-    <p class="cfg-hint" data-css="margin-top:-6px;color:var(--gray-muted)">收件人由订阅规则的"客户邮箱"决定,不在此处配置。手动推送时可指定收件人。</p>
+    <p class="cfg-hint mt-neg6 text-gray-muted">收件人由订阅规则的"客户邮箱"决定,不在此处配置。手动推送时可指定收件人。</p>
     <div class="cfg-row">
       <div class="form-group"><label>每小时上限 <span class="muted-10">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div>
       <div class="form-group"><label>每天上限 <span class="muted-10">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div>
@@ -340,7 +340,7 @@ function chTypeCh(){
   ` : t==='dingtalk' ? `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
     <div class="form-group"><label>Secret (加签密钥 - 可选)</label><input id="cs" placeholder="留空则不修改;后台启用加签时必填"></div>
-    <p class="cfg-hint" data-css="margin-top:8px;color:#c27800;font-weight:600">🔐 钉钉机器人后台的安全设置 <strong>3 选 1,推荐选「加签」</strong></p>
+    <p class="cfg-hint warn-strong">🔐 钉钉机器人后台的安全设置 <strong>3 选 1,推荐选「加签」</strong></p>
     <p class="cfg-hint cfg-note">
       钉钉的 Secret 是<strong>可选字段</strong>:
       <br>· 后台 <strong>未勾选「加签」</strong> → Secret 留空也可以推送(走裸 webhook)
@@ -360,7 +360,7 @@ function chTypeCh(){
   ` : t==='feishu' ? `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"></div>
     <div class="form-group"><label>Secret (签名校验密钥 - 可选)</label><input id="cs" placeholder="留空则不修改;后台启用签名校验时必填"></div>
-    <p class="cfg-hint" data-css="margin-top:8px;color:#c27800;font-weight:600">🔐 飞书机器人后台的安全设置 <strong>3 选 1,推荐选「签名校验」</strong></p>
+    <p class="cfg-hint warn-strong">🔐 飞书机器人后台的安全设置 <strong>3 选 1,推荐选「签名校验」</strong></p>
     <p class="cfg-hint cfg-note">
       飞书的 Secret 是<strong>可选字段</strong>:
       <br>· 后台 <strong>未勾选「签名校验」</strong> → Secret 留空也可以推送(走裸 webhook)
@@ -574,8 +574,8 @@ async function showTestLog(id, name){
   m.innerHTML=`<div class="confirm-box confirm-box-lg">
     <div class="confirm-icon">📋</div>
     <div class="confirm-title">测试日志 - ${escHtml(name)}</div>
-    <div data-css="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(logPath)} | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
-    <pre data-css="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
+    <div class="muted-11 mb10">文件: ${escHtml(logPath)} | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
+    <pre class="log-viewer">${escHtml(content)}</pre>
     <div class="confirm-btns mt14">
       <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs('testLogModal')}'>关闭</button>
     </div>
@@ -890,7 +890,7 @@ async function openChainSelectorModal(existingChains) {
 
   // 右侧：已选路径列表
   const selectedHtml = chains.length === 0
-    ? '<div id="chainSelList"><div data-css="color:var(--muted);font-size:12px;text-align:center;padding:20px">未选择路径</div></div>'
+    ? '<div id="chainSelList"><div class="muted-12 ta-center p20">未选择路径</div></div>'
     : `<div id="chainSelList">${renderChainSelList(chains)}</div>`;
 
   modal.innerHTML = `
@@ -1040,7 +1040,7 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     const selClass = isSelected ? ' data-css="background:var(--primary-light);border-radius:4px"' : '';
     const childDivId = hasChildren ? ('cst_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
     const arrow = hasChildren
-      ? `<span data-on-click="csTreeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}' data-css="cursor:pointer;color:var(--gray-disabled);font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
+      ? `<span class="tree-toggle" data-on-click="csTreeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}'>&#9658;</span>`
       : `<span class="tree-indent"></span>`;
 
     const isLeafNode = !hasChildren;
@@ -1120,7 +1120,7 @@ function confirmChainSelection() {
 // 渲染已选路径列表（在链选择器右侧面板）
 function renderChainSelList(chains) {
   if (!chains || chains.length === 0) {
-    return '<div data-css="color:var(--muted);font-size:12px;text-align:center;padding:20px">未选择路径</div>';
+    return '<div class="muted-12 ta-center p20">未选择路径</div>';
   }
   return chains.map((c, i) => {
     const pathStr = c.chain.join(' › ');
@@ -1238,13 +1238,13 @@ function renderChanTags(){
       // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
       // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
       return `<div data-css="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
-        <span data-css="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span data-css="opacity:0.5;font-family:monospace">#${c.id}</span></span>
+        <span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span>
         <input data-cid="${c.id}" data-field="customer_emails" placeholder="${escHtml(emailPlaceholder())}" value="${emailDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'customer_emails', '$value')}' data-css="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
         <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'attachment_max_mb', '$value')}' data-css="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
-        <button data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道" data-css="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
+        <button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button>
       </div>`;
     }
-    return `<div data-css="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span data-css="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span data-css="opacity:0.5;font-family:monospace">#${c.id}</span></span><span data-css="font-size:11px;opacity:0.75">模板</span><select class="sel-sm dd" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}' data-css="border-color:${bd};color:${fg};min-width:140px">${opts}</select><button data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道" data-css="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
+    return `<div data-css="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span><span data-css="font-size:11px;opacity:0.75">模板</span><select class="sel-sm dd" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}' data-css="border-color:${bd};color:${fg};min-width:140px">${opts}</select><button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button></div>`;
   };
 
   robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span class="muted-12">未添加机器人渠道</span>';
@@ -1397,11 +1397,11 @@ async function openRModal(id){
     <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" data-on-change="onCustChange" required><option value="">请选择客户</option>${custOpts}</select></div>
     <div id="custInfoRow" class="form-group" data-css="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
     <div id="custAttachRow" class="form-group" data-css="margin-top:2px;font-size:12px;color:var(--muted);display:none">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
-    <div class="form-group"><label>有效期至</label><input id="rvu" type="date" data-on-click="_showPicker" data-css="min-width:140px" placeholder="不限制"></div>
+    <div class="form-group"><label>有效期至</label><input class="min-w140" id="rvu" type="date" data-on-click="_showPicker" placeholder="不限制"></div>
     </div>
 
     <div class="form-section"><div class="form-section-title">订阅条件</div>
-    <label data-css="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" data-on-change="toggleAllMode" data-css="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
+    <label data-css="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input class="m0" type="checkbox" id="rall" data-on-change="toggleAllMode"> 📡 订阅全部产品与类型，不设筛选条件</label>
     <div id="rcondsWrap"><div id="rconds" data-css="min-height:32px"><div id="rcondsEmpty" data-css="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openChainSelectorModal">+ 添加路径</button></div>
     </div>
 
@@ -1411,8 +1411,8 @@ async function openRModal(id){
     <div id="delayWrap"><div class="form-group"><label>延迟(d) <span title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）" data-css="cursor:help;color:var(--info)">ℹ️</span></label><input class="w80" id="rdl" type="number" value="0" min="0"></div></div>
     <div id="winSection" class="hidden" data-css="margin-top:6px"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" data-on-change="onWinToggle"> ⏰ 启用推送时间窗口</label></div>
     <div id="winCfg" class="hidden" data-css="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
-      <div class="mb8" id="winDaysRow"><label data-css="margin-right:8px">周几：</label><label class="mr10"><input type="checkbox" class="win-day" value="1">周一</label><label class="mr10"><input type="checkbox" class="win-day" value="2">周二</label><label class="mr10"><input type="checkbox" class="win-day" value="3">周三</label><label class="mr10"><input type="checkbox" class="win-day" value="4">周四</label><label class="mr10"><input type="checkbox" class="win-day" value="5">周五</label><label class="mr10"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
-      <div><label data-css="margin-right:8px">时间段：</label><input class="w100" id="winStart" type="time" value="00:00"> ～ <input class="w100" id="winEnd" type="time" value="23:59"></div>
+      <div class="mb8" id="winDaysRow"><label class="mr8">周几：</label><label class="mr10"><input type="checkbox" class="win-day" value="1">周一</label><label class="mr10"><input type="checkbox" class="win-day" value="2">周二</label><label class="mr10"><input type="checkbox" class="win-day" value="3">周三</label><label class="mr10"><input type="checkbox" class="win-day" value="4">周四</label><label class="mr10"><input type="checkbox" class="win-day" value="5">周五</label><label class="mr10"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
+      <div><label class="mr8">时间段：</label><input class="w100" id="winStart" type="time" value="00:00"> ～ <input class="w100" id="winEnd" type="time" value="23:59"></div>
     </div>
     </div>
 
@@ -1429,16 +1429,16 @@ async function openRModal(id){
       </div>
     </div>
     <div class="mb8">
-      <div data-css="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">🤖 机器人渠道 <span class="muted-11-400" id="robotCount"></span><button class="btn btn-sm btn-primary ml-auto" data-on-click="openChanSelModal" data-args='${_dataArgs('non_email')}'>📥 添加机器人渠道</button></div>
-      <div id="rchansRobotTags" data-css="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
+      <div class="sec-title">🤖 机器人渠道 <span class="muted-11-400" id="robotCount"></span><button class="btn btn-sm btn-primary ml-auto" data-on-click="openChanSelModal" data-args='${_dataArgs('non_email')}'>📥 添加机器人渠道</button></div>
+      <div class="col gap6 min-h28 mb8" id="rchansRobotTags"></div>
     </div>
     <div class="mb8">
-      <div data-css="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">📧 邮箱渠道 <span class="muted-11-400" id="emailCount"></span><button class="btn btn-sm btn-primary ml-auto" data-on-click="openChanSelModal" data-args='${_dataArgs('email')}'>📥 添加邮箱渠道</button></div>
-      <div id="rchansEmailTags" data-css="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
+      <div class="sec-title">📧 邮箱渠道 <span class="muted-11-400" id="emailCount"></span><button class="btn btn-sm btn-primary ml-auto" data-on-click="openChanSelModal" data-args='${_dataArgs('email')}'>📥 添加邮箱渠道</button></div>
+      <div class="col gap6 min-h28 mb8" id="rchansEmailTags"></div>
     </div>
     </div>
 
-    <div class="form-section"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" data-css="margin:0"> 📢 包回退通知</label></div>
+    <div class="form-section"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input class="m0" type="checkbox" id="rnr"> 📢 包回退通知</label></div>
     <div data-css="display:flex;gap:8px;margin-top:14px;padding:12px 16px;border-top:1px solid var(--border);background:var(--card);border-radius:0 0 10px 10px;margin-left:-16px;margin-right:-16px;margin-bottom:-16px"><button class="btn btn-soft-primary flex-1" data-on-click="saveRule">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   // 推送模式 tooltip

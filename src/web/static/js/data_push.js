@@ -45,9 +45,9 @@ async function showPushModal(sid, product, version, pkgType, chain){
             </div>
             <div class="form-group">
               <label>收件人来源</label>
-              <div data-css="display:flex;gap:6px">
-                <label data-css="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="customer" checked data-on-change="switchRecipientMode" data-args='${_dataArgs('customer')}'> 👤 从客户选择</label>
-                <label data-css="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="manual" data-on-change="switchRecipientMode" data-args='${_dataArgs('manual')}'> ✏️ 自定义填写</label>
+              <div class="flex gap6">
+                <label class="pick-card"><input type="radio" name="prec" value="customer" checked data-on-change="switchRecipientMode" data-args='${_dataArgs('customer')}'> 👤 从客户选择</label>
+                <label class="pick-card"><input type="radio" name="prec" value="manual" data-on-change="switchRecipientMode" data-args='${_dataArgs('manual')}'> ✏️ 自定义填写</label>
               </div>
             </div>
             <div id="pushCustomerList" class="push-target"></div>
@@ -149,13 +149,13 @@ async function loadPushCustomerList(){
     const r=await api('/customers');
     const list=(r.data||[]).filter(x=>(x.email||'').trim());
     if(!list.length){
-      el.innerHTML='<div class="empty" data-css="padding:8px;color:var(--muted)">暂无有邮箱的客户,请先在客户管理中设置邮箱</div>';
+      el.innerHTML='<div class="empty p8 text-muted">暂无有邮箱的客户,请先在客户管理中设置邮箱</div>';
       return;
     }
     el.innerHTML=list.map(c=>`<label class="item" data-custid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px">
-      <input type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" data-on-change="onCustomerCheck" data-args='${_dataArgs('$el')}' data-css="flex-shrink:0">
+      <input class="shrink0" type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" data-on-change="onCustomerCheck" data-args='${_dataArgs('$el')}'>
       <span class="flex1">
-        <span data-css="font-weight:500">${escHtml(c.name)}</span>
+        <span class="fw500">${escHtml(c.name)}</span>
         <span class="muted-11-ml6">${escHtml(c.email)}</span>
         ${c.company?`<span class="muted-11-ml6">· ${escHtml(c.company)}</span>`:''}
       </span>
@@ -172,7 +172,7 @@ async function loadPushBotChannels(){
     list=(r.data||[]).filter(x=>x.is_active);
   }catch(e){}
   if(!list.length){
-    el.innerHTML='<div class="empty" data-css="padding:8px;color:var(--muted)">暂无可用渠道</div>';
+    el.innerHTML='<div class="empty p8 text-muted">暂无可用渠道</div>';
     return;
   }
   const typeLabel={wecom:'企微',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
@@ -182,9 +182,9 @@ async function loadPushBotChannels(){
       ? `${escHtml((c.config?.smtp_user)||'')} → 自己`
       : typeLabel[c.type]||c.type;
     return `<label class="item" data-botchid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 12px">
-      <input type="radio" name="botch" value="${c.id}" data-on-change="onBotChannelCheck" data-args='${_dataArgs('$el')}' data-css="flex-shrink:0">
+      <input class="shrink0" type="radio" name="botch" value="${c.id}" data-on-change="onBotChannelCheck" data-args='${_dataArgs('$el')}'>
       <span class="flex1">
-        <span data-css="font-weight:500">${escHtml(c.name)}</span>
+        <span class="fw500">${escHtml(c.name)}</span>
         <span class="muted-11-ml6">${sub}</span>
       </span>
     </label>`;
@@ -289,8 +289,8 @@ function showPushResult(data, success){
     </div>`;
   }).join('');
   const head = success
-    ? `<div data-css="font-weight:700;color:#ffffff;margin-bottom:4px">推送完成</div>`
-    : `<div data-css="font-weight:700;color:#ffffff;margin-bottom:4px">推送失败</div>`;
+    ? `<div class="fw700 text-white mb4">推送完成</div>`
+    : `<div class="fw700 text-white mb4">推送失败</div>`;
   showRichToast(head + lines, success ? 'success' : 'error', 8000);
 }
 
@@ -313,8 +313,8 @@ async function showLogFile(path, name){
   m.innerHTML=`<div class="confirm-box confirm-box-lg">
     <div class="confirm-icon">📋</div>
     <div class="confirm-title">日志 - ${escHtml(name)}</div>
-    <div data-css="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(path)}</div>
-    <pre data-css="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
+    <div class="muted-11 mb10">文件: ${escHtml(path)}</div>
+    <pre class="log-viewer">${escHtml(content)}</pre>
     <div class="confirm-btns mt14">
       <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs('testLogModal')}'>关闭</button>
     </div>

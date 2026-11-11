@@ -225,9 +225,9 @@ async function toolDiffOpenPicker(expectedKind){
     const bodyId = cardId + '_body';
     let treeHtml;
     if (allPaths.length === 0) {
-      treeHtml = `<div data-css="color:var(--muted);font-size:12px;padding:8px 12px">该产品尚未完成包路径发现,请先到「产品」页执行「发现」</div>`;
+      treeHtml = `<div class="muted-12 p8x12">该产品尚未完成包路径发现,请先到「产品」页执行「发现」</div>`;
     } else if (ruleLibPaths.length === 0) {
-      treeHtml = `<div data-css="color:var(--muted);font-size:12px;padding:8px 12px">该产品下没有规则库路径 (共 ${allPaths.length} 条 path, 无匹配)</div>`;
+      treeHtml = `<div class="muted-12 p8x12">该产品下没有规则库路径 (共 ${allPaths.length} 条 path, 无匹配)</div>`;
     } else {
       // 复用采集数据左侧目录的 buildDataTreeHtml 渲染树形结构
       // sid 用独立 namespace 避免跟正常采集数据页冲突; snapshotsMap 传空 (DIFF 不需要快照)
@@ -528,7 +528,7 @@ function rdCopyChains(text){
 function rdRenderPkgTable(){
   const tbody = document.querySelector('#rdPkgTable tbody');
   if (!_rd.packages.length) {
-    tbody.innerHTML = '<tr><td colspan="6" data-css="text-align:center;padding:30px;color:var(--muted)">无数据</td></tr>';
+    tbody.innerHTML = '<tr><td class="ta-center p30 text-muted" colspan="6">无数据</td></tr>';
     return;
   }
   // 升序展示(老的在上, 新的在下)
@@ -641,10 +641,10 @@ function rdRenderResult(){
         </div>`
       : ''}
     ${!stats.from_has_rule_blocks
-      ? `<div class="info-bar" data-css="background:var(--warn-light);border-color:var(--warn-light);color:#92400e;margin-bottom:14px">⚠️ FROM 版本 (${fromV}) 描述中未找到「新增规则/更新规则」清单, 可能是较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
+      ? `<div class="info-bar warn-box">⚠️ FROM 版本 (${fromV}) 描述中未找到「新增规则/更新规则」清单, 可能是较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
       : ''}
     ${!stats.to_has_rule_blocks
-      ? `<div class="info-bar" data-css="background:var(--warn-light);border-color:var(--warn-light);color:#92400e;margin-bottom:14px">⚠️ TO 版本 (${toV}) 描述中未找到「新增规则/更新规则」清单, 较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
+      ? `<div class="info-bar warn-box">⚠️ TO 版本 (${toV}) 描述中未找到「新增规则/更新规则」清单, 较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
       : ''}
   `;
   rdRenderGroups();
@@ -775,7 +775,7 @@ function rdRenderGroups(){
     renderGroup('新增规则', '🟢', 'var(--success)', (r.pure_new || []).length, newItems, 'new') +
     renderGroup('修改规则', '🔵', 'var(--primary)', (r.pure_updated || []).length, updItems, 'updated') +
     renderGroup('删除规则', '🔴', 'var(--danger)', (r.pure_deleted || []).length, delItems, 'deleted') ||
-    '<div data-css="text-align:center;padding:30px;color:var(--muted)">无规则数据</div>';
+    '<div class="ta-center p30 text-muted">无规则数据</div>';
 }
 
 function rdApplyFilter(ver){

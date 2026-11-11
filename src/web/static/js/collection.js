@@ -52,7 +52,7 @@ function _renderSingleBanner(state){
       <div class="fs15" data-banner-role="phase-icon">${phaseIcon}</div>
       <div class="flex-1">
         <div class="fw600" data-banner-role="title">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
-        <div data-banner-role="sub-title" data-css="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
+        <div class="opacity-90 fs12" data-banner-role="sub-title">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
       </div>
       <div class="banner-chip pointer" id="single-banner-log-btn">📋 日志</div>
       <div class="banner-close" id="single-banner-close" title="关闭">×</div>
@@ -106,7 +106,7 @@ function _renderSingleLog(state){
   const logLines = state.log_lines || [];
   const tailLines = state._tail_lines || [];
   const lines = logLines.length > 0 ? logLines : tailLines;
-  log.innerHTML = lines.map(l=>`<div data-css="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+  log.innerHTML = lines.map(l=>`<div class="mb2 break-all">${escHtml(l)}</div>`).join('');
   log.scrollTop = log.scrollHeight;
 }
 
@@ -158,7 +158,7 @@ function _updateSingleBannerInPlace(state){
     const wasScrollBottom = (logEl.scrollTop + logEl.clientHeight) >= logEl.scrollHeight - 5;
     // Prefer scheduler summary (log_lines); fall back to app.log tail
     const lines = logLines.length > 0 ? logLines : tailLines;
-    logEl.innerHTML = lines.map(l=>`<div data-css="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+    logEl.innerHTML = lines.map(l=>`<div class="mb2 break-all">${escHtml(l)}</div>`).join('');
     if(wasScrollBottom) logEl.scrollTop = logEl.scrollHeight;
   }
 }
@@ -366,12 +366,12 @@ function pollProgress(){
   // Guard: if no collection is running on backend, clear timer and skip request
   if(!_collectRunning){if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}return;}
   api('/system/collect/progress').then(pr=>{
-    if(!pr.data){if(body)body.innerHTML='<p data-css="text-align:center;color:var(--muted)">无法获取进度</p>';return;}
+    if(!pr.data){if(body)body.innerHTML='<p class="ta-center text-muted">无法获取进度</p>';return;}
     const p=pr.data.progress||{};
     // 2026-08-21: 同时调 _showCollectBanner,让底部悬浮卡片在仪表盘也可见
     if(p.phase){_showCollectBanner(p);}
     if(!p.active&&!p.phase){
-      body.innerHTML='<p data-css="text-align:center;color:var(--muted)">当前无采集任务</p><button class="btn btn-sm btn-outline" data-css="width:100%;margin-top:12px" data-on-click="closeCollectModal">关闭</button>';
+      body.innerHTML='<p class="ta-center text-muted">当前无采集任务</p><button class="btn btn-sm btn-outline w-full mt12" data-on-click="closeCollectModal">关闭</button>';
       _collectRunning=false;
       _hideCollectBanner();
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
@@ -381,7 +381,7 @@ function pollProgress(){
     let html='';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      html+=`<div data-css="margin-bottom:12px"><div data-css="background:var(--gray-border);border-radius:6px;height:8px;overflow:hidden"><div data-css="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div data-css="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
+      html+=`<div class="mb12"><div data-css="background:var(--gray-border);border-radius:6px;height:8px;overflow:hidden"><div data-css="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div data-css="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
       html+=`<div data-css="font-size:13px;text-align:center;margin-bottom:4px"><strong>📦 ${p.current_product||'...'}</strong></div>`;
       if(p.current_version)html+=`<div data-css="font-size:11px;color:var(--muted);text-align:center">${p.current_version}</div>`;
       html+=`<div data-css="font-size:10px;color:var(--muted);text-align:center;margin-top:4px">已采集 ${p.items_collected||0} 项</div>`;
@@ -395,10 +395,10 @@ function pollProgress(){
       const ok=p.errors&&p.errors.length>0?'warn':'ok';
       html+=`<div class="empty-icon">${ok==='ok'?'✅':'⚠️'}</div>`;
       html+=`<p data-css="text-align:center;font-size:14px;font-weight:600">采集完成</p>`;
-      html+=`<div class="grid2" data-css="margin-top:10px"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
+      html+=`<div class="grid2 mt10"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
       html+=`<p data-css="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;
       if(p.errors&&p.errors.length)html+=`<div data-css="margin-top:8px;font-size:11px;color:var(--danger)">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
-      html+=`<button class="btn btn-sm btn-primary" data-css="width:100%;margin-top:12px" data-on-click="_closeCollectAndDashboard">刷新仪表盘</button>`;
+      html+=`<button class="btn btn-sm btn-primary w-full mt12" data-on-click="_closeCollectAndDashboard">刷新仪表盘</button>`;
       _collectRunning=false;
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
     }
@@ -514,7 +514,7 @@ async function logs(){
         <div class="form-group" data-css="margin-bottom:0;min-width:180px"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
         <div class="form-group" data-css="margin-bottom:0;min-width:120px"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
         <div class="form-group" data-css="margin-bottom:0;min-width:80px"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
-        <div class="form-group" data-css="margin-bottom:0"><label>&nbsp;</label><div data-css="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-on-click="loadLogs">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button></div></div>
+        <div class="form-group" data-css="margin-bottom:0"><label>&nbsp;</label><div class="flex gap6"><button class="btn btn-sm btn-primary" data-on-click="loadLogs">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button></div></div>
       </div>
       <div id="logContent" data-css="background:#0d1117;color:#c9d1d9;border-radius:8px;padding:14px;font:12px/1.6 'SF Mono','Fira Code','Consolas',monospace;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">
         点击「查询」加载日志...

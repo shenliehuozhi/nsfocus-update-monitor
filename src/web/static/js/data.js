@@ -123,7 +123,7 @@ function _renderProdDistTable(data){
   const container = document.getElementById('prodDistTable');
   if(!container) return;
   if(!data || data.length===0){
-    container.innerHTML='<div data-css="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无数据</div>'; return;
+    container.innerHTML='<div class="p16 ta-center disabled-12">暂无数据</div>'; return;
   }
   const total = data.reduce((s,e)=>s+e.count,0);
   const cmap = _buildProdColorMap(data.map(d=>d.name));
@@ -138,18 +138,18 @@ function _renderProdDistTable(data){
       const color = cmap[item.name] || 'var(--gray-disabled)';
       return `<tr class="data-stats-row">
         <td class="data-stats-td">
-          <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
+          <div class="flex items-center gap6 min-w0">
             <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
             <span data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
           </div>
         </td>
         <td data-css="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
         <td class="data-stats-td">
-          <div data-css="display:flex;align-items:center;gap:6px">
-            <div data-css="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
+          <div class="flex items-center gap6">
+            <div class="progress-track">
               <div data-css="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
             </div>
-            <span data-css="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${pct}%</span>
+            <span class="gray-muted-11 min-w36 ta-right">${pct}%</span>
           </div>
         </td>
       </tr>`;
@@ -190,7 +190,7 @@ function _renderCustPushTable(items, days){
   const container = document.getElementById('custPushTable');
   if(!container) return;
   if(!items || items.length===0){
-    container.innerHTML='<div data-css="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无客户</div>';
+    container.innerHTML='<div class="p16 ta-center disabled-12">暂无客户</div>';
     return;
   }
   // 2026-11-09 修复"客户显示不全": 0 推送客户不再隐藏, 全量渲染(后端已按 total DESC 排序, 0 推送自然沉底)
@@ -217,7 +217,7 @@ function _renderCustPushTable(items, days){
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr data-css="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s;${isZero?'opacity:.5':''}" class="pill-tip" data-tip="${escHtml(tipLines)}" data-on-click="_gotoHistoryDays" data-args='${_dataArgs(days, c.id)}'>
         <td class="data-stats-td box-border" data-col="0">
-          <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
+          <div class="flex items-center gap6 min-w0">
             <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${isZero?'var(--gray-disabled)':color}"></span>
             <span class="ellipsis" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
@@ -226,11 +226,11 @@ function _renderCustPushTable(items, days){
         <td class="data-stats-td box-border" data-col="2">
           ${isZero
             ? '<span class="disabled-11">无推送</span>'
-            : `<div data-css="display:flex;align-items:center;gap:6px">
-                <div data-css="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
+            : `<div class="flex items-center gap6">
+                <div class="progress-track">
                   <div data-css="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
                 </div>
-                <span data-css="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${failPct}%</span>
+                <span class="gray-muted-11 min-w36 ta-right">${failPct}%</span>
               </div>`}
         </td>
       </tr>`;
@@ -507,8 +507,8 @@ function _renderTimelineChart_Redraw(d, mx, e){
 
     let html = `<div data-css="font-size:11px;color:var(--gray-muted);margin-bottom:6px">${dateStr}</div>`;
     html += `<div data-css="display:flex;gap:14px">`;
-    html += `<div data-css="flex:1;min-width:140px">${buildCol(left)}</div>`;
-    if (right.length) html += `<div data-css="flex:1;min-width:140px">${buildCol(right)}</div>`;
+    html += `<div class="flex-1 min-w140">${buildCol(left)}</div>`;
+    if (right.length) html += `<div class="flex-1 min-w140">${buildCol(right)}</div>`;
     html += `</div>`;
 
     let tip = document.getElementById('chartTip');
@@ -1100,7 +1100,7 @@ function buildFlatVerTreeHtml(snapshots) {
     }
     const verLabel = escHtml(ver) + badge + freshBadge;
     html += `<div class="ver-bar mb4" data-on-click="verBarToggle" data-args='${_dataArgs('$el', blockId)}'>
-      <span class="tree-arrow" data-css="margin-right:4px">&#9658;</span>
+      <span class="tree-arrow mr4">&#9658;</span>
       <span data-css="font-weight:600;font-size:13px">${verLabel}</span>
       <span data-css="margin-left:auto;font-size:11px;color:var(--muted)">${snaps.length} 个包</span>
     </div>`;
@@ -1678,11 +1678,11 @@ function dataRenderRight(sch, p, info) {
     const st = Math.max(1, pg - Math.floor(win/2));
     const en = Math.min(tp2, st + win - 1);
     const s2 = Math.max(1, en - win + 1);
-    if (s2 > 1) { phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(1)}'>1</button>`; if (s2 > 2) phtml += `<span data-css="color:var(--muted);padding:0 2px">…</span>`; }
+    if (s2 > 1) { phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(1)}'>1</button>`; if (s2 > 2) phtml += `<span class="text-muted px2">…</span>`; }
     for (let i = s2; i <= en; i++) { phtml += `<button class="btn btn-xs${i===pg?' btn-primary':''}" data-on-click="dataFeedGoPage" data-args='${_dataArgs(i)}'>${i}</button>`; }
-    if (en < tp2) { if (en < tp2-1) phtml += `<span data-css="color:var(--muted);padding:0 2px">…</span>`; phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(tp2)}'>${tp2}</button>`; }
+    if (en < tp2) { if (en < tp2-1) phtml += `<span class="text-muted px2">…</span>`; phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(tp2)}'>${tp2}</button>`; }
     if (pg < tp2) phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(pg+1)}'>›</button>`;
-    document.getElementById('dataPager').innerHTML = phtml + `<span data-css="color:var(--muted);font-size:11px;margin-left:8px">${rows.length}条/共${tp2}页</span>`;
+    document.getElementById('dataPager').innerHTML = phtml + `<span class="muted-11 ml8">${rows.length}条/共${tp2}页</span>`;
   } else {
     document.getElementById('dataPager').innerHTML = '';
   }
@@ -1906,12 +1906,12 @@ if (!matchedPath && snap.source_url) {
       const isLast = (i === chain.length - 1);
       if (isLast) {
         const fullUrl = 'https://update.nsfocus.com' + leafUrl;
-        return `<a href="${escHtml(fullUrl)}" target="_blank" data-css="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
+        return `<a class="text-primary underline" href="${escHtml(fullUrl)}" target="_blank">${escHtml(name)}</a>`;
       }
       const nodeUrl = findNodeUrl(i + 1);
       const fullNodeUrl = nodeUrl ? ('https://update.nsfocus.com' + nodeUrl) : '';
       if (fullNodeUrl && nodeUrl !== entryUrl) {
-        return `<a href="${escHtml(fullNodeUrl)}" target="_blank" data-css="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
+        return `<a class="text-primary underline" href="${escHtml(fullNodeUrl)}" target="_blank">${escHtml(name)}</a>`;
       }
       return escHtml(name);
     }).join(' <span class="text-disabled">›</span> ');
@@ -1944,7 +1944,7 @@ if (!matchedPath && snap.source_url) {
     <span class="data-detail-k">MD5</span><span class="fs125" id="snap-md5-${snapId}">—</span>
     <span class="data-detail-k">页面哈希</span><span data-css="font-size:12.5px;word-break:normal;overflow-x:auto" id="snap-ph-${snapId}">—</span>
     <span class="data-detail-k">需重启</span><span class="fs125" id="snap-rr-${snapId}">—</span>
-    <span class="data-detail-k" data-css="grid-column:1/3;align-self:start">描述</span><span id="snap-desc-${snapId}" data-css="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">—</span>
+    <span class="data-detail-k" data-css="grid-column:1/3;align-self:start">描述</span><span class="diff-box" id="snap-desc-${snapId}">—</span>
 </div>
 </div>`;
   const t5 = performance.now();
@@ -1960,7 +1960,7 @@ if (!matchedPath && snap.source_url) {
     const descEl = document.getElementById(`snap-desc-${snapId}`);
     if (descEl) {
       if (d.description_raw) {
-        descEl.outerHTML = `<div data-css="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">${escHtml(d.description_raw)}</div>`;
+        descEl.outerHTML = `<div class="diff-box">${escHtml(d.description_raw)}</div>`;
       } else {
         descEl.style.display = 'none';
       }
@@ -2188,7 +2188,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     const verFlags = [];
     if (hasCritical) verFlags.push('<span class="badge badge-err badge-xs">🔴critical</span>');
     if (hasRb) verFlags.push('<span class="danger-11">含撤回</span>');
-    if (hasNew) verFlags.push('<span data-css="color:var(--primary);font-size:11px">有未推送</span>');
+    if (hasNew) verFlags.push('<span class="text-primary fs11">有未推送</span>');
 
     // 用 _dataSelectedChain[-1] 作 pkgType group key(用户点的 chain 的最深层),不读 snap.package_type
     const byType = {};
@@ -2210,7 +2210,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
         <span class="data-prod-arrow">${isHighlight ? '&#9660;' : '&#9658;'}</span>
         <span class="data-ver-label">${ver}</span>
         <div data-css="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
-        <span data-css="color:var(--muted);font-size:11px;margin-left:8px">采集 ${latestCollected}</span>
+        <span class="muted-11 ml8">采集 ${latestCollected}</span>
       </div>
       <div class="${verBodyClass}" id="dvb_${escHtml(verKey)}">`;
 
@@ -2227,13 +2227,13 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
 
       drillHtml += `<div class="data-type-row ${isRb ? 'data-type-rollback' : ''}">
         <div class="data-type-main" data-on-click="dataToggleSnapDetail" data-args='${_dataArgs('$el')}'>
-          ${isNewPkg ? '<span class="data-pill-new-dot" data-css="margin-right:4px"></span>' : ''}
+          ${isNewPkg ? '<span class="data-pill-new-dot mr4"></span>' : ''}
           ${isLatestPkg ? '<span class="badge badge-blue" data-css="font-size:10px;margin-right:4px">最新</span>' : ''}
           <span class="data-type-label">${typeLabel}</span>
           <span class="mono" data-css="color:var(--primary);font-size:12px">${escHtml((latest.file_name || '').substring(0, 35))}</span>
           <span class="muted-11">${fmtTZ(latest.published_at)}</span>
           <span class="badge ${urg} badge-xs">${latest.urgency || ''}</span>
-          ${latest.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
+          ${latest.last_delivered_at ? '<span class="text-success fs11" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span class="muted-11" title="未推送">○</span>' : '')}
           <button class="btn btn-xs btn-soft-success ml-auto" data-on-click="showPushModal" data-stop data-args='${_dataArgs(latest.id, src.name, pushVer, pushPkg)}'>推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" data-on-click="dataToggleHistory" data-stop data-args='${_dataArgs('$el', histKey)}'>+${historyCount} 条历史 ▼</span>` : ''}
@@ -2247,7 +2247,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span data-css="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
               <span class="mono" data-css="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((s.file_name || '').substring(0, 30))}</span>
               <span class="badge ${urg2} badge-xs">${escHtml(s.urgency || '')}</span>
-              ${s.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)">✅</span>' : '<span class="muted-11">○</span>'}
+              ${s.last_delivered_at ? '<span class="text-success fs11">✅</span>' : '<span class="muted-11">○</span>'}
               <button class="btn btn-xs btn-soft-success" data-css="margin-left:4px" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;

@@ -26,7 +26,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr data-css="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td class="max-w380" title="${escHtml(h.file_name||'')}"><span data-css="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr class="bg-subtle"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td class="max-w380" title="${escHtml(h.file_name||'')}"><span data-css="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
@@ -55,7 +55,7 @@ async function history(){
         // package_type: 同 chain-scoped 派生,d.derived_package_type 来自 delivery_log 的 chain_json 末项
         // 老链路 chain_json='[]' 时 fallback 到 h.package_type
         const pkgType = d.derived_package_type || h.package_type;
-        html += `<tr data-css="background:var(--gray-bg)">
+        html += `<tr class="bg-subtle">
             <td>${fmtTZ(d.sent_at||h.pushed_at||h.first_seen_at||'',true)}</td>
             <td>${escHtml(_custName||d.customer_name||'—')}</td>
             <td>${escHtml(h.product_name||'')}</td>
@@ -504,7 +504,7 @@ function _showDiscBanner(state){
   banner.innerHTML=`
     <div class="flex-1">
       <div class="fw600-mb4">🔍 自动发现任务进行中</div>
-      <div id="disc-banner-phase" data-css="opacity:0.9;font-size:12px">${formatDiscPhase(state)}</div>
+      <div class="opacity-90 fs12" id="disc-banner-phase">${formatDiscPhase(state)}</div>
       <div data-css="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
         <div id="disc-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
@@ -637,7 +637,7 @@ async function products(){
         <span id="prod-sel-count" data-css="font-size:12px;color:var(--gray-disabled);margin-left:8px"></span>
         <button class="btn btn-sm" id="btn-batch-enable" data-on-click="batchEnable" disabled data-css="background:var(--success-text);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量启用</button>
         <button class="btn btn-sm" id="btn-batch-disable" data-on-click="batchDisable" disabled data-css="background:var(--danger);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量禁用</button>
-        <div data-css="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <div class="ml-auto flex items-center gap8">
           <input id="prod-search" placeholder="搜索产品…" data-on-input="filterProducts" data-css="padding:4px 10px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;width:140px">
           <select id="prod-filter" class="sel-sm dd" data-on-change="filterProducts">
             <option value="all">全部</option>
@@ -698,7 +698,7 @@ function _reopenDiscModal(){
         <div data-css="position:absolute;top:12px;right:16px;cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>×</div>
         <div data-css="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${formatDiscPhase(s.data)}</div>
         <div data-css="font-size:13px;color:var(--gray-muted);margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
-        <div data-css="margin-top:10px"><button class="btn" data-on-click="_showById" data-args='${_dataArgs(logId)}' data-css="background:none;border:1px solid var(--gray-border);border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button></div>
+        <div class="mt10"><button class="btn btn-purple-outline" data-on-click="_showById" data-args='${_dataArgs(logId)}'>📋 查看日志</button></div>
         ${s.data.phase==='done'?`<div data-css="margin-top:12px"><button class="btn btn-primary" data-on-click="_viewDiscResult" data-args='${_dataArgs(!!s.data.is_stale)}'>查看结果</button></div>`:''}
       </div>`);
       if(s.data.phase==='done'&&s.data.result){
@@ -718,7 +718,7 @@ function _showModal(id){
     ? `background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`
     : `background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`;
   document.getElementById('app').insertAdjacentHTML('beforeend',
-    `<div id="${id}-overlay" data-on-click="closeModal" data-self data-args='${_dataArgs(id)}' data-css="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">`+
+    `<div class="overlay-1000" id="${id}-overlay" data-on-click="closeModal" data-self data-args='${_dataArgs(id)}'>`+
     `<div id="${id}-box" data-css="${boxStyle}"></div>`+
     `</div>`);
 }

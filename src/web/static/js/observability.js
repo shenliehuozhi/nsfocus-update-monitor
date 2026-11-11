@@ -7,7 +7,7 @@ async function observability(){
       <div class="card-hd" data-css="align-items:center">
         <span>📈 可观测性</span>
         <span id="obsMeta" data-css="font-weight:400;color:var(--muted);font-size:11.5px"></span>
-        <span data-css="margin-left:auto;display:flex;gap:8px;align-items:center">
+        <span class="ml-auto flex items-center gap8">
           <select id="obsWindow" class="dd sel-sm" data-on-change="obsSetWindow" data-args='${_dataArgs('$value')}'>
             <option value="6">最近 6 小时</option>
             <option value="24">最近 24 小时</option>
@@ -126,7 +126,7 @@ function _obsDeliveryCard(del){
   const undated = del.undated_failed || 0;
   return `<div class="card">
     <div class="card-hd">📤 投递成功率
-      <span class="obs-muted" data-css="margin-left:auto;font-weight:400;font-size:11.5px">${escHtml(_obsWindowLabel())}</span>
+      <span class="obs-muted ml-auto fs115 fw400">${escHtml(_obsWindowLabel())}</span>
     </div>
     <div class="card-bd pt0">
       <div class="obs-scroll"><table>
@@ -193,7 +193,7 @@ function _obsEventsCard(ev){
   </tr>`).join('');
   return `<div class="card">
     <div class="card-hd">🔔 事件与告警
-      <span class="obs-muted" data-css="margin-left:auto;font-weight:400;font-size:11.5px">窗口内 ${ev.window_total || 0} 条</span>
+      <span class="obs-muted ml-auto fs115 fw400">窗口内 ${ev.window_total || 0} 条</span>
     </div>
     <div class="card-bd pt0">
       <div class="obs-scroll"><table>

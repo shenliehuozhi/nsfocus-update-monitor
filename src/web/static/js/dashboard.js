@@ -137,7 +137,7 @@ async function dashboard(range){
     sesWarn +
     `<div class="grid3">
       <div class="stat tint-info">
-        <div class="num">${d.session_status?.collect_active||0}<span data-css="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span data-css="color:#5b21b6">${d.session_status?.discover_active||0}</span></div>
+        <div class="num">${d.session_status?.collect_active||0}<span class="muted-14 fw500 mx4">/</span><span data-css="color:#5b21b6">${d.session_status?.discover_active||0}</span></div>
         <div class="label">活跃 Session <span data-css="color:var(--muted);font-weight:400">(采集 / 发现)</span></div>
       </div>
       <div class="stat tint-neutral"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
@@ -155,14 +155,14 @@ async function dashboard(range){
         <div class="label">已运行时间</div>
       </div>
       <div class="stat ${d.product_total>0?(d.product_active===d.product_total?'tint-success':(d.product_active>0?'tint-warn':'tint-danger')):'tint-neutral'}">
-        <div class="num">${d.product_active||0}<span data-css="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span class="text-muted">${d.product_total||0}</span></div>
+        <div class="num">${d.product_active||0}<span class="muted-14 fw500 mx4">/</span><span class="text-muted">${d.product_total||0}</span></div>
         <div class="label">已启用产品 / 总数</div>
-        ${d.product_total>0 && d.product_active!==d.product_total?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px">未启用 <b data-css="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
+        ${d.product_total>0 && d.product_active!==d.product_total?`<div class="muted-11 mt6">未启用 <b data-css="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
       </div>
       <div class="stat ${pt.total>0?(pt.failed>0?'tint-warn':'tint-success'):'tint-neutral'}">
         <div class="num">${ptRate===null?'—':ptRate+'%'}</div>
         <div class="label">${pt.total>0?`今日推送 ${pt.total} 条`:'今日推送'}</div>
-        ${pt.failed>0?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px"><b class="text-danger">${pt.failed}</b> 失败</div>`:''}
+        ${pt.failed>0?`<div class="muted-11 mt6"><b class="text-danger">${pt.failed}</b> 失败</div>`:''}
       </div>
     </div>
     <div data-css="display:flex;flex-direction:column;gap:12px;margin-top:12px">
@@ -179,8 +179,8 @@ async function dashboard(range){
       <div data-css="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
         <span data-css="color:var(--primary);font-size:13px">🩺 运维健康</span>
         <span data-css="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
-          <button class="btn btn-soft-primary" data-on-click="triggerCollect" data-css="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
-          <button class="btn btn-soft-danger" data-on-click="_confirmRestartService" data-css="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
+          <button class="btn btn-soft-primary h30-pill" data-on-click="triggerCollect">⏎ 手动采集</button>
+          <button class="btn btn-soft-danger h30-pill" data-on-click="_confirmRestartService">🔄 重启服务</button>
         </span>
       </div>
       <div class="card-bd" data-css="flex:1;padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;overflow-y:auto">
@@ -191,7 +191,7 @@ async function dashboard(range){
               const statusIcon=(p.health_status==='ok'||p.health_status==='正常')?'💚':p.health_status&&p.health_status!=='未知'&&p.health_status!=='ok'?'❌':'⚪';
               const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
               return `<div data-css="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray-disabled)">
-                <span data-css="flex-shrink:0">${statusIcon}</span>
+                <span class="shrink0">${statusIcon}</span>
                 <span data-css="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name||'未知')}</span>
                 <span data-css="color:var(--gray-disabled);font-size:10px;flex-shrink:0">${last}</span>
               </div>`}).join('')}
@@ -209,9 +209,9 @@ async function dashboard(range){
           <div class="metric-label">快照</div>
           <span class="badge badge-blue">${h.active_snapshots} 个</span>
         </div>`:''}
-        ${h.异常日志&&h.异常日志.length>0?`<div data-css="min-width:140px">
+        ${h.异常日志&&h.异常日志.length>0?`<div class="min-w140">
           <div class="metric-label">异常 (2h内)</div>
-          <div data-css="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
+          <div class="list-compact">
             ${h.异常日志.slice(0,3).map(l=>`<div data-css="font-size:10px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
           </div>
         </div>`:''}
@@ -221,7 +221,7 @@ async function dashboard(range){
         </div>`:''}
         ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div data-css="min-width:130px">
           <div class="metric-label">限流</div>
-          <div data-css="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
+          <div class="list-compact">
             ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err badge-xs">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
@@ -234,14 +234,14 @@ async function dashboard(range){
         <span id="eventsCenterCounts" data-css="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
         <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" data-on-click="openEventsCenterModal" data-css="margin-left:6px;flex-shrink:0">查看更多 ↗</button>
       </div>
-      <div class="card-bd" id="eventsCenterBody" data-css="flex:1;padding:8px 12px;overflow-y:auto">
+      <div class="card-bd pane-scroll" id="eventsCenterBody">
         <div data-css="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
       </div>
     </div>
     <!-- Row 1 Col 3: 最近更新 -->
     <div class="card" data-css="grid-column:3;grid-row:1;display:flex;flex-direction:column;min-width:0">
       <div class="card-hd muted-11-shrink">📋 最近更新</div>
-      <div class="card-bd" data-css="flex:1;padding:8px 12px;overflow-y:auto">
+      <div class="card-bd pane-scroll">
         ${_recentPackageGroups(d.recent_deliveries||[]).map(g=>{
           const bad=g.failed>0, icon=bad?'✗':(g.sent>0?'✓':'·');
           const color=bad?'var(--danger)':(g.sent>0?'var(--success)':'var(--muted)');
@@ -258,24 +258,24 @@ async function dashboard(range){
 
     <!-- Row 2 Col 1: 客户推送分布 -->
     <div class="card" data-css="grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" data-css="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+      <div class="card-hd status-row">
         <span>📨 客户推送分布</span>
-        <div id="custRange" data-css="display:flex;gap:4px;margin-left:8px">
+        <div class="flex gap4 ml8" id="custRange">
           <button class="btn btn-xs btn-primary" data-on-click="setDashRange" data-args='${_dataArgs('cust', '7')}'>7天</button>
           <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('cust', '30')}'>30天</button>
           <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('cust', '90')}'>90天</button>
         </div>
       </div>
-      <div class="card-bd" data-css="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-        <div id="custPushTable" data-css="height:100%;overflow-y:auto;padding:4px 0"></div>
+      <div class="card-bd pane-clip">
+        <div class="pane-list" id="custPushTable"></div>
       </div>
     </div>
 
     <!-- Row 2 Col 2: 包发布趋势 (中间,与事件中心对齐) -->
     <div class="card" data-css="grid-column:2;grid-row:1;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" data-css="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+      <div class="card-hd status-row">
         <span>📈 包发布趋势</span>
-        <div id="tlRange" data-css="display:flex;gap:4px;margin-left:8px">
+        <div class="flex gap4 ml8" id="tlRange">
           <button class="btn btn-xs btn-primary" data-on-click="setDashRange" data-args='${_dataArgs('tl', '7')}'>7天</button>
           <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('tl', '30')}'>30天</button>
           <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('tl', '90')}'>90天</button>
@@ -289,16 +289,16 @@ async function dashboard(range){
 
     <!-- Row 2 Col 3: 产品发布分布 -->
     <div class="card" data-css="grid-column:3;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" data-css="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+      <div class="card-hd status-row">
         <span>📊 产品发布分布</span>
-        <div id="pieRange" data-css="display:flex;gap:4px;margin-left:8px">
+        <div class="flex gap4 ml8" id="pieRange">
           <button class="btn btn-xs btn-primary" data-on-click="setDashRange" data-args='${_dataArgs('pie', '7')}'>7天</button>
           <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('pie', '30')}'>30天</button>
           <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('pie', '90')}'>90天</button>
         </div>
       </div>
-      <div class="card-bd" data-css="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-        <div id="prodDistTable" data-css="height:100%;overflow-y:auto;padding:4px 0"></div>
+      <div class="card-bd pane-clip">
+        <div class="pane-list" id="prodDistTable"></div>
       </div>
     </div>
     </div>
@@ -388,8 +388,8 @@ async function fetchEventsHeader(){
     if (centerCounts) {
       const parts2 = [];
       if(c.CRITICAL) parts2.push(`<span data-css="background:var(--danger-light);color:var(--danger-text);padding:1px 6px;border-radius:8px;font-weight:600">🔴${c.CRITICAL}</span>`);
-      if(c.ERROR) parts2.push(`<span data-css="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">🟠${c.ERROR}</span>`);
-      if(c.WARNING) parts2.push(`<span data-css="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">⚠️${c.WARNING}</span>`);
+      if(c.ERROR) parts2.push(`<span class="chip-warn">🟠${c.ERROR}</span>`);
+      if(c.WARNING) parts2.push(`<span class="chip-warn">⚠️${c.WARNING}</span>`);
       centerCounts.innerHTML = parts2.length ? parts2.join(' ') : '<span class="text-success">✅</span>';
     }
   }catch(e){}
@@ -419,7 +419,7 @@ function renderEventsCenterFromData(events){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
   if (!events || !events.length) {
-    body.innerHTML = '<div data-css="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
+    body.innerHTML = '<div class="empty-success">✅ 系统正常,无事件</div>';
     return;
   }
   // 2026-09-01: 仪表盘卡片现在宽度足够,直接按弹窗表格格式渲染
@@ -514,18 +514,18 @@ function renderEventsCenterTableRow(e){
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
-    + (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
-    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span class="text-muted">—</span>');
+    + (e.source_url ? `<div class="muted-10 mt2 ellipsis" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
+    : (e.source_url ? `<div class="muted-10 ellipsis" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span class="text-muted">—</span>');
   const channelCell = e.channel_type
     ? `<div>${escHtml(e.channel_type)}</div>`
-    + (e.channel_id ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
-    + (e.customer_id ? `<div data-css="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
+    + (e.channel_id ? `<div class="muted-10 mt2">#${e.channel_id}</div>` : '')
+    + (e.customer_id ? `<div class="muted-10">客户 ${e.customer_id}</div>` : '')
     : '<span class="text-muted">—</span>';
   // 详情面板 — 用 eventCardDetail- 前缀避免跟弹窗 eventTableDetail- 撞 ID
   const detailId = 'eventCardDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
   const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td colspan="7" data-css="padding:10px 12px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
-    <div data-css="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="flex gap24 wrap mb8">
       <span><b>event_type:</b> ${escHtml(t)}</span>
       <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
       ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
@@ -538,7 +538,7 @@ function renderEventsCenterTableRow(e){
     </div>
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
-      <summary data-css="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
+      <summary class="pointer text-muted no-select">📦 原始 message JSON</summary>
       <pre data-css="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto">${detailJson}</pre>
     </details>
   </td></tr>`;
@@ -557,8 +557,8 @@ function renderEventsCenterTableRow(e){
     <td data-css="padding:6px"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td data-css="padding:6px;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t)}">${escHtml(t)}</td>
     <td data-css="padding:6px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(title)}">${escHtml(title)}</td>
-    <td data-css="padding:6px;color:var(--text);font-size:11px">${productCell}</td>
-    <td data-css="padding:6px;color:var(--text);font-size:11px">${channelCell}</td>
+    <td class="p6 text-body fs11">${productCell}</td>
+    <td class="p6 text-body fs11">${channelCell}</td>
     <td data-css="padding:6px;text-align:center;font-size:10px">
       ${isUnread
         ? '<span data-css="background:var(--danger);color:#fff;padding:1px 6px;border-radius:4px">NEW</span>'
@@ -615,7 +615,7 @@ function openEventsCenterModal(){
             <button class="btn btn-xs btn-outline" data-on-click="loadEventsCenterModal">🔄 刷新</button>
           </div>
           <div class="card-bd" id="eventsCenterModalBody" data-css="flex:1;overflow:auto;padding:0">
-            <div data-css="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
+            <div class="p40 ta-center muted-13">加载中…</div>
           </div>
           <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:12px">
             <span class="text-muted" id="eventsCenterModalPagerInfo"></span>
@@ -682,7 +682,7 @@ async function loadEventsCenterModal(){
   if(sev) params.set('severity', sev);
   // 第一次加载才显示"加载中",后续刷新不闪(避免 AP-127)
   if(!eventsCenterState.loadedOnce){
-    body.innerHTML = '<div data-css="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>';
+    body.innerHTML = '<div class="p40 ta-center muted-13">加载中…</div>';
   }
   const r = await api('/system/events?' + params.toString());
   // DOM 守卫:modal 可能已关闭(避免写已卸载元素)
@@ -774,18 +774,18 @@ function renderEventsTableRow(e){
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
-    + (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
-    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span class="text-muted">—</span>');
+    + (e.source_url ? `<div class="muted-10 mt2 ellipsis" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
+    : (e.source_url ? `<div class="muted-10 ellipsis" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span class="text-muted">—</span>');
   const channelCell = e.channel_type
     ? `<div>${escHtml(e.channel_type)}</div>`
-    + (e.channel_id ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
-    + (e.customer_id ? `<div data-css="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
+    + (e.channel_id ? `<div class="muted-10 mt2">#${e.channel_id}</div>` : '')
+    + (e.customer_id ? `<div class="muted-10">客户 ${e.customer_id}</div>` : '')
     : '<span class="text-muted">—</span>';
   // 详情面板 — 用 eventTableDetail- 前缀避免跟 dashboard 卡片的 eventDetail- 撞 ID(AP-133)
   const detailId = 'eventTableDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
   const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td colspan="7" data-css="padding:12px 16px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
-    <div data-css="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+    <div class="flex gap24 wrap mb8">
       <span><b>event_type:</b> ${escHtml(t)}</span>
       <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
       ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
@@ -798,7 +798,7 @@ function renderEventsTableRow(e){
     </div>
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
-      <summary data-css="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
+      <summary class="pointer text-muted no-select">📦 原始 message JSON</summary>
       <pre data-css="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>
     </details>
   </td></tr>`;
@@ -818,8 +818,8 @@ function renderEventsTableRow(e){
     <td class="p8"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td data-css="padding:8px;color:var(--muted);font-size:11px">${escHtml(t)}</td>
     <td data-css="padding:8px;color:var(--text);overflow:hidden;text-overflow:ellipsis">${escHtml(title)}</td>
-    <td data-css="padding:8px;color:var(--text);font-size:11px">${productCell}</td>
-    <td data-css="padding:8px;color:var(--text);font-size:11px">${channelCell}</td>
+    <td class="p8 text-body fs11">${productCell}</td>
+    <td class="p8 text-body fs11">${channelCell}</td>
     <td data-css="padding:8px;text-align:center">
       ${isUnread
         ? `<button class="btn btn-xs btn-soft-success" data-on-click="_ackEventAndReload" data-stop data-args='${_dataArgs(e.id)}' data-css="font-size:10px;padding:1px 6px">已读</button>`
@@ -884,7 +884,7 @@ async function renderEventsCenter(){
     }
     const events = r.data?.events || [];
     if (!events.length) {
-      body.innerHTML = '<div data-css="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
+      body.innerHTML = '<div class="empty-success">✅ 系统正常,无事件</div>';
       return;
     }
     renderEventsCenterFromData(events);
@@ -930,7 +930,7 @@ function renderEvent(e){
       <div data-css="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span data-css="font-weight:600;color:${sevColor};font-size:12px">${escHtml(e.severity)}</span>
         <span class="muted-11">${escHtml(e.event_type)}</span>
-        ${e.product_name ? `<span data-css="color:var(--primary);font-size:11px">${escHtml(e.product_name)}</span>` : ''}
+        ${e.product_name ? `<span class="text-primary fs11">${escHtml(e.product_name)}</span>` : ''}
         <span data-css="color:var(--muted);font-size:11px;margin-left:auto">${escHtml(serverTime(e.created_at, true))}</span>
       </div>
       <div data-css="font-size:12px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.message || '')}</div>
