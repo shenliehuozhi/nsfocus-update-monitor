@@ -35,7 +35,7 @@
 - [ ] **资源版本化与 ESM**：给 `index.html` 的 css/js 加内容哈希或版本参数（当前靠 `no-cache` 回源）；后续再评估经典脚本 → ESM
 - [ ] **Prometheus 对接**：用户明确暂缓（`/api/metrics` 与静态令牌已就绪，缺抓取配置与告警规则）
 - [x] **密钥轮换工具（2026-11-11）**：`scripts/rotate_encryption_key.py` 默认 dry-run，`--apply --yes` 时先做一致性备份、再单事务把 `channels.config` / `user_sessions.cookie_value` 从旧密钥重加密到新密钥，逐行校验并用新密钥回读；`src/core/crypto.py` 增加显式密钥的 `encrypt_with_key` / `decrypt_with_key`。6 个单测通过；在生产库副本上演练 16/16 行迁移成功、旧密钥全部失效、应用以新密钥启动后渠道 7 条与会话 9 条均正常解密
-- [x] **生产密钥轮换（2026-11-11 11:57）**：`.env` 原先未定义 `MONITOR_JWT_SECRET` / `MONITOR_SECRET_KEY`，且 `CORS_ORIGINS` 为空（允许所有来源）。已停服务 → 用 `scripts/rotate_encryption_key.py` 把 16 条密文（渠道 7 + Session 9）从开发兜底密钥迁移到新密钥（备份 `data/nsfocus_monitor.db.bak.20261111_115715_pre_rotate_enc`）→ 生成 JWT 新密钥 → `.env` 补齐两密钥并 `chmod 600`，`CORS_ORIGINS` 限制为 `http://10.10.10.109:29999,http://127.0.0.1:9999,http://localhost:9999` → 启动。验证：`active`、首页/静态资源 200、登录 `code=0`、渠道 7 条与会话 9 条正常解密、旧密钥 16/16 失效、新密钥 16/16 可读、非白名单 Origin 不返回 CORS 头、重启后无 fallback 告警。`/root/.env.before-secret-rotate` 为改前备份（chmod 600）
+- [x] **生产密钥轮换（2026-11-11 11:57）**：`.env` 原先未定义 `MONITOR_JWT_SECRET` / `MONITOR_SECRET_KEY`，且 `CORS_ORIGINS` 为空（允许所有来源）。已停服务 → 用 `scripts/rotate_encryption_key.py` 把 16 条密文（渠道 7 + Session 9）从开发兜底密钥迁移到新密钥（备份 `data/nsfocus_monitor.db.bak.20261111_115715_pre_rotate_enc`）→ 生成 JWT 新密钥 → `.env` 补齐两密钥并 `chmod 600`，`CORS_ORIGINS` 限制为 `http://10.10.10.109:29999,http://127.0.0.1:9999,http://localhost:9999` → 启动。验证：`active`、首页/静态资源 200、登录 `code=0`、渠道 7 条与会话 9 条正常解密、旧密钥 16/16 失效、新密钥 16/16 可读、非白名单 Origin 不返回 CORS 头、重启后无 fallback 告警。本机（Qoder 电脑）只读复验同样通过：登录/channels/sessions/latest-snapshots/data_push.js 均 200，`code=0`，渠道 7、会话 9、快照 80 个源。`/root/.env.before-secret-rotate` 为改前备份（chmod 600）
 
 ## 环境 / 运维备注
 
