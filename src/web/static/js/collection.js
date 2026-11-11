@@ -38,7 +38,7 @@ function _renderSingleBanner(state){
   const pct = phasePct;
   const banner=document.createElement('div');
   banner.id='single-collect-banner';
-  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#4f46e5);color:#fff;border-radius:10px;padding:12px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:600px;max-width:90vw;font-size:13px;display:flex;flex-direction:column;gap:8px';
+  banner.className='single-collect-banner';
   const phaseIcon = {starting:'🚀',collecting:'📦',detecting:'🔍',notifying:'📤',done:'✅',error:'❌',skipped:'⏭️',idle:'⏳'}[state.phase]||'⏳';
   const phaseLabel = {starting:'启动中',collecting:'采集中',detecting:'检测中',notifying:'推送中',done:'采集完成',error:'失败',skipped:'已跳过',idle:'等待中'}[state.phase]||state.phase;
   // Latest log line: prefer scheduler summary (state.log_lines) over raw app.log tail.
@@ -58,17 +58,17 @@ function _renderSingleBanner(state){
       <div class="banner-close" id="single-banner-close" title="关闭">×</div>
     </div>
     <div class="banner-bar">
-      <div id="single-banner-bar" data-css="height:100%;background:rgba(255,255,255,0.85);border-radius:3px;transition:width 0.4s;width:${pct}%"></div>
+      <div id="single-banner-bar" class="banner-bar-fill" data-css="width:${pct}%"></div>
     </div>
-    <div id="single-banner-latest-wrap" data-css="display:${latestShort ? 'block' : 'none'};font-family:monospace;font-size:11.5px;background:rgba(0,0,0,0.18);border-radius:4px;padding:4px 8px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
-    <div id="single-banner-log" data-css="display:none;max-height:500px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
+    <div id="single-banner-latest-wrap" class="single-banner-latest${latestShort?' ':' hidden'}" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
+    <div id="single-banner-log" class="single-banner-log hidden"></div>
   `;
   // Toggle log viewer
   banner.querySelector('#single-banner-log-btn').onclick=(ev)=>{
     ev.stopPropagation();
     const log=document.getElementById('single-banner-log');
-    const opening = log.style.display==='none';
-    log.style.display = opening?'block':'none';
+    const opening = log.classList.contains('hidden');
+    log.classList.toggle('hidden', !opening);
     if(opening){
       // Prefer scheduler summary (log_lines) — it's already populated by collect-status.
       // Fall back to a fresh app.log tail fetch if state.log_lines is empty.
@@ -135,7 +135,7 @@ function _updateSingleBannerInPlace(state){
   if(bar) bar.style.width = phasePct + '%';
   // Update latest log line: prefer scheduler summary (log_lines) over raw app.log noise
   const logEl = document.getElementById('single-banner-log');
-  const logOpen = logEl && logEl.style.display !== 'none';
+  const logOpen = logEl && !logEl.classList.contains('hidden');
   const latestWrap = document.getElementById('single-banner-latest-wrap');
   const logLines = state.log_lines || [];
   const tailLines = state._tail_lines || [];
@@ -147,11 +147,11 @@ function _updateSingleBannerInPlace(state){
     if(latestWrap){
       latestWrap.textContent = latestShort ? '▶ ' + latestShort : '';
       latestWrap.title = latestClean;
-      latestWrap.style.display = latestShort ? 'block' : 'none';
+      latestWrap.classList.toggle('hidden', !latestShort);
     }
   } else {
     // Open: hide latest line (avoid duplication with log viewer)
-    if(latestWrap) latestWrap.style.display = 'none';
+    if(latestWrap) latestWrap.classList.add('hidden');
   }
   // If log viewer is open, refresh its content
   if(logOpen){
@@ -272,7 +272,7 @@ function editHeartbeatUrl(){
     '⚠️ 修改预检 URL 会影响 Session 状态判断\n\n该 URL 用于采集前/主动心跳快速探测 Session 状态:\n• 错配会导致"过期/污染"漏报或误报\n• 默认值 /update/listBvsV6/v/bvssys 是 NSFOCUS 设备验证过的端点\n• 必须是返回 v2 升级包列表的轻量 GET 接口\n\n确认要编辑吗?',
     async()=>{
       inp.readOnly=false;
-      inp.style.background='#fff';
+      inp.classList.remove('bg-subtle');
       inp.focus();inp.select();
       btn.textContent='🔒 锁定';
       btn.onclick=lockHeartbeatUrl;
@@ -288,7 +288,7 @@ function lockHeartbeatUrl(){
   const btn=document.getElementById('cfg-heartbeat-url-edit');
   inp.readOnly=true;
   inp.value=inp.defaultValue; // 还原成进入编辑前的值,避免误存
-  inp.style.background='var(--gray-bg)';
+  inp.classList.add('bg-subtle');
   btn.textContent='✏️ 编辑';
   btn.onclick=editHeartbeatUrl;
   toast('已锁定,改动已撤销','info');
@@ -355,7 +355,7 @@ function showCollectProgress(){
 }
 function closeCollectModal(){
   const m=document.getElementById('collectModal');if(m)m.remove();
-  const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
+  const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.classList.add('hidden');
   document.body.classList.remove('warning-open');
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
 }
@@ -381,7 +381,7 @@ function pollProgress(){
     let html='';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      html+=`<div class="mb12"><div class="progress-8"><div data-css="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div class="muted-11 mt4 ta-center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
+      html+=`<div class="mb12"><div class="progress-8"><div class="progress-8-fill" data-css="width:${pct}%"></div></div><div class="muted-11 mt4 ta-center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
       html+=`<div class="fs13 ta-center mb4"><strong>📦 ${p.current_product||'...'}</strong></div>`;
       if(p.current_version)html+=`<div class="muted-11 ta-center">${p.current_version}</div>`;
       html+=`<div class="muted-10 ta-center mt4">已采集 ${p.items_collected||0} 项</div>`;
@@ -391,7 +391,7 @@ function pollProgress(){
     }else if(p.phase==='notifying'){
       html+=`<div class="empty-icon">📨</div><p class="empty-text">正在推送通知...</p>`;
     }else if(p.phase==='done'){
-      const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
+      const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.classList.add('hidden');
       const ok=p.errors&&p.errors.length>0?'warn':'ok';
       html+=`<div class="empty-icon">${ok==='ok'?'✅':'⚠️'}</div>`;
       html+=`<p class="ta-center fs14 fw600">采集完成</p>`;
@@ -455,7 +455,7 @@ async function pollDashProgress(){
     if(!el)return;
     if(p.phase){_showCollectBanner(p);}
     if(!p.active||p.phase==='done'){
-      el.style.display='none';
+      el.classList.add('hidden');
       if(p.phase==='done'){
         if(lc)lc.textContent='已完成';
         setTimeout(()=>_hideCollectBanner(), 8000);  // 2026-08-25: 延长到 8 秒让用户看清完成状态
@@ -465,7 +465,7 @@ async function pollDashProgress(){
       }
       return;
     }
-    el.style.display='inline';
+    el.classList.remove('hidden');
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
       el.innerHTML=`<span class="tag-primary">${pct}%</span> ${p.current_product||''} ${p.products_done}/${p.products_total}`;
@@ -537,12 +537,11 @@ async function loadLogs(){
     if(r.code===0){
       const lines=r.data.lines||[];
       box.innerHTML=lines.map(l=>{
-        let cls='var(--gray-muted)';
-        if(l.includes('[ERROR]'))cls='#f85149';
-        else if(l.includes('[WARNING]'))cls='#d2991d';
-        else if(l.includes('[INFO]'))cls='#7ee787';
-        else if(l.includes('[DEBUG]'))cls='var(--gray-muted)';
-        return `<span data-css="color:${cls}">${l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+        let cls='log-lv-debug';
+        if(l.includes('[ERROR]'))cls='log-lv-error';
+        else if(l.includes('[WARNING]'))cls='log-lv-warn';
+        else if(l.includes('[INFO]'))cls='log-lv-info';
+        return `<span class="${cls}">${l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
       }).join('\n');
       if(!lines.length)box.textContent='(无匹配日志)';
     }else{

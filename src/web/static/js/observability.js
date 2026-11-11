@@ -73,7 +73,7 @@ function _obsRender(d){
   return `
     <div class="obs-kpis">
       ${_obsKpi('投递成功率', rateText,
-        `${del.total || 0} 条 · ${del.sent || 0} 成功 · <b data-css="color:${del.failed ? 'var(--danger)' : 'var(--muted)'}">${del.failed || 0} 失败</b>`,
+        `${del.total || 0} 条 · ${del.sent || 0} 成功 · <b class="${del.failed ? 'text-danger' : 'text-muted'}">${del.failed || 0} 失败</b>`,
         rateTint)}
       ${_obsKpi('待投递队列', dq.pending || 0,
         `逾期 ${dq.overdue || 0} · 重试中 ${dq.retrying || 0}`,
@@ -150,8 +150,8 @@ function _obsQueueCard(dq, dg){
       <div class="obs-section-title">即时投递队列</div>
       <div class="obs-mini">
         <div><b>${dq.pending || 0}</b><span>待处理</span></div>
-        <div><b data-css="color:${dq.overdue ? 'var(--warn)' : 'var(--text)'}">${dq.overdue || 0}</b><span>已逾期</span></div>
-        <div><b data-css="color:${dq.retrying ? 'var(--warn)' : 'var(--text)'}">${dq.retrying || 0}</b><span>重试中</span></div>
+        <div><b class="${dq.overdue ? 'text-warn' : 'text-body'}">${dq.overdue || 0}</b><span>已逾期</span></div>
+        <div><b class="${dq.retrying ? 'text-warn' : 'text-body'}">${dq.retrying || 0}</b><span>重试中</span></div>
         <div><b>${_obsAge(dq.oldest_age_minutes)}</b><span>最久等待</span></div>
       </div>
       <div class="obs-section-title mt14">汇总队列（按规则）</div>

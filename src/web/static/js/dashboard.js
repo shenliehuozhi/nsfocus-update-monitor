@@ -143,7 +143,7 @@ async function dashboard(range){
       <div class="stat tint-neutral"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
       <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-success':'tint-danger')} ops-mini-col">
         <div class="flex items-center justify-center gap10">
-          <span data-css="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sch.is_running?'var(--primary)':(sch.enabled?'var(--success)':'var(--danger)')};box-shadow:0 0 0 4px ${sch.is_running?'rgba(67,97,238,0.2)':(sch.enabled?'rgba(12,166,120,0.2)':'rgba(229,72,77,0.2)')};flex-shrink:0"></span>
+          <span class="sched-dot ${sch.is_running?'sched-running':(sch.enabled?'sched-ready':'sched-off')}"></span>
           <span class="fs14 fw600 text-body">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
         </div>
         <div class="muted-11 lh14">采集器状态</div>
@@ -167,7 +167,7 @@ async function dashboard(range){
     </div>
     <div class="col gap12 mt12">
       <div class="info-bar info-bar-stat">
-        <span class="info-seg info-seg-time">⏱️ 上次采集: <b>${lastCol}</b>${sch.last_mode?' <span class="info-tag">'+mode_label[sch.last_mode]+'</span>':''}<span id="dashProgress" data-css="display:none;margin-left:8px;font-size:12px;color:var(--primary);font-weight:600"></span></span>
+        <span class="info-seg info-seg-time">⏱️ 上次采集: <b>${lastCol}</b>${sch.last_mode?' <span class="info-tag">'+mode_label[sch.last_mode]+'</span>':''}<span id="dashProgress" class="dash-progress hidden"></span></span>
         <span class="info-seg info-seg-next">⏭️ 下次采集: <b>${nextCol}</b></span>
         <span class="info-seg info-seg-week">📊 本周: <b class="info-num">${d.push_week?.total||0}</b>次 <b class="info-ok">${d.push_week?.success||0}✓</b> ${d.push_week?.failed>0?'<b class="info-err">'+d.push_week.failed+'✗</b>':('<b class="info-muted">0✗</b>')}</span>
       </div>
@@ -212,7 +212,7 @@ async function dashboard(range){
         ${h.异常日志&&h.异常日志.length>0?`<div class="min-w140">
           <div class="metric-label">异常 (2h内)</div>
           <div class="list-compact">
-            ${h.异常日志.slice(0,3).map(l=>`<div data-css="font-size:10px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
+            ${h.异常日志.slice(0,3).map(l=>`<div class="fs10 nowrap ellipsis max-w200 ${l.level==='ERROR'?'text-danger':'text-warn'}" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
           </div>
         </div>`:''}
         ${h.queue?.overdue>0?`<div class="min-w100">
@@ -244,10 +244,10 @@ async function dashboard(range){
       <div class="card-bd pane-scroll">
         ${_recentPackageGroups(d.recent_deliveries||[]).map(g=>{
           const bad=g.failed>0, icon=bad?'✗':(g.sent>0?'✓':'·');
-          const color=bad?'var(--danger)':(g.sent>0?'var(--success)':'var(--muted)');
+          const color=bad?'text-danger':(g.sent>0?'text-success-text':'text-muted');
           const tip=`推送 ${g.total} 次 · ${g.sent}✓ ${g.failed}✗\n${[...g.customers].join('、')||'—'}`;
           return `<div class="pill-tip ops-evt-row" data-tip="${escHtml(tip)}">
-            <span data-css="color:${color};flex-shrink:0;font-size:13px">${icon}</span>
+            <span class="shrink0 fs13 ${color}">${icon}</span>
             <span class="flex-1 txt-clip">${escHtml(g.product||'—')} ${escHtml(g.ver||'')}${g.file?' ('+escHtml(g.file.slice(0,22))+')':''}</span>
             <span class="muted-11-shrink">${g.customers.size}客户</span>
             <span class="muted-11-shrink">${fmtTZ(g.sent_at,true)}</span>
@@ -339,7 +339,7 @@ async function dashboard(range){
     fetchEventsHeader();
     window._eventsHeaderTimer = setInterval(fetchEventsHeader, 30000);
   }
-  if(!window._eventsRefreshTimer && document.getElementById('eventsPanel') && document.getElementById('eventsPanel').style.display !== 'none'){
+  if(!window._eventsRefreshTimer && document.getElementById('eventsPanel') && !document.getElementById('eventsPanel').classList.contains('hidden')){
     loadEvents();
     window._eventsRefreshTimer = setInterval(loadEvents, 15000);
   }
@@ -371,9 +371,9 @@ async function fetchEventsHeader(){
     if(badge){
       if(c.unread_total > 0){
         badge.textContent = c.unread_total;
-        badge.style.display = 'inline-block';
+        badge.classList.remove('hidden');
       } else {
-        badge.style.display = 'none';
+        badge.classList.add('hidden');
       }
     }
     if(counts){
@@ -425,7 +425,7 @@ function renderEventsCenterFromData(events){
   // 2026-09-01: 仪表盘卡片现在宽度足够,直接按弹窗表格格式渲染
   // 弹窗表格已有事件中心全部字段(时间/严重度/类型/标题/产品/渠道/状态)
   // 这里去掉 modalOnly 的"已读"按钮列,直接显示 NEW/已读
-  body.style.padding = '0';
+  body.classList.add('p0');
   body.innerHTML = renderEventsCenterTable(events);
 }
 
@@ -488,6 +488,7 @@ async function retryDelivery(queueId, btn){
   }
 }
 
+function _sevTone(sev){return {CRITICAL:'critical',ERROR:'error',WARNING:'warning',INFO:'info'}[sev]||'info';}
 function renderEventsCenterTableRow(e){
   let m = {};
   if(typeof e.message === 'string'){
@@ -497,7 +498,7 @@ function renderEventsCenterTableRow(e){
   }
   const t = e.event_type || '';
   const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
-  const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
+  const sevTone = _sevTone(e.severity);
   // 标题提取 — 与弹窗表格保持完全一致
   let title = '';
   if(m.title) title = String(m.title);
@@ -524,10 +525,10 @@ function renderEventsCenterTableRow(e){
   // 详情面板 — 用 eventCardDetail- 前缀避免跟弹窗 eventTableDetail- 撞 ID
   const detailId = 'eventCardDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
-  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td class="detail-cell" colspan="7">
+  const detail = `<tr id="${detailId}" class="hidden detail-row"><td class="detail-cell" colspan="7">
     <div class="flex gap24 wrap mb8">
       <span><b>event_type:</b> ${escHtml(t)}</span>
-      <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
+      <span><b>severity:</b> <span class="sev-text sev-text-${sevTone}">${escHtml(e.severity)}</span></span>
       ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
       ${e.rule_id?`<span><b>rule_id:</b> ${e.rule_id}</span>`:''}
       ${m.username?`<span><b>用户名:</b> ${escHtml(m.username)}</span>`:''}
@@ -542,19 +543,9 @@ function renderEventsCenterTableRow(e){
       <pre class="log-panel">${detailJson}</pre>
     </details>
   </td></tr>`;
-  let rowStyle = 'border-bottom:1px solid var(--gray-border);cursor:pointer';
-  if(isUnread){
-    if(e.severity==='CRITICAL'){
-      rowStyle += ';background:#fef2f2;border-left:4px solid #dc2626';
-    } else if(e.severity==='ERROR'){
-      rowStyle += ';background:#fff7ed;border-left:3px solid #ea580c';
-    } else if(e.severity==='WARNING'){
-      rowStyle += ';border-left:2px solid #ca8a04';
-    }
-  }
-  return `<tr data-css="${rowStyle}" data-on-click="toggleEventsCenterCardRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
+  return `<tr class="evt-row${isUnread?' evt-row-'+sevTone:''}" data-on-click="toggleEventsCenterCardRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
     <td class="log-ts">${escHtml(serverTime(e.created_at, true))}</td>
-    <td class="p6"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td class="p6"><span class="sev-pill sev-${sevTone}">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td class="p6 muted-11 ellipsis" title="${escHtml(t)}">${escHtml(t)}</td>
     <td class="p6 text-body ellipsis" title="${escHtml(title)}">${escHtml(title)}</td>
     <td class="p6 text-body fs11">${productCell}</td>
@@ -570,7 +561,7 @@ function renderEventsCenterTableRow(e){
 function toggleEventsCenterCardRow(eventId){
   const el = document.getElementById('eventCardDetail-' + eventId);
   if (!el) return;
-  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
+  el.classList.toggle('hidden');
 }
 
 // 旧版本异步拉(保留兼容,但 dashboard 不再调用)
@@ -633,10 +624,10 @@ function openEventsCenterModal(){
     `;
     document.body.appendChild(m);
   }
-  m.style.display = 'block';
+  m.classList.remove('hidden');
   eventsCenterState.offset = 0;
   loadEventsCenterModal();
-  if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(()=>{ if(document.getElementById('eventsCenterModal').style.display!=='none') loadEventsCenterModal(); }, 30000);
+  if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(()=>{ if(!document.getElementById('eventsCenterModal').classList.contains('hidden')) loadEventsCenterModal(); }, 30000);
 }
 
 // 分页状态(全局,避免每次重置)
@@ -644,7 +635,7 @@ window.eventsCenterState = window.eventsCenterState || { offset: 0, total: 0, lo
 
 function closeEventsCenterModal(){
   const m = document.getElementById('eventsCenterModal');
-  if(m) m.style.display = 'none';
+  if(m) m.classList.add('hidden');
   if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer); window._eventsCenterModalTimer=null;}
 }
 
@@ -757,7 +748,7 @@ function renderEventsTableRow(e){
   }
   const t = e.event_type || '';
   const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
-  const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
+  const sevTone = _sevTone(e.severity);
   // 标题提取
   let title = '';
   if(m.title) title = String(m.title);
@@ -784,10 +775,10 @@ function renderEventsTableRow(e){
   // 详情面板 — 用 eventTableDetail- 前缀避免跟 dashboard 卡片的 eventDetail- 撞 ID(AP-133)
   const detailId = 'eventTableDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
-  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td class="detail-cell-lg" colspan="7">
+  const detail = `<tr id="${detailId}" class="hidden detail-row"><td class="detail-cell-lg" colspan="7">
     <div class="flex gap24 wrap mb8">
       <span><b>event_type:</b> ${escHtml(t)}</span>
-      <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
+      <span><b>severity:</b> <span class="sev-text sev-text-${sevTone}">${escHtml(e.severity)}</span></span>
       ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
       ${e.rule_id?`<span><b>rule_id:</b> ${e.rule_id}</span>`:''}
       ${m.username?`<span><b>用户名:</b> ${escHtml(m.username)}</span>`:''}
@@ -803,19 +794,9 @@ function renderEventsTableRow(e){
     </details>
   </td></tr>`;
   // 重要事件视觉强化:CRITICAL 未读加左侧粗红条 + 浅红背景;ERROR 橙条;INFO/WARNING 普通
-  let rowStyle = 'border-bottom:1px solid var(--gray-border);cursor:pointer';
-  if(isUnread){
-    if(e.severity==='CRITICAL'){
-      rowStyle += ';background:#fef2f2;border-left:4px solid #dc2626';
-    } else if(e.severity==='ERROR'){
-      rowStyle += ';background:#fff7ed;border-left:3px solid #ea580c';
-    } else if(e.severity==='WARNING'){
-      rowStyle += ';border-left:2px solid #ca8a04';
-    }
-  }
-  return `<tr data-css="${rowStyle}" data-on-click="toggleEventsTableRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
+  return `<tr class="evt-row${isUnread?' evt-row-'+sevTone:''}" data-on-click="toggleEventsTableRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
     <td class="log-ts-lg">${escHtml(serverTime(e.created_at, true))}</td>
-    <td class="p8"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td class="p8"><span class="sev-pill sev-${sevTone}">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td class="p8 muted-11">${escHtml(t)}</td>
     <td class="p8 text-body txt-clip">${escHtml(title)}</td>
     <td class="p8 text-body fs11">${productCell}</td>
@@ -831,7 +812,7 @@ function renderEventsTableRow(e){
 function toggleEventsTableRow(eventId){
   const el = document.getElementById('eventTableDetail-' + eventId);
   if (!el) return;
-  el.style.display = (el.style.display === 'none' || !el.style.display) ? 'table-row' : 'none';
+  el.classList.toggle('hidden');
 }
 
 // 一键已读 — 按当前过滤器(severity)批量标,无过滤时标全部 4 个 severity
@@ -920,21 +901,20 @@ async function loadEvents(){
 
 function renderEvent(e){
   const sevIcon = {CRITICAL:'🔴',ERROR:'🟠',WARNING:'⚠️',INFO:'ℹ️'}[e.severity] || '⚪';
-  const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
-  const sevBg = {CRITICAL:'#fef2f2',ERROR:'#fff7ed',WARNING:'#fefce8',INFO:'#f9fafb'}[e.severity] || '#f9fafb';
+  const sevTone = _sevTone(e.severity);
   const isUnread = (e.severity === 'CRITICAL' || e.severity === 'ERROR' || e.severity === 'WARNING') && !e.acked_at;
   const ackBtn = isUnread ? `<button class="btn btn-xs btn-soft-success ml8" data-on-click="ackEvent" data-stop data-args='${_dataArgs(e.id)}'>✓ 已读</button>` : '';
-  return `<div data-css="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--gray-bg);background:${isUnread?sevBg:'transparent'};${isUnread?'border-left:3px solid '+sevColor:''}cursor:pointer" data-on-click="toggleEventDetail" data-args='${_dataArgs(e.id)}'>
+  return `<div class="evt-item${isUnread?' evt-item-'+sevTone:''}" data-on-click="toggleEventDetail" data-args='${_dataArgs(e.id)}'>
     <span class="fs14 shrink0 mt1">${sevIcon}</span>
     <div class="flex1">
       <div class="flex items-center gap8 wrap">
-        <span data-css="font-weight:600;color:${sevColor};font-size:12px">${escHtml(e.severity)}</span>
+        <span class="sev-text sev-text-${sevTone}">${escHtml(e.severity)}</span>
         <span class="muted-11">${escHtml(e.event_type)}</span>
         ${e.product_name ? `<span class="text-primary fs11">${escHtml(e.product_name)}</span>` : ''}
         <span class="muted-11 ml-auto">${escHtml(serverTime(e.created_at, true))}</span>
       </div>
       <div class="fs12 text-body mt2 ellipsis">${escHtml(e.message || '')}</div>
-      <div id="eventDetail${e.id}" data-css="display:none;margin-top:8px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;color:var(--muted)">
+      <div id="eventDetail${e.id}" class="hidden evt-detail">
         ${e.source_url ? `<div><b>URL:</b> ${escHtml(e.source_url)}</div>` : ''}
         ${e.rule_id ? `<div><b>规则 ID:</b> ${e.rule_id}</div>` : ''}
         ${e.channel_id ? `<div><b>渠道 ID:</b> ${e.channel_id}</div>` : ''}
@@ -950,15 +930,15 @@ function renderEvent(e){
 
 function toggleEventDetail(id){
   const el = document.getElementById('eventDetail'+id);
-  if(el) el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if(el) el.classList.toggle('hidden');
 }
 
 function toggleEventsPanel(){
   const panel = document.getElementById('eventsPanel');
   const btn = document.getElementById('eventsExpandBtn');
   if(!panel || !btn) return;
-  const showing = panel.style.display !== 'none';
-  panel.style.display = showing ? 'none' : 'block';
+  const showing = !panel.classList.contains('hidden');
+  panel.classList.toggle('hidden', showing);
   btn.textContent = showing ? '展开' : '收起';
   if(!showing) loadEvents();
   // 折叠时停轮询,展开时启动

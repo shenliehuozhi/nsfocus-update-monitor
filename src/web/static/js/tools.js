@@ -91,14 +91,14 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
           <button class="btn btn-primary btn-sm" id="rdForceBtn" data-on-click="rdFetch" data-args='${_dataArgs(true)}' title="跳过本地缓存, 重新从 vendor portal 拉取">🔄 强制刷新</button>
           <span class="rd-status" id="rdStatus"></span>
         </div>
-        <div id="rdUrlHint" data-css="display:none;font-size:12px;margin:-8px 0 14px;padding:0 4px;color:var(--muted)"></div>
+        <div id="rdUrlHint" class="rd-url-hint hidden"></div>
 
         <div id="rdStep1">
           <div class="flex items-center justify-between mb8" id="rdStep1Header">
             <div class="fs13 fw600 text-body">
               ① 选择 2 个版本(只能选 2 个, 第 3 次勾选会自动取消最早选的)
             </div>
-            <button class="btn btn-outline btn-sm" id="rdReselectBtn" data-css="display:none" data-on-click="rdReselect">✏️ 修改选择</button>
+            <button class="btn btn-outline btn-sm rd-reselect-btn hidden" id="rdReselectBtn" data-on-click="rdReselect">✏️ 修改选择</button>
           </div>
           <div class="rd-table-container" id="rdPkgTableContainer">
             <table class="rd-table" id="rdPkgTable">
@@ -108,18 +108,18 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
               <tbody></tbody>
             </table>
           </div>
-          <div id="rdSelectedBar" data-css="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:18px">
+          <div id="rdSelectedBar" class="rd-selected-bar hidden">
             <span class="fs13 text-body flex-1" id="rdSelectedText"></span>
             <button class="btn btn-primary btn-sm" id="rdCompareBtn" data-on-click="rdCompare">🔄 生成对比结果</button>
           </div>
         </div>
 
-        <div id="rdStep2" data-css="display:none">
+        <div id="rdStep2" class="hidden">
           <div class="fs13 fw600 mb8 text-body">
             ② 对比结果
           </div>
           <div id="rdSummary"></div>
-          <div id="rdFilterBar" data-css="display:none;margin-bottom:14px;font-size:12px;color:var(--muted)">
+          <div id="rdFilterBar" class="rd-filter-bar hidden">
             当前过滤: <code class="chip-primary-sm" id="rdFilterLabel"></code>
             <button class="btn btn-outline btn-xs ml8" data-on-click="rdClearFilter">清除过滤</button>
           </div>
@@ -151,9 +151,8 @@ function rdToast(msg, type='info', timeout=4000){
   if (!t) { alert(msg); return; }
   t.textContent = msg;
   t.className = 'rd-toast ' + type;
-  t.style.display = 'block';
   clearTimeout(t._tm);
-  t._tm = setTimeout(()=>{ t.style.display='none'; }, timeout);
+  t._tm = setTimeout(()=>{ t.classList.add('hidden'); }, timeout);
 }
 
 // ── DIFF 工具:产品路径 picker ───────────────────────────────
@@ -239,7 +238,7 @@ async function toolDiffOpenPicker(expectedKind){
         <span>${escHtml(p.name)}</span>
         <span class="rd-picker-count">${ruleLibPaths.length} / ${allPaths.length} paths</span>
       </div>
-      <div class="rd-picker-paths-wrap" id="${bodyId}" data-css="display:none">${treeHtml}</div>
+      <div class="rd-picker-paths-wrap hidden" id="${bodyId}">${treeHtml}</div>
     </div>`;
   }).join('');
 
@@ -253,8 +252,6 @@ async function toolDiffOpenPicker(expectedKind){
     const btn = document.createElement('button');
     btn.className = 'rd-picker-select-btn btn btn-xs btn-primary';
     btn.textContent = '✅ 选取';
-    btn.style.marginLeft = 'auto';
-    btn.style.flexShrink = '0';
     btn.onclick = (ev) => {
       ev.stopPropagation();  // 阻止 leaf div 上的 click 委托
       let chainStr = '';
@@ -317,7 +314,7 @@ function toolDiffToggleProduct(hdEl){
   hdEl.classList.toggle('open');
   const product = hdEl.parentElement;
   const wrap = product && product.querySelector('.rd-picker-paths-wrap');
-  if (wrap) wrap.style.display = wrap.style.display === 'none' ? '' : 'none';
+  if (wrap) wrap.classList.toggle('hidden');
 }
 
 async function rdFetch(force){
@@ -345,8 +342,8 @@ async function rdFetch(force){
   btn.textContent = '⏳ 提取中...';
   status.textContent = '';
   _rd.packages = []; _rd.selected = []; _rd.diffResult = null; _rd.filterVersion = null;
-  document.getElementById('rdStep1').style.display = 'none';
-  document.getElementById('rdStep2').style.display = 'none';
+  document.getElementById('rdStep1').classList.add('hidden');
+  document.getElementById('rdStep2').classList.add('hidden');
 
   const t0 = Date.now();
   try {
@@ -369,7 +366,7 @@ async function rdFetch(force){
       : `<span class="primary-500">🌐 新拉取</span> (${((Date.now()-t0)/1000).toFixed(1)}s)`;
     status.innerHTML = `✓ 共 ${_rd.packages.length} 个升级包 ${cacheTag}`;
     rdRenderPkgTable();
-    document.getElementById('rdStep1').style.display = 'block';
+    document.getElementById('rdStep1').classList.remove('hidden');
   } catch (e) {
     rdToast('提取失败: ' + e.message, 'error', 6000);
     status.textContent = '✗ ' + e.message;
@@ -387,7 +384,7 @@ async function rdFetch(force){
 async function rdUrlValidate(){
   const url = document.getElementById('rdUrl').value.trim();
   const hint = document.getElementById('rdUrlHint');
-  if (!url) { hint.style.display = 'none'; return; }
+  if (!url) { hint.classList.add('hidden'); return; }
 
   // 后端只接受 update.nsfocus.com 域名 + 两种已知 detail 路径
   const isVendorDomain = url.startsWith('https://update.nsfocus.com/');
@@ -395,7 +392,7 @@ async function rdUrlValidate(){
   const isWafPath = url.indexOf('/listWafV') >= 0 && url.indexOf('Detail') >= 0;
 
   if (!isVendorDomain || (!isIpsPath && !isWafPath)) {
-    hint.style.display = 'block';
+    hint.classList.remove('hidden');
     hint.innerHTML = '<span class="text-danger">⚠️ 仅支持 update.nsfocus.com 域名的 listNewipsDetail/ (IPS / IDS) 或 listWafV...Detail/ (WAF) 详情页</span>';
     return;
   }
@@ -410,7 +407,7 @@ async function rdUrlValidate(){
     // 入口跟 URL 不匹配:置灰按钮 + 红色警告
     if (fetchBtn) fetchBtn.disabled = true;
     if (forceBtn) forceBtn.disabled = true;
-    hint.style.display = 'block';
+    hint.classList.remove('hidden');
     hint.innerHTML = `<span class="danger-600">🚫 入口跟 URL 不匹配</span> · 当前是 <b>${_rdKindLabel[expected]}</b> 工具,但 URL 是 <b>${_rdKindLabel[sniffKind]}</b> 链接。请点 ← 返回切到 <b>${_rdKindLabel[sniffKind]}</b> 工具,或改正 URL`;
     return;
   } else {
@@ -420,7 +417,7 @@ async function rdUrlValidate(){
   const mismatchTip = '';
 
   // 看缓存里有没有现成的 cache-status 可查
-  hint.style.display = 'block';
+  hint.classList.remove('hidden');
   hint.innerHTML = '<span class="text-muted">🔍 校验中...</span>';
 
   // 2026-07-14: 反推 URL 对应的 chain 路径(从 _dataAll 里的 package_type.paths 查)
@@ -499,7 +496,7 @@ async function rdUrlValidate(){
     }
     hint.innerHTML = baseHint + mismatchTip + chainHtml;
   } catch (e) {
-    hint.style.display = 'none';
+    hint.classList.add('hidden');
   }
 }
 
@@ -562,16 +559,16 @@ function rdToggleSel(ver){
   const bar = document.getElementById('rdSelectedBar');
   const reselectBtn = document.getElementById('rdReselectBtn');
   if (_rd.selected.length >= 2) {
-    table.style.display = 'none';
-    bar.style.display = 'flex';
-    reselectBtn.style.display = 'inline-flex';
+    table.classList.add('hidden');
+    bar.classList.remove('hidden');
+    reselectBtn.classList.remove('hidden');
     document.getElementById('rdSelectedText').innerHTML =
       `已选: <b class="font-mono">${_rd.selected[0]}</b>  →  <b class="font-mono">${_rd.selected[1]}</b>`;
   } else {
     rdRenderPkgTable();  // 展开状态需要刷新表格来更新选中样式
-    table.style.display = 'block';
-    bar.style.display = 'none';
-    reselectBtn.style.display = 'none';
+    table.classList.remove('hidden');
+    bar.classList.add('hidden');
+    reselectBtn.classList.add('hidden');
     document.getElementById('rdSelectedText').textContent =
       _rd.selected.length === 0 ? '未选择' : `已选: ${_rd.selected[0]} (还需选 1 个)`;
   }
@@ -581,10 +578,10 @@ function rdReselect(){
   // 重新展开表格 + 清空已选 + 隐藏 Step2
   _rd.selected = [];
   _rd.diffResult = null;
-  document.getElementById('rdStep2').style.display = 'none';
-  document.getElementById('rdPkgTableContainer').style.display = 'block';
-  document.getElementById('rdSelectedBar').style.display = 'none';
-  document.getElementById('rdReselectBtn').style.display = 'none';
+  document.getElementById('rdStep2').classList.add('hidden');
+  document.getElementById('rdPkgTableContainer').classList.remove('hidden');
+  document.getElementById('rdSelectedBar').classList.add('hidden');
+  document.getElementById('rdReselectBtn').classList.add('hidden');
   rdRenderPkgTable();
   rdClearFilter();
 }
@@ -593,7 +590,7 @@ async function rdCompare(){
   if (_rd.selected.length !== 2) return;
   const btn = document.getElementById('rdCompareBtn');
   btn.disabled = true; btn.textContent = '⏳ 对比中...';
-  document.getElementById('rdStep2').style.display = 'none';
+  document.getElementById('rdStep2').classList.add('hidden');
   try {
     const j = await api('/diff/compare', {
       method: 'POST',
@@ -607,7 +604,7 @@ async function rdCompare(){
     if (j.code !== 0) { rdToast('对比失败: ' + (j.message || '网络错误'), 'error', 6000); return; }
     _rd.diffResult = j.data;
     rdRenderResult();
-    document.getElementById('rdStep2').style.display = 'block';
+    document.getElementById('rdStep2').classList.remove('hidden');
   } catch (e) {
     rdToast('网络错误: ' + e.message, 'error', 6000);
   } finally {
@@ -673,10 +670,10 @@ function rdRenderGroups(){
   const container = document.getElementById('rdResultGroups');
   const filterBar = document.getElementById('rdFilterBar');
   if (filterVer) {
-    filterBar.style.display = 'block';
+    filterBar.classList.remove('hidden');
     document.getElementById('rdFilterLabel').textContent = filterVer;
   } else {
-    filterBar.style.display = 'none';
+    filterBar.classList.add('hidden');
   }
 
   // 1) 建立所有出现过的版本号 → 全局 rank (用于排序 + 过滤)
@@ -712,7 +709,7 @@ function rdRenderGroups(){
   delItems.sort((a, b) => a.id - b.id);
 
   // 3) 渲染 3 个分组
-  const renderGroup = (title, icon, color, count, items, typeKey) => {
+  const renderGroup = (title, icon, count, items, typeKey) => {
     const emptyNote = filterVer ? `在 <code>${filterVer}</code> 中无${typeKey === 'new' ? '新增' : typeKey === 'updated' ? '更新' : '删除'}规则` : null;
     if (items.length === 0 && emptyNote) {
       return `<div class="rd-group mb12 muted-13">${icon} ${title}: ${emptyNote}</div>`;
@@ -730,7 +727,7 @@ function rdRenderGroups(){
     }[typeKey];
     return `
       <div class="rd-group mb18">
-        <div data-css="font-size:13px;font-weight:600;margin-bottom:8px;color:${color};display:flex;align-items:center;gap:8px">
+        <div class="rd-group-title rd-group-${typeKey}">
           ${icon} ${title}
           <span class="muted-11 fw-normal">(${items.length} 条${filterVer ? ` · 过滤自 ${count} 条` : ''})</span>
         </div>
@@ -739,7 +736,7 @@ function rdRenderGroups(){
             <thead><tr>
               <th class="w90">${headers[0]}</th>
               <th>${headers[1]}</th>
-              <th data-css="width:${widths}">${headers[2]}</th>
+              <th class="rd-col-${typeKey}">${headers[2]}</th>
             </tr></thead>
             <tbody>${items.map(x => {
               if (typeKey === 'new') {
@@ -772,9 +769,9 @@ function rdRenderGroups(){
 
   const fromVer = r.from_version;
   container.innerHTML =
-    renderGroup('新增规则', '🟢', 'var(--success)', (r.pure_new || []).length, newItems, 'new') +
-    renderGroup('修改规则', '🔵', 'var(--primary)', (r.pure_updated || []).length, updItems, 'updated') +
-    renderGroup('删除规则', '🔴', 'var(--danger)', (r.pure_deleted || []).length, delItems, 'deleted') ||
+    renderGroup('新增规则', '🟢', (r.pure_new || []).length, newItems, 'new') +
+    renderGroup('修改规则', '🔵', (r.pure_updated || []).length, updItems, 'updated') +
+    renderGroup('删除规则', '🔴', (r.pure_deleted || []).length, delItems, 'deleted') ||
     '<div class="ta-center p30 text-muted">无规则数据</div>';
 }
 

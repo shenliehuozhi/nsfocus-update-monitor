@@ -43,15 +43,16 @@ const CH_TYPE_STYLE = {
 };
 const CH_TYPE_CN = {email:'邮件',wecom:'企微',dingtalk:'钉钉',feishu:'飞书',apprise:'Apprise'};
 function chTypeChip(type, withIcon=true){
-  const s = CH_TYPE_STYLE[type] || {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'•'};
+  const s = CH_TYPE_STYLE[type] || {icon:'•'};
   const cn = CH_TYPE_CN[type] || type;
-  const iconHtml = withIcon ? `<span data-css="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${s.fg};color:#fff;font-size:9px;font-weight:700;line-height:1;margin-right:4px;font-family:Arial,sans-serif">${s.icon}</span>` : '';
-  return `<span data-css="display:inline-flex;align-items:center;padding:1px 8px 1px 4px;background:${s.bg};color:${s.fg};border:1px solid ${s.border};border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${iconHtml}${cn}</span>`;
+  const tc = CH_TYPE_STYLE[type] ? type : 'default';
+  const iconHtml = withIcon ? `<span class="ch-type-icon">${s.icon}</span>` : '';
+  return `<span class="ch-type-chip ch-type-${tc}">${iconHtml}${cn}</span>`;
 }
 
 function toggleChTypeDropdown(){
   const m=document.getElementById('chTypeMenu');
-  if(m)m.style.display=m.style.display==='none'?'block':'none';
+  if(m)m.classList.toggle('hidden');
 }
 function selectChType(t, triggerCfgChange=true){
   document.getElementById('cht').value=t;
@@ -60,10 +61,9 @@ function selectChType(t, triggerCfgChange=true){
   document.querySelectorAll('.ch-type-option').forEach(o=>{
     const isSel=o.dataset.t===t;
     o.dataset.selected=isSel?'1':'';
-    o.style.background=isSel?'var(--primary-light)':'transparent';
   });
   const m=document.getElementById('chTypeMenu');
-  if(m)m.style.display='none';
+  if(m)m.classList.add('hidden');
   if(triggerCfgChange && typeof chTypeCh==='function')chTypeCh();
 }
 // 关闭下拉(点击外部)
@@ -71,7 +71,7 @@ document.addEventListener('click',function(e){
   const dd=document.getElementById('chTypeDropdown');
   if(dd && !dd.contains(e.target)){
     const m=document.getElementById('chTypeMenu');
-    if(m)m.style.display='none';
+    if(m)m.classList.add('hidden');
   }
 });
 
@@ -92,6 +92,13 @@ function _buildProdColorMap(names){
   sorted.forEach((p,i)=>{
     map[p]= i<_PROD_PALETTE.length ? _PROD_PALETTE[i] : `hsl(${(i*137.508)%360}, 55%, 50%)`;
   });
+  return map;
+}
+// 与 _buildProdColorMap 同序，返回 0..23 的调色板下标，供 DOM 用 .pal-N class 上色
+function _buildProdColorIdxMap(names){
+  const sorted=[...new Set((names||[]).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'zh'));
+  const map={};
+  sorted.forEach((p,i)=>{ map[p]=i%24; });
   return map;
 }
 
@@ -126,7 +133,7 @@ function _renderProdDistTable(data){
     container.innerHTML='<div class="p16 ta-center disabled-12">暂无数据</div>'; return;
   }
   const total = data.reduce((s,e)=>s+e.count,0);
-  const cmap = _buildProdColorMap(data.map(d=>d.name));
+  const cmap = _buildProdColorIdxMap(data.map(d=>d.name));
   container.innerHTML='<table class="table-base">'+
     '<thead><tr class="data-stats-thead">'+
       '<th class="data-th">产品</th>'+
@@ -135,11 +142,11 @@ function _renderProdDistTable(data){
     '</tr></thead><tbody>'+
     data.map((item)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
-      const color = cmap[item.name] || 'var(--gray-disabled)';
+      const pi = cmap[item.name] ?? 0;
       return `<tr class="data-stats-row">
         <td class="data-stats-td">
           <div class="flex items-center gap6 min-w0">
-            <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
+            <span class="pal-dot pal-${pi}"></span>
             <span class="ellipsis flex-1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
           </div>
         </td>
@@ -147,7 +154,7 @@ function _renderProdDistTable(data){
         <td class="data-stats-td">
           <div class="flex items-center gap6">
             <div class="progress-track">
-              <div data-css="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
+              <div class="pal-bar pal-${pi}" data-css="width:${pct}%"></div>
             </div>
             <span class="gray-muted-11 min-w36 ta-right">${pct}%</span>
           </div>
@@ -214,21 +221,21 @@ function _renderCustPushTable(items, days){
         c.last_sent_at ? `时间: ${fmtTZ(c.last_sent_at, true)}` : `近${days}天无推送`,
         '点击查看该客户推送历史',
       ].filter(Boolean).join('\n');
-      const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
-      return `<tr data-css="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s;${isZero?'opacity:.5':''}" class="pill-tip" data-tip="${escHtml(tipLines)}" data-on-click="_gotoHistoryDays" data-args='${_dataArgs(days, c.id)}'>
+      const pi = _hashIdx(String(c.id||c.name))%PIE_COLORS.length;
+      return `<tr class="pill-tip cust-row${isZero?' is-zero':''}" data-tip="${escHtml(tipLines)}" data-on-click="_gotoHistoryDays" data-args='${_dataArgs(days, c.id)}'>
         <td class="data-stats-td box-border" data-col="0">
           <div class="flex items-center gap6 min-w0">
-            <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${isZero?'var(--gray-disabled)':color}"></span>
+            <span class="pal-dot ${isZero?'muted-dot':'pie-c'+pi}"></span>
             <span class="ellipsis" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
-        <td data-col="1" data-css="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${isZero?'var(--gray-disabled)':(failed>0?'var(--danger)':'var(--success)')};font-variant-numeric:tabular-nums">${total}</td>
+        <td data-col="1" class="cust-num ${isZero?'text-disabled':(failed>0?'text-danger':'text-success-text')}">${total}</td>
         <td class="data-stats-td box-border" data-col="2">
           ${isZero
             ? '<span class="disabled-11">无推送</span>'
             : `<div class="flex items-center gap6">
                 <div class="progress-track">
-                  <div data-css="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
+                  <div class="pal-bar ${failed>0?'bar-danger':'bar-success'}" data-css="width:${failPct}%"></div>
                 </div>
                 <span class="gray-muted-11 min-w36 ta-right">${failPct}%</span>
               </div>`}
@@ -279,6 +286,7 @@ function _renderTimelineChart(canvasId, data, days, visible){
 
   // 与图例/产品分布表共用一份按产品名索引的色表
   const prodColor = _buildProdColorMap(allProducts);
+  const prodIdx = _buildProdColorIdxMap(allProducts);
 
   // 填充日期空洞
   const today=new Date();
@@ -481,27 +489,15 @@ function _renderTimelineChart_Redraw(d, mx, e){
     const right = sortedProds.slice(half);
     const buildCol = (prods) => prods.map(p => {
       const val = pt.counts[p] || 0;
-      const color = prodColor[p];
+      const pi = prodIdx[p] ?? 0;
       const isHovered = window._tlHover && window._tlHover === p;
       const isDimmed  = window._tlHover && window._tlHover !== p;
       // Highlight: 当前 hover 的产品加粗 + 名字加产品色 + 数字大
       // 其他产品变淡 (透明度 0.45)
-      const wrapStyle = isHovered
-        ? 'display:flex;align-items:center;gap:6px;font-size:12px;line-height:1.5;background:var(--primary-light);border-radius:4px;padding:2px 4px;margin:-2px -4px'
-        : `display:flex;align-items:center;gap:6px;font-size:11px;line-height:1.5;opacity:${isDimmed ? '0.45' : '1'}`;
-      const dotStyle = isHovered
-        ? `width:10px;height:10px;border-radius:50%;background:${color};display:inline-block;flex-shrink:0;box-shadow:0 0 0 2px #fff,0 0 0 3px ${color}`
-        : `width:8px;height:2px;background:${color};display:inline-block;flex-shrink:0`;
-      const nameStyle = isHovered
-        ? `color:var(--primary);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:140px`
-        : `color:var(--gray-disabled);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px`;
-      const valStyle = isHovered
-        ? 'margin-left:auto;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums'
-        : 'margin-left:auto;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums';
-      return `<div data-css="${wrapStyle}">
-        <span data-css="${dotStyle}"></span>
-        <span data-css="${nameStyle}" title="${p}">${p}</span>
-        <span data-css="${valStyle}">${val}</span>
+      return `<div class="tt-row pal-${pi}${isHovered?' tt-row-hot':''}${isDimmed?' tt-row-dim':''}">
+        <span class="tt-dot${isHovered?' tt-dot-hot':''}"></span>
+        <span class="tt-name${isHovered?' tt-name-hot':''}" title="${p}">${p}</span>
+        <span class="tt-val${isHovered?' tt-val-hot':''}">${val}</span>
       </div>`;
     }).join('');
 
@@ -518,14 +514,14 @@ function _renderTimelineChart_Redraw(d, mx, e){
     const tx = e.clientX + 14, ty = e.clientY - 10;
     tip.style.left = tx + 'px';
     tip.style.top = ty + 'px';
-    tip.style.display = 'block';
+    tip.classList.remove('hidden');
     }
   }
 }
 
 function _hideChartTooltip(e, canvas){
   const tip = document.getElementById('chartTip');
-  if(tip) tip.style.display = 'none';
+  if(tip) tip.classList.add('hidden');
   // 清空 hover 状态
   if(window._tlHover){ window._tlHover = null; }
   // 重绘清除虚线
@@ -536,13 +532,13 @@ function _hideChartTooltip(e, canvas){
 function _renderTlLegend(allProducts, visible){
   const container = document.getElementById('tlLegend');
   if(!container) return;
-  const prodColor = _buildProdColorMap(allProducts);
+  const prodIdx = _buildProdColorIdxMap(allProducts);
   // 图例固定按名称排序,与曲线色表同源,避免顺序变化导致颜色对不上
   const sorted = [...new Set(allProducts||[])].sort((a,b)=>a.localeCompare(b,'zh'));
   container.innerHTML = sorted.map((p) => {
     const on = visible[p];
-    return `<span data-on-click="_toggleTlProd" data-args='${_dataArgs(p)}' data-css="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'var(--gray-disabled)'};text-decoration:${on?'none':'line-through'}">
-      <span data-css="width:10px;height:2px;background:${prodColor[p]};display:inline-block;border-radius:4px"></span>
+    return `<span data-on-click="_toggleTlProd" data-args='${_dataArgs(p)}' class="tl-legend pal-${prodIdx[p] ?? 0}${on?' tl-legend-on':''}">
+      <span class="tl-legend-dot"></span>
       ${escHtml(p)}
     </span>`;
   }).join('');
@@ -731,7 +727,7 @@ async function dataPage() {
       if (targetId) {
         var card = cardHd.closest('.card');
         var body = document.getElementById(targetId);
-        var wasVisible = body && body.style.display !== 'none';
+        var wasVisible = body && !body.classList.contains('hidden');
         productCardToggle(targetId);
         // Highlight card when expanded; remove highlight when collapsed
         if (card) {
@@ -1105,7 +1101,7 @@ function buildFlatVerTreeHtml(snapshots) {
       <span class="ml-auto muted-11">${snaps.length} 个包</span>
     </div>`;
     // Build snapshot table
-    let tbl = `<div id="${blockId}" data-css="display:none;padding:4px 0 8px 28px">`;
+    let tbl = `<div id="${blockId}" class="hidden ver-block">`;
     snaps.forEach(s => {
       const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
       const did = 'dd_v_' + s.id;
@@ -1113,7 +1109,7 @@ function buildFlatVerTreeHtml(snapshots) {
       const isOld = isOldSnapshot(s);
       const pkgTypeBadge = `<span class="badge pkg-type-badge">${MAP[s.package_type] || s.package_type || ''}</span>`;
       const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue badge-xs">未推送</span>' : '');
-      tbl += `<div data-css="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" data-on-click="_toggleByIdClass" data-args='${_dataArgs(did, 'hidden')}'>
+      tbl += `<div class="snap-row${isRb ? ' snap-row-rb' : isOld ? ' snap-row-old' : ''}" data-on-click="_toggleByIdClass" data-args='${_dataArgs(did, 'hidden')}'>
         ${pkgTypeBadge}
         ${statusBadges}
         <span class="text-primary flex-1 ellipsis" title="${escHtml(s.file_name || '')}">${escHtml(s.file_name || '')}</span>
@@ -1144,8 +1140,8 @@ function buildFlatVerTreeHtml(snapshots) {
 function verBarToggle(el, blockId) {
   const block = document.getElementById(blockId);
   if (!block) return;
-  const hidden = block.style.display === 'none';
-  block.style.display = hidden ? 'block' : 'none';
+  const hidden = block.classList.contains('hidden');
+  block.classList.toggle('hidden', !hidden);
   const arrow = el.querySelector('.tree-arrow');
   if (arrow) arrow.innerHTML = hidden ? '&#9660;' : '&#9658;';
 }
@@ -1204,7 +1200,7 @@ function dataRenderLeft() {
         ${freshBadge && `<span class="ml-auto">${freshBadge}</span>`}
         <button class="hover-primary pager-btn" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
       </div>
-      <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" data-css="display:none;padding-top:0">
+      <div class="card-bd pt0 hidden" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd">
         <div class="py8-4" id="${cardId}_tree">${treeHtml}</div>
       </div>
     </div>`;
@@ -1239,8 +1235,8 @@ function treeToggleById(childrenId, arrowEl) {
   if (!children || !children.classList.contains('tree-children')) return;
   // Find the arrow inside this tree-node to update its glyph
   const arrow = treeNode.querySelector('span[data-toggle-arrow], .tree-arrow');
-  const isHidden = children.style.display === 'none' || children.style.display === '';
-  children.style.display = isHidden ? 'block' : 'none';
+  const isHidden = children.classList.contains('hidden');
+  children.classList.toggle('hidden', !isHidden);
   if (arrow) arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
   if (children._wasHidden === undefined) children._wasHidden = isHidden;
 }
@@ -1250,8 +1246,8 @@ function productCardToggle(bodyId) {
   if (!bodyId) return;
   var target = document.getElementById(bodyId);
   if (!target) return;
-  var isOpen = target.style.display !== 'none';
-  target.style.display = isOpen ? 'none' : 'block';
+  var isOpen = !target.classList.contains('hidden');
+  target.classList.toggle('hidden', isOpen);
   var card = target.closest('.card');
   if (!card) return;
   var hd = card.querySelector('.card-hd');
@@ -1313,8 +1309,8 @@ function dataTreeNodeClick(sid, chain, url, isLeaf, snapIds, node, verHint, pkgH
   // Expand parent tree children (so selected node is visible)
   let parent = node.parentElement;
   while (parent && !parent.classList.contains('card-bd')) {
-    if (parent.classList.contains('tree-children') && parent.style.display === 'none') {
-      parent.style.display = '';
+    if (parent.classList.contains('tree-children') && parent.classList.contains('hidden')) {
+      parent.classList.remove('hidden');
       const arrow = parent.previousElementSibling?.querySelector('.tree-arrow');
       if (arrow) arrow.innerHTML = '&#9660;';
     }
@@ -1609,7 +1605,7 @@ function dataRenderRight(sch, p, info) {
     return;
   }
 
-  const colStyle = 'data-css="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
+  const colStyle = 'class="feed-cell-txt"';
   let html = `<div class="feed-list">
 <div class="feed-hd">
   <div class="feed-cell feed-arrow-hd feed-arrow-w"></div>
@@ -1962,7 +1958,7 @@ if (!matchedPath && snap.source_url) {
       if (d.description_raw) {
         descEl.outerHTML = `<div class="diff-box">${escHtml(d.description_raw)}</div>`;
       } else {
-        descEl.style.display = 'none';
+        descEl.classList.add('hidden');
       }
     }
     const md5El = document.getElementById(`snap-md5-${snapId}`);
@@ -2040,7 +2036,7 @@ function dataRightGoto(sid, chainJson) {
 
     // Expand the card body (tree container) via productCardToggle, then expand tree path
     const cardBody = card.querySelector('.card-bd');
-    const wasHidden = cardBody && cardBody.style.display === 'none';
+    const wasHidden = cardBody && cardBody.classList.contains('hidden');
     if (wasHidden) {
       // Use the existing productCardToggle to expand the card body cleanly
       const targetId = cardBody.id;
@@ -2065,7 +2061,7 @@ function dataRightGoto(sid, chainJson) {
       // Expand all ancestor .tree-children so target is visible
       let parent = targetNode.parentElement;
       while (parent && !parent.classList.contains('card-bd')) {
-        if (parent.classList.contains('tree-children') && parent.style.display === 'none') {
+        if (parent.classList.contains('tree-children') && parent.classList.contains('hidden')) {
           treeToggleById(parent.id); // use the named toggle to keep arrow icons in sync
         }
         parent = parent.parentElement;

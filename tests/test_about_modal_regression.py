@@ -126,17 +126,17 @@ def test_showAboutModal_can_open_after_close():
         "if(m.style.display!=='none') m.style.display='' "
         '— this means closing then reopening shows nothing.'
     )
-    # And it must unconditionally show
-    assert "m.style.display=''" in code_only, (
-        'showAboutModal should unconditionally set m.style.display="" to re-show'
+    # And it must unconditionally clear the hidden state
+    assert "m.classList.remove('hidden')" in code_only, (
+        'showAboutModal should unconditionally remove the hidden class to re-show'
     )
 
 
 def test_closeAboutModal_uses_simple_hide():
-    """closeAboutModal should toggle display='none' on the modal. The
+    """closeAboutModal should add the hidden class to the modal. The
     showAboutModal function is responsible for showing it again.
     """
     html = JS_SOURCE
     func_src = _extract_function(html, 'closeAboutModal')
-    assert "m.style.display='none'" in func_src
+    assert "m.classList.add('hidden')" in func_src
     assert 'if(m)' in func_src  # null-safety

@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/css/app.css">
 <body>
 
-<header class="header" id="header" data-css="display:none">
+<header class="header hidden" id="header">
   <button class="nav-toggle" data-on-click="toggleMobileNav" aria-label="菜单" title="菜单">
     <span>☰</span>
     <span id="nav-toggle-badge" class="nav-toggle-badge" title="有待确认的自动发现结果"></span>
@@ -35,7 +35,7 @@
         <span id="unameText"></span>
         <span class="fs10 opacity-70">▾</span>
       </span>
-      <div id="userDropdown" data-css="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1e293b;border:1px solid #334155;border-radius:6px;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9999;overflow:hidden">
+      <div id="userDropdown" class="user-dropdown hidden">
         <div class="menu-item" data-on-click="_menuShowPwd">🔒 修改密码</div>
         <div class="menu-item menu-item-sep" data-on-click="_menuLogout">🚪 退出登录</div>
       </div>
@@ -59,7 +59,7 @@
 <!-- ─────────────────────────────────────────────────────────────
   其他工具 (tools page) — 卡片列表 + 规则库 Diff 子页
   ───────────────────────────────────────────────────────────── -->
-<div id="rdToast" class="rd-toast"></div>
+<div id="rdToast" class="rd-toast hidden"></div>
 <script src="/static/js/tools.js"></script>
 </body>
 </html>

@@ -9,8 +9,7 @@ const SES_MODE={'standard':'标品','vm':'虚拟化'};
 // 其他 3 处用 ${id}-body id(2 处兼容旧引用)。
 // 边框用浅紫 #c4b5fd(violet-300)替代默认 --gray-border(#e2e7ee),在浅蓝灰
 // 环境(--bg:#f1f4f8)上能看出边界。disc/confirm/refresh-pkg 都是采集任务,
-// 用同主题色统一。
-const FLOAT_LOG_CSS = 'position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #c4b5fd;border-radius:10px;box-shadow:0 8px 32px rgba(124,58,237,0.18);z-index:9999;display:none';
+// 用同主题色统一。样式见 app.css .float-log,显隐统一走 .hidden。
 function _createFloatLog(logId, title, opts){
   // opts.bodyClass: 'class' (refresh-pkg 用) | undefined (默认 id=${logId}-body)
   const bodyClass = opts && opts.bodyClass;
@@ -19,7 +18,7 @@ function _createFloatLog(logId, title, opts){
     : `id="${logId}-body"`;
   const el = document.createElement('div');
   el.id = logId;
-  el.style.cssText = FLOAT_LOG_CSS;
+  el.className = 'float-log hidden';
   el.innerHTML = `<div class="table-hd-row"><span class="flex-1">${title}</span><button class="btn-x-plain" data-on-click="_hideById" data-args='${_dataArgs(logId)}'>×</button></div><div class="json-pre" ${bodyAttrs}></div>`;
   return el;
 }
@@ -191,16 +190,16 @@ function syncModalButtons(){
   const p=window._sesPurpose;
   const collectBtn=document.getElementById('modalBtnCollect');
   const discoverBtn=document.getElementById('modalBtnDiscover');
-  if(collectBtn){collectBtn.style.background=p==='collect'?'#fff':'transparent';collectBtn.style.color=p==='collect'?'var(--text)':'var(--gray-muted)';collectBtn.style.boxShadow=p==='collect'?'0 1px 3px rgba(0,0,0,.15)':'none';}
-  if(discoverBtn){discoverBtn.style.background=p==='discover'?'#fff':'transparent';discoverBtn.style.color=p==='discover'?'var(--text)':'var(--gray-muted)';discoverBtn.style.boxShadow=p==='discover'?'0 1px 3px rgba(0,0,0,.15)':'none';}
+  if(collectBtn){collectBtn.classList.toggle('seg-btn-active',p==='collect');collectBtn.classList.toggle('tab-flat',p!=='collect');}
+  if(discoverBtn){discoverBtn.classList.toggle('seg-btn-active',p==='discover');discoverBtn.classList.toggle('tab-flat',p!=='discover');}
   const m=window._sesMode;
   const stdBtn=document.getElementById('modalBtnStandard');
   const vmBtn=document.getElementById('modalBtnVm');
-  if(stdBtn){stdBtn.style.background=m==='standard'?'#fff':'transparent';stdBtn.style.color=m==='standard'?'var(--text)':'var(--gray-muted)';stdBtn.style.boxShadow=m==='standard'?'0 1px 3px rgba(0,0,0,.15)':'none';}
-  if(vmBtn){vmBtn.style.background=m==='vm'?'#fff':'transparent';vmBtn.style.color=m==='vm'?'var(--text)':'var(--gray-disabled)';vmBtn.style.textDecoration=m==='vm'?'none':'line-through';}
+  if(stdBtn){stdBtn.classList.toggle('seg-btn-active',m==='standard');stdBtn.classList.toggle('tab-flat',m!=='standard');}
+  if(vmBtn){vmBtn.classList.toggle('seg-btn-active',m==='vm');vmBtn.classList.toggle('tab-flat-off',m!=='vm');}
   // 发现模式不需要选择标品/虚拟化，隐藏格式选择
   const modeRow=document.getElementById('modalModeRow');
-  if(modeRow)modeRow.style.display=p==='discover'?'none':'block';
+  if(modeRow)modeRow.classList.toggle('hidden', p==='discover');
 }
 function setPurpose(p){
   window._sesPurpose=p;
@@ -443,7 +442,7 @@ function openChModal(id){
   const typeOptionsHtml=['wecom','dingtalk','feishu','apprise','email'].map(t=>{
     return `<div class="ch-type-option picker-box" data-t="${t}" data-on-click="selectChType" data-args='${_dataArgs(t)}'>${chTypeChip(t)}</div>`;
   }).join('');
-  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div class="pos-rel" id="chTypeDropdown"><div class="pointer min-h22" id="chTypeCurrent" data-on-click="toggleChTypeDropdown"></div><div id="chTypeMenu" data-css="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:10;padding:4px">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div class="pos-rel" id="chTypeDropdown"><div class="pointer min-h22" id="chTypeCurrent" data-on-click="toggleChTypeDropdown"></div><div id="chTypeMenu" class="ch-type-menu hidden">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
   const modal=document.createElement('div');
   modal.id='chModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
@@ -691,7 +690,7 @@ const TPL_META={
 };
 function tplBadgeHtml(tpl){
   const m=TPL_META[tpl]||TPL_META.full;
-  return `<span class="d-inline-block nowrap"><span class="badge" data-css="background:${m.bg};color:${m.fg};font-size:10px;padding:1px 6px;border-radius:8px">${m.key}</span> ${m.name}</span>`;
+  return `<span class="d-inline-block nowrap"><span class="badge tpl-badge tpl-badge-${m.key.toLowerCase()}">${m.key}</span> ${m.name}</span>`;
 }
 function _ruleTemplateValueForChannel(r,cid){
   if(!r)return '';
@@ -790,7 +789,7 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
 
-let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span data-css="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span class="match-badge-sm ${isLeaf?'match-leaf':'match-sub'}">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openRModal">+ 创建规则</button><table class="mt16 table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
@@ -803,8 +802,8 @@ function onCustChange(){
   let attachRow=document.getElementById('custAttachRow');
   let attachSpan=document.getElementById('custAttachDisplay');
   if(!cid||!window._custs){
-    if(row)row.style.display='none';
-    if(attachRow)attachRow.style.display='none';
+    if(row)row.classList.add('hidden');
+    if(attachRow)attachRow.classList.add('hidden');
     window._currentCustomer=null;
     try{ renderChanTags(); }catch(e){}
     return;
@@ -813,21 +812,21 @@ function onCustChange(){
   window._currentCustomer=c||null;
   if(c&&emailSpan){
     emailSpan.textContent=c.email||'（未设置）';
-    row.style.display='';
+    row.classList.remove('hidden');
   }else if(row){
-    row.style.display='none';
+    row.classList.add('hidden');
   }
   // Display the customer's attachment_max_mb (read-only — comes from customer).
   // 全局默认 10MB = 10485760 字节,见 src/notifiers/email.py ATTACHMENT_MAX_SIZE
   if(attachRow&&attachSpan){
     if(c && Number(c.attachment_max_mb)>0){
       attachSpan.textContent = c.attachment_max_mb + ' MB（来自客户档案）';
-      attachSpan.style.color = '';
+      attachSpan.classList.remove('text-muted');
     }else{
       attachSpan.textContent = '未配置(发送时默认 10 MB)';
-      attachSpan.style.color = 'var(--muted)';
+      attachSpan.classList.add('text-muted');
     }
-    attachRow.style.display='';
+    attachRow.classList.remove('hidden');
   }
   // 已渲染的 email 渠道 tag 同步展示客户档案附件大小(仅展示,saveRule 仍写 0 让 router 自动 fallback)
   try{ renderChanTags(); }catch(e){}
@@ -835,7 +834,7 @@ function onCustChange(){
 
 function toggleAllMode(){
   const on=document.getElementById('rall').checked;
-  document.getElementById('rcondsWrap').style.display=on?'none':'';
+  document.getElementById('rcondsWrap').classList.toggle('hidden', on);
   if(on){
     // 订阅全部模式：清空路径
     window._condChains=[];
@@ -975,11 +974,11 @@ function csTreeNodeClick(nodeEl) {
   if (idx >= 0) {
     window._condChains.splice(idx, 1);
     nodeEl.setAttribute('data-sel', '0');
-    nodeEl.style.background = '';
+    nodeEl.classList.remove('tree-node-selected');
   } else {
     window._condChains.push({ chain, match });
     nodeEl.setAttribute('data-sel', '1');
-    nodeEl.style.background = 'var(--primary-light)';
+    nodeEl.classList.add('tree-node-selected');
   }
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
@@ -991,8 +990,8 @@ function csTreeNodeClick(nodeEl) {
 function csTreeToggleById(childDivId, arrowEl) {
   const child = document.getElementById(childDivId);
   if (!child) return;
-  const isHidden = child.style.display === 'none' || !child.style.display;
-  child.style.display = isHidden ? 'block' : 'none';
+  const isHidden = child.classList.contains('hidden');
+  child.classList.toggle('hidden', !isHidden);
   if (arrowEl) arrowEl.innerHTML = isHidden ? '&#9660;' : '&#9658;';
 }
 
@@ -1037,7 +1036,7 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = isPkg ? name : (MAP[name] || name);
     const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
-    const selClass = isSelected ? ' data-css="background:var(--primary-light);border-radius:4px"' : '';
+    const selClass = isSelected ? ' tree-node-selected' : '';
     const childDivId = hasChildren ? ('cst_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
     const arrow = hasChildren
       ? `<span class="tree-toggle" data-on-click="csTreeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}'>&#9658;</span>`
@@ -1045,13 +1044,13 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
 
     const isLeafNode = !hasChildren;
     const leafAttr = ' data-is-leaf="' + (isLeafNode ? '1' : '0') + '"';
-    let html = `<div class="tree-node"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" data-on-click="csTreeNodeClick" data-stop data-args='${_dataArgs('$el')}' data-css="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer"${selClass}>`;
+    let html = `<div class="tree-node tree-row tree-row-gap4 tree-row-click ti-${depth}"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" data-on-click="csTreeNodeClick" data-stop data-args='${_dataArgs('$el')}'${selClass}>`;
     html += arrow;
     html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}</span>`;
     html += `</div>`;
 
     if (hasChildren) {
-      html += `<div id="${childDivId}" class="tree-children" data-target="${childDivId}" data-css="display:none">`;
+      html += `<div id="${childDivId}" class="tree-children hidden" data-target="${childDivId}">`;
       children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
       html += `</div>`;
     }
@@ -1084,7 +1083,7 @@ document.addEventListener('click', function(e) {
     // Toggle: 选中→取消，取消→选中
     const newSel = isSelected ? '0' : '1';
     csNode.setAttribute('data-sel', newSel);
-    csNode.style.background = newSel === '1' ? 'var(--primary-light)' : '';
+    csNode.classList.toggle('tree-node-selected', newSel === '1');
     // 更新选中集合（用 Set 存 chain JSON 字符串）
     if (!window._csSelectedSet) window._csSelectedSet = new Set();
     if (newSel === '1') {
@@ -1101,8 +1100,8 @@ document.addEventListener('click', function(e) {
     const targetId = csToggle.getAttribute('data-target');
     const children = document.getElementById(targetId);
     if (children) {
-      const hidden = children.style.display === 'none' || children.style.display === '';
-      children.style.display = hidden ? 'block' : 'none';
+      const hidden = children.classList.contains('hidden');
+      children.classList.toggle('hidden', !hidden);
       csToggle.innerHTML = hidden ? '&#9660;' : '&#9658;';
     }
     return;
@@ -1148,7 +1147,7 @@ function removeChainCond(idx) {
     // 取消树的该节点高亮
     const safeChainKey = chainKey.replace(/"/g, '&quot;');
     const node = document.querySelector('.tree-node[data-chain="' + safeChainKey + '"]');
-    if (node) { node.setAttribute('data-sel', '0'); node.style.background = ''; }
+    if (node) { node.setAttribute('data-sel', '0'); node.classList.remove('tree-node-selected'); }
   }
   renderCondPills();
   // 同时更新右侧面板
@@ -1165,11 +1164,11 @@ function renderCondPills() {
   const chains = window._condChains || [];
   const empty = document.getElementById('rcondsEmpty');
   if (chains.length === 0) {
-    if (empty) empty.style.display = '';
+    if (empty) empty.classList.remove('hidden');
     container.querySelectorAll('.cond-pill').forEach(el => el.remove());
     return;
   }
-  if (empty) empty.style.display = 'none';
+  if (empty) empty.classList.add('hidden');
   // 保留 empty div，删掉所有 pill
   container.querySelectorAll('.cond-pill').forEach(el => el.remove());
   chains.forEach((c, i) => {
@@ -1179,9 +1178,8 @@ function renderCondPills() {
     const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const pill = document.createElement('div');
     pill.className = 'cond-pill';
-    pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0';
     pill.innerHTML = `${staleBadge}<span class="tree-label-blue" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
-      <span data-css="background:${isLeaf ? 'var(--primary-light)' : 'var(--warn-light)'};color:${isLeaf ? '#1e40af' : '#92400e'};font-size:10px;padding:1px 5px;border-radius:8px;font-weight:600">${matchLabel}</span>
+      <span class="match-badge ${isLeaf?'match-leaf':'match-sub'}">${matchLabel}</span>
       <button class="btn-x-plain-14" data-on-click="removeCondPill" data-args='${_dataArgs(i)}'>×</button>`;
     container.appendChild(pill);
   });
@@ -1227,9 +1225,6 @@ function renderChanTags(){
 
   const tagHtml=(c)=>{
     const isEmail=c.type==='email';
-    const bg=isEmail?'var(--warn-light)':'var(--primary-light)';
-    const bd=isEmail?'#fbbf24':'var(--primary-light)';
-    const fg=isEmail?'#92400e':'#1e40af';
     const opts=getTplOptsForChannel(c.type);
     // email 行: 4 列 (渠道名 | 收件人 | 附件大小 | ×),无模板列
     // feishu 行: 4 列 (渠道名 | 模板 | ×),select 只 1 个 D 选项 (feishu.py 走 _build_post,4 模板不生效,固定 D)
@@ -1237,14 +1232,14 @@ function renderChanTags(){
     if (isEmail) {
       // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
       // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
-      return `<div data-css="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
+      return `<div class="chan-tag-email">
         <span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span>
-        <input data-cid="${c.id}" data-field="customer_emails" placeholder="${escHtml(emailPlaceholder())}" value="${emailDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'customer_emails', '$value')}' data-css="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
-        <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'attachment_max_mb', '$value')}' data-css="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
+        <input class="chan-field" data-cid="${c.id}" data-field="customer_emails" placeholder="${escHtml(emailPlaceholder())}" value="${emailDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'customer_emails', '$value')}'>
+        <input class="chan-field chan-field-full" data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'attachment_max_mb', '$value')}'>
         <button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button>
       </div>`;
     }
-    return `<div data-css="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span><span data-css="font-size:11px;opacity:0.75">模板</span><select class="sel-sm dd" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}' data-css="border-color:${bd};color:${fg};min-width:140px">${opts}</select><button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button></div>`;
+    return `<div class="chan-tag-robot"><span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span><span class="chan-tpl-label">模板</span><select class="sel-sm dd chan-tpl-select" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}'>${opts}</select><button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button></div>`;
   };
 
   robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span class="muted-12">未添加机器人渠道</span>';
@@ -1395,8 +1390,8 @@ async function openRModal(id){
     <div class="form-section"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" data-on-change="onCustChange" required><option value="">请选择客户</option>${custOpts}</select></div>
-    <div id="custInfoRow" class="form-group" data-css="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
-    <div id="custAttachRow" class="form-group" data-css="margin-top:2px;font-size:12px;color:var(--muted);display:none">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
+    <div id="custInfoRow" class="form-group cust-note hidden">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
+    <div id="custAttachRow" class="form-group cust-note hidden">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
     <div class="form-group"><label>有效期至</label><input class="min-w140" id="rvu" type="date" data-on-click="_showPicker" placeholder="不限制"></div>
     </div>
 
@@ -1420,7 +1415,7 @@ async function openRModal(id){
     <!-- 2026-07-11: 4 模板说明 (A=完整 / B=智能裁剪 / C=极简 / D=飞书全量) -->
     <!-- 仅钉钉/企微/飞书 走模板机制;邮箱是 HTML 全量单封,不走这 4 档 -->
     <div class="info-note">
-      <div data-css="font-weight:600;margin-bottom:4px;color:var(--text)827">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
+      <div class="info-note-title">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
       <div class="grid-kv2">
         <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微默认</div>
         <div><b>B · 智能裁剪</b></div><div>优先完整描述 → 超长自动剥英文段 → 仍超则只保留 attention 关键行 → 兜底只 head+链接</div>
@@ -1490,7 +1485,7 @@ async function openRModal(id){
     let f=r.filter_conditions||{};
     const isAll=!(f.chains||[]).length;
     document.getElementById('rall').checked=isAll;
-    document.getElementById('rcondsWrap').style.display=isAll?'none':'';
+    document.getElementById('rcondsWrap').classList.toggle('hidden', isAll);
     if(!isAll){
       const chains = f.chains || [];
       window._condChains = chains.map(c => ({
@@ -1518,7 +1513,7 @@ async function openRModal(id){
     onWinToggle();
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').style.display='';document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];window._chanTpls={};window._chanCfg={};renderCondPills();renderChanTags();onDigestModeChange();onCustChange();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').classList.remove('hidden');document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];window._chanTpls={};window._chanCfg={};renderCondPills();renderChanTags();onDigestModeChange();onCustChange();
   }
 }
 
@@ -1538,7 +1533,7 @@ function onDigestModeChange(){
   // 汇总模式：隐藏延迟，显示窗口策略（只有时间段）
   dw.classList.add('hidden');
   wsec.classList.remove('hidden');
-  if(wdr)wdr.style.display='none'; // 汇总模式：隐藏周几（只有时间段）
+  if(wdr)wdr.classList.add('hidden'); // 汇总模式：隐藏周几（只有时间段）
   d.classList.remove('hidden');
   if(m==='weekly'){
     d.innerHTML=`<label class="fw600-block">⏰ 每周推送日</label><select class="dd" id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;

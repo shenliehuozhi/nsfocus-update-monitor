@@ -5,7 +5,7 @@ document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',e=>{e.
 // 旧标签页遗留的 Bearer token 由服务端换发 Cookie，成功后本地副本立即清除。
 api('/auth/me').then(r=>{
   localStorage.removeItem('token');T=null;
-  if(r.code===0){U=r.data;document.getElementById('unameText').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}
+  if(r.code===0){U=r.data;document.getElementById('unameText').textContent=U.username;document.getElementById('header').classList.remove('hidden');showPage('dashboard');_refreshVersionBadge();}
   else renderLogin();
 });
 

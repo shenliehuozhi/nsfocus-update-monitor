@@ -130,16 +130,16 @@ function _actRun(el,ev){
 function _noop(){}
 function _removeById(id){const el=document.getElementById(id);if(el)el.remove();}
 function _clearHtmlById(id){const el=document.getElementById(id);if(el)el.innerHTML='';}
-function _showById(id){const el=document.getElementById(id);if(el)el.style.display='block';}
-function _hideById(id){const el=document.getElementById(id);if(el)el.style.display='none';}
-function _setDisplay(id,show){const el=document.getElementById(id);if(el)el.style.display=show?'':'none';}
+function _showById(id){const el=document.getElementById(id);if(el)el.classList.remove('hidden');}
+function _hideById(id){const el=document.getElementById(id);if(el)el.classList.add('hidden');}
+function _setDisplay(id,show){const el=document.getElementById(id);if(el)el.classList.toggle('hidden',!show);}
 function _removeSelf(){this.remove();}
 function _removeClosestId(){const el=this.closest('[id]');if(el)el.remove();}
 function _removeClosest(sel){const el=this.closest(sel);if(el)el.remove();}
 function _removeParent(){if(this.parentElement)this.parentElement.remove();}
 function _toggleClass(cls){this.classList.toggle(cls);}
 function _toggleByIdClass(id,cls){const el=document.getElementById(id);if(el)el.classList.toggle(cls);}
-function _setBlock(id,show){const el=document.getElementById(id);if(el)el.style.display=show?'block':'none';}
+function _setBlock(id,show){const el=document.getElementById(id);if(el)el.classList.toggle('hidden',!show);}
 function _showPicker(){if(this.showPicker)this.showPicker();}
 function _menuShowPwd(){showPwdModal();closeUserMenu();}
 function _menuLogout(){logout();closeUserMenu();}
@@ -240,7 +240,7 @@ function _stopBgRotation(){if(_bgTimer){clearInterval(_bgTimer);_bgTimer=null;}}
 function renderLogin(){
   document.body.className='login-bg';
   _startBgRotation();
-  document.getElementById('header').style.display='none';
+  document.getElementById('header').classList.add('hidden');
   document.getElementById('app').innerHTML=`<div class="center-screen">
     <div class="ta-center">
       <div class="big-icon">🛡️</div>
@@ -256,7 +256,7 @@ function showLoginForm(){
 }
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
-  if(r.code===0){_authExpired=false;T=null;localStorage.removeItem('token');U=r.data.user;_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
+  if(r.code===0){_authExpired=false;T=null;localStorage.removeItem('token');U=r.data.user;_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').classList.remove('hidden');showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
 }
 function _clearPageTimers(page){
   if(page==='dashboard'){
@@ -292,19 +292,19 @@ function toggleUserMenu(e){
   e && e.stopPropagation();
   const dd = document.getElementById('userDropdown');
   if(!dd) return;
-  dd.style.display = dd.style.display === 'none' || dd.style.display === '' ? 'block' : 'none';
+  dd.classList.toggle('hidden');
 }
 function closeUserMenu(){
   const dd = document.getElementById('userDropdown');
-  if(dd) dd.style.display = 'none';
+  if(dd) dd.classList.add('hidden');
 }
 // Click outside the user menu closes it
 document.addEventListener('click', (e) => {
   const menu = document.getElementById('userMenu');
   const dd = document.getElementById('userDropdown');
   if(!menu || !dd) return;
-  if(dd.style.display === 'none' || dd.style.display === '') return;
-  if(!menu.contains(e.target)) dd.style.display = 'none';
+  if(dd.classList.contains('hidden')) return;
+  if(!menu.contains(e.target)) dd.classList.add('hidden');
 });
 
 /* ── 自定义下拉浮层(渐进增强) ──────────────────────────────────────────

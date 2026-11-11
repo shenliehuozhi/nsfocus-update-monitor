@@ -71,16 +71,15 @@ async function history(){
     }
   });
   // 2026-11-09: 过滤条 — 订阅规则 / 客户 / 时间范围, 三者都写进 hash, 可分享也可从仪表盘卡片带 cust 下钻进来
-  const _selCss='max-width:190px';
   const _opt=(v,l,sel)=>`<option value="${v}" ${String(v)===String(sel)?'selected':''}>${escHtml(l)}</option>`;
-  const ruleSel=`<select id="histRule" class="sel-sm dd" data-on-change="histSetFilter" data-args='${_dataArgs('rule', '$value')}' title="按订阅规则过滤" data-css="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
-  const custSel=`<select id="histCust" class="sel-sm dd" data-on-change="histSetFilter" data-args='${_dataArgs('cust', '$value')}' title="按客户过滤" data-css="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
-  const daysSel=`<select id="histDays" class="sel-sm dd" data-on-change="histSetFilter" data-args='${_dataArgs('days', '$value')}' data-css="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
+  const ruleSel=`<select id="histRule" class="sel-sm dd max-w190" data-on-change="histSetFilter" data-args='${_dataArgs('rule', '$value')}' title="按订阅规则过滤">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
+  const custSel=`<select id="histCust" class="sel-sm dd max-w190" data-on-change="histSetFilter" data-args='${_dataArgs('cust', '$value')}' title="按客户过滤">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
+  const daysSel=`<select id="histDays" class="sel-sm dd max-w190" data-on-change="histSetFilter" data-args='${_dataArgs('days', '$value')}'>${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
   // 分页条 (2026-11-09 P1): total 现在是包数, 每页 200 包。原先既不显示总数也无法翻到
   // 第 2 页, 用户以为 200 包就是全部 —— 这跟上次"客户显示不全"是同一类静默截断。
   const total=r.data?.total||0;
   const pages=Math.max(1,Math.ceil(total/200));
-  const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" data-css="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
+  const _pgBtn=(dis)=>`class="btn btn-xs btn-outline px2-10${dis?' pager-btn-disabled':''}"`;
   const pager=`<div class="cfg-foot"><span>共 <b class="text-body">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} data-on-click="histSetPage" data-args='${_dataArgs(page-1)}'>← 上一页</button><button ${_pgBtn(page>=pages)} data-on-click="histSetPage" data-args='${_dataArgs(page+1)}'>下一页 →</button></div>`;
   if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span class="ml-auto muted-12 fw400 flex items-center gap8">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline danger-outline-text" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th class="w140">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
@@ -236,7 +235,7 @@ async function settings(){
         <label class="toggle-switch"><input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('quiet-times', '$checked')}'><span class="toggle-slider"></span></label>
         <span>启用</span>
       </div>
-      <div id="quiet-times" data-css="display:${cfg.quiet_hours_enabled==='1'?'':'none'}">
+      <div id="quiet-times" class="${cfg.quiet_hours_enabled==='1'?'':'hidden'}">
         <div class="cfg-row cfg-row-inline">
           <div class="form-group"><label>开始时间</label><input id="cfg-quiet-start" type="time" value="${cfg.quiet_hours_start||'22:00'}"></div>
           <span class="cfg-sep">—</span>
@@ -254,7 +253,7 @@ async function settings(){
           <p class="cfg-hint">开启后定时发送心跳请求维持Session活跃</p>
         </div>
       </div>
-      <div class="cfg-row" id="heartbeat-interval-row" data-css="display:${cfg.heartbeat_enabled==='1'?'':'none'}">
+      <div class="cfg-row${cfg.heartbeat_enabled==='1'?'':' hidden'}" id="heartbeat-interval-row">
         <div class="form-group"><label>心跳间隔 <span class="cfg-unit">(分钟)</span></label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p class="cfg-hint">Session 保活间隔，默认30分钟</p></div>
       </div>
       <div class="cfg-row">
@@ -309,7 +308,7 @@ async function settings(){
           <span>启用系统事件通知</span>
         </div>
       </div>
-      <div id="event-config-area" data-css="display:${cfg.event_enabled?'block':'none'}">
+      <div id="event-config-area" class="${cfg.event_enabled?'':'hidden'}">
         <div class="cfg-row">
           <div class="form-group"><label>通知渠道</label>
             <select class="dd" id="cfg-event-channel">
@@ -384,7 +383,7 @@ function _hideDiscBanner(){
   if(document.getElementById('disc-mini-btn')) return;
   const mini=document.createElement('div');
   mini.id='disc-mini-btn';
-  mini.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:24px;padding:8px 16px;box-shadow:0 4px 16px rgba(124,58,237,0.4);z-index:3000;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px';
+  mini.className='disc-mini-btn';
   mini.innerHTML='<span class="fs15">🔍</span><span>自动发现进行中…</span>';
   mini.onclick=async()=>{
     mini.remove();
@@ -439,7 +438,7 @@ function _collectBannerHtml(state) {
         <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>
       </div>
       <div class="banner-bar-3">
-        <div id="collect-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+        <div id="collect-banner-bar" class="banner-bar-fill-white" data-css="width:${pct}%"></div>
       </div>
     </div>
     <div class="banner-chip pointer" data-on-click="_openCollectLog" data-stop>📋 日志</div>
@@ -455,10 +454,7 @@ function _showCollectBanner(state) {
   if (!banner) {
     banner = document.createElement('div');
     banner.id = 'collect-banner';
-    banner.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:' +
-      'linear-gradient(135deg, var(--primary), var(--primary));color:#fff;border-radius:10px;' +
-      'padding:10px 20px;box-shadow:0 8px 32px rgba(67,97,238,0.4);z-index:3000;min-width:360px;' +
-      'cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px;max-width:90vw';
+    banner.className = 'collect-banner';
     document.body.appendChild(banner);
     // 点击 banner (空白处) 跳转到仪表盘
     banner.addEventListener('click', (e) => {
@@ -467,9 +463,7 @@ function _showCollectBanner(state) {
     });
   }
   // 根据 phase 切换背景色 (完成 → 绿色)
-  banner.style.background = state.phase === 'done'
-    ? 'linear-gradient(135deg, var(--success), var(--success))'
-    : 'linear-gradient(135deg, var(--primary), var(--primary))';
+  banner.classList.toggle('done', state.phase === 'done');
   banner.innerHTML = _collectBannerHtml(state);
 }
 
@@ -500,13 +494,13 @@ function _showDiscBanner(state){
       5+Math.round((state.progress/state.total)*90):0;
   const banner=document.createElement('div');
   banner.id='disc-banner';
-  banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:10px;padding:10px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:320px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px';
+  banner.className='disc-banner';
   banner.innerHTML=`
     <div class="flex-1">
       <div class="fw600-mb4">🔍 自动发现任务进行中</div>
       <div class="opacity-90 fs12" id="disc-banner-phase">${formatDiscPhase(state)}</div>
       <div class="banner-bar-3-tight">
-        <div id="disc-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+        <div id="disc-banner-bar" class="banner-bar-fill-white" data-css="width:${pct}%"></div>
       </div>
     </div>
     <div class="banner-chip" data-on-click="_showDiscLogFloat" data-stop>📋 日志</div>
@@ -567,7 +561,7 @@ function _showDiscBanner(state){
       if(s.data.phase==='done'){
         done=true;clearInterval(window._discTimer);
         const banner=document.getElementById('disc-banner');
-        if(banner){banner.querySelector('#disc-banner-phase').textContent='✅ 发现完成 — 点击查看结果';banner.querySelector('#disc-banner-bar').style.width='100%';banner.style.background='linear-gradient(135deg,var(--success-text),var(--success-text))';}
+        if(banner){banner.querySelector('#disc-banner-phase').textContent='✅ 发现完成 — 点击查看结果';banner.querySelector('#disc-banner-bar').style.width='100%';banner.classList.add('done');}
         window._discLastDone=s.data.result;
         const mini=document.getElementById('disc-mini-btn');if(mini)mini.remove();
         setTimeout(()=>{const b=document.getElementById('disc-banner');if(b)b.remove();_reopenDiscModal();},500);
@@ -621,7 +615,7 @@ async function products(){
         <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
       </div>
       <div class="flex items-center gap8">
-        <button class="btn btn-sm" id="disc-btn" data-css="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" data-on-click="_handleDiscBtn">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
+        <button class="btn btn-sm disc-btn${pendingDiscResult?' disc-btn-pending':''}" id="disc-btn" data-on-click="_handleDiscBtn">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
         <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 没找到自己想要的产品时全量扫描(\u{1F50D})或单产品刷新(\u{1F504})\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:后台每 4 小时自动 quick cycle,无需手动定期刷;立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
         <button class="btn btn-sm tag-info-soft" data-on-click="showProductForm">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有/内部测试)\n• 建议:绿盟标准产品 — 用「自动发现」批量加\n• 不推荐:已有同名产品(去重检查会失败)\n• 下一步:保存后弹窗问是否立即刷新包类型">ⓘ</span>
@@ -678,7 +672,7 @@ function _showDiscLogFloat(){
     document.body.appendChild(el);
     window.__discLogId=discLogId;
   }
-  el.style.display='block';
+  el.classList.remove('hidden');
 }
 
 function _viewDiscResult(stale){
@@ -713,13 +707,10 @@ function _showModal(id){
   closeModal(id); // 防止重复创建
   // disc 弹窗用紫色主题(背景白+边框浅紫+紫色阴影)在浅蓝灰环境上才看得清
   // 其他 modal(pkgtype/pform)保持默认
-  const isDisc = (id === 'disc');
-  const boxStyle = isDisc
-    ? `background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`
-    : `background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`;
+  const boxClass = id === 'disc' ? 'modal-box-disc' : 'modal-box';
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div class="overlay-1000" id="${id}-overlay" data-on-click="closeModal" data-self data-args='${_dataArgs(id)}'>`+
-    `<div id="${id}-box" data-css="${boxStyle}"></div>`+
+    `<div id="${id}-box" class="${boxClass}"></div>`+
     `</div>`);
 }
 function closeModal(id){
@@ -731,7 +722,7 @@ function closeModal(id){
 function modalBody(id,h){const b=document.getElementById(id+'-box');if(b)b.innerHTML=h;}
 function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft">${btns}</div>`);}}
 
-function _hlthColor(s){return{'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[s]||'var(--gray-muted)';}
+function _hlthClass(s){return{'正常':'text-success-text','异常':'text-danger','未知':'text-gray-muted'}[s]||'text-gray-muted';}
 function _hlthLabel(s){return{'ok':'正常','error':'异常','unknown':'未知'}[s]||'未知';}
 
 function fmtPkgTypes(v){

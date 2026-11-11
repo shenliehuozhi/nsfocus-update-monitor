@@ -18,13 +18,11 @@ async function showAboutModal(){
           </div>
         </div>
       </div>`;
+    m.classList.add('hidden');
     document.body.appendChild(m);
   }
-  // Bug fix: 之前写 `if(m.style.display!=='none') m.style.display=''` 是反逻辑,
-  // 导致第一次关闭后 m.style.display='none',第二次点击时 if 条件命中(已经是 none
-  // 之外的别的?) 实际语义是 "如果不是 none 才显示" → 永远不显示。改成无条件
-  // 强制 display=''(跟 showPwdModal 同款)。
-  m.style.display='';
+  // 每次打开都无条件移除 hidden（关闭时只加 hidden，不销毁 DOM）。
+  m.classList.remove('hidden');
   // 每次打开都拉一次(防止服务重启后 info 变)
   try{
     const r=await api('/system/version');
@@ -41,7 +39,7 @@ async function showAboutModal(){
 
 function closeAboutModal(){
   const m=document.getElementById('aboutModal');
-  if(m) m.style.display='none';
+  if(m) m.classList.add('hidden');
 }
 
 function renderAboutBody(info){
@@ -154,14 +152,15 @@ function showPwdModal(){
   if(!m){
     m=document.createElement('div');m.id='pwdModal';
     m.innerHTML=`<div class="modal-overlay" data-on-click="closePwdModal" data-self><div class="card modal-card-sm"><div class="card-hd">🔒 修改密码</div><div class="card-bd"><div class="form-group"><label>旧密码</label><input id="pwdOld" type="password"></div><div class="form-group"><label>新密码</label><input id="pwdNew" type="password" placeholder="至少4位"></div><div class="form-group"><label>确认新密码</label><input id="pwdConfirm" type="password"></div><div class="flex gap8"><button class="btn btn-primary btn-sm" data-on-click="doChangePwd">确认修改</button><button class="btn btn-sm btn-outline" data-on-click="closePwdModal">取消</button></div></div></div></div>`;
+    m.classList.add('hidden');
     document.body.appendChild(m);
   }
-  m.style.display='';
+  m.classList.remove('hidden');
   document.getElementById('pwdOld').value='';
   document.getElementById('pwdNew').value='';
   document.getElementById('pwdConfirm').value='';
 }
-function closePwdModal(){let m=document.getElementById('pwdModal');if(m)m.style.display='none';}
+function closePwdModal(){let m=document.getElementById('pwdModal');if(m)m.classList.add('hidden');}
 async function doChangePwd(){
   let oldPw=document.getElementById('pwdOld').value,
       newPw=document.getElementById('pwdNew').value,
@@ -176,12 +175,12 @@ function toggleSection(key){
   const body=document.getElementById('sec-body-'+key);
   const icon=document.getElementById('sec-icon-'+key);
   if(!body)return;
-  const open=body.style.display!=='none';
-  body.style.display=open?'none':'block';
+  const open=!body.classList.contains('hidden');
+  body.classList.toggle('hidden',open);
   icon.textContent=open?'▸':'▾';
 }
 
-async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'var(--success-text)':'var(--danger)';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;row.querySelectorAll('button[data-on-click]').forEach(b=>{b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
+async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.classList.toggle('row-disabled',!active);const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.classList.toggle('text-success-text',active);badgeEl.classList.toggle('text-danger',!active);}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;row.querySelectorAll('button[data-on-click]').forEach(b=>{b.disabled=!active;b.classList.toggle('btn-disabled-look',!active);});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
 function _updateBatchUI(){
   const cbs=document.querySelectorAll('.prod-cb');
   const checked=document.querySelectorAll('.prod-cb:checked');
@@ -190,8 +189,8 @@ function _updateBatchUI(){
   if(cnt)cnt.textContent=n>0?`已选 ${n} 个`:'';
   const be=document.getElementById('btn-batch-enable');
   const bd=document.getElementById('btn-batch-disable');
-  if(be){be.disabled=n===0;be.style.opacity=n===0?'0.4':'1';}
-  if(bd){bd.disabled=n===0;bd.style.opacity=n===0?'0.4':'1';}
+  if(be){be.disabled=n===0;be.classList.toggle('is-dimmed',n===0);}
+  if(bd){bd.disabled=n===0;bd.classList.toggle('is-dimmed',n===0);}
   const allCb=document.getElementById('prod-sel-all');
   if(allCb&&cbs.length>0)allCb.checked=n===cbs.length&&n>0;
 }

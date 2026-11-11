@@ -115,13 +115,12 @@ function buildTreeHtml(pt, MAP) {
   });
 
   function renderNode(node, name, depth) {
-    const indent = depth * 16;
     const children = node._children ? Object.entries(node._children) : [];
     const hasChildren = children.length > 0;
     const isPkg = node._isPkg;
     const types = node._types || [];
 
-    let html = `<div class="tree-node" data-css="padding-left:${indent}px;display:flex;align-items:center;gap:4px;padding-top:4px;padding-bottom:4px;min-height:28px">`;
+    let html = `<div class="tree-node tree-row tree-row-gap4 ti-${depth}">`;
 
     if (hasChildren) {
       html += `<span class="tree-toggle tree-toggle-14" data-on-click="treeToggle" data-args='${_dataArgs('$el')}'>&#9658;</span>`;
@@ -152,7 +151,7 @@ function buildTreeHtml(pt, MAP) {
     html += `</div>`;
 
     if (hasChildren) {
-      html += `<div class="tree-children" data-css="display:none">`;
+      html += `<div class="tree-children hidden">`;
       children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
       html += `</div>`;
     }
@@ -328,7 +327,6 @@ function attach(node) {
 
   // Render the tree
   function renderNode(node, name, depth) {
-    const indent = depth * 16;
     const children = node.__children ? Object.entries(node.__children) : [];
     const hasChildren = children.length > 0;
     const isPkg = node.__isPkg;
@@ -382,13 +380,13 @@ function attach(node) {
     const arrow = hasChildren || isPkg
       ? `<span class="tree-toggle" data-on-click="treeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}'>&#9658;</span>`
       : `<span class="tree-indent"></span>`;
-    let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" data-pathid="${escHtml(nodePathId)}" data-css="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
+    let html = `<div class="tree-node tree-row tree-row-click ti-${depth}" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" data-pathid="${escHtml(nodePathId)}">`;
     html += arrow;
     html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
     html += `</div>`;
 
     if (hasChildren) {
-      html += `<div id="${childDivId}" class="tree-children" data-target="${childDivId}" data-css="display:none">`;
+      html += `<div id="${childDivId}" class="tree-children hidden" data-target="${childDivId}">`;
       children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
       html += `</div>`;
     }
@@ -400,7 +398,7 @@ function attach(node) {
       if (snaps.length === 0) {
         // Snapshot content is rendered into the right panel on click, not into the tree.
         // Keep a minimal placeholder so tree height is stable — uses a fixed non-conflicting id.
-        html += `<div class="tree-children" data-css="display:none;padding-left:${indent + 16}px;margin-bottom:8px">
+        html += `<div class="tree-children hidden ti-${depth + 1} mb8">
           <div class="muted-box">
             暂无采集数据<div class="fs11 mt2">页面可能返回登录页或无数据包</div>
           </div></div>`;
@@ -439,8 +437,8 @@ function pkgTableToggle(el) {
   if (!targetId) return;
   var target = document.getElementById(targetId);
   if (!target) return;
-  var isOpen = target.style.display !== 'none';
-  target.style.display = isOpen ? 'none' : 'block';
+  var isOpen = !target.classList.contains('hidden');
+  target.classList.toggle('hidden', isOpen);
   el.innerHTML = isOpen ? '&#9658;' : '&#9660;';
 }
 
@@ -448,8 +446,8 @@ function pkgTableToggleById(targetId) {
   if (!targetId) return;
   var target = document.getElementById(targetId);
   if (!target) return;
-  var isOpen = target.style.display !== 'none';
-  target.style.display = isOpen ? 'none' : 'block';
+  var isOpen = !target.classList.contains('hidden');
+  target.classList.toggle('hidden', isOpen);
   // Also toggle the arrow in the parent tree-node
   var node = target.previousElementSibling;
   if (node && node.classList.contains('tree-node')) {
@@ -463,12 +461,12 @@ function treeToggle(el, extraTargetId) {
   // .tree-children is the next sibling of .tree-node
   var ch = node.nextElementSibling;
   if (!ch || !ch.classList.contains('tree-children')) return;
-  var isOpen = ch.style.display !== 'none';
-  ch.style.display = isOpen ? 'none' : 'block';
+  var isOpen = !ch.classList.contains('hidden');
+  ch.classList.toggle('hidden', isOpen);
   // Toggle extra target (snapshot table) if provided
   if (extraTargetId) {
     var extra = document.getElementById(extraTargetId);
-    if (extra) extra.style.display = isOpen ? 'none' : 'block';
+    if (extra) extra.classList.toggle('hidden', isOpen);
   }
   // Update arrow inside this node
   var arrow = node.querySelector('.tree-arrow');
@@ -686,10 +684,10 @@ async function refreshPkgType(id){
 
   // 按钮变成进度环
   const progId=`rprog-${id}`;
-  btn.style.display='none';
+  btn.classList.add('hidden');
   const ring=document.createElement('span');
   ring.id=progId;
-  ring.style.cssText='display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;cursor:pointer';
+  ring.className='refresh-ring';
   ring.innerHTML=`<svg width="28" height="28" viewBox="0 0 28 28" data-on-click="showRefreshLog" data-args='${_dataArgs(id)}'><circle cx="14" cy="14" r="11" fill="none" stroke="var(--gray-border)" stroke-width="2.5"/><circle id="${progId}-arc" cx="14" cy="14" r="11" fill="none" stroke="#7c3aed" stroke-width="2.5" stroke-dasharray="69.1" stroke-dashoffset="69.1" stroke-linecap="round" transform="rotate(-90 14 14)"/><text id="${progId}-txt" x="14" y="19" text-anchor="middle" font-size="9" fill="#7c3aed" font-weight="700">·</text></svg>`;
   btn.parentNode.insertBefore(ring,btn);
 
@@ -730,7 +728,7 @@ async function refreshPkgType(id){
     if(state.log_lines&&state.log_lines.length){
       const win=document.getElementById(logId);
       if(win){
-        win.style.display='block';
+        win.classList.remove('hidden');
         win.querySelector('.log-body').innerHTML=state.log_lines.map(l=>`<div class="rd-ver-line">${escHtml(l)}</div>`).join('');
         win.querySelector('.log-body').scrollTop=win.querySelector('.log-body').scrollHeight;
       }
@@ -757,7 +755,7 @@ async function refreshPkgType(id){
       // 保留 3s 让用户看到结果,然后移除 + 刷新产品表
       setTimeout(async()=>{
         ring.remove();
-        btn.style.display='';
+        btn.classList.remove('hidden');
         await products();
       },3000);
     }
@@ -775,12 +773,12 @@ async function refreshPkgType(id){
   poll(); // 立即查一次
   pollTimer=setInterval(poll, 2000); // 每 2 秒轮询
   // 最多轮询 120 秒（60次 × 2s），防止无限等待
-  setTimeout(()=>{if(!done){done=true;if(pollTimer){clearInterval(pollTimer);}ring.remove();btn.style.display='';}},120000);
+  setTimeout(()=>{if(!done){done=true;if(pollTimer){clearInterval(pollTimer);}ring.remove();btn.classList.remove('hidden');}},120000);
 }
 
 function showRefreshLog(id){
   const w=document.getElementById(`rlog-${id}`);
-  if(w){ w.style.display=w.style.display==='none'?'block':'none'; }
+  if(w){ w.classList.toggle('hidden'); }
 }
 
 function _renderProductRows(prods){
@@ -789,22 +787,22 @@ function _renderProductRows(prods){
   for(const p of prods){
     const last=p.last_collected_at?fmtTZ(p.last_collected_at,true):'—';
     const hlth=p.health_status||'unknown';
-    const hlthColor={'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[_hlthLabel(hlth)]||'var(--gray-muted)';
-    const rowClass=p.is_active?'':'opacity:0.6';
-    h+=`<tr id="pr-${p.id}" data-css="${rowClass}">
+    const hlthCls=_hlthClass(_hlthLabel(hlth));
+    const rowCls=p.is_active?'':'row-disabled';
+    h+=`<tr id="pr-${p.id}" class="${rowCls}">
       <td>${p.id}</td>
       <td><input type="checkbox" class="prod-cb pointer" value="${p.id}"></td>
       <td>
-        <span class="active-badge" data-css="font-size:11px;color:${p.is_active?'var(--success-text)':'var(--danger)'};cursor:pointer" data-on-click="confirmToggleActive" data-args='${_dataArgs(p.id, !p.is_active, 'pr-'+p.id)}'>${p.is_active?'● 启用':'● 禁用'}</span>
+        <span class="active-badge ${p.is_active?'text-success-text':'text-danger'}" data-on-click="confirmToggleActive" data-args='${_dataArgs(p.id, !p.is_active, 'pr-'+p.id)}'>${p.is_active?'● 启用':'● 禁用'}</span>
       </td>
       <td><strong>${escHtml(p.name)}</strong></td>
       <td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td>
       <td><a class="text-purple fs12 no-underline" href="#" data-prevent data-on-click="editPkgType" data-args='${_dataArgs(p.id)}' title="点击编辑包类型">${p.package_type_changed?'⚠️ ':''}${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
-      <td><span class="hlth-badge" data-css="color:${p.is_active?(hlthColor):'var(--gray-disabled)'};font-size:12px;white-space:nowrap">${p.is_active?'● '+_hlthLabel(hlth):'已禁用'}</span></td>
+      <td><span class="hlth-badge nowrap ${p.is_active?hlthCls:'text-disabled'}">${p.is_active?'● '+_hlthLabel(hlth):'已禁用'}</span></td>
       <td><span class="gray-muted-12 nowrap">${last}</span></td>
       <td class="nowrap">
-        <button class="btn btn-sm" ${p.is_active?'':'disabled'} data-on-click="editProduct" data-args='${_dataArgs(p.id)}' title="编辑" data-css="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">✏️</button>
-        <button class="btn btn-sm" ${p.is_active?'':'disabled'} data-refresh-pkg="${p.id}" data-on-click="refreshPkgType" data-args='${_dataArgs(p.id)}' title="刷新包类型" data-css="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">🔄</button>
+        <button class="btn btn-sm${p.is_active?'':' btn-disabled-look'}" ${p.is_active?'':'disabled'} data-on-click="editProduct" data-args='${_dataArgs(p.id)}' title="编辑">✏️</button>
+        <button class="btn btn-sm${p.is_active?'':' btn-disabled-look'}" ${p.is_active?'':'disabled'} data-refresh-pkg="${p.id}" data-on-click="refreshPkgType" data-args='${_dataArgs(p.id)}' title="刷新包类型">🔄</button>
       </td>
     </tr>`;
   }
@@ -909,21 +907,22 @@ async function discoverProductsBanner(){
 // ── 渲染带颜色的日志行(全局,discover 和 confirm 共用)────────────
 // 兼容 2 种格式:旧 string(confirm 流程用)+ 新 entry{ts,level,product,msg}(discover 流程用)。
 // 按 entry.level 着色,product 标记小角标。fallback 走 emoji 前缀推断(向后兼容 confirm)。
-const _LOG_LEVEL_COLOR = {
-  info: 'var(--gray-muted)',
-  success: 'var(--success-text)',
-  warn: '#f59e0b',
-  error: 'var(--danger)',
+const _LOG_LEVEL_CLASS = {
+  info: 'text-gray-muted',
+  success: 'text-success-text',
+  warn: 'text-warn',
+  error: 'text-danger',
 };
 function renderLogLine(l){
   // 兼容 entry 对象(后端结构化日志)
   if(l && typeof l === 'object' && 'msg' in l){
-    const color = _LOG_LEVEL_COLOR[l.level] || 'var(--gray-muted)';
+    const lv = _LOG_LEVEL_CLASS[l.level] || 'text-gray-muted';
+    const strong = (l.level==='error'||l.level==='success') ? ' fw600' : '';
     const productBadge = l.product
       ? `<span class="badge-purple-inline">${escHtml(l.product)}</span>`
       : '';
     const ts = l.ts ? `<span class="disabled-10 mr4">${escHtml(l.ts.split('T')[1]?.slice(0,8)||'')}</span>` : '';
-    return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:${color}${l.level==='error'||l.level==='success'?';font-weight:600':''}">${ts}${escHtml(l.msg)}${productBadge}</div>`;
+    return `<div class="disc-log-line ${lv}${strong}">${ts}${escHtml(l.msg)}${productBadge}</div>`;
   }
   // 兼容旧 string(confirm 流程暂未结构化)
   const txt = escHtml(String(l));
@@ -1077,8 +1076,8 @@ function showDiscoverResult(result, isStale){
     const body=document.getElementById('sec-body-'+key);
     const icon=document.getElementById('sec-icon-'+key);
     if(!body) return;
-    const open=body.style.display!=='none';
-    body.style.display=open?'none':'block';
+    const open=!body.classList.contains('hidden');
+    body.classList.toggle('hidden', open);
     if(icon) icon.textContent=open?'▸':'▾';
   }
 
@@ -1124,7 +1123,7 @@ function showDiscoverResult(result, isStale){
         <td class="ta-right"><button class="btn btn-xs btn-outline" data-on-click="togglePkgDetail" data-args='${_dataArgs(change.entry_url||'')}'>详情</button></td>
       </tr>`;
       // Hidden detail rows
-      pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" data-css="display:none;background:var(--gray-bg)">
+      pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" class="hidden detail-row">
         <td class="p8x12 fs12" colspan="3">
           ${addedCount?`<div class="mb4"><span class="success-text-600">+ 新增路径</span><ul class="list-indent">${change.added_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
           ${delCount?`<div class="mb4"><span class="danger-600">- 删除路径</span><ul class="list-indent">${change.deleted_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
@@ -1164,13 +1163,13 @@ function showDiscoverResult(result, isStale){
     const hidden=unchanged.slice(visCount);
     let rows=shown.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
     if(hidden.length){
-      rows+=`<tr id="disc-unchanged-extra" data-css="display:none">${hidden.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('')}</tr>`;
+      rows+=`<tr id="disc-unchanged-extra" class="hidden">${hidden.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('')}</tr>`;
     }
     sectionsHtml+=`<div class="mb10">
       <div class="diff-sec text-disabled" data-on-click="toggleSection" data-args='${_dataArgs('unchanged')}'>
         <span id="sec-icon-unchanged">▸</span>✔️ 未变化产品 <span class="cnt-disabled">${unchanged.length}</span>
       </div>
-      <div id="sec-body-unchanged" data-css="display:none;border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
+      <div id="sec-body-unchanged" class="tree-box hidden">
         <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     </div>`;
@@ -1183,7 +1182,7 @@ function showDiscoverResult(result, isStale){
     <div class="diff-list-box">
       ${sectionsHtml}
     </div>
-    <div id="disc-confirm-phase" data-css="display:none;margin-top:10px;padding:8px 12px;background:#f5f3ff;border-radius:6px;font-size:13px;color:#7c3aed;text-align:center"></div>
+    <div id="disc-confirm-phase" class="disc-confirm-phase hidden"></div>
     <div class="diff-actions">
       <button class="btn btn-primary" id="disc-confirm-btn" data-on-click="confirmDiscoverResult">💾 确认应用变更</button>
       <button class="btn danger-outline-text" data-on-click="discardDiscoverResult">丢弃</button>
@@ -1198,7 +1197,7 @@ function showDiscoverResult(result, isStale){
 
 function togglePkgDetail(entryUrl){
   const el=document.getElementById('pkgdetail-'+entryUrl);
-  if(el) el.style.display=el.style.display==='none'?'table-row':'';
+  if(el) el.classList.toggle('hidden');
 }
 
 async function confirmDiscoverResult(){
@@ -1207,7 +1206,7 @@ async function confirmDiscoverResult(){
   const btn=document.getElementById('disc-confirm-btn');
   const phaseEl=document.getElementById('disc-confirm-phase');
   if(btn){btn.disabled=true;btn.textContent='处理中…';}
-  if(phaseEl){phaseEl.style.display='block';phaseEl.textContent='💾 正在启动…';}
+  if(phaseEl){phaseEl.classList.remove('hidden');phaseEl.textContent='💾 正在启动…';}
 
   const r=await api('/system/products/discover/confirm',{method:'POST',body:JSON.stringify(result)});
   if(r.code===0){
@@ -1221,7 +1220,7 @@ async function confirmDiscoverResult(){
       window.__discLogId=logId;
     }
     logBody.innerHTML='';
-    document.getElementById(logId).style.display='block';
+    document.getElementById(logId).classList.remove('hidden');
 
     let done=false;
     let pollTimer=null;
@@ -1258,7 +1257,7 @@ async function confirmDiscoverResult(){
         if(btn){btn.disabled=false;btn.textContent='💾 重试应用变更';}
         // 打开浮动日志窗,让用户能看完整 log_lines(可能含 traceback)
         const logWin=document.getElementById(window.__discLogId||'disc-float-log');
-        if(logWin)logWin.style.display='block';
+        if(logWin)logWin.classList.remove('hidden');
       }else{
         // 非 done/error(超时/异常),按钮恢复 + 提示
         toast('应用未完成，请刷新页面查看状态','warn');
@@ -1277,15 +1276,7 @@ async function confirmDiscoverResult(){
       if(phaseEl) phaseEl.textContent=msg;
       // 阶段色块:running 紫色,error 红色 + icon,让用户一眼区分
       if(phaseEl){
-        if(state.phase==='error'){
-          phaseEl.style.background='var(--danger-light)';
-          phaseEl.style.color='var(--danger-text)';
-          phaseEl.style.fontWeight='600';
-        } else {
-          phaseEl.style.background='#f5f3ff';
-          phaseEl.style.color='#7c3aed';
-          phaseEl.style.fontWeight='';
-        }
+        phaseEl.classList.toggle('err', state.phase==='error');
       }
       // error 状态:在 modal 顶部加显眼红色错误卡(用户可能漏看 toast,模态内必须显眼)
       const modalBox=document.getElementById('disc-box');
@@ -1293,7 +1284,7 @@ async function confirmDiscoverResult(){
         if(!document.getElementById('disc-confirm-error')){
           const errCard=document.createElement('div');
           errCard.id='disc-confirm-error';
-          errCard.style.cssText='margin:0 0 14px;padding:12px 16px;background:var(--danger-light);border:1px solid var(--danger-border);border-radius:8px;color:var(--danger-text);font-size:13px;line-height:1.6';
+          errCard.className='disc-err-card';
           const errMsg=state.error_message||state.error||'未知错误,请查看日志';
           errCard.innerHTML=`<div class="fw700 fs14 mb4">❌ 应用失败</div><div>${escHtml(errMsg)}</div>`;
           const titleEl=modalBox.querySelector('div');
@@ -1379,7 +1370,7 @@ async function confirmDiscoverResult(){
   }else{
     toast('启动失败: '+r.message,'error');
     if(btn){btn.disabled=false;btn.textContent='💾 确认应用变更';}
-    if(phaseEl){phaseEl.style.display='none';}
+    if(phaseEl){phaseEl.classList.add('hidden');}
   }
 }
 
@@ -1470,10 +1461,10 @@ function editProduct(id){
   const isManual = p.is_manual;
 
   row.innerHTML = `<td>${p.id}</td>
-    <td><span class="active-badge" data-css="font-size:11px;color:${p.is_active?'var(--success-text)':'var(--danger)'}">${p.is_active?'● 启用':'● 禁用'}</span></td>
+    <td><span class="active-badge ${p.is_active?'text-success-text':'text-danger'}">${p.is_active?'● 启用':'● 禁用'}</span></td>
     <td><span class="disabled-13">${escHtml(p.name)}</span></td>
-    <td><input id="ef-url" value="${escHtml(p.entry_url||'')}" ${isManual?'':'readonly'} data-css="width:100%;padding:4px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;background:${isManual?'#fff':'var(--gray-bg)'}"></td>
-    <td><span class="hlth-badge" data-css="color:${p.is_active?(_hlthColor(_hlthLabel(p.health_status))):'var(--gray-disabled)'};font-size:12px">${p.is_active?'● '+_hlthLabel(p.health_status):'已禁用'}</span></td>
+    <td><input id="ef-url" class="ef-url-input${isManual?'':' is-readonly'}" value="${escHtml(p.entry_url||'')}" ${isManual?'':'readonly'}></td>
+    <td><span class="hlth-badge ${p.is_active?_hlthClass(_hlthLabel(p.health_status)):'text-disabled'}">${p.is_active?'● '+_hlthLabel(p.health_status):'已禁用'}</span></td>
     <td><span class="gray-muted-12">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>
     <td>
       <button class="btn btn-sm btn-primary" data-on-click="saveEditRow" data-args='${_dataArgs(id)}'>💾</button>

@@ -81,13 +81,13 @@ function switchPushTab(tab){
   const emailPanel=document.getElementById('pushTabEmail');
   const botPanel=document.getElementById('pushTabBot');
   if(tab==='email'){
-    emailBtn.style.color='var(--primary)';emailBtn.style.borderBottomColor='var(--primary)';
-    botBtn.style.color='var(--muted)';botBtn.style.borderBottomColor='transparent';
+    emailBtn.classList.add('push-tab-active');emailBtn.classList.remove('push-tab');
+    botBtn.classList.add('push-tab');botBtn.classList.remove('push-tab-active');
     emailPanel.classList.remove('hidden');
     botPanel.classList.add('hidden');
   }else{
-    botBtn.style.color='var(--primary)';botBtn.style.borderBottomColor='var(--primary)';
-    emailBtn.style.color='var(--muted)';emailBtn.style.borderBottomColor='transparent';
+    botBtn.classList.add('push-tab-active');botBtn.classList.remove('push-tab');
+    emailBtn.classList.add('push-tab');emailBtn.classList.remove('push-tab-active');
     botPanel.classList.remove('hidden');
     emailPanel.classList.add('hidden');
   }
@@ -116,8 +116,8 @@ function onPushEmailChange(){
   const emails=v.split(/[,\n]/).map(e=>e.trim()).filter(Boolean);
   const re=/^[^@\s]+@[^@\s]+\.[^@\s]+$/;
   const bad=emails.filter(e=>!re.test(e));
-  if(bad.length){hint.textContent='⚠️ 格式无效: '+bad.join(', ');hint.style.color='var(--danger)';}
-  else{hint.textContent='✅ '+emails.length+' 个邮箱';hint.style.color='var(--success)';}
+  if(bad.length){hint.textContent='⚠️ 格式无效: '+bad.join(', ');hint.classList.remove('text-success-text');hint.classList.add('text-danger');}
+  else{hint.textContent='✅ '+emails.length+' 个邮箱';hint.classList.remove('text-danger');hint.classList.add('text-success-text');}
   updatePushConfirmState();
 }
 
