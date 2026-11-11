@@ -31,7 +31,7 @@
 - [x] **服务 stderr 日志轮转（2026-11-11）**：console handler 在 stderr 被重定向时默认只输出 `WARNING+`（交互终端仍为 `INFO`，`MONITOR_CONSOLE_LOG_LEVEL` 可覆盖），避免每条 INFO 双写；新增 `deploy/nsfocus-monitor.logrotate`（daily/50M/7 份/compress/copytruncate）与 `tests/test_logger_console_level.py`。生产已安装 `/etc/logrotate.d/nsfocus-monitor` 并重启验证：`active`、首页 200、重启后 stderr 仅 6 行且全部为 WARNING，INFO 只进轮转的 `app.log`
 - [ ] **语义化 CSS 重构**：把 1114 处 `data-css` 逐步收敛为组件/工具类（门禁会卡住增长），全部清空后删除 `_applyDataCss` 过渡层与 `data-css` 机制
 - [ ] **ESLint / Prettier + 浏览器 e2e**：目前只有 esprima/`node --check` 语法门禁，没有 lint 与真实浏览器回归
-- [x] **首屏接口优化（2026-11-11）**：实测 `/api/latest/snapshots` raw 2.38MB / gzip 205KB、TTFB 0.39–0.57s（SQL 75ms、JSON 55ms）；`/api/system/products` raw 956KB / gzip 51KB、85ms。已做：DB 文件戳缓存（重复进入页面 183ms→6ms，任何写入自动失效）、`ensure_ascii=False` + 紧凑分隔符（raw 2.38MB→2.03MB）、移除前端未使用的 `source_id`；顺带修复跳转详情 `file_size` 被裁后显示 `NaN K` 的回归
+- [x] **首屏接口优化（2026-11-11）**：实测 `/api/latest/snapshots` raw 2.38MB / gzip 205KB、TTFB 0.39–0.57s（SQL 75ms、JSON 55ms）；`/api/system/products` raw 956KB / gzip 51KB、85ms。已做：DB 文件戳缓存（重复进入页面 183ms→6ms，任何写入自动失效）、`ensure_ascii=False` + 紧凑分隔符（raw 2.38MB→2.03MB）、移除前端未使用的 `source_id`；顺带修复跳转详情 `file_size` 被裁后显示 `NaN K` 的回归。生产已于 2026-11-11 重启部署并验证：`active`、首页 200、接口 2,034,502B（gzip 199KB）、缓存命中 17–88ms、响应中 `source_id` 已消失
 - [ ] **首屏客户端渲染 / 历史懒加载**：剩余成本主要是 3571 条快照（78% 为 superseded/withdrawn）的客户端分组与 DOM；下一步按源懒加载历史并让服务端返回统计，需要真实浏览器实测配合
 - [ ] **资源版本化与 ESM**：给 `index.html` 的 css/js 加内容哈希或版本参数（当前靠 `no-cache` 回源）；后续再评估经典脚本 → ESM
 - [ ] **Prometheus 对接**：用户明确暂缓（`/api/metrics` 与静态令牌已就绪，缺抓取配置与告警规则）
