@@ -28,12 +28,13 @@
 
 ## 待排期
 
-- [x] **服务 stderr 日志轮转（2026-11-11）**：console handler 在 stderr 被重定向时默认只输出 `WARNING+`（交互终端仍为 `INFO`，`MONITOR_CONSOLE_LOG_LEVEL` 可覆盖），避免每条 INFO 双写；新增 `deploy/nsfocus-monitor.logrotate`（daily/50M/7 份/compress/copytruncate）与 `tests/test_logger_console_level.py`。生产安装 logrotate 与重启服务待批准
+- [x] **服务 stderr 日志轮转（2026-11-11）**：console handler 在 stderr 被重定向时默认只输出 `WARNING+`（交互终端仍为 `INFO`，`MONITOR_CONSOLE_LOG_LEVEL` 可覆盖），避免每条 INFO 双写；新增 `deploy/nsfocus-monitor.logrotate`（daily/50M/7 份/compress/copytruncate）与 `tests/test_logger_console_level.py`。生产已安装 `/etc/logrotate.d/nsfocus-monitor` 并重启验证：`active`、首页 200、重启后 stderr 仅 6 行且全部为 WARNING，INFO 只进轮转的 `app.log`
 - [ ] **语义化 CSS 重构**：把 1114 处 `data-css` 逐步收敛为组件/工具类（门禁会卡住增长），全部清空后删除 `_applyDataCss` 过渡层与 `data-css` 机制
 - [ ] **ESLint / Prettier + 浏览器 e2e**：目前只有 esprima/`node --check` 语法门禁，没有 lint 与真实浏览器回归
 - [ ] **首屏接口体积**：`/api/latest/snapshots` 约 2.38MB、`/api/system/products` 约 956KB，采集数据页完整渲染约 1s；考虑按版本裁剪字段/分页，或让前端只取当前分组
 - [ ] **资源版本化与 ESM**：给 `index.html` 的 css/js 加内容哈希或版本参数（当前靠 `no-cache` 回源）；后续再评估经典脚本 → ESM
 - [ ] **Prometheus 对接**：用户明确暂缓（`/api/metrics` 与静态令牌已就绪，缺抓取配置与告警规则）
+- [ ] **生产密钥仍是开发兜底（安全）**：`.env` 存在但未定义 `MONITOR_JWT_SECRET` / `MONITOR_SECRET_KEY`，启动告警确认在用 dev fallback；`CORS_ORIGINS` 也未设置（允许所有来源）。建议生成 32+ 随机值写入 `.env`（chmod 600）后重启——会使现有登录会话全部失效，需要用户确认时间窗
 
 ## 环境 / 运维备注
 
@@ -42,7 +43,7 @@
   ```bash
   cd /root/nsfocus-monitor && TMPDIR=/tmp/pytest-of-root python3 -m pytest -q
   ```
-- 磁盘 2026-11-11 再次告急（95%）：清理 `logs/service_error.log` 390M（5 月至今的 INFO，无轮转，保留末尾 2000 行到 `.recent`）、`journalctl --rotate && --vacuum-size=200M`（480M → 120M）、uv/pip 缓存约 1.1G；当前 2.9G 可用（93%）。`/root/files`（9.8G）与 `/root/.hermes`（6.1G）为其他用途，未动
+- 磁盘 2026-11-11 再次告急（95%）：清理 `logs/service_error.log` 390M（5 月至今的 INFO，无轮转，保留末尾 2000 行到 `.recent`）、`journalctl --rotate && --vacuum-size=200M`（480M → 120M）、uv/pip 缓存约 1.1G；当前 3.0G 可用（93%）。`/root/files`（9.8G）与 `/root/.hermes`（6.1G）为其他用途，未动
 - **不要在生产机跑全量 pytest**：机器仅 1.6G 内存、无 swap，与 Qoder runtime（约 700M）并跑会触发整机卡死/重启；全量测试留给 CI 或空闲时段，日常只跑受影响的子集
 - 测试数据一律走 `MONITOR_DATA_DIR` / `MONITOR_LOG_DIR` 隔离，不碰生产 `data/nsfocus_monitor.db`
 - 重启生产服务、`git push` 均需用户明确同意
