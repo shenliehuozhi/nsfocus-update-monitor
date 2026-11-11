@@ -606,6 +606,24 @@ def clear_history(older_than_days: int = None) -> int:
     return db.total_changes
 
 
+def cleanup_failed_delivery_log(older_than_days: int = 180) -> int:
+    """删除超过保留期的失败交付记录。
+
+    clear_history 只删已发送行，失败行会永久累积。created_at 是后补的列，
+    没有时间戳的历史失败行无法判断年龄，保持不动（宁可留旧数据也不误删）。
+    """
+    from src.models.database import get_db
+    db = get_db()
+    before = db.total_changes
+    db.execute(
+        "DELETE FROM delivery_log WHERE delivery_status = 'failed' "
+        "AND created_at IS NOT NULL "
+        "AND datetime(created_at) < datetime('now', ?)",
+        (f'-{older_than_days} days',)
+    )
+    return db.total_changes - before
+
+
 # ── Delayed Queue ────────────────────────────────────────────
 
 SCHEMA_DELAYED_QUEUE = """
@@ -730,6 +748,38 @@ def mark_delivery_terminal(queue_id: int, reason: str, error: str = ''):
            WHERE id = ? AND status = 'pending'""",
         (reason[:200], (error or '')[:1000], now_local, queue_id)
     )
+
+
+def reset_delivery_for_retry(queue_id: int) -> dict | None:
+    """把终止的延迟队列项重新放回 pending（人工重试）。
+
+    只接受 retry_exhausted / no_active_channel 两类终态：reset_by_new_package、
+    快照撤回等取消是业务选择，不是投递故障，不应被一键复活。
+    返回更新后的行；不存在或不可重试返回 None。
+    """
+    from src.models.database import execute, query
+    from datetime import datetime
+
+    rows = query("SELECT * FROM delayed_queue WHERE id = ?", (queue_id,))
+    if not rows:
+        return None
+    row = rows[0]
+    reason = row.get('cancelled_reason') or ''
+    if row.get('status') != 'cancelled':
+        return None
+    if not (reason.startswith('retry_exhausted') or reason == 'no_active_channel'):
+        return None
+
+    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    execute(
+        """UPDATE delayed_queue
+           SET status = 'pending', attempts = 0, next_attempt_at = '',
+               cancelled_reason = '', pushed_at = NULL, last_error = '',
+               last_attempt_at = '', push_after = ?
+           WHERE id = ? AND status = 'cancelled'""",
+        (now_local, queue_id)
+    )
+    return query("SELECT * FROM delayed_queue WHERE id = ?", (queue_id,))[0]
 
 
 def reset_timer_for_rule(rule_id: int):

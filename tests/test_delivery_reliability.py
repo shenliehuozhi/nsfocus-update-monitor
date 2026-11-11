@@ -57,6 +57,18 @@ def _past_local(minutes=5):
     return (datetime.now() - timedelta(minutes=minutes)).strftime('%Y-%m-%d %H:%M:%S')
 
 
+def _cancel_row(reason, attempts=0, error=''):
+    from src.models.database import execute
+    _seed_queue()
+    qid = _queue_row()['id']
+    execute(
+        """UPDATE delayed_queue
+           SET status='cancelled', cancelled_reason=?, attempts=?, last_error=?
+           WHERE id=?""",
+        (reason, attempts, error, qid))
+    return qid
+
+
 def _seed_queue(attempts=0, push_after=None):
     from src.models.database import execute
     execute(
@@ -167,6 +179,53 @@ def test_no_deliverable_channel_is_terminal(fresh_db, monkeypatch):
     assert row['cancelled_reason'] == 'no_active_channel'
 
 
+def test_terminal_deliveries_write_one_batched_system_event(fresh_db, monkeypatch):
+    """终止项必须写 system_event_log，否则网页/事件中心完全看不到丢包。"""
+    import json
+
+    import src.notifiers.router as router
+    from src.models.database import query
+
+    _seed_queue(attempts=router._DELIVERY_MAX_ATTEMPTS - 1)
+    _seed_queue(attempts=router._DELIVERY_MAX_ATTEMPTS - 1)
+    _patch_router(monkeypatch, _Notifier(ok=False, error='still failing'))
+
+    router.process_delayed_queue()
+
+    events = query(
+        "SELECT * FROM system_event_log WHERE event_type='delivery_error'")
+    assert len(events) == 1, '同一轮终止项应合并为一条事件'
+    payload = json.loads(events[0]['message'])
+    assert payload['count'] == 2
+    assert events[0]['severity'] == 'ERROR'
+    item = payload['items'][0]
+    assert item['queue_id']
+    assert item['rule_name'] == 'R'
+    assert item['product_name'] == 'WAF'
+    assert item['reason'].startswith('retry_exhausted')
+    assert 'still failing' in item['error']
+
+
+def test_no_channel_terminal_event_carries_reason(fresh_db, monkeypatch):
+    import json
+
+    import src.notifiers.router as router
+    from src.models.database import execute, query
+
+    _seed_queue()
+    execute("DELETE FROM rule_channels WHERE rule_id = 3")
+    _patch_router(monkeypatch, _Notifier(ok=True))
+
+    router.process_delayed_queue()
+
+    events = query(
+        "SELECT * FROM system_event_log WHERE event_type='delivery_error'")
+    assert len(events) == 1
+    payload = json.loads(events[0]['message'])
+    assert payload['items'][0]['reason'] == 'no_active_channel'
+    assert 'no deliverable channel' in payload['items'][0]['error']
+
+
 def test_partial_channel_failure_keeps_item_for_retry(fresh_db, monkeypatch):
     import src.notifiers.router as router
     from src.models.database import execute
@@ -185,6 +244,135 @@ def test_partial_channel_failure_keeps_item_for_retry(fresh_db, monkeypatch):
     assert row['status'] == 'pending'
     assert row['attempts'] == 1
     assert ok.calls == 1  # 成功的渠道没有再被重复发送
+
+
+# ── failed delivery_log retention ──────────────────────────
+
+
+def _delivery_row(status, created_at, sent_at=None):
+    from src.models.database import execute
+    execute(
+        """INSERT INTO delivery_log
+           (snapshot_id, rule_id, channel_id, channel_type, delivery_status,
+            sent_at, created_at)
+           VALUES (1, 3, 1, 'wecom', ?, ?, ?)""",
+        (status, sent_at, created_at))
+
+
+def test_failed_delivery_cleanup_expires_only_old_dated_rows(fresh_db):
+    from src.models.database import query
+    from src.models.subscription import cleanup_failed_delivery_log
+
+    old = (datetime.now() - timedelta(days=200)).strftime('%Y-%m-%dT%H:%M:%S')
+    recent = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%dT%H:%M:%S')
+    _delivery_row('failed', old)
+    _delivery_row('failed', recent)
+    _delivery_row('sent', old, old)
+    _delivery_row('failed', None)  # 历史失败行没有时间戳：无法判断年龄，保留
+
+    removed = cleanup_failed_delivery_log(older_than_days=180)
+
+    assert removed == 1
+    rows = query("SELECT delivery_status, created_at FROM delivery_log")
+    assert len(rows) == 3
+    assert any(r['delivery_status'] == 'sent' for r in rows)
+    assert sum(1 for r in rows if r['delivery_status'] == 'failed') == 2
+
+
+# ── manual retry ───────────────────────────────────────────
+
+
+def test_manual_retry_requeues_exhausted_item(fresh_db):
+    from src.models.subscription import reset_delivery_for_retry
+
+    qid = _cancel_row('retry_exhausted(6)', attempts=6, error='boom')
+
+    row = reset_delivery_for_retry(qid)
+
+    assert row['status'] == 'pending'
+    assert row['attempts'] == 0
+    assert row['next_attempt_at'] == ''
+    assert row['cancelled_reason'] == ''
+    assert row['last_error'] == ''
+    assert row['push_after'] <= _past_local(0), '重试项应立即可被队列取走'
+
+
+def test_manual_retry_accepts_no_active_channel(fresh_db):
+    from src.models.subscription import reset_delivery_for_retry
+
+    qid = _cancel_row('no_active_channel', error='no deliverable channel')
+
+    assert reset_delivery_for_retry(qid)['status'] == 'pending'
+
+
+def test_manual_retry_refuses_business_cancel(fresh_db):
+    from src.models.subscription import reset_delivery_for_retry
+
+    qid = _cancel_row('reset_by_new_package')
+
+    assert reset_delivery_for_retry(qid) is None
+    assert _queue_row()['status'] == 'cancelled'
+
+
+def test_manual_retry_refuses_missing_or_pushed(fresh_db):
+    from src.models.database import execute
+    from src.models.subscription import reset_delivery_for_retry
+
+    _seed_queue()
+    qid = _queue_row()['id']
+    execute("UPDATE delayed_queue SET status='pushed' WHERE id=?", (qid,))
+
+    assert reset_delivery_for_retry(qid) is None
+    assert reset_delivery_for_retry(99999) is None
+
+
+def test_retry_api_requeues_terminal_item(fresh_db, monkeypatch, tmp_path):
+    from flask import Flask
+
+    from src.web.auth import create_token
+    from src.web.routes import api_routes
+
+    monkeypatch.setenv('MONITOR_LOG_DIR', str(tmp_path))
+    qid = _cancel_row('retry_exhausted(6)', attempts=6, error='boom')
+
+    app = Flask(__name__)
+    app.register_blueprint(api_routes.bp_history)
+    resp = app.test_client().post(
+        f'/api/history/queue/{qid}/retry',
+        headers={'Authorization': 'Bearer ' + create_token(1, 'tester')})
+
+    assert resp.status_code == 200
+    assert resp.get_json()['code'] == 0
+    assert _queue_row()['status'] == 'pending'
+
+
+def test_retry_api_rejects_non_terminal_item(fresh_db, monkeypatch, tmp_path):
+    from flask import Flask
+
+    from src.web.auth import create_token
+    from src.web.routes import api_routes
+
+    monkeypatch.setenv('MONITOR_LOG_DIR', str(tmp_path))
+    _seed_queue()
+    qid = _queue_row()['id']
+
+    app = Flask(__name__)
+    app.register_blueprint(api_routes.bp_history)
+    resp = app.test_client().post(
+        f'/api/history/queue/{qid}/retry',
+        headers={'Authorization': 'Bearer ' + create_token(1, 'tester')})
+
+    assert resp.status_code == 404
+    assert _queue_row()['status'] == 'pending'
+
+
+def test_event_center_wires_delivery_retry():
+    from tests.frontend_source import js_source
+
+    src = js_source()
+    assert 'value="delivery_error"' in src
+    assert 'retryDelivery(' in src
+    assert "'/history/queue/'+queueId+'/retry'" in src
 
 
 def test_queue_processing_is_not_reentrant(fresh_db, monkeypatch):

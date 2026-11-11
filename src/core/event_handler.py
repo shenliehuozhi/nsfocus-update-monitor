@@ -417,6 +417,7 @@ def emit_cleanup_summary(summary: dict):
         'heartbeat_log': 'heartbeat_log',
         'audit_log': 'audit_log (30天)',
         'delivery_log': 'delivery_log (90天)',
+        'delivery_failed': 'delivery_log 失败行 (180天)',
         'snapshots': 'snapshots (按 path_id 分组)',
     }
     for step in steps:
@@ -973,6 +974,75 @@ def emit_channel_error(failures: list, checked: int = 0):
             logger.error(f'Channel error notification failed: {result.error_message}')
     except Exception as e:
         logger.error(f'Failed to send channel error notification: {e}')
+
+
+def emit_delivery_error(failures: list):
+    """延迟队列重试耗尽 / 无可用渠道时调用。
+
+    failures: [{queue_id, snapshot_id, rule_id, rule_name, customer_name,
+                product_name, version, reason, attempts, error}, ...]
+
+    process_delayed_queue 每轮把终止项汇总成一条事件：写 system_event_log
+    供事件中心查看，并在系统事件通知开启时推送到配置渠道。终止项不会再
+    自动重试，属于真实丢包，必须让人看见。
+    """
+    event_type = 'delivery_error'
+    if not failures:
+        return
+
+    cst_now = _utc_to_cst_display(datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S'))
+    title = f'投递终止: {len(failures)} 条推送未能送达'
+
+    try:
+        log_event(
+            event_type=event_type,
+            severity='ERROR',
+            rule_id=failures[0].get('rule_id'),
+            message={
+                'title': title,
+                'detected_at': cst_now,
+                'count': len(failures),
+                'items': failures[:50],
+            },
+        )
+    except Exception as e:
+        logger.error(f'Failed to write delivery_error event to DB: {e}')
+
+    if not is_event_enabled(event_type):
+        return
+
+    channel = get_notify_channel()
+    if not channel:
+        return
+
+    shown = failures[:20]
+    lines = [
+        '【投递终止】',
+        f'时间：{cst_now}',
+        f'本轮 {len(failures)} 条推送达到重试上限或无可用渠道，已停止自动重试：',
+        '',
+    ]
+    for f in shown:
+        owner = ' / '.join(str(x) for x in (
+            f.get('customer_name'), f.get('rule_name')) if x) or f"规则 {f.get('rule_id')}"
+        product = ' '.join(str(x) for x in (
+            f.get('product_name'), f.get('version')) if x)
+        reason = str(f.get('reason') or '')
+        reason_cn = '无可用渠道' if reason == 'no_active_channel' else f'重试耗尽（{f.get("attempts") or "?"} 次）'
+        lines.append(f"  ✗ 队列 #{f.get('queue_id')} {owner}")
+        if product:
+            lines.append(f"     {product}")
+        lines.append(f"     原因：{reason_cn} — {str(f.get('error') or '')[:200]}")
+    if len(failures) > len(shown):
+        lines.append(f'  ... 另有 {len(failures) - len(shown)} 条，详见事件中心')
+
+    lines += ['', '处理：检查渠道配置/网络后，在事件中心该事件下点击「重新入队」即可重试。']
+    result = _deliver_event(channel, '绿盟监控 - 投递终止', '\n'.join(lines),
+                            tag='delivery_error')
+    if result is not None and result.success:
+        logger.info(f'Delivery error notification sent: {len(failures)} item(s)')
+    elif result is not None:
+        logger.error(f'Delivery error notification failed: {result.error_message}')
 
 
 def emit_network_error(errors: list, source: str = 'collector'):

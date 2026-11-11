@@ -549,6 +549,19 @@ def clear_history():
     msg = f'已清空最近{days}天之前的 {deleted} 条推送记录' if days else f'已清空全部 {deleted} 条推送记录'
     return jsonify({'code': 0, 'message': msg, 'data': {'deleted': deleted}})
 
+@bp_history.route('/queue/<int:queue_id>/retry', methods=['POST'])
+@require_auth
+def retry_delivery_queue(queue_id: int):
+    """把重试耗尽/无可用渠道的延迟队列项重新入队（由 5 分钟队列任务接管）。"""
+    from src.models.subscription import reset_delivery_for_retry
+    row = reset_delivery_for_retry(queue_id)
+    if not row:
+        return jsonify({'code': 40400, 'message': '队列项不存在或不可重试'}), 404
+    _audit('delivery_retry', {'queue_id': queue_id})
+    return jsonify({'code': 0, 'message': '已重新入队，稍后自动重试',
+                    'data': {'id': queue_id}})
+
+
 @bp_history.route('/<int:sid>/resend', methods=['POST'])
 @require_auth
 def resend(sid: int):

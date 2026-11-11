@@ -505,6 +505,20 @@ data: {"processed": 3, "errors": 0}
 ### POST /api/history/:id/resend
 重新推送指定历史记录。
 
+### POST /api/history/queue/:queue_id/retry
+把终止的延迟队列项重新入队（事件中心 `delivery_error` 事件下的「重新入队」按钮调用）。
+
+- 只接受 `cancelled_reason` 为 `retry_exhausted*` / `no_active_channel` 的行；
+- 重置 `attempts=0`、`next_attempt_at=''`、`push_after=当前本地时间`，由 5 分钟队列任务重新投递；
+- 已送达渠道仍由 `delivery_log` 去重，不会重复发送。
+
+```json
+// 200
+{"code": 0, "message": "已重新入队，稍后自动重试", "data": {"id": 123}}
+// 404（不存在 / 已成功 / 业务性取消）
+{"code": 40400, "message": "队列项不存在或不可重试"}
+```
+
 ---
 
 ## 8. 仪表盘
@@ -660,6 +674,8 @@ data: {"processed": 3, "errors": 0}
 // 仅开启采集汇总和 Session 异常
 {"enabled": true, "channel_id": 4, "event_types": ["collection_summary", "session_error"]}
 ```
+
+可用事件类型：`push_summary`、`digest_summary`、`collection_summary`、`cleanup_summary`、`log_error`、`session_error`、`session_expired`、`channel_error`、`delivery_error`、`login_bruteforce`。
 
 ### GET /api/system/events
 查询最近事件记录：

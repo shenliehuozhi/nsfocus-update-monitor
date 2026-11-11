@@ -452,6 +452,35 @@ function renderEventsCenterTable(events){
 
 // 仪表盘卡片行 — 与弹窗 renderEventsTableRow 类似但用不同 detail ID 前缀(eventCardDetail-)
 // 避免和弹窗的 eventTableDetail- 冲突;状态列只显示 NEW/已读 不显示按钮
+function _deliveryErrorItemsHtml(m){
+  const items = ((m && m.items) || []).filter(it => it && it.queue_id);
+  if(!items.length) return '';
+  return '<div style="margin-bottom:8px">'+items.map(it=>{
+    const owner = [it.customer_name, it.rule_name].filter(Boolean).join(' / ') || ('规则 '+it.rule_id);
+    const prod = [it.product_name, it.version].filter(Boolean).join(' ');
+    return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+      <span style="color:var(--danger)">✗</span>
+      <span>队列 #${it.queue_id} · ${escHtml(owner)}${prod?' '+escHtml(prod):''}</span>
+      <span style="color:var(--muted)">${escHtml(String(it.reason||''))} ${escHtml(String(it.error||'').slice(0,80))}</span>
+      <button class="btn btn-xs btn-soft-primary" onclick="event.stopPropagation();retryDelivery(${Number(it.queue_id)},this)">重新入队</button>
+    </div>`;
+  }).join('')+'</div>';
+}
+
+async function retryDelivery(queueId, btn){
+  if(btn){btn.disabled=true;btn.textContent='提交中...';}
+  const r=await api('/history/queue/'+queueId+'/retry',{method:'POST'});
+  if(r.code===0){
+    toast(r.message||'已重新入队');
+    if(btn)btn.textContent='已入队';
+    if(document.getElementById('eventsCenterModal'))renderEventsCenter();
+    else loadEvents();
+  }else{
+    toast(r.message||'重新入队失败','error');
+    if(btn){btn.disabled=false;btn.textContent='重新入队';}
+  }
+}
+
 function renderEventsCenterTableRow(e){
   let m = {};
   if(typeof e.message === 'string'){
@@ -500,6 +529,7 @@ function renderEventsCenterTableRow(e){
       ${m.ip?`<span><b>IP:</b> ${escHtml(m.ip)}</span>`:''}
       ${m.count?`<span><b>失败次数:</b> ${m.count}</span>`:''}
     </div>
+    ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
       <summary style="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
       <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto">${detailJson}</pre>
@@ -759,6 +789,7 @@ function renderEventsTableRow(e){
       ${m.ip?`<span><b>IP:</b> ${escHtml(m.ip)}</span>`:''}
       ${m.count?`<span><b>失败次数:</b> ${m.count}</span>`:''}
     </div>
+    ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
       <summary style="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
       <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>

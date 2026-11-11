@@ -561,29 +561,47 @@ def process_delayed_queue():
     if not _QUEUE_PROCESS_LOCK.acquire(blocking=False):
         logger.info('Delayed queue is already being processed; skip this run')
         return
+    terminals = []
     try:
         items = get_due_items()
         for item in items:
             try:
-                _process_delayed_item(item)
+                terminal = _process_delayed_item(item)
+                if terminal:
+                    terminals.append(terminal)
             except Exception as e:
                 # 单条坏数据不能中断整条队列；尽量落下重试状态
                 logger.error(f'Delayed queue item {item.get("id")} failed unexpectedly: {e}')
                 try:
                     attempts = int(item.get('attempts') or 0) + 1
+                    error = f'{type(e).__name__}: {e}'
                     if attempts >= _DELIVERY_MAX_ATTEMPTS:
-                        mark_delivery_terminal(item['id'], 'retry_exhausted',
-                                               f'{type(e).__name__}: {e}')
+                        mark_delivery_terminal(item['id'], 'retry_exhausted', error)
+                        terminals.append({
+                            'queue_id': item.get('id'),
+                            'snapshot_id': item.get('snapshot_id'),
+                            'rule_id': item.get('rule_id'),
+                            'reason': 'retry_exhausted',
+                            'attempts': attempts,
+                            'error': error[:300],
+                        })
                     else:
                         mark_delivery_retry(
                             item['id'], attempts,
                             _next_attempt_at(attempts, _DELIVERY_BACKOFF_SECONDS),
-                            f'{type(e).__name__}: {e}')
+                            error)
                 except Exception as inner:
                     logger.error(f'Failed to persist retry state for item '
                                  f'{item.get("id")}: {inner}')
     finally:
         _QUEUE_PROCESS_LOCK.release()
+    # 通知可能被 IM 节流阻塞，放到锁外发送，避免拖住下一轮队列处理
+    if terminals:
+        try:
+            from src.core.event_handler import emit_delivery_error
+            emit_delivery_error(terminals)
+        except Exception as e:
+            logger.error(f'Emit delivery_error event failed: {e}')
 
 
 def _process_delayed_item(item: dict):
@@ -646,13 +664,36 @@ def _process_delayed_item(item: dict):
         error = f'no deliverable channel (unusable={unusable})'
         mark_delivery_terminal(item['id'], 'no_active_channel', error)
         logger.error(f'Delayed push {item["id"]} terminated: {error}')
-        return
+        return {
+            'queue_id': item['id'],
+            'snapshot_id': item['snapshot_id'],
+            'rule_id': item['rule_id'],
+            'rule_name': rule.get('name') or '',
+            'customer_name': rule.get('customer_name') or '',
+            'product_name': snap.get('product_name') or '',
+            'version': snap.get('version_branch') or '',
+            'reason': 'no_active_channel',
+            'attempts': int(item.get('attempts') or 0),
+            'error': error[:300],
+        }
 
     attempts = int(item.get('attempts') or 0) + 1
     error = '; '.join(result.get('errors') or [])[:1000] or 'unknown delivery error'
     if attempts >= _DELIVERY_MAX_ATTEMPTS:
         mark_delivery_terminal(item['id'], f'retry_exhausted({attempts})', error)
         logger.error(f'Delayed push {item["id"]} exhausted after {attempts} attempts: {error}')
+        return {
+            'queue_id': item['id'],
+            'snapshot_id': item['snapshot_id'],
+            'rule_id': item['rule_id'],
+            'rule_name': rule.get('name') or '',
+            'customer_name': rule.get('customer_name') or '',
+            'product_name': snap.get('product_name') or '',
+            'version': snap.get('version_branch') or '',
+            'reason': f'retry_exhausted({attempts})',
+            'attempts': attempts,
+            'error': error[:300],
+        }
     else:
         next_at = _next_attempt_at(attempts, _DELIVERY_BACKOFF_SECONDS)
         mark_delivery_retry(item['id'], attempts, next_at, error)

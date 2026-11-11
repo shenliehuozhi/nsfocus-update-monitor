@@ -2087,6 +2087,19 @@ def _run_db_cleanup():
         _record_step('delivery_log', False, str(e))
 
     try:
+        # 3b. delivery_log 失败行保留 180 天（没有 created_at 的历史行不动）
+        from src.models.subscription import cleanup_failed_delivery_log
+        removed_failed = cleanup_failed_delivery_log(older_than_days=180)
+        logger.info('delivery_log 失败行清理完成: 删除 %d 条（180天）', removed_failed)
+        _record_step('delivery_failed', True,
+                     f'删除 {removed_failed} 条（180天，仅 failed）',
+                     deleted=removed_failed)
+    except Exception as e:
+        logger.warning('delivery_log 失败行清理失败: %s', e)
+        summary['errors'].append(f'delivery_failed: {e}')
+        _record_step('delivery_failed', False, str(e))
+
+    try:
         # 4. digest_queue 只清已发送/已取消的 90 天前记录。
         #    pending 是未投递包的 outbox,不能删。
         from src.models.subscription import cleanup_digest_queue

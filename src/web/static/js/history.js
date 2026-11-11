@@ -304,6 +304,7 @@ async function settings(){
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
               <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="channel_error" ${(cfg.event_types||[]).includes('channel_error')?'checked':''}> 渠道体检失败</label>
+              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="delivery_error" ${(cfg.event_types||[]).includes('delivery_error')?'checked':''}> 投递终止</label>
             </div>
             <p class="cfg-hint">推送汇总合并本 cycle 所有推送成功/失败详情(单条不再发);采集完成=cycle 末汇总;空=全部启用</p>
           </div>

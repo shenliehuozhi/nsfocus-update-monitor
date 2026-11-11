@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### 新增
+- **投递终止告警**：延迟队列重试耗尽（`retry_exhausted(N)`）或无可用渠道（`no_active_channel`）时，此前只写 logger，网页/事件中心完全看不到丢包。现在 `process_delayed_queue` 每轮把终止项合并写一条 `ERROR` 级 `delivery_error` 系统事件（含队列号、规则/客户/产品、原因、最后错误），系统事件通知开启时同步推送到配置渠道；设置页事件类型新增「投递终止」开关
+- **终止队列项手动重试**：事件中心的 `delivery_error` 事件详情列出终止项并提供「重新入队」按钮（`POST /api/history/queue/:id/retry`），清零 `attempts` / `next_attempt_at` 后由 5 分钟队列任务重新投递；只允许 `retry_exhausted*` / `no_active_channel`，`reset_by_new_package` 等业务性取消不会被复活，已送达渠道仍按 `delivery_log` 去重
+- **失败交付记录保留期**：`clear_history` 只删已发送行，`failed` 行会无限累积。每日 03:00 清理任务新增一步，删除 `created_at` 早于 180 天的失败记录；没有 `created_at` 的历史行无法判断年龄，保持不动
 - **前端拆分 · 单文件 SPA 落地**：`index.html` 从 9899 行降到 63 行，内联样式移到 `static/css/app.css`，8600 行脚本按功能拆成 10 个经典脚本（`core` / `dashboard` / `data` / `pages` / `history` / `products` / `collection` / `account` / `bootstrap` / `tools`）。无构建、跨文件共享全局作用域，加载顺序与原单文件一致；会立即执行登录检查与轮询初始化的 `bootstrap.js` 固定最后加载，避免拆出「调用尚未定义函数」的启动白屏。PyInstaller spec 与 Docker 本来就打包 `src/web/static`，部署方式不变
 - **前端静态门禁**：新增 `tests/test_frontend_assets.py`——禁止内联可执行脚本；锁定 10 个脚本及顺序；`index.html` < 80 行、单文件 < 3000 行；跨文件 `const/let` 重声明检查（浏览器会 SyntaxError 白屏）；HTML 与 JS 模板里 163 个内联 `on*` 处理器必须都有定义；`bootstrap.js` 立即调用的函数必须来自更早文件；esprima 全量解析 + CI `node --check`（`.github/workflows/tests.yml` 新增 Frontend syntax gate，ubuntu-latest 自带 node）
 - **前端测试读取方式**：新增 `tests/frontend_source.py`，测试按页面真实加载顺序拼接 `static/js`；`test_dashboard_event_table` / `test_about_modal_regression` / `test_inline_attr_escaping` / `test_settings_pkg_track_ui` 不再直接读 `index.html` 里的脚本
