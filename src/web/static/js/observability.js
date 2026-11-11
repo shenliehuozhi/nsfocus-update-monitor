@@ -119,7 +119,7 @@ function _obsDeliveryCard(del){
     <td>${escHtml(_obsChannel(ch.channel_type))}</td>
     <td>${ch.total || 0}</td>
     <td>${ch.sent || 0}</td>
-    <td>${ch.failed ? `<b data-css="color:var(--danger)">${ch.failed}</b>` : '0'}</td>
+    <td>${ch.failed ? `<b class="text-danger">${ch.failed}</b>` : '0'}</td>
     <td>${ch.pending || 0}</td>
     <td>${_obsRateCell(ch.success_rate)}</td>
   </tr>`).join('');
@@ -154,7 +154,7 @@ function _obsQueueCard(dq, dg){
         <div><b data-css="color:${dq.retrying ? 'var(--warn)' : 'var(--text)'}">${dq.retrying || 0}</b><span>重试中</span></div>
         <div><b>${_obsAge(dq.oldest_age_minutes)}</b><span>最久等待</span></div>
       </div>
-      <div class="obs-section-title" data-css="margin-top:14px">汇总队列（按规则）</div>
+      <div class="obs-section-title mt14">汇总队列（按规则）</div>
       <div class="obs-scroll"><table>
         <thead><tr><th>规则</th><th>待发</th><th>最久等待</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="3" class="empty">暂无积压</td></tr>'}</tbody>
@@ -176,7 +176,7 @@ function _obsCollectionCard(col, rules){
         <span>下次采集</span><b>${_obsTime(col.next_run)}</b>
         <span>上次耗时</span><b>${_obsDur(col.last_duration_s)}</b>
         <span>近 20 轮均值</span><b>${_obsDur(col.avg_duration_s)}</b>
-        <span>数据源</span><b>${col.sources_total || 0} 个${stale ? ` · <span data-css="color:var(--danger)">${stale} 个超过 ${col.stale_after_hours || 24}h 未更新</span>` : ' · 全部新鲜'}</b>
+        <span>数据源</span><b>${col.sources_total || 0} 个${stale ? ` · <span class="text-danger">${stale} 个超过 ${col.stale_after_hours || 24}h 未更新</span>` : ' · 全部新鲜'}</b>
         <span>订阅规则</span><b>${rules.enabled || 0} / ${rules.total || 0} 启用 · ${rules.digest_enabled || 0} 汇总模式</b>
       </div>
       ${col.is_running && col.current ? `<div class="obs-foot">当前：${escHtml(col.current.mode || '')} ${escHtml(col.current.phase || '')}${col.current.items_collected != null ? ' · 已采集 ' + col.current.items_collected + ' 项' : ''}</div>` : ''}
@@ -189,7 +189,7 @@ function _obsEventsCard(ev){
   const rows = ['CRITICAL', 'ERROR', 'WARNING', 'INFO'].map(s => `<tr>
     <td>${_obsSevBadge(s)}</td>
     <td>${by[s] || 0}</td>
-    <td>${un[s] ? `<b data-css="color:var(--danger)">${un[s]}</b>` : (s === 'INFO' ? '—' : '0')}</td>
+    <td>${un[s] ? `<b class="text-danger">${un[s]}</b>` : (s === 'INFO' ? '—' : '0')}</td>
   </tr>`).join('');
   return `<div class="card">
     <div class="card-hd">🔔 事件与告警

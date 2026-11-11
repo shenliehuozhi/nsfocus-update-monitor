@@ -50,7 +50,7 @@ function _renderSingleBanner(state){
   banner.innerHTML=`
     <div data-css="display:flex;align-items:center;gap:10px">
       <div data-banner-role="phase-icon" data-css="font-size:15px">${phaseIcon}</div>
-      <div data-css="flex:1">
+      <div class="flex-1">
         <div data-banner-role="title" data-css="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
         <div data-banner-role="sub-title" data-css="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
       </div>
@@ -341,9 +341,9 @@ function showCollectProgress(){
   document.getElementById('app').insertAdjacentHTML('beforeend',`
     <div id="collectModal" data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" data-on-click="closeCollectModal" data-self>
       <div class="card" data-css="width:420px;max-height:90vh;overflow-y:auto" >
-        <div class="card-hd">🔄 采集进度 <button class="btn btn-xs btn-outline" data-css="margin-left:auto" data-on-click="closeCollectModal">✕ 关闭</button></div>
+        <div class="card-hd">🔄 采集进度 <button class="btn btn-xs btn-outline ml-auto" data-on-click="closeCollectModal">✕ 关闭</button></div>
         <div class="card-bd" id="collectModalBody">
-          <div data-css="text-align:center;padding:12px 0"><div data-css="font-size:32px;margin-bottom:8px">⏳</div><p data-css="font-size:13px">加载进度...</p></div>
+          <div data-css="text-align:center;padding:12px 0"><div data-css="font-size:32px;margin-bottom:8px">⏳</div><p class="fs13">加载进度...</p></div>
         </div>
       </div>
     </div>

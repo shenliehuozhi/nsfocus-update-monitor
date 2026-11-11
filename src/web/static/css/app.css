@@ -456,3 +456,31 @@ label.cfg-event-label{display:inline-flex;align-items:center;gap:4px;font-size:1
 
 /* 原来是运行时注入的 <style>（CSP style-src 'self' 会拦截，改为静态规则） */
 table thead th{height:36px!important;min-height:0!important;max-height:36px!important;line-height:1.2!important;padding-top:8px!important;padding-bottom:8px!important}
+
+/* ── 工具类（data-css 组件化第二批；置于末尾以赢得同特异性平局）────── */
+.text-muted{color:var(--muted)}
+.text-danger{color:var(--danger)}
+.text-success{color:var(--success)}
+.text-success-text{color:var(--success-text)}
+.text-gray-muted{color:var(--gray-muted)}
+.text-disabled{color:var(--gray-disabled)}
+.fs10{font-size:10px}
+.fs11{font-size:11px}
+.fs12{font-size:12px}
+.fs125{font-size:12.5px}
+.fs13{font-size:13px}
+.fs14{font-size:14px}
+.ml-auto{margin-left:auto}
+.flex-1{flex:1}
+.mt14{margin-top:14px}
+.mr10{margin-right:10px}
+.mb4{margin-bottom:4px}
+.mb8{margin-bottom:8px}
+.mb10{margin-bottom:10px}
+.p8{padding:8px}
+.p16{padding:16px}
+.muted-10{font-size:10px;color:var(--muted)}
+.muted-11{font-size:11px;color:var(--muted)}
+.muted-12{font-size:12px;color:var(--muted)}
+.gray-muted-12{font-size:12px;color:var(--gray-muted)}
+.disabled-11{font-size:11px;color:var(--gray-disabled)}

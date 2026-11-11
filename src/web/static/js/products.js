@@ -99,7 +99,7 @@ const PKG_TYPE_OPTIONS=[
 // 从 paths 数组构建可折叠目录树 HTML
 function buildTreeHtml(pt, MAP) {
   const paths = pt.paths || [];
-  if (paths.length === 0) return '<span data-css="color:var(--gray-disabled)">无路径数据</span>';
+  if (paths.length === 0) return '<span class="text-disabled">无路径数据</span>';
 
   const root = {};
   paths.forEach(p => {
@@ -131,7 +131,7 @@ function buildTreeHtml(pt, MAP) {
 
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = MAP[name] || name;
-    const childCount = hasChildren ? ` <span data-css="color:var(--gray-disabled);font-size:11px">(${children.length})</span>` : '';
+    const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
     html += `<span data-css="font-size:13px;color:var(--gray-muted);flex-shrink:0">${icon} ${escHtml(label)}${childCount}</span>`;
 
     if (isPkg && types.length > 0) {
@@ -178,7 +178,7 @@ function buildTreeHtml(pt, MAP) {
 // sid: source id for click delegation
 function buildDataTreeHtml(pt, snapshotsMap, MAP, verTypeMap, alias, sid) {
   const paths = pt.paths || [];
-  if (paths.length === 0) return '<span data-css="color:var(--gray-disabled)">无路径数据</span>';
+  if (paths.length === 0) return '<span class="text-disabled">无路径数据</span>';
 
   // Build tree structure from paths
   const root = {};
@@ -369,7 +369,7 @@ function attach(node) {
 
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = isPkg ? name : (MAP[name] || name);
-    const childCount = hasChildren ? ` <span data-css="color:var(--gray-disabled);font-size:11px">(${children.length})</span>` : '';
+    const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
     const snapCount = isPkg ? (
       snaps.length > 0
         ? ` <span data-css="background:var(--primary-light);color:var(--primary-text);font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">${snaps.length}包</span>`
@@ -565,7 +565,7 @@ function editPkgType(id){
       <div class="modal-form-actions">
         <button class="btn btn-primary" data-on-click="confirmPkgTypeChange" data-args='${_dataArgs(id, 'apply')}'>✅ 采纳变化</button>
         <button class="btn" data-on-click="confirmPkgTypeChange" data-args='${_dataArgs(id, 'keep')}'>保留原样</button>
-        <button class="btn" data-css="margin-left:auto" data-on-click="closeModal" data-args='${_dataArgs('pkgtype')}'>取消</button>
+        <button class="btn ml-auto" data-on-click="closeModal" data-args='${_dataArgs('pkgtype')}'>取消</button>
       </div>
     </div>`);
     window._ptModes={};
@@ -798,7 +798,7 @@ function _renderProductRows(prods){
         <span class="active-badge" data-css="font-size:11px;color:${p.is_active?'var(--success-text)':'var(--danger)'};cursor:pointer" data-on-click="confirmToggleActive" data-args='${_dataArgs(p.id, !p.is_active, 'pr-'+p.id)}'>${p.is_active?'● 启用':'● 禁用'}</span>
       </td>
       <td><strong>${escHtml(p.name)}</strong></td>
-      <td><span class="mono" data-css="font-size:12px;color:var(--gray-muted)">${escHtml(p.entry_url||'—')}</span></td>
+      <td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td>
       <td><a href="#" data-prevent data-on-click="editPkgType" data-args='${_dataArgs(p.id)}' title="点击编辑包类型" data-css="color:#7c3aed;font-size:12px;text-decoration:none">${p.package_type_changed?'⚠️ ':''}${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
       <td><span class="hlth-badge" data-css="color:${p.is_active?(hlthColor):'var(--gray-disabled)'};font-size:12px;white-space:nowrap">${p.is_active?'● '+_hlthLabel(hlth):'已禁用'}</span></td>
       <td><span data-css="font-size:12px;color:var(--gray-muted);white-space:nowrap">${last}</span></td>
@@ -849,7 +849,7 @@ async function _handleDiscBtn(){
     `<div class="info-bar">
        <div data-css="display:flex;align-items:flex-start;gap:8px">
          <span data-css="font-size:16px;line-height:1">🔍</span>
-         <div data-css="flex:1">
+         <div class="flex-1">
            <div data-css="font-weight:600;margin-bottom:4px">什么时候用自动发现?</div>
            <div data-css="line-height:1.7">
              • <b>用途:</b>扫描绿盟更新站点,自动发现新增/下线产品 + 重新发现每个产品的包类型路径<br>
@@ -990,12 +990,12 @@ async function discoverProducts(){
       modalBody('disc',`<div data-css="padding:24px;text-align:center">
         <div data-css="color:#f59e0b;font-size:14px;margin-bottom:8px">⚠️ 上次任务似乎已结束</div>
         <div data-css="color:var(--gray-muted);font-size:13px">请关闭后重新点击自动发现</div>
-        <div data-css="margin-top:16px"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>
+        <div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>
       </div>`);
       return;
     }
   } else if(r.code!==0){
-    modalBody('disc',`<div data-css="padding:24px"><div data-css="color:var(--danger);font-weight:600;margin-bottom:8px">启动失败</div><div data-css="color:var(--gray-muted);font-size:13px">${escHtml(r.message||'')}</div><div data-css="margin-top:16px"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div></div>`);
+    modalBody('disc',`<div data-css="padding:24px"><div data-css="color:var(--danger);font-weight:600;margin-bottom:8px">启动失败</div><div data-css="color:var(--gray-muted);font-size:13px">${escHtml(r.message||'')}</div><div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div></div>`);
     return;
   }
 
@@ -1050,7 +1050,7 @@ async function discoverProducts(){
   }
   poll();
   pollTimer=setInterval(poll,2000);
-  setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);modalBody('disc',`<div data-css="padding:24px;text-align:center;color:var(--danger)">发现超时，请重试</div><div data-css="padding:8px"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>`);}},600000);
+  setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);modalBody('disc',`<div data-css="padding:24px;text-align:center;color:var(--danger)">发现超时，请重试</div><div class="p8"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>`);}},600000);
 }
 
 function showDiscoverResult(result, isStale){
@@ -1067,9 +1067,9 @@ function showDiscoverResult(result, isStale){
   const staleWarning=isStale?'<div data-css="background:var(--warn-light);border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#92400e;display:flex;align-items:center;gap:8px"><span data-css="font-size:16px">⚠️</span><div><b>发现结果已从临时文件恢复</b>（服务重启前未执行确认），请检查以下变更后点击「确认应用变更」。</div></div>':'';
 
   let summaryHtml=`<div data-css="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
-    <span data-css="color:var(--success-text)">🆕 新增产品 <b>${added.length}</b></span>
-    <span data-css="color:var(--danger)">⛔ 下线产品 <b>${removed.length}</b></span>
-    <span data-css="color:var(--gray-disabled)">✔️ 未变 <b>${unchanged.length}</b></span>
+    <span class="text-success-text">🆕 新增产品 <b>${added.length}</b></span>
+    <span class="text-danger">⛔ 下线产品 <b>${removed.length}</b></span>
+    <span class="text-disabled">✔️ 未变 <b>${unchanged.length}</b></span>
     ${totalPkgChanges>0?`<span data-css="color:#7c3aed">📦 包类型变更 <b>${totalPkgChanges}</b> 项 (<b>${pkgChangedProducts.length}</b> 个产品)</span>`:''}
   </div>`;
 
@@ -1085,8 +1085,8 @@ function showDiscoverResult(result, isStale){
   let sectionsHtml='';
   // 产品新增
   if(added.length){
-    const rows=added.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" data-css="font-size:12px;color:var(--gray-muted)">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
-    sectionsHtml+=`<div data-css="margin-bottom:10px">
+    const rows=added.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    sectionsHtml+=`<div class="mb10">
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text)" data-on-click="toggleSection" data-args='${_dataArgs('add-prod')}'>
         <span id="sec-icon-add-prod">▾</span>🆕 新增产品 <span data-css="background:var(--success-text)20;color:var(--success-text);padding:1px 7px;border-radius:10px;font-size:11px">${added.length}</span>
       </div>
@@ -1097,8 +1097,8 @@ function showDiscoverResult(result, isStale){
   }
   // 产品删除
   if(removed.length){
-    const rows=removed.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" data-css="font-size:12px;color:var(--gray-muted)">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
-    sectionsHtml+=`<div data-css="margin-bottom:10px">
+    const rows=removed.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    sectionsHtml+=`<div class="mb10">
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)" data-on-click="toggleSection" data-args='${_dataArgs('rem-prod')}'>
         <span id="sec-icon-rem-prod">▾</span>⛔ 下线产品 <span data-css="background:var(--danger)20;color:var(--danger);padding:1px 7px;border-radius:10px;font-size:11px">${removed.length}</span>
       </div>
@@ -1115,31 +1115,31 @@ function showDiscoverResult(result, isStale){
       const delCount=change.deleted_paths?.length||0;
       const modCount=change.modified_paths?.length||0;
       const segs=[];
-      if(addedCount) segs.push(`<span data-css="color:var(--success-text)">+${addedCount} 新增</span>`);
-      if(delCount) segs.push(`<span data-css="color:var(--danger)">-${delCount} 删除</span>`);
+      if(addedCount) segs.push(`<span class="text-success-text">+${addedCount} 新增</span>`);
+      if(delCount) segs.push(`<span class="text-danger">-${delCount} 删除</span>`);
       if(modCount) segs.push(`<span data-css="color:#f59e0b">±${modCount} 修改</span>`);
       pkgRows+=`<tr>
         <td data-css="font-weight:600">${escHtml(change.product_name||'')}</td>
-        <td data-css="font-size:12px;color:var(--gray-muted)">${segs.join(' | ')}</td>
+        <td class="gray-muted-12">${segs.join(' | ')}</td>
         <td data-css="text-align:right"><button class="btn btn-xs btn-outline" data-on-click="togglePkgDetail" data-args='${_dataArgs(change.entry_url||'')}'>详情</button></td>
       </tr>`;
       // Hidden detail rows
       pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" data-css="display:none;background:var(--gray-bg)">
         <td colspan="3" data-css="padding:8px 12px;font-size:12px">
-          ${addedCount?`<div data-css="margin-bottom:4px"><span data-css="color:var(--success-text);font-weight:600">+ 新增路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.added_paths.map(p=>`<li data-css="word-break:break-all"><span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
-          ${delCount?`<div data-css="margin-bottom:4px"><span data-css="color:var(--danger);font-weight:600">- 删除路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.deleted_paths.map(p=>`<li data-css="word-break:break-all"><span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+          ${addedCount?`<div class="mb4"><span data-css="color:var(--success-text);font-weight:600">+ 新增路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.added_paths.map(p=>`<li data-css="word-break:break-all"><span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+          ${delCount?`<div class="mb4"><span data-css="color:var(--danger);font-weight:600">- 删除路径</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.deleted_paths.map(p=>`<li data-css="word-break:break-all"><span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
           ${modCount?`<div><span data-css="color:#f59e0b;font-weight:600">± 修改类型</span><ul data-css="margin:2px 0 4px 16px;padding-left:0">${change.modified_paths.map(p=>{
             // 多字段 diff:chain / url / types(后端目前只对比 types,所以 chain/url 通常不变)
             // 前端从 entry 自身推老值(chain 从 chain 数组隐含,url 从当前 entry)
             const urlChanged = p.url && p.old_url && p.url !== p.old_url;
             const typesChanged = JSON.stringify(p.old_types||[]) !== JSON.stringify(p.new_types||[]);
             const diffs = [];
-            if(urlChanged) diffs.push(`URL: <span data-css="color:var(--danger)">${escHtml(p.old_url||'—')}</span> → <span data-css="color:var(--success-text)">${escHtml(p.url)}</span>`);
-            if(typesChanged) diffs.push(`类型: <span data-css="color:var(--danger)">${escHtml((p.old_types||[]).join(','))}</span> → <span data-css="color:var(--success-text)">${escHtml((p.new_types||[]).join(','))}</span>`);
+            if(urlChanged) diffs.push(`URL: <span class="text-danger">${escHtml(p.old_url||'—')}</span> → <span class="text-success-text">${escHtml(p.url)}</span>`);
+            if(typesChanged) diffs.push(`类型: <span class="text-danger">${escHtml((p.old_types||[]).join(','))}</span> → <span class="text-success-text">${escHtml((p.new_types||[]).join(','))}</span>`);
             // chain 长度变化(commit 8c41709 砍 sec 段后常见)
             const oldChainLen = p.old_chain_len;
             const chainLenChanged = oldChainLen != null && oldChainLen !== (p.chain?.length||0);
-            if(chainLenChanged) diffs.push(`chain 长度: <span data-css="color:var(--danger)">${oldChainLen}</span> → <span data-css="color:var(--success-text)">${p.chain?.length||0}</span>`);
+            if(chainLenChanged) diffs.push(`chain 长度: <span class="text-danger">${oldChainLen}</span> → <span class="text-success-text">${p.chain?.length||0}</span>`);
             if(diffs.length === 0) diffs.push(`类型: ${escHtml((p.old_types||[]).join(','))} → ${escHtml((p.new_types||[]).join(','))}`);
             const warn = urlChanged ? '<span data-css="color:var(--danger);font-weight:700" title="URL 变化属于重大变更,确认前请核对">⚠️</span> ' : '';
             return `<li data-css="word-break:break-all">${warn}<span class="mono" data-css="color:var(--gray-muted);font-size:11px">${escHtml(p.chain?.join(' → ')||'')}</span> — ${diffs.join('; ')}</li>`;
@@ -1147,7 +1147,7 @@ function showDiscoverResult(result, isStale){
         </td>
       </tr>`;
     }
-    sectionsHtml+=`<div data-css="margin-bottom:10px">
+    sectionsHtml+=`<div class="mb10">
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed" data-on-click="toggleSection" data-args='${_dataArgs('pkg-chg')}'>
         <span id="sec-icon-pkg-chg">▾</span>📦 包类型变更 <span data-css="background:#7c3aed20;color:#7c3aed;padding:1px 7px;border-radius:10px;font-size:11px">${pkgChangedProducts.length} 个产品</span>
       </div>
@@ -1162,11 +1162,11 @@ function showDiscoverResult(result, isStale){
     const visCount=Math.min(unchanged.length,5);
     const shown=unchanged.slice(0,visCount);
     const hidden=unchanged.slice(visCount);
-    let rows=shown.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" data-css="font-size:12px;color:var(--gray-muted)">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
+    let rows=shown.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
     if(hidden.length){
-      rows+=`<tr id="disc-unchanged-extra" data-css="display:none">${hidden.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono" data-css="font-size:12px;color:var(--gray-muted)">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('')}</tr>`;
+      rows+=`<tr id="disc-unchanged-extra" data-css="display:none">${hidden.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('')}</tr>`;
     }
-    sectionsHtml+=`<div data-css="margin-bottom:10px">
+    sectionsHtml+=`<div class="mb10">
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)" data-on-click="toggleSection" data-args='${_dataArgs('unchanged')}'>
         <span id="sec-icon-unchanged">▸</span>✔️ 未变化产品 <span data-css="background:var(--gray-disabled)20;color:var(--gray-disabled);padding:1px 7px;border-radius:10px;font-size:11px">${unchanged.length}</span>
       </div>
@@ -1188,7 +1188,7 @@ function showDiscoverResult(result, isStale){
       <button class="btn btn-primary" id="disc-confirm-btn" data-on-click="confirmDiscoverResult">💾 确认应用变更</button>
       <button class="btn" data-css="border-color:var(--danger);color:var(--danger)" data-on-click="discardDiscoverResult">丢弃</button>
       <span data-css="font-size:12px;color:var(--gray-disabled)">新增产品默认禁用，包类型变更将触发告警</span>
-      <button class="btn" data-css="margin-left:auto" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button>
+      <button class="btn ml-auto" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button>
     </div>
   </div>`;
   _showModal('disc');
@@ -1405,7 +1405,7 @@ function showProductForm(p){
     <div class="info-bar">
       <div data-css="display:flex;align-items:flex-start;gap:8px">
         <span data-css="font-size:16px;line-height:1">💡</span>
-        <div data-css="flex:1">
+        <div class="flex-1">
           <div data-css="font-weight:600;margin-bottom:4px">什么时候用手动添加?</div>
           <div data-css="line-height:1.7">
             • <b>用途:</b>自动发现没扫到的产品(自定义 / 灰度 / 私有 / 内部测试)<br>
@@ -1416,10 +1416,10 @@ function showProductForm(p){
         </div>
       </div>
     </div>
-    <div class="form-group" data-css="margin-top:16px"><label>产品名称 <span data-css="color:var(--danger)">*</span></label>
+    <div class="form-group mt16"><label>产品名称 <span class="text-danger">*</span></label>
       <input id="pf-name" value="${escHtml(name)}" placeholder="如: WEB应用防护系统(WAF)" data-css="width:100%;padding:8px 12px;border:1px solid var(--gray-border);border-radius:8px;font-size:14px">
     </div>
-    <div class="form-group" data-css="margin-top:14px"><label>入口URL <span data-css="color:var(--danger)">*</span></label>
+    <div class="form-group mt14"><label>入口URL <span class="text-danger">*</span></label>
       <input id="pf-url" value="${escHtml(url)}" placeholder="/update/wafIndex" data-css="width:100%;padding:8px 12px;border:1px solid var(--gray-border);border-radius:8px;font-size:14px">
       <div data-css="font-size:11px;color:var(--gray-disabled);margin-top:4px">绿盟升级站点相对路径，如 /update/wafIndex</div>
     </div>
@@ -1474,7 +1474,7 @@ function editProduct(id){
     <td><span data-css="font-size:13px;color:var(--gray-disabled)">${escHtml(p.name)}</span></td>
     <td><input id="ef-url" value="${escHtml(p.entry_url||'')}" ${isManual?'':'readonly'} data-css="width:100%;padding:4px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;background:${isManual?'#fff':'var(--gray-bg)'}"></td>
     <td><span class="hlth-badge" data-css="color:${p.is_active?(_hlthColor(_hlthLabel(p.health_status))):'var(--gray-disabled)'};font-size:12px">${p.is_active?'● '+_hlthLabel(p.health_status):'已禁用'}</span></td>
-    <td><span data-css="font-size:12px;color:var(--gray-muted)">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>
+    <td><span class="gray-muted-12">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>
     <td>
       <button class="btn btn-sm btn-primary" data-on-click="saveEditRow" data-args='${_dataArgs(id)}'>💾</button>
       <button class="btn btn-sm" data-on-click="cancelEditRow" data-args='${_dataArgs(id)}'>✕</button>

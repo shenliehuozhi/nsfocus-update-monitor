@@ -134,7 +134,7 @@ function _renderRecentDeliveries(deliveries,range){
     let stIcon=a.status==='sent'?'✅':'❌';
     return `<tr><td>${escHtml(a.cust)}</td><td>${escHtml(a.prod)}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${escHtml([...a.channels].join(', '))}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
   }).join('');
-  return `<div class="card" data-css="margin-top:14px"><div class="card-hd">📨 最近推送明细 <span data-css="margin-left:auto;font-weight:400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
+  return `<div class="card mt14"><div class="card-hd">📨 最近推送明细 <span data-css="margin-left:auto;font-weight:400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
 }
 
 // ── Settings ──
@@ -226,7 +226,7 @@ async function settings(){
         <div class="form-group"><label>附件上限 <span class="cfg-unit">(MB)</span></label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p class="cfg-hint">邮件附件最大体积；超过则在正文显示下载地址</p></div>
       </div>
       <div class="cfg-row">
-        <div class="form-group"><label>历史保留条数 <span data-css="font-size:10px;color:var(--muted)">(每版本+包类型组合)</span></label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||5}" min="1" max="10"><p class="cfg-hint">每个(版本+包类型)组合保留几条历史快照。后端磁盘存储与前端采集数据页显示共用此值;超出自动删旧。</p></div>
+        <div class="form-group"><label>历史保留条数 <span class="muted-10">(每版本+包类型组合)</span></label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||5}" min="1" max="10"><p class="cfg-hint">每个(版本+包类型)组合保留几条历史快照。后端磁盘存储与前端采集数据页显示共用此值;超出自动删旧。</p></div>
       </div>
     </div>
 
@@ -502,7 +502,7 @@ function _showDiscBanner(state){
   banner.id='disc-banner';
   banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:10px;padding:10px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:320px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px';
   banner.innerHTML=`
-    <div data-css="flex:1">
+    <div class="flex-1">
       <div data-css="font-weight:600;margin-bottom:4px">🔍 自动发现任务进行中</div>
       <div id="disc-banner-phase" data-css="opacity:0.9;font-size:12px">${formatDiscPhase(state)}</div>
       <div data-css="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
@@ -630,9 +630,9 @@ async function products(){
     <div class="card-bd">
       <div data-css="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px">
         <span>共 <strong>${total}</strong> 个</span>
-        <span data-css="color:var(--success-text)">● 启用 <strong>${enabled}</strong></span>
-        <span data-css="color:var(--gray-disabled)">○ 禁用 <strong>${disabled}</strong></span>
-        ${errors>0?'<span data-css="color:var(--danger)">● 异常 <strong>'+errors+'</strong></span>':''}
+        <span class="text-success-text">● 启用 <strong>${enabled}</strong></span>
+        <span class="text-disabled">○ 禁用 <strong>${disabled}</strong></span>
+        ${errors>0?'<span class="text-danger">● 异常 <strong>'+errors+'</strong></span>':''}
         <span class="tp" data-tip="采集状态反映上次刷新包类型的结果：正常=成功，异常=失败，未知=从未刷新过">ⓘ 采集状态</span>
         <span id="prod-sel-count" data-css="font-size:12px;color:var(--gray-disabled);margin-left:8px"></span>
         <button class="btn btn-sm" id="btn-batch-enable" data-on-click="batchEnable" disabled data-css="background:var(--success-text);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量启用</button>

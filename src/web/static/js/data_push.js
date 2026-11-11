@@ -32,7 +32,7 @@ async function showPushModal(sid, product, version, pkgType, chain){
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div id="pushModal" class="push-modal" data-on-click="closePushModal" data-self>
       <div class="card"  data-css="width:560px;max-height:90vh;display:flex;flex-direction:column">
-        <div class="card-hd">📤 推送通知 <span data-css="color:var(--muted);font-weight:400;font-size:11px">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline" data-css="margin-left:auto" data-on-click="closePushModal">×</button></div>
+        <div class="card-hd">📤 推送通知 <span data-css="color:var(--muted);font-weight:400;font-size:11px">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline ml-auto" data-on-click="closePushModal">×</button></div>
         <div class="card-bd" data-css="overflow-y:auto;flex:1">
           <div data-css="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
             <div data-on-click="switchPushTab" data-args='${_dataArgs('email')}' id="pushTabEmailBtn" data-css="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid var(--primary);color:var(--primary);margin-bottom:-2px">📧 邮件发送</div>
@@ -41,7 +41,7 @@ async function showPushModal(sid, product, version, pkgType, chain){
           <div id="pushTabEmail">
             <div class="form-group">
               <label>发件渠道 (SMTP)</label>
-              <div id="pushChannelSelect"><div class="empty" data-css="padding:8px">加载中...</div></div>
+              <div id="pushChannelSelect"><div class="empty p8">加载中...</div></div>
             </div>
             <div class="form-group">
               <label>收件人来源</label>
@@ -58,7 +58,7 @@ async function showPushModal(sid, product, version, pkgType, chain){
           </div>
           <div id="pushTabBot" class="hidden">
             <p class="cfg-hint" data-css="margin-bottom:8px;color:var(--gray-muted)">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
-            <div id="pushBotChannelList" class="push-target"><div class="empty" data-css="padding:8px">加载中...</div></div>
+            <div id="pushBotChannelList" class="push-target"><div class="empty p8">加载中...</div></div>
           </div>
         </div>
         <div data-css="padding:12px 16px;border-top:1px solid var(--border);background:var(--gray-bg)">
@@ -144,7 +144,7 @@ async function loadPushChannelSelect(){
 async function loadPushCustomerList(){
   const el=document.getElementById('pushCustomerList');
   if(!el) return;
-  el.innerHTML='<div class="empty" data-css="padding:8px">加载中...</div>';
+  el.innerHTML='<div class="empty p8">加载中...</div>';
   try{
     const r=await api('/customers');
     const list=(r.data||[]).filter(x=>(x.email||'').trim());
@@ -315,7 +315,7 @@ async function showLogFile(path, name){
     <div class="confirm-title">日志 - ${escHtml(name)}</div>
     <div data-css="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(path)}</div>
     <pre data-css="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
-    <div class="confirm-btns" data-css="margin-top:14px">
+    <div class="confirm-btns mt14">
       <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs('testLogModal')}'>关闭</button>
     </div>
   </div>`;

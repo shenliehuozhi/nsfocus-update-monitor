@@ -110,7 +110,7 @@ async function dashboard(range){
   // 2026-08-25: 顶部告警只在"无可用采集 session"时显示
   // 其他情况(部分污染/过期)由 Session 菜单自己的卡片提示,不再在仪表盘顶部打扰
   if(_cTotal===0){
-    sesWarn=`<div class="info-bar" data-css="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" data-on-click="showPage" data-args='${_dataArgs('sessions')}'>Session 管理</a> 添加 PHPSESSID 才能采集<br><span data-css="color:var(--muted);font-size:12px">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
+    sesWarn=`<div class="info-bar" data-css="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" data-on-click="showPage" data-args='${_dataArgs('sessions')}'>Session 管理</a> 添加 PHPSESSID 才能采集<br><span class="muted-12">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
   }
   // 采集进度条改用 _showCollectBanner() (2026-08-21),仿 _showDiscBanner 风格:底部悬浮卡片 + 进度条
   // 这里不再单独控制 dashRunningBar,改由 dataPage 内 _collectPollTimer 调度。
@@ -149,20 +149,20 @@ async function dashboard(range){
         <div data-css="font-size:11px;color:var(--muted);line-height:1.4">采集器状态</div>
       </div>
     </div>
-    <div class="grid3" data-css="margin-top:14px">
+    <div class="grid3 mt14">
       <div class="stat tint-primary">
         <div class="num" id="dashUptime">—</div>
         <div class="label">已运行时间</div>
       </div>
       <div class="stat ${d.product_total>0?(d.product_active===d.product_total?'tint-success':(d.product_active>0?'tint-warn':'tint-danger')):'tint-neutral'}">
-        <div class="num">${d.product_active||0}<span data-css="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span data-css="color:var(--muted)">${d.product_total||0}</span></div>
+        <div class="num">${d.product_active||0}<span data-css="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span class="text-muted">${d.product_total||0}</span></div>
         <div class="label">已启用产品 / 总数</div>
         ${d.product_total>0 && d.product_active!==d.product_total?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px">未启用 <b data-css="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
       </div>
       <div class="stat ${pt.total>0?(pt.failed>0?'tint-warn':'tint-success'):'tint-neutral'}">
         <div class="num">${ptRate===null?'—':ptRate+'%'}</div>
         <div class="label">${pt.total>0?`今日推送 ${pt.total} 条`:'今日推送'}</div>
-        ${pt.failed>0?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px"><b data-css="color:var(--danger)">${pt.failed}</b> 失败</div>`:''}
+        ${pt.failed>0?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px"><b class="text-danger">${pt.failed}</b> 失败</div>`:''}
       </div>
     </div>
     <div data-css="display:flex;flex-direction:column;gap:12px;margin-top:12px">
@@ -230,7 +230,7 @@ async function dashboard(range){
     <!-- Row 1 Col 2: 事件中心 -->
     <div class="card" data-css="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0">
       <div class="card-hd" data-css="background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
-        <span data-css="color:var(--danger)">🔔 事件中心</span>
+        <span class="text-danger">🔔 事件中心</span>
         <span id="eventsCenterCounts" data-css="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
         <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" data-on-click="openEventsCenterModal" data-css="margin-left:6px;flex-shrink:0">查看更多 ↗</button>
       </div>
@@ -390,7 +390,7 @@ async function fetchEventsHeader(){
       if(c.CRITICAL) parts2.push(`<span data-css="background:var(--danger-light);color:var(--danger-text);padding:1px 6px;border-radius:8px;font-weight:600">🔴${c.CRITICAL}</span>`);
       if(c.ERROR) parts2.push(`<span data-css="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">🟠${c.ERROR}</span>`);
       if(c.WARNING) parts2.push(`<span data-css="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">⚠️${c.WARNING}</span>`);
-      centerCounts.innerHTML = parts2.length ? parts2.join(' ') : '<span data-css="color:var(--success)">✅</span>';
+      centerCounts.innerHTML = parts2.length ? parts2.join(' ') : '<span class="text-success">✅</span>';
     }
   }catch(e){}
 }
@@ -462,13 +462,13 @@ function renderEventsCenterTable(events){
 function _deliveryErrorItemsHtml(m){
   const items = ((m && m.items) || []).filter(it => it && it.queue_id);
   if(!items.length) return '';
-  return '<div data-css="margin-bottom:8px">'+items.map(it=>{
+  return '<div class="mb8">'+items.map(it=>{
     const owner = [it.customer_name, it.rule_name].filter(Boolean).join(' / ') || ('规则 '+it.rule_id);
     const prod = [it.product_name, it.version].filter(Boolean).join(' ');
     return `<div data-css="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
-      <span data-css="color:var(--danger)">✗</span>
+      <span class="text-danger">✗</span>
       <span>队列 #${it.queue_id} · ${escHtml(owner)}${prod?' '+escHtml(prod):''}</span>
-      <span data-css="color:var(--muted)">${escHtml(String(it.reason||''))} ${escHtml(String(it.error||'').slice(0,80))}</span>
+      <span class="text-muted">${escHtml(String(it.reason||''))} ${escHtml(String(it.error||'').slice(0,80))}</span>
       <button class="btn btn-xs btn-soft-primary" data-on-click="retryDelivery" data-stop data-args='${_dataArgs(Number(it.queue_id), '$el')}'>重新入队</button>
     </div>`;
   }).join('')+'</div>';
@@ -515,12 +515,12 @@ function renderEventsCenterTableRow(e){
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
     + (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
-    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span data-css="color:var(--muted)">—</span>');
+    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span class="text-muted">—</span>');
   const channelCell = e.channel_type
     ? `<div>${escHtml(e.channel_type)}</div>`
     + (e.channel_id ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
     + (e.customer_id ? `<div data-css="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
-    : '<span data-css="color:var(--muted)">—</span>';
+    : '<span class="text-muted">—</span>';
   // 详情面板 — 用 eventCardDetail- 前缀避免跟弹窗 eventTableDetail- 撞 ID
   const detailId = 'eventCardDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
@@ -591,12 +591,12 @@ function openEventsCenterModal(){
       <div class="modal-overlay" data-on-click="closeEventsCenterModal" data-self>
         <div class="card" data-css="width:960px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column">
           <div class="card-hd" data-css="display:flex;align-items:center">
-            <span data-css="color:var(--danger)">🔔 事件中心</span>
+            <span class="text-danger">🔔 事件中心</span>
             <span id="eventsCenterModalCount" data-css="margin-left:8px;color:var(--muted);font-size:11px;font-weight:400"></span>
             <span data-on-click="closeEventsCenterModal" data-css="margin-left:auto;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1;padding:0 4px">×</span>
           </div>
           <div data-css="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
-            <span data-css="color:var(--muted)">严重度</span>
+            <span class="text-muted">严重度</span>
             <select id="eventsCenterModalSev" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
               <option value="">全部</option>
               <option value="CRITICAL">🔴 CRITICAL</option>
@@ -604,21 +604,21 @@ function openEventsCenterModal(){
               <option value="WARNING">⚠️ WARNING</option>
               <option value="INFO">ℹ️ INFO</option>
             </select>
-            <span data-css="color:var(--muted)">时间范围</span>
+            <span class="text-muted">时间范围</span>
             <select id="eventsCenterModalHours" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
               <option value="24">近 24 小时</option>
               <option value="168" selected>近 7 天</option>
               <option value="720">近 30 天</option>
               <option value="2160">近 90 天</option>
             </select>
-            <button class="btn btn-xs btn-outline" data-on-click="eventsCenterAckCurrent" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)" data-css="margin-left:auto">一键已读</button>
+            <button class="btn btn-xs btn-outline ml-auto" data-on-click="eventsCenterAckCurrent" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)">一键已读</button>
             <button class="btn btn-xs btn-outline" data-on-click="loadEventsCenterModal">🔄 刷新</button>
           </div>
           <div class="card-bd" id="eventsCenterModalBody" data-css="flex:1;overflow:auto;padding:0">
             <div data-css="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
           </div>
           <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:12px">
-            <span id="eventsCenterModalPagerInfo" data-css="color:var(--muted)"></span>
+            <span class="text-muted" id="eventsCenterModalPagerInfo"></span>
             <div data-css="margin-left:auto;display:flex;gap:6px;align-items:center">
               <button id="eventsCenterModalPrevBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterPrevPage">← 上一页</button>
               <span id="eventsCenterModalPageInfo" data-css="color:var(--muted);font-size:11px;min-width:60px;text-align:center"></span>
@@ -775,12 +775,12 @@ function renderEventsTableRow(e){
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
     + (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
-    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span data-css="color:var(--muted)">—</span>');
+    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span class="text-muted">—</span>');
   const channelCell = e.channel_type
     ? `<div>${escHtml(e.channel_type)}</div>`
     + (e.channel_id ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
     + (e.customer_id ? `<div data-css="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
-    : '<span data-css="color:var(--muted)">—</span>';
+    : '<span class="text-muted">—</span>';
   // 详情面板 — 用 eventTableDetail- 前缀避免跟 dashboard 卡片的 eventDetail- 撞 ID(AP-133)
   const detailId = 'eventTableDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
@@ -815,7 +815,7 @@ function renderEventsTableRow(e){
   }
   return `<tr data-css="${rowStyle}" data-on-click="toggleEventsTableRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
     <td data-css="padding:8px 12px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
-    <td data-css="padding:8px"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td class="p8"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td data-css="padding:8px;color:var(--muted);font-size:11px">${escHtml(t)}</td>
     <td data-css="padding:8px;color:var(--text);overflow:hidden;text-overflow:ellipsis">${escHtml(title)}</td>
     <td data-css="padding:8px;color:var(--text);font-size:11px">${productCell}</td>
@@ -929,7 +929,7 @@ function renderEvent(e){
     <div data-css="flex:1;min-width:0">
       <div data-css="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span data-css="font-weight:600;color:${sevColor};font-size:12px">${escHtml(e.severity)}</span>
-        <span data-css="color:var(--muted);font-size:11px">${escHtml(e.event_type)}</span>
+        <span class="muted-11">${escHtml(e.event_type)}</span>
         ${e.product_name ? `<span data-css="color:var(--primary);font-size:11px">${escHtml(e.product_name)}</span>` : ''}
         <span data-css="color:var(--muted);font-size:11px;margin-left:auto">${escHtml(serverTime(e.created_at, true))}</span>
       </div>

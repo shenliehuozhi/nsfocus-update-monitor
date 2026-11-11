@@ -225,7 +225,7 @@ function _renderCustPushTable(items, days){
         <td data-col="1" data-css="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${isZero?'var(--gray-disabled)':(failed>0?'var(--danger)':'var(--success)')};font-variant-numeric:tabular-nums">${total}</td>
         <td data-col="2" data-css="padding:9px 12px;box-sizing:border-box">
           ${isZero
-            ? '<span data-css="color:var(--gray-disabled);font-size:11px">无推送</span>'
+            ? '<span class="disabled-11">无推送</span>'
             : `<div data-css="display:flex;align-items:center;gap:6px">
                 <div data-css="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
                   <div data-css="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
@@ -1099,7 +1099,7 @@ function buildFlatVerTreeHtml(snapshots) {
       else freshBadge = ' <span data-css="color:var(--gray-disabled);font-size:10px">沉寂</span>';
     }
     const verLabel = escHtml(ver) + badge + freshBadge;
-    html += `<div class="ver-bar" data-on-click="verBarToggle" data-args='${_dataArgs('$el', blockId)}' data-css="margin-bottom:4px">
+    html += `<div class="ver-bar mb4" data-on-click="verBarToggle" data-args='${_dataArgs('$el', blockId)}'>
       <span class="tree-arrow" data-css="margin-right:4px">&#9658;</span>
       <span data-css="font-weight:600;font-size:13px">${verLabel}</span>
       <span data-css="margin-left:auto;font-size:11px;color:var(--muted)">${snaps.length} 个包</span>
@@ -1117,8 +1117,8 @@ function buildFlatVerTreeHtml(snapshots) {
         ${pkgTypeBadge}
         ${statusBadges}
         <span data-css="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${escHtml(s.file_name || '')}</span>
-        <span data-css="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
-        <span data-css="font-size:11px;color:var(--muted)">${sz}</span>
+        <span class="muted-11">${fmtTZ(s.last_seen_at, true)}</span>
+        <span class="muted-11">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'} badge-xs">${escHtml(s.urgency || '')}</span>
         <button class="btn btn-xs btn-soft-success" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, s.product_name, pushVer, pushPkg)}'>推送</button>
       </div>
@@ -1198,10 +1198,10 @@ function dataRenderLeft() {
     const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok badge-xs">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn badge-xs">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey badge-xs">沉寂</span>' : ''));
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
-    html += `<div class="card" id="${cardId}" data-css="margin-bottom:10px">
+    html += `<div class="card mb10" id="${cardId}">
       <div class="card-hd" data-css="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span>${escHtml(src.display_name || src.name || sid)}</span>
-        ${freshBadge && `<span data-css="margin-left:auto">${freshBadge}</span>`}
+        ${freshBadge && `<span class="ml-auto">${freshBadge}</span>`}
         <button class="hover-primary" data-css="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" data-css="display:none;padding-top:0">
@@ -1587,7 +1587,7 @@ function dataRenderRight(sch, p, info) {
       } else {
         hdPathHtml += `<span class="data-hd-path-seg">${esc(segment)}</span>`;
       }
-      if (i < chainParts.length - 1) hdPathHtml += ' <span data-css="color:var(--muted)">→</span> ';
+      if (i < chainParts.length - 1) hdPathHtml += ' <span class="text-muted">→</span> ';
     });
   }
   const hdLabel = srcName ? `${esc(srcName)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
@@ -1596,9 +1596,9 @@ function dataRenderRight(sch, p, info) {
   const nextMode = mode_label[sch.next_mode] || '';
   // Build header: left=label, center=last/next timeline, right=progress+btn
   const hdrRight = `<div class="hdr-right" data-css="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
-    <span data-css="color:var(--muted)">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
+    <span class="text-muted">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
     <span data-css="color:var(--border)">|</span>
-    <span data-css="color:var(--muted)">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
+    <span class="text-muted">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
     ${progressHtml}
     <button class="btn btn-xs btn-soft-primary" data-on-click="triggerCollect">🔄 手动采集</button>${resetBtn}
   </div>`;
@@ -1914,7 +1914,7 @@ if (!matchedPath && snap.source_url) {
         return `<a href="${escHtml(fullNodeUrl)}" target="_blank" data-css="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
       }
       return escHtml(name);
-    }).join(' <span data-css="color:var(--gray-disabled)">›</span> ');
+    }).join(' <span class="text-disabled">›</span> ');
   }
 
   const t4 = performance.now();
@@ -1930,20 +1930,20 @@ if (!matchedPath && snap.source_url) {
 
   const detailHtml = `<div class="feed-detail" id="snap-detail-${snapId}">
   <div class="detail-inner">
-    <span class="data-detail-k">文件名</span><span data-css="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
-    <span class="data-detail-k">版本</span><span data-css="font-size:12.5px">${escHtml(snap.package_version || (matchedPath && matchedPath.chain && matchedPath.chain.length >= 2 ? matchedPath.chain[matchedPath.chain.length - 2] : '') || '')}</span>
-    <span class="data-detail-k">类型</span><span data-css="font-size:12.5px">${MAP[matchedPathPkg] || matchedPathPkg || ''}</span>
-    <span class="data-detail-k">紧急度</span><span data-css="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${escHtml(snap.urgency || '')}</span></span>
-    <span class="data-detail-k">文件大小</span><span data-css="font-size:12.5px" id="snap-fs-${snapId}">—</span>
-    <span class="data-detail-k">发布时间</span><span data-css="font-size:12.5px">${fmtTZ(snap.published_at, true)}</span>
-    <span class="data-detail-k">首次发现</span><span data-css="font-size:12.5px">${fmtTZ(snap.first_seen_at, true)}</span>
-    <span class="data-detail-k">最近采集</span><span data-css="font-size:12.5px">${fmtTZ(snap.last_seen_at, true)}</span>
-    <span class="data-detail-k">下载地址</span><span data-css="font-size:12.5px"><a href="${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}" target="_blank" data-css="color:var(--success)">${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}</a></span>
-    <span class="data-detail-k">发布地址</span><span data-css="font-size:12.5px"><a href="${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}" target="_blank" data-css="color:var(--primary)">${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}</a></span>
+    <span class="data-detail-k">文件名</span><span class="fs125">${escHtml(snap.file_name || '')}</span>
+    <span class="data-detail-k">版本</span><span class="fs125">${escHtml(snap.package_version || (matchedPath && matchedPath.chain && matchedPath.chain.length >= 2 ? matchedPath.chain[matchedPath.chain.length - 2] : '') || '')}</span>
+    <span class="data-detail-k">类型</span><span class="fs125">${MAP[matchedPathPkg] || matchedPathPkg || ''}</span>
+    <span class="data-detail-k">紧急度</span><span class="fs125"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${escHtml(snap.urgency || '')}</span></span>
+    <span class="data-detail-k">文件大小</span><span class="fs125" id="snap-fs-${snapId}">—</span>
+    <span class="data-detail-k">发布时间</span><span class="fs125">${fmtTZ(snap.published_at, true)}</span>
+    <span class="data-detail-k">首次发现</span><span class="fs125">${fmtTZ(snap.first_seen_at, true)}</span>
+    <span class="data-detail-k">最近采集</span><span class="fs125">${fmtTZ(snap.last_seen_at, true)}</span>
+    <span class="data-detail-k">下载地址</span><span class="fs125"><a class="text-success" href="${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}" target="_blank">${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}</a></span>
+    <span class="data-detail-k">发布地址</span><span class="fs125"><a href="${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}" target="_blank" data-css="color:var(--primary)">${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}</a></span>
     ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span data-css="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
-    <span class="data-detail-k">MD5</span><span data-css="font-size:12.5px" id="snap-md5-${snapId}">—</span>
+    <span class="data-detail-k">MD5</span><span class="fs125" id="snap-md5-${snapId}">—</span>
     <span class="data-detail-k">页面哈希</span><span data-css="font-size:12.5px;word-break:normal;overflow-x:auto" id="snap-ph-${snapId}">—</span>
-    <span class="data-detail-k">需重启</span><span data-css="font-size:12.5px" id="snap-rr-${snapId}">—</span>
+    <span class="data-detail-k">需重启</span><span class="fs125" id="snap-rr-${snapId}">—</span>
     <span class="data-detail-k" data-css="grid-column:1/3;align-self:start">描述</span><span id="snap-desc-${snapId}" data-css="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">—</span>
 </div>
 </div>`;
@@ -1977,7 +1977,7 @@ if (!matchedPath && snap.source_url) {
     }
     const rrEl = document.getElementById(`snap-rr-${snapId}`);
     if (rrEl && d.restart_required) {
-      rrEl.outerHTML = `<span class="data-detail-k">需重启</span><span data-css="font-size:12.5px">⚠️ 需要重启设备</span>`;
+      rrEl.outerHTML = `<span class="data-detail-k">需重启</span><span class="fs125">⚠️ 需要重启设备</span>`;
     }
   }).catch(() => {});
 
@@ -2231,11 +2231,11 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           ${isLatestPkg ? '<span class="badge badge-blue" data-css="font-size:10px;margin-right:4px">最新</span>' : ''}
           <span class="data-type-label">${typeLabel}</span>
           <span class="mono" data-css="color:var(--primary);font-size:12px">${escHtml((latest.file_name || '').substring(0, 35))}</span>
-          <span data-css="color:var(--muted);font-size:11px">${fmtTZ(latest.published_at)}</span>
+          <span class="muted-11">${fmtTZ(latest.published_at)}</span>
           <span class="badge ${urg} badge-xs">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
-            (latest.status === 'active' ? '<span data-css="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-soft-success" data-css="margin-left:auto" data-on-click="showPushModal" data-stop data-args='${_dataArgs(latest.id, src.name, pushVer, pushPkg)}'>推送</button>
+            (latest.status === 'active' ? '<span class="muted-11" title="未推送">○</span>' : '')}
+          <button class="btn btn-xs btn-soft-success ml-auto" data-on-click="showPushModal" data-stop data-args='${_dataArgs(latest.id, src.name, pushVer, pushPkg)}'>推送</button>
           ${historyCount > 0 ? `<span class="data-history-toggle" data-on-click="dataToggleHistory" data-stop data-args='${_dataArgs('$el', histKey)}'>+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
@@ -2247,7 +2247,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span data-css="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
               <span class="mono" data-css="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((s.file_name || '').substring(0, 30))}</span>
               <span class="badge ${urg2} badge-xs">${escHtml(s.urgency || '')}</span>
-              ${s.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)">✅</span>' : '<span data-css="font-size:11px;color:var(--muted)">○</span>'}
+              ${s.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)">✅</span>' : '<span class="muted-11">○</span>'}
               <button class="btn btn-xs btn-soft-success" data-css="margin-left:4px" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;

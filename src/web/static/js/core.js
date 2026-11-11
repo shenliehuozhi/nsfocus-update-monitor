@@ -206,7 +206,7 @@ function discConfirmAct(msg, asyncFn, icon='🗂️', okLabel='确认', bodyHtml
        <div id="${id}-box" data-css="background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto;padding:24px">
          <div data-css="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
            <div data-css="font-size:36px;line-height:1;flex-shrink:0">${icon}</div>
-           <div data-css="flex:1">
+           <div class="flex-1">
              <div data-css="font-size:16px;font-weight:700;color:#1a2332;margin-bottom:6px">${msg}</div>
            </div>
            <div data-on-click="closeDiscConfirm" data-css="cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1">×</div>

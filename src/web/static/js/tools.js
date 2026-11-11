@@ -81,7 +81,7 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
     <div class="card">
       <div class="card-hd">
         ${title}
-        <button class="btn btn-outline btn-sm" data-on-click="toolsPage" data-css="margin-left:auto">← 返回工具列表</button>
+        <button class="btn btn-outline btn-sm ml-auto" data-on-click="toolsPage">← 返回工具列表</button>
       </div>
       <div class="card-bd">
         <div class="rd-toolbar">
@@ -199,14 +199,14 @@ async function toolDiffOpenPicker(expectedKind){
     }
   } catch (e) {
     const bd = overlay.querySelector('.rd-picker-bd');
-    bd.innerHTML = `<div class="rd-picker-error">⚠️ 加载失败: ${escHtml(e.message || String(e))}<br><span data-css="font-size:11px;color:var(--muted)">请手动输入 URL 或重试</span></div>`;
+    bd.innerHTML = `<div class="rd-picker-error">⚠️ 加载失败: ${escHtml(e.message || String(e))}<br><span class="muted-11">请手动输入 URL 或重试</span></div>`;
     // 保留弹层,用户可手动关闭或重试
     return;
   }
 
   const bd = overlay.querySelector('.rd-picker-bd');
   if (products.length === 0) {
-    bd.innerHTML = `<div class="rd-picker-error">⚠️ 当前没有可用的 ${kindLabel} 产品 (白名单: ${[...whitelist].join(' / ')})<br><span data-css="font-size:11px;color:var(--muted)">请先到「产品」页启用相应产品并完成包路径发现</span></div>`;
+    bd.innerHTML = `<div class="rd-picker-error">⚠️ 当前没有可用的 ${kindLabel} 产品 (白名单: ${[...whitelist].join(' / ')})<br><span class="muted-11">请先到「产品」页启用相应产品并完成包路径发现</span></div>`;
     return;
   }
 
@@ -396,7 +396,7 @@ async function rdUrlValidate(){
 
   if (!isVendorDomain || (!isIpsPath && !isWafPath)) {
     hint.style.display = 'block';
-    hint.innerHTML = '<span data-css="color:var(--danger)">⚠️ 仅支持 update.nsfocus.com 域名的 listNewipsDetail/ (IPS / IDS) 或 listWafV...Detail/ (WAF) 详情页</span>';
+    hint.innerHTML = '<span class="text-danger">⚠️ 仅支持 update.nsfocus.com 域名的 listNewipsDetail/ (IPS / IDS) 或 listWafV...Detail/ (WAF) 详情页</span>';
     return;
   }
 
@@ -421,7 +421,7 @@ async function rdUrlValidate(){
 
   // 看缓存里有没有现成的 cache-status 可查
   hint.style.display = 'block';
-  hint.innerHTML = '<span data-css="color:var(--muted)">🔍 校验中...</span>';
+  hint.innerHTML = '<span class="text-muted">🔍 校验中...</span>';
 
   // 2026-07-14: 反推 URL 对应的 chain 路径(从 _dataAll 里的 package_type.paths 查)
   // _dataAll 未加载时主动 loadDataAll() 一次(in flight 用 _rdChainLoading 防重复请求)
@@ -472,9 +472,9 @@ async function rdUrlValidate(){
     if (j.code === 0 && j.data && j.data.exists) {
       const age = j.data.age_seconds || 0;
       const ageStr = age < 60 ? `${age}秒前` : age < 3600 ? `${Math.floor(age/60)}分钟前` : `${Math.floor(age/3600)}小时前`;
-      baseHint = `<span data-css="color:var(--success)">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>`;
+      baseHint = `<span class="text-success">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>`;
     } else {
-      baseHint = `<span data-css="color:var(--muted)">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>`;
+      baseHint = `<span class="text-muted">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>`;
     }
     // 链路径(可能有 0 条 = URL 不在已采集产品里,或多条 = 跨产品共用 URL)
     const matches = await chainPromise;
@@ -491,8 +491,8 @@ async function rdUrlValidate(){
       chainHtml += `<button class="btn btn-xs btn-outline" data-on-click="rdCopyChains" data-args='${_dataArgs(headerText + '\n' + plainText)}' title="复制为纯文本(可贴工单/微信)">📋 复制链路</button>`;
       chainHtml += `</div>`;
       matches.forEach((m, i) => {
-        const segments = m.chain.map(s => `<span data-css="color:var(--primary)">${escHtml(s)}</span>`).join(` <span data-css="color:var(--muted)">›</span> `);
-        const srcLabel = m.srcName ? `<span data-css="color:var(--muted);font-size:11px"> [${escHtml(m.srcName)}]</span>` : '';
+        const segments = m.chain.map(s => `<span data-css="color:var(--primary)">${escHtml(s)}</span>`).join(` <span class="text-muted">›</span> `);
+        const srcLabel = m.srcName ? `<span class="muted-11"> [${escHtml(m.srcName)}]</span>` : '';
         chainHtml += `<div data-css="margin-top:2px;padding-left:14px">${i + 1}. ${segments}${srcLabel}</div>`;
       });
       chainHtml += '</div>';
@@ -539,9 +539,9 @@ function rdRenderPkgTable(){
       <td><input type="checkbox" class="rd-pkg-cb" data-ver="${escHtml(p.package_version)}" ${isSel ? 'checked' : ''} data-on-change="rdToggleSel" data-args='${_dataArgs(p.package_version)}'></td>
       <td data-css="font-family:monospace">${escHtml(p.package_version)}</td>
       <td data-css="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
-      <td data-css="font-size:12px">${pubCST}</td>
-      <td data-css="font-size:12px">${p.file_size_raw || '—'}</td>
-      <td data-css="font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span data-css="color:var(--muted)">—</span>'}</td>
+      <td class="fs12">${pubCST}</td>
+      <td class="fs12">${p.file_size_raw || '—'}</td>
+      <td data-css="font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span class="text-muted">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -629,9 +629,9 @@ function rdRenderResult(){
       <div class="rd-summary-item"><span class="label">FROM 版本</span><span class="val">${fromV}</span></div>
       <div class="rd-summary-item"><span class="label">TO 版本</span><span class="val">${toV}</span></div>
       <div class="rd-summary-item"><span class="label">中间版本数</span><span class="val">${intermediates.length}</span></div>
-      <div class="rd-summary-item" data-css="color:var(--success)"><span class="label">新增</span><span class="val">${(r.pure_new||[]).length}</span></div>
+      <div class="rd-summary-item text-success"><span class="label">新增</span><span class="val">${(r.pure_new||[]).length}</span></div>
       <div class="rd-summary-item" data-css="color:var(--primary)"><span class="label">修改</span><span class="val">${(r.pure_updated||[]).length}</span></div>
-      <div class="rd-summary-item" data-css="color:var(--danger)"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
+      <div class="rd-summary-item text-danger"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
     </div>
     ${clickableVersions.length > 0
       ? `<div data-css="font-size:12px;color:var(--muted);margin-bottom:14px">
