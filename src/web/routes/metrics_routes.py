@@ -4,9 +4,10 @@ GET /api/metrics?hours=24                → JSON
 GET /api/metrics?hours=24&format=prometheus → Prometheus text
 
 Auth: JWT Bearer (same as other APIs). For Prometheus scraping, set
-MONITOR_METRICS_TOKEN and send it as `X-Metrics-Token`; JWT expires every
-24h so it is impractical as a scrape credential. When the env var is unset,
-the static-token path is disabled.
+MONITOR_METRICS_TOKEN and send it as `X-Metrics-Token` or
+`Authorization: Bearer <token>` (Prometheus `authorization.credentials_file`
+natively sends the latter); JWT expires every 24h so it is impractical as a
+scrape credential. When the env var is unset, the static-token path is disabled.
 """
 
 import functools
@@ -41,7 +42,13 @@ def _auth(f):
 
         header = request.headers.get('Authorization', '')
         if header.startswith('Bearer '):
-            payload = decode_token(header[len('Bearer '):])
+            bearer = header[len('Bearer '):]
+            # Prometheus 的 authorization.credentials_file 只会发 Bearer 头，
+            # 静态令牌也接受这种形式，避免抓取侧必须依赖反向代理注入自定义头
+            if expected and bearer and secrets.compare_digest(bearer, expected):
+                g.user_id, g.username = 0, 'metrics-token'
+                return f(*args, **kwargs)
+            payload = decode_token(bearer)
             if payload:
                 g.user_id = payload['user_id']
                 g.username = payload['username']

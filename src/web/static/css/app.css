@@ -394,3 +394,36 @@ tr[data-sid]{cursor:pointer}
 .rd-version-latest:hover{background:var(--success-border);border-color:var(--success)}
 .rd-version-inline{padding:1px 6px;font-size:11px;background:var(--gray-bg);color:var(--text)}
 .rd-version-inline:hover{background:var(--primary-light);color:var(--primary)}
+
+/* ── 可观测性页面 ── */
+.obs-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:14px}
+.obs-kpis .stat{text-align:left;padding:14px 16px}
+.obs-kpis .stat .num{font-size:24px;white-space:nowrap}
+.obs-sub{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.5;min-height:16px}
+.obs-grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+.obs-grid2>.card{margin-bottom:0}
+.obs-section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:0 0 8px 0}
+.obs-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
+.obs-mini>div{background:var(--gray-bg);border-radius:8px;padding:9px 12px;min-width:0}
+.obs-mini b{display:block;font-size:17px;color:var(--text);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obs-mini span{font-size:10.5px;color:var(--muted)}
+.obs-kv{display:grid;grid-template-columns:auto 1fr;gap:7px 12px;font-size:12.5px}
+.obs-kv>span{color:var(--muted);white-space:nowrap}
+.obs-kv>b{font-weight:600;text-align:right;font-variant-numeric:tabular-nums}
+.obs-rate{display:flex;align-items:center;gap:8px;min-width:130px}
+.obs-rate>span{width:38px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
+.obs-bar{flex:1;height:6px;background:#eef1f5;border-radius:999px;overflow:hidden}
+.obs-bar>i{display:block;height:100%;border-radius:999px;background:var(--success)}
+.obs-bar.warn>i{background:var(--warn)}
+.obs-bar.bad>i{background:var(--danger)}
+.obs-scroll{overflow-x:auto}
+.obs-muted{color:var(--muted)}
+.obs-foot{font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5}
+.obs-foot code,.obs-code code{font-family:'SF Mono','Consolas',monospace;font-size:11.5px}
+.obs-code{display:flex;gap:8px;align-items:center;background:var(--gray-bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin:8px 0}
+.obs-code code{flex:1;word-break:break-all;color:var(--text)}
+@media (max-width:900px){
+  .obs-grid2{grid-template-columns:1fr}
+  .obs-mini{grid-template-columns:repeat(2,1fr)}
+  .obs-kv>b{text-align:left}
+}

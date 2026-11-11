@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### 新增
+- **可观测性页面**：主导航新增「可观测」，把 `GET /api/metrics` 的结果直接可视化——投递成功率（分渠道进度条、失败数标红）、即时/汇总队列积压与最久等待、采集健康（上次/下次、近 20 轮均值、数据源新鲜度）、未确认告警、存储体积与表行数、后台任务倒计时；默认最近 24 小时，可切 6h/7d/30d，30 秒自动刷新，切页或退出登录即停表。页面底部给出 Prometheus 抓取地址与 `MONITOR_METRICS_TOKEN` 鉴权说明，只复制地址、不暴露令牌；静态令牌同时接受 `X-Metrics-Token` 与 `Authorization: Bearer <token>`（Prometheus `authorization.credentials_file` 原生只发 Bearer，不再需要反向代理注入自定义头）。新增 `observability.js`（加载顺序在 bootstrap 之前）与 `tests/test_observability_page.py` 门禁
 - **投递终止告警**：延迟队列重试耗尽（`retry_exhausted(N)`）或无可用渠道（`no_active_channel`）时，此前只写 logger，网页/事件中心完全看不到丢包。现在 `process_delayed_queue` 每轮把终止项合并写一条 `ERROR` 级 `delivery_error` 系统事件（含队列号、规则/客户/产品、原因、最后错误），系统事件通知开启时同步推送到配置渠道；设置页事件类型新增「投递终止」开关
 - **终止队列项手动重试**：事件中心的 `delivery_error` 事件详情列出终止项并提供「重新入队」按钮（`POST /api/history/queue/:id/retry`），清零 `attempts` / `next_attempt_at` 后由 5 分钟队列任务重新投递；只允许 `retry_exhausted*` / `no_active_channel`，`reset_by_new_package` 等业务性取消不会被复活，已送达渠道仍按 `delivery_log` 去重
 - **失败交付记录保留期**：`clear_history` 只删已发送行，`failed` 行会无限累积。每日 03:00 清理任务新增一步，删除 `created_at` 早于 180 天的失败记录；没有 `created_at` 的历史行无法判断年龄，保持不动
@@ -23,6 +24,7 @@
 - **CI 测试门禁**：新增 `.github/workflows/tests.yml`（本仓第一道自动化门禁）—— push/PR/手动触发跑 `python3 -m pytest`，Python 3.10 + `requirements.txt` 安装，另加两条 lint 守住「测试可移植」：`tests/` 里不许出现 `/root/nsfocus-monitor` 绝对路径、不许 `sqlite3.connect` 到生产库。为此先把 6 个绑定开发机的用例改成可离线自足：`test_user_upgrade_auto_migrate` 三个用例自建 `tmp_path` 库 + `monkeypatch` DB_PATH（原来直接读生产 `data/nsfocus_monitor.db`，31 个用例连带 collect 报错），`test_rule_1013_8703_chain` 把生产 chain 值内联并改调真正的 `detector/change._chain_matches`（原来各自复制一份局部实现，测的是副本不是产品代码），`test_subscription_match` 加 autouse fixture 清 `scheduler` 的 chain 缓存并 stub `_get_chain`，`test_about_modal_regression` / `test_scheduler_rollback_chain` / `test_version_info` 的绝对路径改 `Path(__file__).resolve().parents[1]`。离仓验证：仓库副本 tar 到 `/tmp`（排除 `data/` `logs/` `.git` `__pycache__`）+ `MONITOR_DATA_DIR`/`MONITOR_LOG_DIR` 指空目录 + 按 pin 装的依赖，371 passed
 
 ### 修复
+- **汇总失败事件 · 开机不足 1 小时时首次失败被静默吞掉**：`_log_digest_failure` 用 `time.monotonic()`（起点是开机时间）做每小时去重，却把「从未记录」的默认值写成 `0`；进程/容器启动不足 3600 秒时 `monotonic - 0 < 3600` 恒成立，第一次失败直接 return，`digest_summary` 事件不落库。默认值改为 `None`，只有真实记录过才参与去重；回归见 `tests/test_digest_modes.py::test_digest_first_failure_logs_event_on_fresh_clock`
 - **延迟推送 · 本地时间与 UTC 混比导致晚 8 小时**：`push_after` 由 `compute_push_time()` 用 `datetime.now()` 写本地时间，`get_due_items()` 却用 `datetime('now')`（UTC）比较，CST 服务器上所有延迟推送被硬拖后 8 小时（延迟 1 小时实际等 9 小时）。改为统一本地时间比较（`mark_pushed` / `mark_delivery_retry` / `mark_delivery_terminal` 时间戳同口径），`/api/metrics` 的 `overdue` 与系统页队列统计也改按本地时间
 - **渠道 · 历史坏密文触发 `ValueError` 中断推送**：`channel._decrypt_config` 只捕获 `JSONDecodeError` / `TypeError`，密钥轮换或早期写入格式不同导致的 `ValueError`（如 nonce 长度校验）会冒泡到发送链路，该条推送直接异常。现在一并捕获并回退空配置，由发送侧按「无可用渠道」走终态
 - **指标 · Prometheus 输出规范**：窗口统计是 Gauge 且会回落，名字却带 `_total`（Prometheus 约定 `_total` 仅用于单调 Counter，会误导 `rate()`）；同时缺 `# TYPE` 声明、标签值未转义换行。现在统一 `# TYPE <name> gauge` 去重输出，指标改为 `nsfocus_delivery_events` / `nsfocus_delivery_channel_{events,sent,failed}` / `nsfocus_delivery_undated_failed` / `nsfocus_collection_sources`，`_label()` 补 `\n` 转义；回归新增格式校验（每行可解析、family 有且仅有 TYPE、无重复序列、无 `_total` Gauge）

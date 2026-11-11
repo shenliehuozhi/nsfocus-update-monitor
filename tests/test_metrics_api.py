@@ -113,8 +113,17 @@ def test_static_metrics_token(client, monkeypatch):
     ok = client.get('/api/metrics', headers={'X-Metrics-Token': 'scrape-secret'})
     assert ok.status_code == 200
 
+    # Prometheus authorization.credentials_file 只会发 Bearer 头
+    bearer_ok = client.get('/api/metrics',
+                           headers={'Authorization': 'Bearer scrape-secret'})
+    assert bearer_ok.status_code == 200
+
     bad = client.get('/api/metrics', headers={'X-Metrics-Token': 'nope'})
     assert bad.status_code == 401
+
+    bearer_bad = client.get('/api/metrics',
+                            headers={'Authorization': 'Bearer nope'})
+    assert bearer_bad.status_code == 401
 
 
 def test_jwt_still_works_when_static_token_configured(client, monkeypatch):

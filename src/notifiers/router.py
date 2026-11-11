@@ -774,7 +774,10 @@ def _build_digest_text(rule: dict, period_key: str, snaps: list) -> tuple[str, l
 
 def _log_digest_failure(rule: dict, period_key: str, detail: str):
     now = time.monotonic()
-    if now - _DIGEST_FAIL_LOG.get(rule['id'], 0) < 3600:
+    # monotonic 的起点是开机时间；默认值取 0 会让「启动不足 1 小时」的机器
+    # 把首次失败误判成刚发过，事件直接静默丢掉。用 None 表示从未记录。
+    last = _DIGEST_FAIL_LOG.get(rule['id'])
+    if last is not None and now - last < 3600:
         return
     _DIGEST_FAIL_LOG[rule['id']] = now
     logger.error(f'Digest NOT sent: rule={rule.get("name")}, period={period_key}, {detail}')

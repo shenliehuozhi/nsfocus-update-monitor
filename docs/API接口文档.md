@@ -769,7 +769,7 @@ data: {"processed": 3, "errors": 0}
 | `hours` | 统计窗口小时数，默认 24，范围 1–720；非法值回退 24 |
 | `format` | `prometheus` 时返回 `text/plain` 指标，否则返回 JSON |
 
-鉴权：`Authorization: Bearer <JWT>`；配置 `MONITOR_METRICS_TOKEN` 后也可用 `X-Metrics-Token: <token>`（便于长期抓取，JWT 24h 过期不适合）。
+鉴权：`Authorization: Bearer <JWT>`；配置 `MONITOR_METRICS_TOKEN` 后也可用 `X-Metrics-Token: <token>` 或 `Authorization: Bearer <token>`（Prometheus 的 `authorization.credentials_file` 原生发送后者；JWT 24h 过期不适合长期抓取）。
 
 ```json
 {
@@ -821,3 +821,4 @@ data: {"processed": 3, "errors": 0}
 - `collection.last_duration_s` / `avg_duration_s` 取最近 20 条 `collection_summary` 系统事件，不受 `hours` 限制。
 - `collection.sources_stale` 统计 24 小时内未成功采集的启用源。
 - `scheduler_jobs` 仅在调度器运行时非空。
+- 网页端「可观测」页面消费同一接口，提供窗口切换、30 秒自动刷新和 Prometheus 抓取地址；页面不读取或展示 `MONITOR_METRICS_TOKEN`。

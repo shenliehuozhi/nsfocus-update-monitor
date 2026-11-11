@@ -22,7 +22,8 @@ from tests.frontend_source import INDEX_HTML, WEB, js_source, script_paths
 
 EXPECTED_ORDER = [
     'core.js', 'dashboard.js', 'data.js', 'pages.js', 'history.js',
-    'products.js', 'collection.js', 'account.js', 'bootstrap.js', 'tools.js',
+    'products.js', 'collection.js', 'observability.js', 'account.js',
+    'bootstrap.js', 'tools.js',
 ]
 MAX_HTML_LINES = 80
 MAX_JS_LINES = 3000

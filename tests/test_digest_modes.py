@@ -191,9 +191,27 @@ def test_digest_success_marks_up_to_sent_max_id(monkeypatch, fresh_db):
     assert events[0]['message']['packages'] == 1  # 同 snapshot 两行去重
 
 
+def test_digest_first_failure_logs_event_on_fresh_clock(monkeypatch, fresh_db):
+    """开机不足 1 小时(monotonic < 3600)时首次失败也必须写事件。"""
+    import src.notifiers.router as router
+
+    router._DIGEST_FAIL_LOG.clear()
+    monkeypatch.setattr(router.time, 'monotonic', lambda: 100)
+    rule = _rule()
+    calls, events = _patch_process(
+        monkeypatch, rule, [_snap()],
+        {'sent': [], 'failed': ['W(wecom): HTTP 400'], 'skipped': []})
+
+    router.process_digests()
+
+    assert events and events[0]['event_type'] == 'digest_summary'
+    assert events[0]['severity'] == 'ERROR'
+
+
 def test_digest_no_bindings_not_consumed(monkeypatch, fresh_db):
     import src.notifiers.router as router
 
+    router._DIGEST_FAIL_LOG.clear()
     rule = _rule()
     calls, events = _patch_process(
         monkeypatch, rule, [_snap()],

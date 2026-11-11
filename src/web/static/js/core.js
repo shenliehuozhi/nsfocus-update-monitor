@@ -138,6 +138,7 @@ async function doLogin(){
 function logout(){
   if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
+  if(window._obsTimer){clearInterval(window._obsTimer);window._obsTimer=null;}
   T=null;U=null;localStorage.removeItem('token');renderLogin();
 }
 
@@ -259,7 +260,9 @@ addEventListener('resize', ddClose);
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
-  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,tools:toolsPage};
+  // 观测页的自动刷新只在观测页存活，切走就停，避免后台持续拉取
+  if(window._obsTimer && n!=='observability'){clearInterval(window._obsTimer);window._obsTimer=null;}
+  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,observability,tools:toolsPage};
   if(pages[n])pages[n]();
   // 2026-08-25: 每次切页都检查后端是否有活动采集,有的话启动 banner 全局轮询
   // 这样从其他菜单页面也能看到进度 banner 更新(banner 是全站浮动卡片)
