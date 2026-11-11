@@ -1233,11 +1233,17 @@ def get_latest_snapshots():
 
     stamp = DBStampCache.stamp(_db.DB_PATH)
     etag = DBStampCache.etag(stamp)
-    if etag and request.if_none_match.contains(etag):
-        resp = current_app.response_class(status=304)
-        resp.set_etag(etag)
-        resp.headers['Cache-Control'] = 'private, no-cache'
-        return resp
+    if etag:
+        # Flask-Compress appends "<algo>" to ETags of compressed responses, so a
+        # browser that cached gzip sends back "…:gzip". Match both variants and
+        # answer 304 here — otherwise the full body is recompressed just to be
+        # discarded by Flask-Compress's own conditional check.
+        for candidate in (etag, etag + ':gzip'):
+            if request.if_none_match.contains(candidate):
+                resp = current_app.response_class(status=304)
+                resp.set_etag(candidate)
+                resp.headers['Cache-Control'] = 'private, no-cache'
+                return resp
     cached = _latest_snapshots_cache.get(stamp)
     if cached is not None:
         return _latest_json_response(cached, stamp)

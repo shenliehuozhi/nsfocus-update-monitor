@@ -63,6 +63,16 @@ def test_etag_and_revalidate(client):
     assert r2.headers['Cache-Control'] == 'private, no-cache'
 
 
+def test_gzip_variant_etag_also_304(client):
+    """Flask-Compress appends ':gzip'; that variant must short-circuit too."""
+    etag = _get(client).headers['ETag']
+    suffixed = etag[:-1] + ':gzip"' if etag.endswith('"') else etag + ':gzip'
+    r = _get(client, {'If-None-Match': suffixed})
+    assert r.status_code == 304
+    assert r.get_data() == b''
+    assert r.headers.get('ETag') == suffixed
+
+
 def test_etag_changes_after_write(client):
     etag = _get(client).headers['ETag']
 
