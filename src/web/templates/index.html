@@ -27,17 +27,17 @@
     <a href="#" data-page="observability">可观测</a>
     <a href="#" data-page="tools">🛠️ 其他工具</a>
   </nav>
-  <div class="user" data-css="display:flex;align-items:center;gap:6px;height:100%">
-    <span id="versionBadge" data-on-click="showAboutModal" title="点击查看版本信息" data-css="display:inline-flex;align-items:center;cursor:pointer;font-family:monospace;font-size:11px;font-weight:600;color:var(--primary-text);padding:2px 7px;border-radius:4px;background:var(--primary-light);border:1px solid transparent;line-height:1.4;white-space:nowrap;user-select:none">…</span>
-    <button data-on-click="showAboutModal" title="关于 / 版本信息" data-css="background:var(--primary-light);color:var(--primary-text);border:1px solid transparent;padding:0;border-radius:50%;cursor:pointer;font-size:13px;font-weight:700;line-height:1;width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-family:Arial,sans-serif">i</button>
-    <div id="userMenu" data-css="position:relative;display:inline-block">
-      <span id="uname" data-on-click="toggleUserMenu" data-args='["$event"]' title="点击打开用户菜单" data-css="font-size:11px;color:#cbd5e1;opacity:.85;cursor:pointer;user-select:none;padding:4px 8px;border-radius:4px;display:inline-flex;align-items:center;gap:4px">
+  <div class="user flex items-center gap6 h-full">
+    <span class="conn-badge" id="versionBadge" data-on-click="showAboutModal" title="点击查看版本信息">…</span>
+    <button class="user-avatar-btn" data-on-click="showAboutModal" title="关于 / 版本信息">i</button>
+    <div class="pos-rel d-inline-block" id="userMenu">
+      <span class="user-menu-btn" id="uname" data-on-click="toggleUserMenu" data-args='["$event"]' title="点击打开用户菜单">
         <span id="unameText"></span>
-        <span data-css="font-size:10px;opacity:.7">▾</span>
+        <span class="fs10 opacity-70">▾</span>
       </span>
       <div id="userDropdown" data-css="display:none;position:absolute;top:calc(100% + 6px);right:0;background:#1e293b;border:1px solid #334155;border-radius:6px;min-width:140px;box-shadow:0 4px 12px rgba(0,0,0,.4);z-index:9999;overflow:hidden">
-        <div class="menu-item" data-on-click="_menuShowPwd" data-css="padding:9px 14px;cursor:pointer;color:#e2e8f0;font-size:12px">🔒 修改密码</div>
-        <div class="menu-item" data-on-click="_menuLogout" data-css="padding:9px 14px;cursor:pointer;color:#e2e8f0;font-size:12px;border-top:1px solid #334155">🚪 退出登录</div>
+        <div class="menu-item" data-on-click="_menuShowPwd">🔒 修改密码</div>
+        <div class="menu-item menu-item-sep" data-on-click="_menuLogout">🚪 退出登录</div>
       </div>
     </div>
   </div>

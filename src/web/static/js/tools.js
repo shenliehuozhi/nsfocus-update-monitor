@@ -94,8 +94,8 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
         <div id="rdUrlHint" data-css="display:none;font-size:12px;margin:-8px 0 14px;padding:0 4px;color:var(--muted)"></div>
 
         <div id="rdStep1">
-          <div id="rdStep1Header" data-css="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div data-css="font-size:13px;font-weight:600;color:var(--text)">
+          <div class="flex items-center justify-between mb8" id="rdStep1Header">
+            <div class="fs13 fw600 text-body">
               ① 选择 2 个版本(只能选 2 个, 第 3 次勾选会自动取消最早选的)
             </div>
             <button class="btn btn-outline btn-sm" id="rdReselectBtn" data-css="display:none" data-on-click="rdReselect">✏️ 修改选择</button>
@@ -109,22 +109,22 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
             </table>
           </div>
           <div id="rdSelectedBar" data-css="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:18px">
-            <span id="rdSelectedText" data-css="font-size:13px;color:var(--text);flex:1"></span>
+            <span class="fs13 text-body flex-1" id="rdSelectedText"></span>
             <button class="btn btn-primary btn-sm" id="rdCompareBtn" data-on-click="rdCompare">🔄 生成对比结果</button>
           </div>
         </div>
 
         <div id="rdStep2" data-css="display:none">
-          <div data-css="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">
+          <div class="fs13 fw600 mb8 text-body">
             ② 对比结果
           </div>
           <div id="rdSummary"></div>
           <div id="rdFilterBar" data-css="display:none;margin-bottom:14px;font-size:12px;color:var(--muted)">
-            当前过滤: <code id="rdFilterLabel" data-css="background:var(--primary-light);padding:2px 6px;border-radius:4px;color:var(--primary)"></code>
+            当前过滤: <code class="chip-primary-sm" id="rdFilterLabel"></code>
             <button class="btn btn-outline btn-xs ml8" data-on-click="rdClearFilter">清除过滤</button>
           </div>
           <div id="rdResultGroups"></div>
-          <div data-css="display:flex;gap:8px;align-items:center;margin-top:14px">
+          <div class="flex items-center gap8 mt14">
             <button class="btn btn-primary" data-on-click="rdExport" data-args='${_dataArgs('xlsx')}'>📥 导出 xlsx</button>
             <button class="btn btn-success" data-on-click="rdExport" data-args='${_dataArgs('csv')}'>📥 导出 CSV</button>
             <button class="btn btn-outline" data-on-click="rdExport" data-args='${_dataArgs('csv', true)}'>📋 复制 CSV 到剪贴板</button>
@@ -365,8 +365,8 @@ async function rdFetch(force){
       _rd.sourceKind = j.data.source_kind;
     }
     const cacheTag = j.data.cache === 'hit'
-      ? `<span data-css="color:var(--success);font-weight:500">📦 来自缓存</span> (${j.data.fetched_at || ''} CST, ${((Date.now()-t0)/1000).toFixed(1)}s)`
-      : `<span data-css="color:var(--primary);font-weight:500">🌐 新拉取</span> (${((Date.now()-t0)/1000).toFixed(1)}s)`;
+      ? `<span class="success-500">📦 来自缓存</span> (${j.data.fetched_at || ''} CST, ${((Date.now()-t0)/1000).toFixed(1)}s)`
+      : `<span class="primary-500">🌐 新拉取</span> (${((Date.now()-t0)/1000).toFixed(1)}s)`;
     status.innerHTML = `✓ 共 ${_rd.packages.length} 个升级包 ${cacheTag}`;
     rdRenderPkgTable();
     document.getElementById('rdStep1').style.display = 'block';
@@ -485,15 +485,15 @@ async function rdUrlValidate(){
         `${i + 1}. ` + m.chain.join(' > ') + (m.srcName ? `  [${m.srcName}]` : '')
       ).join('\n');
       const headerText = `链路 (${matches.length} 条匹配):`;
-      chainHtml = '<div data-css="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-      chainHtml += `<div data-css="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">`;
-      chainHtml += `<span data-css="color:var(--muted);font-weight:600">📍 ${headerText}</span>`;
+      chainHtml = '<div class="mt8 pt8 border-top">';
+      chainHtml += `<div class="flex items-center justify-between mb4">`;
+      chainHtml += `<span class="muted-600">📍 ${headerText}</span>`;
       chainHtml += `<button class="btn btn-xs btn-outline" data-on-click="rdCopyChains" data-args='${_dataArgs(headerText + '\n' + plainText)}' title="复制为纯文本(可贴工单/微信)">📋 复制链路</button>`;
       chainHtml += `</div>`;
       matches.forEach((m, i) => {
         const segments = m.chain.map(s => `<span class="text-primary">${escHtml(s)}</span>`).join(` <span class="text-muted">›</span> `);
         const srcLabel = m.srcName ? `<span class="muted-11"> [${escHtml(m.srcName)}]</span>` : '';
-        chainHtml += `<div data-css="margin-top:2px;padding-left:14px">${i + 1}. ${segments}${srcLabel}</div>`;
+        chainHtml += `<div class="mt2 pl14">${i + 1}. ${segments}${srcLabel}</div>`;
       });
       chainHtml += '</div>';
     }
@@ -538,10 +538,10 @@ function rdRenderPkgTable(){
     return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${escHtml(p.package_version)}">
       <td><input type="checkbox" class="rd-pkg-cb" data-ver="${escHtml(p.package_version)}" ${isSel ? 'checked' : ''} data-on-change="rdToggleSel" data-args='${_dataArgs(p.package_version)}'></td>
       <td class="font-mono">${escHtml(p.package_version)}</td>
-      <td data-css="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
+      <td class="muted-12 max-w230 break-all lh14" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
       <td class="fs12">${pubCST}</td>
       <td class="fs12">${p.file_size_raw || '—'}</td>
-      <td data-css="font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span class="text-muted">—</span>'}</td>
+      <td class="font-mono muted-11 break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span class="text-muted">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -634,7 +634,7 @@ function rdRenderResult(){
       <div class="rd-summary-item text-danger"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
     </div>
     ${clickableVersions.length > 0
-      ? `<div data-css="font-size:12px;color:var(--muted);margin-bottom:14px">
+      ? `<div class="muted-12 mb14">
           📍 点击版本过滤结果:
           ${intermediates.map(v => `<a href="#" data-prevent class="rd-version-chip" data-ver="${escHtml(v)}" data-on-click="rdApplyFilter" data-args='${_dataArgs(v)}'><code>${v}</code></a>`).join(' ')}
           <a href="#" data-prevent class="rd-version-chip rd-version-latest" data-ver="${escHtml(toV)}" data-on-click="rdApplyFilter" data-args='${_dataArgs(toV)}'><code>最新 ${toV}</code></a>
@@ -715,7 +715,7 @@ function rdRenderGroups(){
   const renderGroup = (title, icon, color, count, items, typeKey) => {
     const emptyNote = filterVer ? `在 <code>${filterVer}</code> 中无${typeKey === 'new' ? '新增' : typeKey === 'updated' ? '更新' : '删除'}规则` : null;
     if (items.length === 0 && emptyNote) {
-      return `<div class="rd-group" data-css="margin-bottom:12px;color:var(--muted);font-size:13px">${icon} ${title}: ${emptyNote}</div>`;
+      return `<div class="rd-group mb12 muted-13">${icon} ${title}: ${emptyNote}</div>`;
     }
     if (items.length === 0) return '';  // 未过滤时该组 0 条,不渲染标题
     const headers = {
@@ -729,12 +729,12 @@ function rdRenderGroups(){
       deleted: '100px',
     }[typeKey];
     return `
-      <div class="rd-group" data-css="margin-bottom:18px">
+      <div class="rd-group mb18">
         <div data-css="font-size:13px;font-weight:600;margin-bottom:8px;color:${color};display:flex;align-items:center;gap:8px">
           ${icon} ${title}
-          <span data-css="font-size:11px;font-weight:normal;color:var(--muted)">(${items.length} 条${filterVer ? ` · 过滤自 ${count} 条` : ''})</span>
+          <span class="muted-11 fw-normal">(${items.length} 条${filterVer ? ` · 过滤自 ${count} 条` : ''})</span>
         </div>
-        <div class="rd-table-container" data-css="max-height:none">
+        <div class="rd-table-container max-h-none">
           <table class="rd-table">
             <thead><tr>
               <th class="w90">${headers[0]}</th>
@@ -760,7 +760,7 @@ function rdRenderGroups(){
                 return `<tr>
                   <td><code class="rd-cve">[${x.id}]</code></td>
                   <td>${escHtml(x.name)}</td>
-                  <td data-css="font-size:12px;color:var(--muted)">${fromVer || ''}</td>
+                  <td class="muted-12">${fromVer || ''}</td>
                 </tr>`;
               }
             }).join('')}</tbody>

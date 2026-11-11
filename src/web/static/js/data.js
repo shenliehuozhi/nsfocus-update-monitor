@@ -56,7 +56,7 @@ function toggleChTypeDropdown(){
 function selectChType(t, triggerCfgChange=true){
   document.getElementById('cht').value=t;
   const cur=document.getElementById('chTypeCurrent');
-  if(cur)cur.innerHTML=chTypeChip(t)+' <span data-css="color:var(--muted);font-size:11px;margin-left:4px">▾</span>';
+  if(cur)cur.innerHTML=chTypeChip(t)+' <span class="muted-11 ml4">▾</span>';
   document.querySelectorAll('.ch-type-option').forEach(o=>{
     const isSel=o.dataset.t===t;
     o.dataset.selected=isSel?'1':'';
@@ -505,8 +505,8 @@ function _renderTimelineChart_Redraw(d, mx, e){
       </div>`;
     }).join('');
 
-    let html = `<div data-css="font-size:11px;color:var(--gray-muted);margin-bottom:6px">${dateStr}</div>`;
-    html += `<div data-css="display:flex;gap:14px">`;
+    let html = `<div class="gray-muted-11 mb6">${dateStr}</div>`;
+    html += `<div class="flex gap14">`;
     html += `<div class="flex-1 min-w140">${buildCol(left)}</div>`;
     if (right.length) html += `<div class="flex-1 min-w140">${buildCol(right)}</div>`;
     html += `</div>`;
@@ -672,7 +672,7 @@ async function dataPage() {
 <div class="data-search-wrap">
         <span class="data-search-icon">🔍</span>
         <input class="data-search" id="dataSearch" placeholder="按所选字段搜索…" value="${escHtml(_dataQuery)}" data-on-input="dataSearchDebounced" data-args='${_dataArgs('$value')}'>
-        <select id="dataSearchField" class="sel-sm dd" data-on-change="dataSearchFieldChange" data-css="margin-left:6px">
+        <select id="dataSearchField" class="sel-sm dd ml6" data-on-change="dataSearchFieldChange">
           <option value="description" selected>描述</option>
           <option value="product_name">产品名</option>
           <option value="version_branch">版本号</option>
@@ -1053,7 +1053,7 @@ function chainWarnBadge(chain, match) {
 
 function buildFlatVerTreeHtml(snapshots) {
   const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
-  if (!snapshots || snapshots.length === 0) return '<div data-css="color:var(--muted);font-size:12px;padding:8px">暂无数据</div>';
+  if (!snapshots || snapshots.length === 0) return '<div class="muted-12 p8">暂无数据</div>';
   const byVer = {};
   // 2026-08-08: 用 _dataSelectedChain 派生 group key,不读 snap.version_branch。
   // 路径不空(走 buildFlatVerTreeHtml 通常意味着 paths 空)时 — group key 只能是
@@ -1083,7 +1083,7 @@ function buildFlatVerTreeHtml(snapshots) {
     const blockId = 'fv_' + ver.replace(/\W/g, '_');
     const isRb = snaps.some(s => s.status === 'withdrawn');
     const newCount = snaps.filter(s => s.status === 'active' && !s.last_delivered_at).length;
-    const badge = isRb ? ' <span data-css="color:var(--danger);font-size:10px">↩</span>' : '';
+    const badge = isRb ? ' <span class="danger-10">↩</span>' : '';
     const freshSnap = snaps.reduce((latest, s) => {
       if (!s.published_at) return latest;
       const t = new Date(s.published_at).getTime();
@@ -1094,15 +1094,15 @@ function buildFlatVerTreeHtml(snapshots) {
     let freshBadge = '';
     if (freshSnap) {
       const days = (now - new Date(freshSnap).getTime()) / 86400000;
-      if (days <= 30) freshBadge = ' <span data-css="color:var(--success);font-size:10px">活跃</span>';
-      else if (days <= 365) freshBadge = ' <span data-css="color:var(--warn);font-size:10px">低频</span>';
-      else freshBadge = ' <span data-css="color:var(--gray-disabled);font-size:10px">沉寂</span>';
+      if (days <= 30) freshBadge = ' <span class="success-10">活跃</span>';
+      else if (days <= 365) freshBadge = ' <span class="text-warn fs10">低频</span>';
+      else freshBadge = ' <span class="disabled-10">沉寂</span>';
     }
     const verLabel = escHtml(ver) + badge + freshBadge;
     html += `<div class="ver-bar mb4" data-on-click="verBarToggle" data-args='${_dataArgs('$el', blockId)}'>
       <span class="tree-arrow mr4">&#9658;</span>
-      <span data-css="font-weight:600;font-size:13px">${verLabel}</span>
-      <span data-css="margin-left:auto;font-size:11px;color:var(--muted)">${snaps.length} 个包</span>
+      <span class="fw600 fs13">${verLabel}</span>
+      <span class="ml-auto muted-11">${snaps.length} 个包</span>
     </div>`;
     // Build snapshot table
     let tbl = `<div id="${blockId}" data-css="display:none;padding:4px 0 8px 28px">`;
@@ -1111,7 +1111,7 @@ function buildFlatVerTreeHtml(snapshots) {
       const did = 'dd_v_' + s.id;
       const isRb = s.status === 'withdrawn';
       const isOld = isOldSnapshot(s);
-      const pkgTypeBadge = `<span class="badge" data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px">${MAP[s.package_type] || s.package_type || ''}</span>`;
+      const pkgTypeBadge = `<span class="badge pkg-type-badge">${MAP[s.package_type] || s.package_type || ''}</span>`;
       const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue badge-xs">未推送</span>' : '');
       tbl += `<div data-css="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" data-on-click="_toggleByIdClass" data-args='${_dataArgs(did, 'hidden')}'>
         ${pkgTypeBadge}
@@ -1122,8 +1122,8 @@ function buildFlatVerTreeHtml(snapshots) {
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'} badge-xs">${escHtml(s.urgency || '')}</span>
         <button class="btn btn-xs btn-soft-success" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, s.product_name, pushVer, pushPkg)}'>推送</button>
       </div>
-      <div id="${did}" class="hidden" data-css="padding:4px 8px 4px 28px">
-        <div data-css="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
+      <div id="${did}" class="hidden indent-row">
+        <div class="net-summary">
           <b>文件:</b><span class="mono">${escHtml(s.file_name || '')}</span>
           <b>版本:</b><span>${escHtml(s.package_version || '')}</span>
           <b>MD5:</b><span class="mono">${escHtml(s.md5_hash || '')}</span>
@@ -1163,7 +1163,7 @@ function dataRenderLeft() {
   });
 
   if (pageSlice.length === 0) {
-    document.getElementById('dataLeft').innerHTML = '<div class="empty" data-css="padding:24px;text-align:center;color:var(--muted)">未找到匹配条件的产品</div>';
+    document.getElementById('dataLeft').innerHTML = '<div class="empty p24 ta-center text-muted">未找到匹配条件的产品</div>';
     return;
   }
 
@@ -1202,7 +1202,7 @@ function dataRenderLeft() {
       <div class="card-hd pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span>${escHtml(src.display_name || src.name || sid)}</span>
         ${freshBadge && `<span class="ml-auto">${freshBadge}</span>`}
-        <button class="hover-primary" data-css="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
+        <button class="hover-primary pager-btn" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" data-css="display:none;padding-top:0">
         <div data-css="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
@@ -1591,13 +1591,13 @@ function dataRenderRight(sch, p, info) {
     });
   }
   const hdLabel = srcName ? `${esc(srcName)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
-  const resetBtn = hasFilter ? `<button class="btn btn-xs" data-css="background:var(--warn-light);color:#8a7000;border:1px solid #e6c94c;margin-left:8px" data-on-click="dataClearFilter">重置筛选</button>` : '';
+  const resetBtn = hasFilter ? `<button class="btn btn-xs flag-warn-badge" data-on-click="dataClearFilter">重置筛选</button>` : '';
   const lastMode = mode_label[sch.last_mode] || '';
   const nextMode = mode_label[sch.next_mode] || '';
   // Build header: left=label, center=last/next timeline, right=progress+btn
-  const hdrRight = `<div class="hdr-right" data-css="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
+  const hdrRight = `<div class="hdr-right snap-filter-bar">
     <span class="text-muted">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
-    <span data-css="color:var(--border)">|</span>
+    <span class="text-border">|</span>
     <span class="text-muted">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
     ${progressHtml}
     <button class="btn btn-xs btn-soft-primary" data-on-click="triggerCollect">🔄 手动采集</button>${resetBtn}
@@ -1644,7 +1644,7 @@ function dataRenderRight(sch, p, info) {
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
   <div class="feed-cell feed-arrow feed-arrow-w" data-on-click="dataRightToggleRow" data-args='${_dataArgs(rid)}'>▶</div>
-  <div class="feed-cell" data-css="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge" data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
+  <div class="feed-cell" data-css="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge snap-type-badge" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
   <div class="feed-cell" data-css="width:84px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
   <div class="feed-cell" data-css="width:72px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
   <div class="feed-cell" data-css="width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
@@ -1940,11 +1940,11 @@ if (!matchedPath && snap.source_url) {
     <span class="data-detail-k">最近采集</span><span class="fs125">${fmtTZ(snap.last_seen_at, true)}</span>
     <span class="data-detail-k">下载地址</span><span class="fs125"><a class="text-success" href="${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}" target="_blank">${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}</a></span>
     <span class="data-detail-k">发布地址</span><span class="fs125"><a class="text-primary" href="${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}" target="_blank">${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}</a></span>
-    ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span data-css="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
+    ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span class="fs12 text-primary">${chainDisplayHtml}</span>` : ''}
     <span class="data-detail-k">MD5</span><span class="fs125" id="snap-md5-${snapId}">—</span>
-    <span class="data-detail-k">页面哈希</span><span data-css="font-size:12.5px;word-break:normal;overflow-x:auto" id="snap-ph-${snapId}">—</span>
+    <span class="data-detail-k">页面哈希</span><span class="snap-body" id="snap-ph-${snapId}">—</span>
     <span class="data-detail-k">需重启</span><span class="fs125" id="snap-rr-${snapId}">—</span>
-    <span class="data-detail-k" data-css="grid-column:1/3;align-self:start">描述</span><span class="diff-box" id="snap-desc-${snapId}">—</span>
+    <span class="data-detail-k idx-1-3">描述</span><span class="diff-box" id="snap-desc-${snapId}">—</span>
 </div>
 </div>`;
   const t5 = performance.now();
@@ -2209,7 +2209,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
       <div class="data-ver-hd" data-on-click="dataToggleVer" data-args='${_dataArgs('$el', verKey)}'>
         <span class="data-prod-arrow">${isHighlight ? '&#9660;' : '&#9658;'}</span>
         <span class="data-ver-label">${ver}</span>
-        <div data-css="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
+        <div class="flex gap6 items-center ml-auto">${verFlags.join('')}</div>
         <span class="muted-11 ml8">采集 ${latestCollected}</span>
       </div>
       <div class="${verBodyClass}" id="dvb_${escHtml(verKey)}">`;
@@ -2228,9 +2228,9 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
       drillHtml += `<div class="data-type-row ${isRb ? 'data-type-rollback' : ''}">
         <div class="data-type-main" data-on-click="dataToggleSnapDetail" data-args='${_dataArgs('$el')}'>
           ${isNewPkg ? '<span class="data-pill-new-dot mr4"></span>' : ''}
-          ${isLatestPkg ? '<span class="badge badge-blue" data-css="font-size:10px;margin-right:4px">最新</span>' : ''}
+          ${isLatestPkg ? '<span class="badge badge-blue fs10 mr4">最新</span>' : ''}
           <span class="data-type-label">${typeLabel}</span>
-          <span class="mono" data-css="color:var(--primary);font-size:12px">${escHtml((latest.file_name || '').substring(0, 35))}</span>
+          <span class="mono text-primary fs12">${escHtml((latest.file_name || '').substring(0, 35))}</span>
           <span class="muted-11">${fmtTZ(latest.published_at)}</span>
           <span class="badge ${urg} badge-xs">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span class="text-success fs11" title="已推送">✅</span>' :
@@ -2248,7 +2248,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
               <span class="mono" data-css="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((s.file_name || '').substring(0, 30))}</span>
               <span class="badge ${urg2} badge-xs">${escHtml(s.urgency || '')}</span>
               ${s.last_delivered_at ? '<span class="text-success fs11">✅</span>' : '<span class="muted-11">○</span>'}
-              <button class="btn btn-xs btn-soft-success" data-css="margin-left:4px" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>
+              <button class="btn btn-xs btn-soft-success ml4" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}

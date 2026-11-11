@@ -20,7 +20,7 @@ function _createFloatLog(logId, title, opts){
   const el = document.createElement('div');
   el.id = logId;
   el.style.cssText = FLOAT_LOG_CSS;
-  el.innerHTML = `<div data-css="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span class="flex-1">${title}</span><button data-on-click="_hideById" data-args='${_dataArgs(logId)}' data-css="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div ${bodyAttrs} data-css="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+  el.innerHTML = `<div class="table-hd-row"><span class="flex-1">${title}</span><button class="btn-x-plain" data-on-click="_hideById" data-args='${_dataArgs(logId)}'>×</button></div><div class="json-pre" ${bodyAttrs}></div>`;
   return el;
 }
 
@@ -89,8 +89,8 @@ async function _cancelDisc(){
   }
 }
 function sesBadge(p,m){
-  if(p==='discover')return'<span class="badge" data-css="background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe">发现</span>';
-  if(m==='vm')return'<span class="badge" data-css="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc">采集-虚拟化</span>';
+  if(p==='discover')return'<span class="badge tone-purple">发现</span>';
+  if(m==='vm')return'<span class="badge tone-cyan">采集-虚拟化</span>';
   return'<span class="badge badge-blue">采集-标品</span>';
 }
 async function sessions(){
@@ -106,20 +106,20 @@ async function sessions(){
     return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td class="fs11">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" data-on-click="validateSes" data-args='${_dataArgs(s.id)}'>验证</button> <button class="btn btn-soft-danger btn-xs" data-on-click="delSes" data-args='${_dataArgs(s.id)}'>删除</button></td></tr>`;
   }).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span data-css="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span class="text-danger">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary" data-on-click="openAddSesModal" data-css="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span class="muted-12 fw400">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span class="text-danger">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary" data-on-click="openAddSesModal" data-css="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
   <!-- 健康度概览 -->
-  <div data-css="display:flex;gap:12px;margin-bottom:16px">
-    <div data-css="flex:1;background:var(--success-light);border:1px solid var(--success-border);border-radius:8px;padding:12px 16px">
-      <div data-css="font-size:22px;font-weight:700;color:var(--success-text)">${pool.active||0}</div>
-      <div data-css="font-size:11px;color:#166534">活跃</div>
+  <div class="flex gap12 mb16">
+    <div class="stat-card-success">
+      <div class="stat-num text-success-text">${pool.active||0}</div>
+      <div class="text-success-dark fs11">活跃</div>
     </div>
-    <div data-css="flex:1;background:var(--danger-light);border:1px solid var(--danger-light);border-radius:8px;padding:12px 16px">
-      <div data-css="font-size:22px;font-weight:700;color:var(--danger)">${pool.expired||0}</div>
-      <div data-css="font-size:11px;color:var(--danger-text)">失效</div>
+    <div class="stat-card-danger">
+      <div class="stat-num text-danger">${pool.expired||0}</div>
+      <div class="danger-text-11">失效</div>
     </div>
-    <div data-css="flex:1;background:#fefce8;border:1px solid #fef08a;border-radius:8px;padding:12px 16px">
-      <div data-css="font-size:22px;font-weight:700;color:#ca8a04">${pool.total-pool.active-pool.expired||0}</div>
-      <div data-css="font-size:11px;color:#a16207">未知</div>
+    <div class="stat-card-warn">
+      <div class="stat-num stat-num-warn">${pool.total-pool.active-pool.expired||0}</div>
+      <div class="text-warn-dark fs11">未知</div>
     </div>
   </div>
 
@@ -154,26 +154,26 @@ function openAddSesModal(){
       <div class="card-hd">添加 Session <button data-on-click="_removeClosestId" class="icon-btn">×</button></div>
       <div class="card-bd p16">
         <div class="mb12">
-          <div data-css="font-size:11px;color:var(--muted);margin-bottom:4px">PHPSESSID <span data-css="color:#d97706">★ 必填</span></div>
-          <input id="addSesCookie" placeholder="粘贴 PHPSESSID 值" data-css="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
+          <div class="muted-11 mb4">PHPSESSID <span class="text-amber-600">★ 必填</span></div>
+          <input class="input-search" id="addSesCookie" placeholder="粘贴 PHPSESSID 值">
         </div>
-        <div data-css="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
+        <div class="flex wrap items-start gap8 mb12">
           <div>
             <div class="muted-10 mb3">用途</div>
             <div class="seg">
               <button class="seg-btn-active" id="modalBtnCollect" data-on-click="setPurpose" data-args='${_dataArgs('collect')}'>采集</button>
-              <button id="modalBtnDiscover" data-on-click="setPurpose" data-args='${_dataArgs('discover')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-muted)">发现</button>
+              <button class="tab-flat" id="modalBtnDiscover" data-on-click="setPurpose" data-args='${_dataArgs('discover')}'>发现</button>
             </div>
           </div>
           <div id="modalModeRow">
-            <div class="muted-10 mb3">格式 <span data-css="font-weight:400;font-size:9px">标品稳定，虚拟化预留</span></div>
+            <div class="muted-10 mb3">格式 <span class="fs9 fw400">标品稳定，虚拟化预留</span></div>
             <div class="seg">
               <button class="seg-btn-active" id="modalBtnStandard" data-on-click="setMode" data-args='${_dataArgs('standard')}'>标品</button>
-              <button id="modalBtnVm" data-on-click="setMode" data-args='${_dataArgs('vm')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-disabled);text-decoration:line-through" title="虚拟化暂未支持，预留">虚拟化</button>
+              <button class="tab-flat-off" id="modalBtnVm" data-on-click="setMode" data-args='${_dataArgs('vm')}' title="虚拟化暂未支持，预留">虚拟化</button>
             </div>
           </div>
         </div>
-        <div data-css="font-size:11px;color:var(--gray-muted);background:var(--success-light);border:1px solid var(--success-border);border-radius:6px;padding:8px 10px;margin-bottom:14px;line-height:1.6">
+        <div class="hint-success">
           <span class="fw600">采集</span>：获取产品升级包（规则包 / 系统包等）用于变更监控<br>
           <span class="fw600">发现</span>：探测绿盟产品线变化，自动识别新出现的产品和包类型，默认已内置当前全量产品及类型，可不添加。<span class="danger-600">注意：发现过程可能触发证书上传页面，所有升级包会被误判为虚拟化包；若需探测产品目录结构变化，请单独添加一个专用 session 用于发现。</span>
         </div>
@@ -271,7 +271,7 @@ async function showHbHistory(sid){
   }).join('');
   document.getElementById('hbModal').innerHTML=`
     <div class="overlay-998" data-on-click="_clearHtmlById" data-self data-args='${_dataArgs('hbModal')}'>
-      <div class="card" data-css="width:600px;max-height:80vh;overflow-y:auto" >
+      <div class="card modal-card-600" >
         <div class="card-hd">💓 心跳历史 — Session #${sid} <button class="btn btn-xs btn-outline ml-auto" data-on-click="_clearHtmlById" data-args='${_dataArgs('hbModal')}'>关闭</button></div>
         <div class="card-bd pt0"><table><tr><th>时间</th><th>状态</th><th>延迟</th><th>说明</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无心跳记录</td></tr>'}</table></div>
       </div>
@@ -306,7 +306,7 @@ function chTypeCh(){
         </select>
       </div>
     </div>
-    <p class="cfg-hint" data-css="margin-top:-6px;color:#c27800;font-weight:600">⚠️ 建议使用公司邮箱(@nsfocus.com),可避免客户收到邮件时误判为钓鱼邮件。163/QQ 等公共邮箱发出的通知,因发件域名与公司不匹配,容易被客户质疑真实性。</p>
+    <p class="cfg-hint mt-neg6 text-amber-dark fw600">⚠️ 建议使用公司邮箱(@nsfocus.com),可避免客户收到邮件时误判为钓鱼邮件。163/QQ 等公共邮箱发出的通知,因发件域名与公司不匹配,容易被客户质疑真实性。</p>
     <div class="cfg-row">
       <div class="form-group"><label>SMTP</label><input id="sh"></div>
       <div class="form-group">
@@ -327,7 +327,7 @@ function chTypeCh(){
       <div class="form-group"><label>用户</label><input id="su" placeholder="user@example.com"></div>
       <div class="form-group"><label>密码</label><input id="sw" type="password" placeholder="留空则不修改"></div>
     </div>
-    <p class="cfg-hint" data-css="margin-top:-6px;color:#c27800">⚠️ 用户名必须填写完整邮箱地址(含 @domain 后缀),SMTP 服务器会用它作为登录账号和发件人。</p>
+    <p class="cfg-hint mt-neg6 text-amber-dark">⚠️ 用户名必须填写完整邮箱地址(含 @domain 后缀),SMTP 服务器会用它作为登录账号和发件人。</p>
     <p id="emailTmplHint" class="cfg-hint mt-neg6 text-gray-muted"></p>
     <div class="cfg-row">
       <div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div>
@@ -441,9 +441,9 @@ function openChModal(id){
   editingChId=id||0;
   const title=id?'编辑渠道':'添加渠道';
   const typeOptionsHtml=['wecom','dingtalk','feishu','apprise','email'].map(t=>{
-    return `<div class="ch-type-option" data-t="${t}" data-css="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:6px" data-on-click="selectChType" data-args='${_dataArgs(t)}'>${chTypeChip(t)}</div>`;
+    return `<div class="ch-type-option picker-box" data-t="${t}" data-on-click="selectChType" data-args='${_dataArgs(t)}'>${chTypeChip(t)}</div>`;
   }).join('');
-  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div id="chTypeDropdown" data-css="position:relative"><div id="chTypeCurrent" data-on-click="toggleChTypeDropdown" data-css="cursor:pointer;min-height:22px"></div><div id="chTypeMenu" data-css="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:10;padding:4px">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div class="pos-rel" id="chTypeDropdown"><div class="pointer min-h22" id="chTypeCurrent" data-on-click="toggleChTypeDropdown"></div><div id="chTypeMenu" data-css="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:10;padding:4px">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
   const modal=document.createElement('div');
   modal.id='chModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
@@ -691,7 +691,7 @@ const TPL_META={
 };
 function tplBadgeHtml(tpl){
   const m=TPL_META[tpl]||TPL_META.full;
-  return `<span data-css="display:inline-block;white-space:nowrap"><span class="badge" data-css="background:${m.bg};color:${m.fg};font-size:10px;padding:1px 6px;border-radius:8px">${m.key}</span> ${m.name}</span>`;
+  return `<span class="d-inline-block nowrap"><span class="badge" data-css="background:${m.bg};color:${m.fg};font-size:10px;padding:1px 6px;border-radius:8px">${m.key}</span> ${m.name}</span>`;
 }
 function _ruleTemplateValueForChannel(r,cid){
   if(!r)return '';
@@ -724,7 +724,7 @@ function renderRuleTemplateSummary(r,channels){
     const channel=_channelByIdFromList(channels,cid);
     const info=templateForRuleChannel(r,ch,channels);
     const title=escHtml(`${channel.name||'渠道'} #${cid}`);
-    return `<div title="${title}" data-css="margin:1px 0">${info.html}</div>`;
+    return `<div class="my1" title="${title}">${info.html}</div>`;
   }).join('');
 }
 function getChannelById(cid){
@@ -790,7 +790,7 @@ async function subscriptions(){
   let chOpts=channels.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
   let custOpts=list.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
 
-let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span data-css="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill" data-css="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span data-css="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span data-css="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span data-css="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td data-css="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td data-css="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td data-css="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td data-css="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span data-css="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openRModal">+ 创建规则</button><table class="mt16 table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
@@ -894,21 +894,21 @@ async function openChainSelectorModal(existingChains) {
     : `<div id="chainSelList">${renderChainSelList(chains)}</div>`;
 
   modal.innerHTML = `
-  <div class="card" data-css="width:860px;max-height:90vh;display:flex;flex-direction:column" >
-    <div class="card-hd">选择订阅路径 <span data-css="font-size:12px;color:var(--muted);font-weight:400;margin-left:8px">点击路径节点添加到右侧列表</span>
+  <div class="card modal-card-860-col" >
+    <div class="card-hd">选择订阅路径 <span class="muted-12 fw400 ml8">点击路径节点添加到右侧列表</span>
       <button data-on-click="_removeClosest" data-args='${_dataArgs('#chainSelModal')}' class="icon-btn">×</button>
     </div>
-    <div data-css="display:flex;flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--border)">
-      <div id="chainSelTree" data-css="flex:1;overflow-y:auto;padding:12px;border-right:1px solid var(--border);max-height:70vh">
-        <div data-css="color:var(--muted);font-size:12px;margin-bottom:10px">📂 点击节点添加到右侧「已选路径」，再次点击取消</div>
-        <div id="chainTreeBody"><div data-css="color:var(--muted);font-size:13px;text-align:center;padding:40px">📂 加载产品数据中...</div></div>
+    <div class="split-body">
+      <div class="split-left" id="chainSelTree">
+        <div class="muted-12 mb10">📂 点击节点添加到右侧「已选路径」，再次点击取消</div>
+        <div id="chainTreeBody"><div class="muted-13 ta-center p40">📂 加载产品数据中...</div></div>
       </div>
-      <div data-css="width:300px;overflow-y:auto;padding:12px;background:var(--gray-bg)" id="chainSelRight">
+      <div class="split-right" id="chainSelRight">
         <div class="subtitle">已选路径（${chains.length}）</div>
         ${selectedHtml}
       </div>
     </div>
-    <div data-css="padding:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+    <div class="split-foot">
       <button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chainSelModal')}'>取消</button>
       <button class="btn btn-primary" data-on-click="confirmChainSelection">确定</button>
     </div>
@@ -1065,7 +1065,7 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     return a.localeCompare(b, 'zh');
   }) : [];
   // 产品名作为可折叠分组头
-  const prodLabel = `<div data-css="font-weight:700;font-size:13px;color:#1e40af;padding:6px 4px 4px;border-bottom:1px solid var(--gray-border);margin-bottom:4px">${escHtml(alias || String(sid))}</div>`;
+  const prodLabel = `<div class="tree-sec-hd">${escHtml(alias || String(sid))}</div>`;
   // 始终从真实根节点开始渲染，保持完整的链层级深度
   html += prodLabel;
   rootChildren.forEach(([name, node]) => { html += renderNode(node, name, 0); });
@@ -1127,12 +1127,12 @@ function renderChainSelList(chains) {
     const isLeaf = c.match !== 'subtree';
     const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const matchHtml = isLeaf
-      ? `<span data-css="font-size:10px;padding:2px 6px;background:var(--primary-light);color:#1e40af;border-radius:8px;font-weight:600">leaf（仅当前节点）</span>`
-      : `<span data-css="font-size:10px;padding:2px 6px;background:var(--warn-light);color:#92400e;border-radius:8px;font-weight:600">sub（包含子节点）</span>`;
-    return `<div data-css="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid var(--gray-bg);font-size:12px;flex-wrap:wrap">
-      <span data-css="flex:1;min-width:0;color:var(--gray-muted);word-break:break-all">${escHtml(pathStr)}</span>
+      ? `<span class="chip-primary-xs">leaf（仅当前节点）</span>`
+      : `<span class="chip-warn-xs">sub（包含子节点）</span>`;
+    return `<div class="tree-row">
+      <span class="flex-1 min-w0 text-gray-muted break-all">${escHtml(pathStr)}</span>
       ${matchHtml}${staleBadge}
-      <button data-on-click="removeChainCond" data-args='${_dataArgs(i)}' data-css="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 2px">×</button>
+      <button class="btn-x-danger" data-on-click="removeChainCond" data-args='${_dataArgs(i)}'>×</button>
     </div>`;
   }).join('');
 }
@@ -1180,9 +1180,9 @@ function renderCondPills() {
     const pill = document.createElement('div');
     pill.className = 'cond-pill';
     pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0';
-    pill.innerHTML = `${staleBadge}<span data-css="color:#1e40af;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
+    pill.innerHTML = `${staleBadge}<span class="tree-label-blue" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
       <span data-css="background:${isLeaf ? 'var(--primary-light)' : 'var(--warn-light)'};color:${isLeaf ? '#1e40af' : '#92400e'};font-size:10px;padding:1px 5px;border-radius:8px;font-weight:600">${matchLabel}</span>
-      <button data-on-click="removeCondPill" data-args='${_dataArgs(i)}' data-css="background:none;border:none;color:var(--gray-disabled);cursor:pointer;font-size:14px;line-height:1;padding:0">×</button>`;
+      <button class="btn-x-plain-14" data-on-click="removeCondPill" data-args='${_dataArgs(i)}'>×</button>`;
     container.appendChild(pill);
   });
 }
@@ -1351,7 +1351,7 @@ function openChanSelModal(filterType){
   modal.id='chanSelModal';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card w360" ><div class="card-hd">${headerLabel} <button data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}' class="icon-btn">×</button></div><div class="card-bd p16"><div class="form-group"><label>渠道</label><select class="dd w-full" id="newChanSel">${opts}</select></div><div data-css="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary flex-1" data-on-click="_addSelectedChannel">添加</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}'>取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card w360" ><div class="card-hd">${headerLabel} <button data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}' class="icon-btn">×</button></div><div class="card-bd p16"><div class="form-group"><label>渠道</label><select class="dd w-full" id="newChanSel">${opts}</select></div><div class="flex gap8 mt12"><button class="btn btn-primary flex-1" data-on-click="_addSelectedChannel">添加</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
 }
 
@@ -1391,7 +1391,7 @@ async function openRModal(id){
   modal.id='rModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" data-css="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto" ><div class="card-hd">${id?'编辑规则':'创建规则'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd p16"><input type="hidden" id="rid">
+  modal.innerHTML=`<div class="card modal-card-760" ><div class="card-hd">${id?'编辑规则':'创建规则'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd p16"><input type="hidden" id="rid">
     <div class="form-section"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" data-on-change="onCustChange" required><option value="">请选择客户</option>${custOpts}</select></div>
@@ -1401,16 +1401,16 @@ async function openRModal(id){
     </div>
 
     <div class="form-section"><div class="form-section-title">订阅条件</div>
-    <label data-css="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input class="m0" type="checkbox" id="rall" data-on-change="toggleAllMode"> 📡 订阅全部产品与类型，不设筛选条件</label>
-    <div id="rcondsWrap"><div id="rconds" data-css="min-height:32px"><div id="rcondsEmpty" data-css="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openChainSelectorModal">+ 添加路径</button></div>
+    <label class="check-row"><input class="m0" type="checkbox" id="rall" data-on-change="toggleAllMode"> 📡 订阅全部产品与类型，不设筛选条件</label>
+    <div id="rcondsWrap"><div class="min-h32" id="rconds"><div class="muted-12 mb6" id="rcondsEmpty">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openChainSelectorModal">+ 添加路径</button></div>
     </div>
 
     <div class="form-section"><div class="form-section-title">推送配置</div>
-    <div class="form-group"><label>推送模式 <span id="rmodeTip" data-css="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select class="dd" id="rdm" data-on-change="onDigestModeChange"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
-    <div id="dcfg" class="hidden" data-css="background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div id="delayWrap"><div class="form-group"><label>延迟(d) <span title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）" data-css="cursor:help;color:var(--info)">ℹ️</span></label><input class="w80" id="rdl" type="number" value="0" min="0"></div></div>
-    <div id="winSection" class="hidden" data-css="margin-top:6px"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" data-on-change="onWinToggle"> ⏰ 启用推送时间窗口</label></div>
-    <div id="winCfg" class="hidden" data-css="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
+    <div class="form-group"><label>推送模式 <span class="help-icon ml4" id="rmodeTip" title=""></span></label><select class="dd" id="rdm" data-on-change="onDigestModeChange"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
+    <div id="dcfg" class="hidden info-soft-box"></div>
+    <div id="delayWrap"><div class="form-group"><label>延迟(d) <span class="help-icon" title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）">ℹ️</span></label><input class="w80" id="rdl" type="number" value="0" min="0"></div></div>
+    <div id="winSection" class="hidden mt6"><label class="chip-click"><input type="checkbox" id="rwin" data-on-change="onWinToggle"> ⏰ 启用推送时间窗口</label></div>
+    <div id="winCfg" class="hidden warn-soft-box">
       <div class="mb8" id="winDaysRow"><label class="mr8">周几：</label><label class="mr10"><input type="checkbox" class="win-day" value="1">周一</label><label class="mr10"><input type="checkbox" class="win-day" value="2">周二</label><label class="mr10"><input type="checkbox" class="win-day" value="3">周三</label><label class="mr10"><input type="checkbox" class="win-day" value="4">周四</label><label class="mr10"><input type="checkbox" class="win-day" value="5">周五</label><label class="mr10"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
       <div><label class="mr8">时间段：</label><input class="w100" id="winStart" type="time" value="00:00"> ～ <input class="w100" id="winEnd" type="time" value="23:59"></div>
     </div>
@@ -1419,9 +1419,9 @@ async function openRModal(id){
     <div class="form-section"><div class="form-section-title">通知渠道</div>
     <!-- 2026-07-11: 4 模板说明 (A=完整 / B=智能裁剪 / C=极简 / D=飞书全量) -->
     <!-- 仅钉钉/企微/飞书 走模板机制;邮箱是 HTML 全量单封,不走这 4 档 -->
-    <div data-css="margin-bottom:10px;padding:8px 10px;background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.6">
+    <div class="info-note">
       <div data-css="font-weight:600;margin-bottom:4px;color:var(--text)827">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
-      <div data-css="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">
+      <div class="grid-kv2">
         <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微默认</div>
         <div><b>B · 智能裁剪</b></div><div>优先完整描述 → 超长自动剥英文段 → 仍超则只保留 attention 关键行 → 兜底只 head+链接</div>
         <div><b>C · 极简</b></div><div>只 head + 链接,描述完全省略,适合「通知到人即可,详情自己点」的内部群</div>
@@ -1438,8 +1438,8 @@ async function openRModal(id){
     </div>
     </div>
 
-    <div class="form-section"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input class="m0" type="checkbox" id="rnr"> 📢 包回退通知</label></div>
-    <div data-css="display:flex;gap:8px;margin-top:14px;padding:12px 16px;border-top:1px solid var(--border);background:var(--card);border-radius:0 0 10px 10px;margin-left:-16px;margin-right:-16px;margin-bottom:-16px"><button class="btn btn-soft-primary flex-1" data-on-click="saveRule">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rModalWrap')}'>取消</button></div></div></div>`;
+    <div class="form-section"><label class="chip-click nowrap"><input class="m0" type="checkbox" id="rnr"> 📢 包回退通知</label></div>
+    <div class="drawer-foot"><button class="btn btn-soft-primary flex-1" data-on-click="saveRule">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   // 推送模式 tooltip
   const modeTips={'':'检测到版本变化立即推送','weekly':'每周汇总推送一次','monthly':'每月汇总推送一次','quarterly':'每季汇总推送一次'};
@@ -1543,11 +1543,11 @@ function onDigestModeChange(){
   if(m==='weekly'){
     d.innerHTML=`<label class="fw600-block">⏰ 每周推送日</label><select class="dd" id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;
   }else if(m==='monthly'){
-    d.innerHTML=`<label class="fw600-block">⏰ 每月推送日</label><div data-css="display:flex;gap:8px;align-items:center"><select class="dd" id="dc-month"><option value="last" selected>最后一天</option>${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}号</option>`).join('')}</select></div>`;
+    d.innerHTML=`<label class="fw600-block">⏰ 每月推送日</label><div class="flex gap8 items-center"><select class="dd" id="dc-month"><option value="last" selected>最后一天</option>${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}号</option>`).join('')}</select></div>`;
   }else if(m==='quarterly'){
     d.innerHTML=`<label class="fw600-block">⏰ 每季推送日</label><select class="dd" id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
   }
-  d.innerHTML+='<div data-css="margin-top:6px;color:#b45309">⚠️ 汇总只发企微/钉钉/飞书；规则里绑定的邮箱渠道会被跳过</div>';
+  d.innerHTML+='<div class="mt6 text-amber-700">⚠️ 汇总只发企微/钉钉/飞书；规则里绑定的邮箱渠道会被跳过</div>';
 }
 function onWinToggle(){
   const w=document.getElementById('winCfg');

@@ -26,7 +26,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr class="bg-subtle"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td class="max-w380" title="${escHtml(h.file_name||'')}"><span data-css="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr class="bg-subtle"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td class="max-w380" title="${escHtml(h.file_name||'')}"><span class="code-chip">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
@@ -60,7 +60,7 @@ async function history(){
             <td>${escHtml(_custName||d.customer_name||'—')}</td>
             <td>${escHtml(h.product_name||'')}</td>
             <td>${typeCN(pkgType)}</td>
-            <td class="max-w380" title="${escHtml(h.file_name||'')}"><span data-css="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
+            <td class="max-w380" title="${escHtml(h.file_name||'')}"><span class="code-chip-muted">${escHtml(h.file_name||'')}</span></td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td>
             <td>${channelDisp}</td>
             <td title="${escHtml(recipient)}" data-css="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
@@ -81,9 +81,9 @@ async function history(){
   const total=r.data?.total||0;
   const pages=Math.max(1,Math.ceil(total/200));
   const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" data-css="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
-  const pager=`<div data-css="display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)"><span>共 <b data-css="color:var(--text)">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} data-on-click="histSetPage" data-args='${_dataArgs(page-1)}'>← 上一页</button><button ${_pgBtn(page>=pages)} data-on-click="histSetPage" data-args='${_dataArgs(page+1)}'>下一页 →</button></div>`;
+  const pager=`<div class="cfg-foot"><span>共 <b class="text-body">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} data-on-click="histSetPage" data-args='${_dataArgs(page-1)}'>← 上一页</button><button ${_pgBtn(page>=pages)} data-on-click="histSetPage" data-args='${_dataArgs(page+1)}'>下一页 →</button></div>`;
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline" data-css="color:var(--danger);border-color:var(--danger)" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th class="w140">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline danger-outline-text" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th class="w140">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
 }
 
 // 翻页: 只改 page, 保留当前过滤条件
@@ -134,7 +134,7 @@ function _renderRecentDeliveries(deliveries,range){
     let stIcon=a.status==='sent'?'✅':'❌';
     return `<tr><td>${escHtml(a.cust)}</td><td>${escHtml(a.prod)}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${escHtml([...a.channels].join(', '))}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
   }).join('');
-  return `<div class="card mt14"><div class="card-hd">📨 最近推送明细 <span data-css="margin-left:auto;font-weight:400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
+  return `<div class="card mt14"><div class="card-hd">📨 最近推送明细 <span class="ml-auto fw400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
 }
 
 // ── Settings ──
@@ -178,12 +178,12 @@ async function settings(){
     ${isCollecting?'<div class="warning-banner">⚠️ 采集正在进行中，保存配置将同时停止采集</div>':''}
     <div class="cfg-section">
       <div class="cfg-section-hd">🔶 开关选项</div>
-      <div class="cfg-row" data-css="grid-template-columns:1fr 1fr 1fr">
-        <div class="cfg-flag" data-css="background:#fff8e6;border:1px solid #f5c842">
+      <div class="cfg-row grid-3">
+        <div class="cfg-flag banner-warn">
           <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} data-on-change="_toggleMaintenance" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label><span>🔧 维护模式</span></label>
           <span class="cfg-flag-desc">开启后所有推送静默（采集照常），调试时避免误发通知</span>
         </div>
-        <div class="cfg-flag" data-css="background:#ffeef0;border:1px solid #f5a0a8">
+        <div class="cfg-flag banner-danger">
           <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} data-on-change="_toggleApiLocal" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label><span>🔒 API 仅限本机</span></label>
           <span class="cfg-flag-desc">/api/* 仅允许 127.0.0.1 调用，TCP 层校验不可伪造</span>
         </div>
@@ -242,7 +242,7 @@ async function settings(){
           <span class="cfg-sep">—</span>
           <div class="form-group"><label>结束时间</label><input id="cfg-quiet-end" type="time" value="${cfg.quiet_hours_end||'08:00'}"></div>
         </div>
-        <p class="cfg-hint" data-css="margin-top:-6px">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
+        <p class="cfg-hint mt-neg6">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
       </div>
     </div>
 
@@ -259,8 +259,8 @@ async function settings(){
       </div>
       <div class="cfg-row">
         <div class="form-group"><label>预检 URL <span class="tp" data-tip="采集前/主动心跳时用于快速探测 Session 状态的轻量接口。\n\n【判定机制】\n• HTTP 200 + 正常 HTML → Session 正常\n• 重定向到 /update/upLic → Session 已过期(vendor 把过期会话踢到 license 页)\n• 响应 body 含 downloadsVm/id → Session 被虚拟化上下文污染(被带进 upLic/Vm 格式上下文,返回的不是预期页面)\n\n【选择建议】需是返回 v2 升级包列表的轻量 GET 接口,响应稳定 + 无重定向。默认 /update/listBvsV6/v/bvssys 是绿盟升级站点默认入口(对应 v2 升级包列表页)。改错会导致 Session 状态判错:过期/污染漏报或误报。\n\n【生效时机】保存后下次采集/心跳生效,无需重启进程。">ⓘ</span></label>
-          <div data-css="display:flex;gap:6px;align-items:center">
-            <input id="cfg-heartbeat-url" type="text" value="${cfg.heartbeat_url||'/update/listBvsV6/v/bvssys'}" placeholder="/update/listBvsV6/v/bvssys" readonly data-css="background:var(--gray-bg);flex:1">
+          <div class="flex gap6 items-center">
+            <input class="bg-subtle flex-1" id="cfg-heartbeat-url" type="text" value="${cfg.heartbeat_url||'/update/listBvsV6/v/bvssys'}" placeholder="/update/listBvsV6/v/bvssys" readonly>
             <button type="button" id="cfg-heartbeat-url-edit" class="btn btn-xs btn-outline" data-on-click="editHeartbeatUrl">✏️ 编辑</button>
           </div>
           <p class="cfg-hint">默认 /update/listBvsV6/v/bvssys (绿盟升级站点默认端点)。修改会影响 Session 过期/污染判断,点编辑后需二次确认</p>
@@ -290,7 +290,7 @@ async function settings(){
     <div class="cfg-section">
       <div class="cfg-section-hd">📤 通知联系信息</div>
       <p class="cfg-section-sub">用于在邮件正文与底部显示运维联系方式。由于邮件通常通过第三方 SMTP 渠道(如阿里云/腾讯企业邮箱)而非公司域名发送,客户收到邮件时可能误判为钓鱼邮件。配置后,客户可看到明确的发件人姓名、邮箱和联系电话。</p>
-      <p class="cfg-section-sub" data-css="color:#c27800">⚠️ 姓名、邮箱、电话<strong>三项必须全部填写</strong>才会显示;任一为空则邮件中不展示该信息(避免半填给客户造成更大困惑)。</p>
+      <p class="cfg-section-sub text-amber-dark">⚠️ 姓名、邮箱、电话<strong>三项必须全部填写</strong>才会显示;任一为空则邮件中不展示该信息(避免半填给客户造成更大困惑)。</p>
       <div class="cfg-row">
         <div class="form-group"><label>工程师姓名</label><input id="cfg-ops-name" type="text" value="${cfg.ops_contact_name||''}" placeholder="如:张三" maxlength="50"></div>
         <div class="form-group"><label>工程师邮箱</label><input id="cfg-ops-email" type="email" value="${cfg.ops_contact_email||''}" placeholder="如:zhangsan@company.com" maxlength="100"></div>
@@ -321,7 +321,7 @@ async function settings(){
         </div>
         <div class="cfg-row">
           <div class="form-group"><label>事件类型</label>
-            <div data-css="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;white-space:nowrap">
+            <div class="flex wrap gap8 mt6 nowrap">
               <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="push_summary" ${(cfg.event_types||[]).includes('push_summary')?'checked':''}> 推送汇总</label>
               <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
               <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
@@ -336,7 +336,7 @@ async function settings(){
     </div>
 
     ${isCollecting?
-      '<p class="cfg-hint" data-css="color:#c00;margin-bottom:12px">采集进行中，系统配置无法直接修改。点击"强制停止并保存"将中断采集。</p>':
+      '<p class="cfg-hint text-red mb12">采集进行中，系统配置无法直接修改。点击"强制停止并保存"将中断采集。</p>':
       ''}
     <button class="btn btn-primary" data-on-click="${isCollecting?'forceStopAndSave':'saveSettings'}">${isCollecting?'强制停止并保存':'保存配置'}</button>
   </div></div>
@@ -431,14 +431,14 @@ function _collectBannerHtml(state) {
   // 2026-08-22: 旧顶部红条的核心提醒挪到 phase 行右边,不再占独立一行,避免
   // 撑高 banner 高度。完成时不显示。
   const warnSuffix = isDone ? '' :
-    ' <span data-css="color:#ff5757;font-weight:600">⚠️ 请勿增删改配置</span>';
+    ' <span class="text-red-light fw600">⚠️ 请勿增删改配置</span>';
   return `
     <div class="flex1">
-      <div data-css="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}${warnSuffix}</div>
-      <div id="collect-banner-phase" data-css="opacity:0.9;font-size:12px;line-height:1.5">
+      <div class="fw600 mb6 lh14">${titleText}${warnSuffix}</div>
+      <div class="opacity-90 fs12 lh15" id="collect-banner-phase">
         <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>
       </div>
-      <div data-css="margin-top:8px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
+      <div class="banner-bar-3">
         <div id="collect-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
@@ -615,30 +615,30 @@ async function products(){
   const errors=allProds.filter(p=>p.health_status==='error').length;
 
   let h=`<div class="card">
-    <div class="card-hd" data-css="display:flex;align-items:center;justify-content:space-between">
-      <div data-css="display:flex;align-items:center;gap:4px">
+    <div class="card-hd flex items-center justify-between">
+      <div class="flex items-center gap4">
         🏭 产品管理
         <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
       </div>
-      <div data-css="display:flex;align-items:center;gap:8px">
+      <div class="flex items-center gap8">
         <button class="btn btn-sm" id="disc-btn" data-css="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" data-on-click="_handleDiscBtn">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
         <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 没找到自己想要的产品时全量扫描(\u{1F50D})或单产品刷新(\u{1F504})\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:后台每 4 小时自动 quick cycle,无需手动定期刷;立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
-        <button class="btn btn-sm" data-css="background:#eef4ff;border:1px solid var(--primary-light);color:var(--primary-text)" data-on-click="showProductForm">+ 手动添加</button>
+        <button class="btn btn-sm tag-info-soft" data-on-click="showProductForm">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有/内部测试)\n• 建议:绿盟标准产品 — 用「自动发现」批量加\n• 不推荐:已有同名产品(去重检查会失败)\n• 下一步:保存后弹窗问是否立即刷新包类型">ⓘ</span>
       </div>
     </div>
     <div class="card-bd">
-      <div data-css="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px">
+      <div class="flex items-center gap8 mb10 fs13">
         <span>共 <strong>${total}</strong> 个</span>
         <span class="text-success-text">● 启用 <strong>${enabled}</strong></span>
         <span class="text-disabled">○ 禁用 <strong>${disabled}</strong></span>
         ${errors>0?'<span class="text-danger">● 异常 <strong>'+errors+'</strong></span>':''}
         <span class="tp" data-tip="采集状态反映上次刷新包类型的结果：正常=成功，异常=失败，未知=从未刷新过">ⓘ 采集状态</span>
-        <span id="prod-sel-count" data-css="font-size:12px;color:var(--gray-disabled);margin-left:8px"></span>
-        <button class="btn btn-sm" id="btn-batch-enable" data-on-click="batchEnable" disabled data-css="background:var(--success-text);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量启用</button>
-        <button class="btn btn-sm" id="btn-batch-disable" data-on-click="batchDisable" disabled data-css="background:var(--danger);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量禁用</button>
+        <span class="disabled-12 ml8" id="prod-sel-count"></span>
+        <button class="btn btn-sm btn-flat-success" id="btn-batch-enable" data-on-click="batchEnable" disabled>批量启用</button>
+        <button class="btn btn-sm btn-flat-danger" id="btn-batch-disable" data-on-click="batchDisable" disabled>批量禁用</button>
         <div class="ml-auto flex items-center gap8">
-          <input id="prod-search" placeholder="搜索产品…" data-on-input="filterProducts" data-css="padding:4px 10px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;width:140px">
+          <input class="input-sm" id="prod-search" placeholder="搜索产品…" data-on-input="filterProducts">
           <select id="prod-filter" class="sel-sm dd" data-on-change="filterProducts">
             <option value="all">全部</option>
             <option value="enabled">仅启用</option>
@@ -646,7 +646,7 @@ async function products(){
           </select>
         </div>
       </div>
-      <div data-css="overflow-x:auto">
+      <div class="ox-auto">
       <table class="table w-full">
         <thead><tr>
           <th class="w36">#</th>
@@ -695,11 +695,11 @@ function _reopenDiscModal(){
       _showModal('disc');
       const logId=window.__discLogId||'disc-float-log';
       modalBody('disc',`<div data-css="padding:24px;text-align:center;position:relative">
-        <div data-css="position:absolute;top:12px;right:16px;cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>×</div>
+        <div class="dialog-x-abs" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>×</div>
         <div data-css="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${formatDiscPhase(s.data)}</div>
-        <div data-css="font-size:13px;color:var(--gray-muted);margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
+        <div class="gray-muted-13 mb12">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
         <div class="mt10"><button class="btn btn-purple-outline" data-on-click="_showById" data-args='${_dataArgs(logId)}'>📋 查看日志</button></div>
-        ${s.data.phase==='done'?`<div data-css="margin-top:12px"><button class="btn btn-primary" data-on-click="_viewDiscResult" data-args='${_dataArgs(!!s.data.is_stale)}'>查看结果</button></div>`:''}
+        ${s.data.phase==='done'?`<div class="mt12"><button class="btn btn-primary" data-on-click="_viewDiscResult" data-args='${_dataArgs(!!s.data.is_stale)}'>查看结果</button></div>`:''}
       </div>`);
       if(s.data.phase==='done'&&s.data.result){
         setTimeout(()=>showDiscoverResult(s.data.result, !!s.data.is_stale),100);

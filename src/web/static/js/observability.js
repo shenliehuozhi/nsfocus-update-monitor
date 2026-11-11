@@ -4,7 +4,7 @@ let _obsHours = 24;
 async function observability(){
   document.getElementById('app').innerHTML = `
     <div class="card">
-      <div class="card-hd" data-css="align-items:center">
+      <div class="card-hd items-center">
         <span>📈 可观测性</span>
         <span id="obsMeta" data-css="font-weight:400;color:var(--muted);font-size:11.5px"></span>
         <span class="ml-auto flex items-center gap8">
@@ -223,7 +223,7 @@ function _obsStorageCard(st){
 
 function _obsSchedulerCard(jobs){
   const rows = (jobs || []).map(j => `<tr>
-    <td>${escHtml(_obsJobLabel(j.id))}<span class="obs-muted" data-css="font-size:10.5px"> ${escHtml(j.id)}</span></td>
+    <td>${escHtml(_obsJobLabel(j.id))}<span class="obs-muted fs105"> ${escHtml(j.id)}</span></td>
     <td>${_obsTime(j.next_run)}</td>
     <td>${_obsCountdown(j.seconds_until)}</td>
   </tr>`).join('');
@@ -242,7 +242,7 @@ function _obsPromCard(){
   return `<div class="card">
     <div class="card-hd">🔌 外部观测接入</div>
     <div class="card-bd">
-      <div class="obs-foot" data-css="margin:0 0 6px">同一份指标同时提供 JSON 与 Prometheus 文本格式，可接入 Prometheus / Grafana。</div>
+      <div class="obs-foot mb6-flush">同一份指标同时提供 JSON 与 Prometheus 文本格式，可接入 Prometheus / Grafana。</div>
       <div class="obs-code">
         <code id="obsPromUrl">${escHtml(obsPrometheusUrl())}</code>
         <button class="btn btn-outline btn-xs" data-on-click="obsCopyProm">复制地址</button>

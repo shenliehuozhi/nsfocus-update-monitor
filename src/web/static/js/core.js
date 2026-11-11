@@ -203,18 +203,18 @@ function discConfirmAct(msg, asyncFn, icon='🗂️', okLabel='确认', bodyHtml
   // 复用 _showModal 的 disc 主题样式
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div class="overlay-1000" id="${id}-overlay" data-on-click="closeDiscConfirm" data-self>
-       <div id="${id}-box" data-css="background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto;padding:24px">
-         <div data-css="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
-           <div data-css="font-size:36px;line-height:1;flex-shrink:0">${icon}</div>
+       <div class="confirm-card-purple" id="${id}-box">
+         <div class="confirm-head">
+           <div class="dialog-icon">${icon}</div>
            <div class="flex-1">
-             <div data-css="font-size:16px;font-weight:700;color:#1a2332;margin-bottom:6px">${msg}</div>
+             <div class="dialog-title">${msg}</div>
            </div>
-           <div data-on-click="closeDiscConfirm" data-css="cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1">×</div>
+           <div class="dialog-x" data-on-click="closeDiscConfirm">×</div>
          </div>
          ${bodyHtml}
-         <div data-css="display:flex;gap:10px;margin-top:20px">
-           <button class="btn" data-on-click="closeDiscConfirm" data-css="flex:1;background:var(--gray-bg);color:var(--text);border:1px solid var(--gray-border)">取消</button>
-           <button class="btn" data-on-click="_discConfirmRun" data-args='${_dataArgs(ctr)}' data-css="flex:1;background:#7c3aed;color:#fff;border:none;font-weight:600">${okLabel}</button>
+         <div class="confirm-actions">
+           <button class="btn btn-cancel-flat" data-on-click="closeDiscConfirm">取消</button>
+           <button class="btn btn-purple-flat" data-on-click="_discConfirmRun" data-args='${_dataArgs(ctr)}'>${okLabel}</button>
          </div>
        </div>
      </div>`);
@@ -241,17 +241,17 @@ function renderLogin(){
   document.body.className='login-bg';
   _startBgRotation();
   document.getElementById('header').style.display='none';
-  document.getElementById('app').innerHTML=`<div data-css="display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;gap:24px">
-    <div data-css="text-align:center">
-      <div data-css="font-size:48px;margin-bottom:16px">🛡️</div>
-      <div data-css="font-size:16px;color:var(--gray-muted);margin-bottom:24px">绿盟升级监控</div>
-      <button class="btn btn-primary" data-on-click="showLoginForm" data-css="padding:10px 32px;font-size:14px">登录系统</button>
+  document.getElementById('app').innerHTML=`<div class="center-screen">
+    <div class="ta-center">
+      <div class="big-icon">🛡️</div>
+      <div class="center-text-lg">绿盟升级监控</div>
+      <button class="btn btn-primary btn-wide-lg" data-on-click="showLoginForm">登录系统</button>
     </div>
   </div>`;
 }
 
 function showLoginForm(){
-  document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>🛡️ 绿盟升级监控</h2><div class="form-group"><label>用户名</label><input id="lu" placeholder="admin" autofocus></div><div class="form-group"><label>密码</label><input id="lp" type="password" data-on-keydown="doLogin" data-key="Enter"></div><button class="btn btn-primary" data-css="width:100%;justify-content:center" data-on-click="doLogin">登录</button></div></div>`;
+  document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>🛡️ 绿盟升级监控</h2><div class="form-group"><label>用户名</label><input id="lu" placeholder="admin" autofocus></div><div class="form-group"><label>密码</label><input id="lp" type="password" data-on-keydown="doLogin" data-key="Enter"></div><button class="btn btn-primary w-full-center" data-on-click="doLogin">登录</button></div></div>`;
   document.getElementById('lu').focus();
 }
 async function doLogin(){

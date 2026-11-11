@@ -124,9 +124,9 @@ function buildTreeHtml(pt, MAP) {
     let html = `<div class="tree-node" data-css="padding-left:${indent}px;display:flex;align-items:center;gap:4px;padding-top:4px;padding-bottom:4px;min-height:28px">`;
 
     if (hasChildren) {
-      html += `<span class="tree-toggle" data-on-click="treeToggle" data-args='${_dataArgs('$el')}' data-css="cursor:pointer;color:var(--gray-disabled);font-size:14px;margin-right:4px;user-select:none;flex-shrink:0">&#9658;</span>`;
+      html += `<span class="tree-toggle tree-toggle-14" data-on-click="treeToggle" data-args='${_dataArgs('$el')}'>&#9658;</span>`;
     } else {
-      html += `<span data-css="width:18px;flex-shrink:0"></span>`;
+      html += `<span class="w18 shrink0"></span>`;
     }
 
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
@@ -135,11 +135,11 @@ function buildTreeHtml(pt, MAP) {
     html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}</span>`;
 
     if (isPkg && types.length > 0) {
-      const badges = types.map(t => `<span data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px;padding:1px 6px;border-radius:8px;margin-left:2px;flex-shrink:0">${MAP[t]||escHtml(t)}</span>`).join('');
+      const badges = types.map(t => `<span class="pkg-type-tag">${MAP[t]||escHtml(t)}</span>`).join('');
       html += badges;
       const modeKey = types[0];
       const mode = (pt.modes && pt.modes[modeKey]) || 'auto';
-      html += `<select class="sel-sm dd" data-type="${escHtml(modeKey)}" data-on-change="_setPtMode" data-args='${_dataArgs(modeKey, '$value')}' data-css="margin-left:auto;flex:0 0 80px">
+      html += `<select class="sel-sm dd ml-auto fixed-80" data-type="${escHtml(modeKey)}" data-on-change="_setPtMode" data-args='${_dataArgs(modeKey, '$value')}'>
         <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
         <option value="full" ${mode==='full'?'selected':''}>全量</option>
         <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
@@ -372,10 +372,10 @@ function attach(node) {
     const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
     const snapCount = isPkg ? (
       snaps.length > 0
-        ? ` <span data-css="background:var(--primary-light);color:var(--primary-text);font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">${snaps.length}包</span>`
-        : ` <span data-css="background:var(--danger-light);color:var(--danger);font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">空</span>`
+        ? ` <span class="badge-xs-primary">${snaps.length}包</span>`
+        : ` <span class="badge-xs-danger">空</span>`
     ) : '';
-    const freshBadge = (node.__freshness === 'new') ? ` <span data-css="background:var(--success);color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">活跃</span>` : (node.__freshness === 'lowfreq' ? ` <span data-css="background:var(--warn);color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">低频</span>` : (node.__freshness === 'idle' ? ` <span data-css="background:var(--gray-disabled);color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:2px">沉寂</span>` : ''));
+    const freshBadge = (node.__freshness === 'new') ? ` <span class="badge-xs-success">活跃</span>` : (node.__freshness === 'lowfreq' ? ` <span class="badge-xs-warn">低频</span>` : (node.__freshness === 'idle' ? ` <span class="badge-xs-disabled">沉寂</span>` : ''));
     // Arrow: toggle children visibility via data-action="treeToggle" (handled by event delegation)
     // Uses a generated children ID stored in data-target on the arrow
     const childDivId = hasChildren ? ('tcd_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
@@ -401,8 +401,8 @@ function attach(node) {
         // Snapshot content is rendered into the right panel on click, not into the tree.
         // Keep a minimal placeholder so tree height is stable — uses a fixed non-conflicting id.
         html += `<div class="tree-children" data-css="display:none;padding-left:${indent + 16}px;margin-bottom:8px">
-          <div data-css="color:var(--muted);font-size:12px;padding:8px 12px;background:var(--gray-bg);border-radius:4px">
-            暂无采集数据<div data-css="font-size:11px;margin-top:2px">页面可能返回登录页或无数据包</div>
+          <div class="muted-box">
+            暂无采集数据<div class="fs11 mt2">页面可能返回登录页或无数据包</div>
           </div></div>`;
       }
       // When snaps.length > 0: no placeholder div needed — clicking the leaf node
@@ -503,13 +503,13 @@ function editPkgType(id){
 
     let diffRows='';
     if(added.length){
-      diffRows+=added.map(t=>`<span data-css="background:var(--success-light);color:var(--success-text);font-size:12px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block">+${MAP[t]||t}</span>`).join(' ');
+      diffRows+=added.map(t=>`<span class="pill-success">+${MAP[t]||t}</span>`).join(' ');
     }
     if(removed.length){
-      diffRows+=removed.map(t=>`<span data-css="background:var(--danger-light);color:var(--danger-text);font-size:12px;padding:2px 8px;border-radius:10px;margin:2px;display:inline-block;text-decoration:line-through">-${MAP[t]||t}</span>`).join(' ');
+      diffRows+=removed.map(t=>`<span class="pill-danger">-${MAP[t]||t}</span>`).join(' ');
     }
     if(!added.length && !removed.length){
-      diffRows=`<span data-css="color:var(--gray-disabled);font-size:13px">包类型集合无变化，但采集时检测到差异</span>`;
+      diffRows=`<span class="disabled-13">包类型集合无变化，但采集时检测到差异</span>`;
     }
 
     // diff 模式下的 modes 编辑
@@ -517,9 +517,9 @@ function editPkgType(id){
     disc.types.forEach(t=>{
       const label=MAP[t]||t;
       const mode=disc.modes[t]||'auto';
-      modeRows+=`<div data-css="display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:6px;background:#f9fafb;border:1px solid var(--gray-border);margin-bottom:4px">
-        <span data-css="flex:1;font-size:13px;color:var(--gray-disabled)">${label}</span>
-        <select class="sel-sm dd" data-type="${escHtml(t)}" data-css="flex:0 0 90px">
+      modeRows+=`<div class="discover-row">
+        <span class="flex-1 disabled-13">${label}</span>
+        <select class="sel-sm dd fixed-90" data-type="${escHtml(t)}">
           <option value="auto" ${mode==='auto'?'selected':''}>自动</option>
           <option value="full" ${mode==='full'?'selected':''}>全量</option>
           <option value="incremental" ${mode==='incremental'?'selected':''}>增量</option>
@@ -533,22 +533,22 @@ function editPkgType(id){
       // 用 disc 的 modes 渲染树
       const discPt = { types: disc.types, paths: disc.paths, modes: disc.modes || {} };
       const discTreeHtml = buildTreeHtml(discPt, MAP);
-      pathTreeHtml = `<div data-css="margin-top:12px;font-size:11px;color:var(--gray-muted);margin-bottom:6px">📂 采集到的目录结构</div><div data-css="border:1px solid var(--gray-border);border-radius:8px;max-height:240px;overflow-y:auto;padding:8px 4px">${discTreeHtml}</div>`;
+      pathTreeHtml = `<div data-css="margin-top:12px;font-size:11px;color:var(--gray-muted);margin-bottom:6px">📂 采集到的目录结构</div><div class="list-box-240">${discTreeHtml}</div>`;
     }
 
     // 智能警告
     let rulesWarning='';
     if(removed.length && disc.affected_rules && disc.affected_rules.length){
       const ruleItems=disc.affected_rules.map(r=>
-        `<div data-css="margin-top:4px">
-          <span data-css="color:#7c3aed;font-weight:600">${escHtml(r.name)}</span>
-          <span data-css="color:var(--danger-text);font-size:12px;margin-left:6px">
+        `<div class="mt4">
+          <span class="text-purple fw600">${escHtml(r.name)}</span>
+          <span class="danger-text-12 ml6">
             ${(r.removed_types||[]).map(t=>MAP[t]||t).join(', ')}
           </span>
         </div>`
       ).join('');
-      rulesWarning=`<div data-css="background:var(--danger-light);border:1px solid #fca5a5;border-radius:8px;padding:14px;margin-top:12px">
-        <div data-css="font-size:12px;color:var(--danger-text);font-weight:600;margin-bottom:6px">⚠️ 以下订阅规则引用了将被删除的包类型，采纳后这些规则对此产品将不再推送：</div>
+      rulesWarning=`<div class="diff-danger-box">
+        <div class="danger-text-12 fw600 mb6">⚠️ 以下订阅规则引用了将被删除的包类型，采纳后这些规则对此产品将不再推送：</div>
         ${ruleItems}
       </div>`;
     }
@@ -556,8 +556,8 @@ function editPkgType(id){
     _showModal('pkgtype');
     modalBody('pkgtype',`<div class="modal-body">
       <div class="title-15">⚠️ 包类型检测到变化 <span class="gray-muted-12-400">「${escHtml(p.name)}」</span></div>
-      <div data-css="background:#fffbeb;border:1px solid #fbbf24;border-radius:8px;padding:14px;margin-bottom:16px">
-        <div data-css="font-size:12px;color:#92400e;font-weight:600;margin-bottom:8px">📊 变更明细</div>
+      <div class="diff-warn-box">
+        <div class="warn-title">📊 变更明细</div>
         <div>${diffRows}</div>
       </div>
       ${rulesWarning}
@@ -579,8 +579,8 @@ function editPkgType(id){
     _showModal('pkgtype');
     modalBody('pkgtype',`<div class="p24">
       <div class="title-15">📦 包类型设置 <span class="gray-muted-12-400">「${escHtml(p.name)}」</span></div>
-      <div data-css="color:var(--gray-disabled);font-size:13px;text-align:center;padding:12px">
-        尚未发现包类型，请先对该产品进行<span data-css="color:#7c3aed;cursor:pointer" data-on-click="_applyAndRefreshPkgType" data-args='${_dataArgs(id)}'>全量采集</span>
+      <div class="disabled-13 ta-center p12">
+        尚未发现包类型，请先对该产品进行<span class="text-purple pointer" data-on-click="_applyAndRefreshPkgType" data-args='${_dataArgs(id)}'>全量采集</span>
       </div>
       <div class="flex gap8 mt20">
         <button class="btn" data-on-click="closeModal" data-args='${_dataArgs('pkgtype')}'>关闭</button>
@@ -604,10 +604,10 @@ function editPkgType(id){
   _showModal('pkgtype');
   modalBody('pkgtype',`<div class="modal-body">
     <div class="title-15">📦 包类型设置 <span class="gray-muted-12-400">「${escHtml(p.name)}」</span></div>
-    <div data-css="margin-bottom:14px;font-size:12px;color:#7c3aed;background:#f5f3ff;padding:8px 12px;border-radius:6px">
+    <div class="info-purple-note">
       共 ${pt.types.length} 种包类型，${(pt.paths||[]).length} 条路径
     </div>
-    <div data-css="border:1px solid var(--gray-border);border-radius:8px;max-height:320px;overflow-y:auto;padding:8px 4px">
+    <div class="list-box-320">
       ${treeHtml}
     </div>
     <div class="modal-form-actions">
@@ -731,7 +731,7 @@ async function refreshPkgType(id){
       const win=document.getElementById(logId);
       if(win){
         win.style.display='block';
-        win.querySelector('.log-body').innerHTML=state.log_lines.map(l=>`<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border)">${escHtml(l)}</div>`).join('');
+        win.querySelector('.log-body').innerHTML=state.log_lines.map(l=>`<div class="rd-ver-line">${escHtml(l)}</div>`).join('');
         win.querySelector('.log-body').scrollTop=win.querySelector('.log-body').scrollHeight;
       }
     }
@@ -784,7 +784,7 @@ function showRefreshLog(id){
 }
 
 function _renderProductRows(prods){
-  if(!prods.length) return `<tr><td colspan="8" data-css="text-align:center;color:var(--gray-disabled);padding:32px 0">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
+  if(!prods.length) return `<tr><td class="ta-center text-disabled py32" colspan="8">暂无产品，请点击「自动发现」或「手动添加」</td></tr>`;
   let h='';
   for(const p of prods){
     const last=p.last_collected_at?fmtTZ(p.last_collected_at,true):'—';
@@ -799,10 +799,10 @@ function _renderProductRows(prods){
       </td>
       <td><strong>${escHtml(p.name)}</strong></td>
       <td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td>
-      <td><a href="#" data-prevent data-on-click="editPkgType" data-args='${_dataArgs(p.id)}' title="点击编辑包类型" data-css="color:#7c3aed;font-size:12px;text-decoration:none">${p.package_type_changed?'⚠️ ':''}${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
+      <td><a class="text-purple fs12 no-underline" href="#" data-prevent data-on-click="editPkgType" data-args='${_dataArgs(p.id)}' title="点击编辑包类型">${p.package_type_changed?'⚠️ ':''}${fmtPkgTypes(p.package_type)||'未设置'}</a></td>
       <td><span class="hlth-badge" data-css="color:${p.is_active?(hlthColor):'var(--gray-disabled)'};font-size:12px;white-space:nowrap">${p.is_active?'● '+_hlthLabel(hlth):'已禁用'}</span></td>
-      <td><span data-css="font-size:12px;color:var(--gray-muted);white-space:nowrap">${last}</span></td>
-      <td data-css="white-space:nowrap">
+      <td><span class="gray-muted-12 nowrap">${last}</span></td>
+      <td class="nowrap">
         <button class="btn btn-sm" ${p.is_active?'':'disabled'} data-on-click="editProduct" data-args='${_dataArgs(p.id)}' title="编辑" data-css="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">✏️</button>
         <button class="btn btn-sm" ${p.is_active?'':'disabled'} data-refresh-pkg="${p.id}" data-on-click="refreshPkgType" data-args='${_dataArgs(p.id)}' title="刷新包类型" data-css="${p.is_active?'':'opacity:0.35;cursor:not-allowed'}">🔄</button>
       </td>
@@ -859,7 +859,7 @@ async function _handleDiscBtn(){
                &nbsp;&nbsp;◦ <b>没找到自己想要关注的产品 / 包类型时</b> — 用「<span class="text-purple">🔍 自动发现</span>」全量扫描
                  或在产品列表点 <span class="text-purple">🔄 刷新</span> 重采单个产品<br>
              • <b>耗时:</b>长任务,后台跑,可中途停止<br>
-             <small data-css="color:var(--gray-disabled);display:block;margin-top:6px">
+             <small class="text-disabled d-block mt6">
                💡 后台每 4 小时自动轮询已发现产品(quick cycle,见「系统配置」可调)。<br>
                全量目录重爬(full scan)目前不自动跑 — 需要时手动点「🔍 自动发现」
              </small>
@@ -920,9 +920,9 @@ function renderLogLine(l){
   if(l && typeof l === 'object' && 'msg' in l){
     const color = _LOG_LEVEL_COLOR[l.level] || 'var(--gray-muted)';
     const productBadge = l.product
-      ? `<span data-css="background:#7c3aed20;color:#7c3aed;font-size:10px;padding:0 4px;border-radius:4px;margin-left:4px;vertical-align:middle">${escHtml(l.product)}</span>`
+      ? `<span class="badge-purple-inline">${escHtml(l.product)}</span>`
       : '';
-    const ts = l.ts ? `<span data-css="color:var(--gray-disabled);font-size:10px;margin-right:4px">${escHtml(l.ts.split('T')[1]?.slice(0,8)||'')}</span>` : '';
+    const ts = l.ts ? `<span class="disabled-10 mr4">${escHtml(l.ts.split('T')[1]?.slice(0,8)||'')}</span>` : '';
     return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:${color}${l.level==='error'||l.level==='success'?';font-weight:600':''}">${ts}${escHtml(l.msg)}${productBadge}</div>`;
   }
   // 兼容旧 string(confirm 流程暂未结构化)
@@ -963,13 +963,13 @@ async function discoverProducts(){
   _showModal('disc');
   modalBody('disc',`<div class="p24 ta-center">
     <div class="spin"></div>
-    <div id="disc-phase" data-css="margin-top:12px;color:var(--gray-muted);font-size:14px">正在启动自动发现…</div>
-    <div data-css="margin:12px auto 0;width:80%;max-width:320px;height:6px;background:var(--gray-bg);border-radius:3px;overflow:hidden">
-      <div id="disc-modal-bar" data-css="height:100%;background:#7c3aed;border-radius:3px;transition:width 0.4s;width:0%"></div>
+    <div class="mt12 gray-muted-14" id="disc-phase">正在启动自动发现…</div>
+    <div class="progress-80">
+      <div class="progress-fill-purple" id="disc-modal-bar"></div>
     </div>
-    <div data-css="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+    <div class="mt10 flex gap8 justify-center wrap">
       <button class="btn-purple-outline" data-on-click="_showById" data-args='${_dataArgs(discLogId)}'>📋 查看日志</button>
-      <button data-on-click="_cancelDisc" data-css="background:none;border:1px solid var(--danger);border-radius:6px;cursor:pointer;font-size:12px;color:var(--danger);padding:4px 12px">⏹ 停止</button>
+      <button class="btn-danger-outline" data-on-click="_cancelDisc">⏹ 停止</button>
     </div>
   </div>`);
 
@@ -988,14 +988,14 @@ async function discoverProducts(){
       // 直接进入轮询渲染
     } else {
       modalBody('disc',`<div class="p24 ta-center">
-        <div data-css="color:#f59e0b;font-size:14px;margin-bottom:8px">⚠️ 上次任务似乎已结束</div>
+        <div class="text-amber fs14 mb8">⚠️ 上次任务似乎已结束</div>
         <div class="gray-muted-13">请关闭后重新点击自动发现</div>
         <div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>
       </div>`);
       return;
     }
   } else if(r.code!==0){
-    modalBody('disc',`<div class="p24"><div data-css="color:var(--danger);font-weight:600;margin-bottom:8px">启动失败</div><div class="gray-muted-13">${escHtml(r.message||'')}</div><div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div></div>`);
+    modalBody('disc',`<div class="p24"><div class="danger-600 mb8">启动失败</div><div class="gray-muted-13">${escHtml(r.message||'')}</div><div class="mt16"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div></div>`);
     return;
   }
 
@@ -1050,7 +1050,7 @@ async function discoverProducts(){
   }
   poll();
   pollTimer=setInterval(poll,2000);
-  setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);modalBody('disc',`<div data-css="padding:24px;text-align:center;color:var(--danger)">发现超时，请重试</div><div class="p8"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>`);}},600000);
+  setTimeout(()=>{if(!done){done=true;clearInterval(pollTimer);modalBody('disc',`<div class="p24 ta-center text-danger">发现超时，请重试</div><div class="p8"><button class="btn" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button></div>`);}},600000);
 }
 
 function showDiscoverResult(result, isStale){
@@ -1064,9 +1064,9 @@ function showDiscoverResult(result, isStale){
   const totalProdChanges=added.length+removed.length;
   const totalPkgChanges=pkgChangedProducts.reduce((n,c)=>n+(c.added_paths?.length||0)+(c.deleted_paths?.length||0)+(c.modified_paths?.length||0),0);
 
-  const staleWarning=isStale?'<div data-css="background:var(--warn-light);border:1px solid #f59e0b;border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:13px;color:#92400e;display:flex;align-items:center;gap:8px"><span data-css="font-size:16px">⚠️</span><div><b>发现结果已从临时文件恢复</b>（服务重启前未执行确认），请检查以下变更后点击「确认应用变更」。</div></div>':'';
+  const staleWarning=isStale?'<div class="warn-banner"><span class="fs16">⚠️</span><div><b>发现结果已从临时文件恢复</b>（服务重启前未执行确认），请检查以下变更后点击「确认应用变更」。</div></div>':'';
 
-  let summaryHtml=`<div data-css="display:flex;gap:16px;margin-bottom:14px;font-size:13px">
+  let summaryHtml=`<div class="flex gap16 mb14 fs13">
     <span class="text-success-text">🆕 新增产品 <b>${added.length}</b></span>
     <span class="text-danger">⛔ 下线产品 <b>${removed.length}</b></span>
     <span class="text-disabled">✔️ 未变 <b>${unchanged.length}</b></span>
@@ -1087,8 +1087,8 @@ function showDiscoverResult(result, isStale){
   if(added.length){
     const rows=added.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
     sectionsHtml+=`<div class="mb10">
-      <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text)" data-on-click="toggleSection" data-args='${_dataArgs('add-prod')}'>
-        <span id="sec-icon-add-prod">▾</span>🆕 新增产品 <span data-css="background:var(--success-text)20;color:var(--success-text);padding:1px 7px;border-radius:10px;font-size:11px">${added.length}</span>
+      <div class="diff-sec text-success-text" data-on-click="toggleSection" data-args='${_dataArgs('add-prod')}'>
+        <span id="sec-icon-add-prod">▾</span>🆕 新增产品 <span class="cnt-success">${added.length}</span>
       </div>
       <div class="tree-box" id="sec-body-add-prod">
         <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1099,8 +1099,8 @@ function showDiscoverResult(result, isStale){
   if(removed.length){
     const rows=removed.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('');
     sectionsHtml+=`<div class="mb10">
-      <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)" data-on-click="toggleSection" data-args='${_dataArgs('rem-prod')}'>
-        <span id="sec-icon-rem-prod">▾</span>⛔ 下线产品 <span data-css="background:var(--danger)20;color:var(--danger);padding:1px 7px;border-radius:10px;font-size:11px">${removed.length}</span>
+      <div class="diff-sec text-danger" data-on-click="toggleSection" data-args='${_dataArgs('rem-prod')}'>
+        <span id="sec-icon-rem-prod">▾</span>⛔ 下线产品 <span class="cnt-danger">${removed.length}</span>
       </div>
       <div class="tree-box" id="sec-body-rem-prod">
         <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1117,18 +1117,18 @@ function showDiscoverResult(result, isStale){
       const segs=[];
       if(addedCount) segs.push(`<span class="text-success-text">+${addedCount} 新增</span>`);
       if(delCount) segs.push(`<span class="text-danger">-${delCount} 删除</span>`);
-      if(modCount) segs.push(`<span data-css="color:#f59e0b">±${modCount} 修改</span>`);
+      if(modCount) segs.push(`<span class="text-amber">±${modCount} 修改</span>`);
       pkgRows+=`<tr>
         <td class="fw600">${escHtml(change.product_name||'')}</td>
         <td class="gray-muted-12">${segs.join(' | ')}</td>
-        <td data-css="text-align:right"><button class="btn btn-xs btn-outline" data-on-click="togglePkgDetail" data-args='${_dataArgs(change.entry_url||'')}'>详情</button></td>
+        <td class="ta-right"><button class="btn btn-xs btn-outline" data-on-click="togglePkgDetail" data-args='${_dataArgs(change.entry_url||'')}'>详情</button></td>
       </tr>`;
       // Hidden detail rows
       pkgRows+=`<tr id="pkgdetail-${escHtml(change.entry_url||'')}" data-css="display:none;background:var(--gray-bg)">
-        <td colspan="3" data-css="padding:8px 12px;font-size:12px">
-          ${addedCount?`<div class="mb4"><span data-css="color:var(--success-text);font-weight:600">+ 新增路径</span><ul class="list-indent">${change.added_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
+        <td class="p8x12 fs12" colspan="3">
+          ${addedCount?`<div class="mb4"><span class="success-text-600">+ 新增路径</span><ul class="list-indent">${change.added_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
           ${delCount?`<div class="mb4"><span class="danger-600">- 删除路径</span><ul class="list-indent">${change.deleted_paths.map(p=>`<li class="break-all"><span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span></li>`).join('')}</ul></div>`:''}
-          ${modCount?`<div><span data-css="color:#f59e0b;font-weight:600">± 修改类型</span><ul class="list-indent">${change.modified_paths.map(p=>{
+          ${modCount?`<div><span class="text-amber fw600">± 修改类型</span><ul class="list-indent">${change.modified_paths.map(p=>{
             // 多字段 diff:chain / url / types(后端目前只对比 types,所以 chain/url 通常不变)
             // 前端从 entry 自身推老值(chain 从 chain 数组隐含,url 从当前 entry)
             const urlChanged = p.url && p.old_url && p.url !== p.old_url;
@@ -1141,15 +1141,15 @@ function showDiscoverResult(result, isStale){
             const chainLenChanged = oldChainLen != null && oldChainLen !== (p.chain?.length||0);
             if(chainLenChanged) diffs.push(`chain 长度: <span class="text-danger">${oldChainLen}</span> → <span class="text-success-text">${p.chain?.length||0}</span>`);
             if(diffs.length === 0) diffs.push(`类型: ${escHtml((p.old_types||[]).join(','))} → ${escHtml((p.new_types||[]).join(','))}`);
-            const warn = urlChanged ? '<span data-css="color:var(--danger);font-weight:700" title="URL 变化属于重大变更,确认前请核对">⚠️</span> ' : '';
+            const warn = urlChanged ? '<span class="text-danger fw700" title="URL 变化属于重大变更,确认前请核对">⚠️</span> ' : '';
             return `<li class="break-all">${warn}<span class="mono gray-muted-11">${escHtml(p.chain?.join(' → ')||'')}</span> — ${diffs.join('; ')}</li>`;
           }).join('')}</ul></div>`:''}
         </td>
       </tr>`;
     }
     sectionsHtml+=`<div class="mb10">
-      <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed" data-on-click="toggleSection" data-args='${_dataArgs('pkg-chg')}'>
-        <span id="sec-icon-pkg-chg">▾</span>📦 包类型变更 <span data-css="background:#7c3aed20;color:#7c3aed;padding:1px 7px;border-radius:10px;font-size:11px">${pkgChangedProducts.length} 个产品</span>
+      <div class="diff-sec text-purple" data-on-click="toggleSection" data-args='${_dataArgs('pkg-chg')}'>
+        <span id="sec-icon-pkg-chg">▾</span>📦 包类型变更 <span class="cnt-purple">${pkgChangedProducts.length} 个产品</span>
       </div>
       <div class="tree-box" id="sec-body-pkg-chg">
         <table class="table m0 fs13"><thead><tr><th>产品</th><th>变更</th><th></th></tr></thead><tbody>${pkgRows}</tbody></table>
@@ -1167,8 +1167,8 @@ function showDiscoverResult(result, isStale){
       rows+=`<tr id="disc-unchanged-extra" data-css="display:none">${hidden.map(p=>`<tr><td>${escHtml(p.name)}</td><td><span class="mono gray-muted-12">${escHtml(p.entry_url||'—')}</span></td></tr>`).join('')}</tr>`;
     }
     sectionsHtml+=`<div class="mb10">
-      <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)" data-on-click="toggleSection" data-args='${_dataArgs('unchanged')}'>
-        <span id="sec-icon-unchanged">▸</span>✔️ 未变化产品 <span data-css="background:var(--gray-disabled)20;color:var(--gray-disabled);padding:1px 7px;border-radius:10px;font-size:11px">${unchanged.length}</span>
+      <div class="diff-sec text-disabled" data-on-click="toggleSection" data-args='${_dataArgs('unchanged')}'>
+        <span id="sec-icon-unchanged">▸</span>✔️ 未变化产品 <span class="cnt-disabled">${unchanged.length}</span>
       </div>
       <div id="sec-body-unchanged" data-css="display:none;border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
         <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1176,18 +1176,18 @@ function showDiscoverResult(result, isStale){
     </div>`;
   }
 
-  let html=`<div data-css="padding:20px">
+  let html=`<div class="p20">
     <div class="title-15">🔍 自动发现结果</div>
     ${staleWarning}
     ${summaryHtml}
-    <div data-css="max-height:420px;overflow-y:auto;border:1px solid var(--gray-border);border-radius:8px;padding:8px">
+    <div class="diff-list-box">
       ${sectionsHtml}
     </div>
     <div id="disc-confirm-phase" data-css="display:none;margin-top:10px;padding:8px 12px;background:#f5f3ff;border-radius:6px;font-size:13px;color:#7c3aed;text-align:center"></div>
-    <div data-css="display:flex;gap:8px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--gray-border)">
+    <div class="diff-actions">
       <button class="btn btn-primary" id="disc-confirm-btn" data-on-click="confirmDiscoverResult">💾 确认应用变更</button>
-      <button class="btn" data-css="border-color:var(--danger);color:var(--danger)" data-on-click="discardDiscoverResult">丢弃</button>
-      <span data-css="font-size:12px;color:var(--gray-disabled)">新增产品默认禁用，包类型变更将触发告警</span>
+      <button class="btn danger-outline-text" data-on-click="discardDiscoverResult">丢弃</button>
+      <span class="disabled-12">新增产品默认禁用，包类型变更将触发告警</span>
       <button class="btn ml-auto" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>关闭</button>
     </div>
   </div>`;
@@ -1295,7 +1295,7 @@ async function confirmDiscoverResult(){
           errCard.id='disc-confirm-error';
           errCard.style.cssText='margin:0 0 14px;padding:12px 16px;background:var(--danger-light);border:1px solid var(--danger-border);border-radius:8px;color:var(--danger-text);font-size:13px;line-height:1.6';
           const errMsg=state.error_message||state.error||'未知错误,请查看日志';
-          errCard.innerHTML=`<div data-css="font-weight:700;font-size:14px;margin-bottom:4px">❌ 应用失败</div><div>${escHtml(errMsg)}</div>`;
+          errCard.innerHTML=`<div class="fw700 fs14 mb4">❌ 应用失败</div><div>${escHtml(errMsg)}</div>`;
           const titleEl=modalBox.querySelector('div');
           if(titleEl)titleEl.after(errCard);
         }
@@ -1401,7 +1401,7 @@ function showProductForm(p){
   _showModal('pform');
   const isManual = p ? p.is_manual !== false : true; // default to true for new add
   modalBody('pform',`<div class="p24">
-    <div data-css="font-size:15px;font-weight:600;margin-bottom:20px">${isEdit?'✏️ 编辑产品':'➕ 手动添加产品'}</div>
+    <div class="fs15 fw600 mb20">${isEdit?'✏️ 编辑产品':'➕ 手动添加产品'}</div>
     <div class="info-bar">
       <div class="flex items-start gap8">
         <span class="fs16 lh1">💡</span>
@@ -1421,7 +1421,7 @@ function showProductForm(p){
     </div>
     <div class="form-group mt14"><label>入口URL <span class="text-danger">*</span></label>
       <input class="input-lg" id="pf-url" value="${escHtml(url)}" placeholder="/update/wafIndex">
-      <div data-css="font-size:11px;color:var(--gray-disabled);margin-top:4px">绿盟升级站点相对路径，如 /update/wafIndex</div>
+      <div class="disabled-11 mt4">绿盟升级站点相对路径，如 /update/wafIndex</div>
     </div>
     <div class="flex gap8 mt20">
       <button class="btn btn-primary" data-on-click="saveProductForm" data-args='${_dataArgs(id)}'>💾 保存</button>
@@ -1471,7 +1471,7 @@ function editProduct(id){
 
   row.innerHTML = `<td>${p.id}</td>
     <td><span class="active-badge" data-css="font-size:11px;color:${p.is_active?'var(--success-text)':'var(--danger)'}">${p.is_active?'● 启用':'● 禁用'}</span></td>
-    <td><span data-css="font-size:13px;color:var(--gray-disabled)">${escHtml(p.name)}</span></td>
+    <td><span class="disabled-13">${escHtml(p.name)}</span></td>
     <td><input id="ef-url" value="${escHtml(p.entry_url||'')}" ${isManual?'':'readonly'} data-css="width:100%;padding:4px 6px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;background:${isManual?'#fff':'var(--gray-bg)'}"></td>
     <td><span class="hlth-badge" data-css="color:${p.is_active?(_hlthColor(_hlthLabel(p.health_status))):'var(--gray-disabled)'};font-size:12px">${p.is_active?'● '+_hlthLabel(p.health_status):'已禁用'}</span></td>
     <td><span class="gray-muted-12">${fmtTZ(p.last_collected_at,true)||'—'}</span></td>

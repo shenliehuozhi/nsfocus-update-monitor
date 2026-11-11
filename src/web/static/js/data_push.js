@@ -31,12 +31,12 @@ async function showPushModal(sid, product, version, pkgType, chain){
   if(_banTimer){clearInterval(_banTimer);_banTimer=null;}
   document.getElementById('app').insertAdjacentHTML('beforeend',
     `<div id="pushModal" class="push-modal" data-on-click="closePushModal" data-self>
-      <div class="card"  data-css="width:560px;max-height:90vh;display:flex;flex-direction:column">
-        <div class="card-hd">📤 推送通知 <span data-css="color:var(--muted);font-weight:400;font-size:11px">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline ml-auto" data-on-click="closePushModal">×</button></div>
-        <div class="card-bd" data-css="overflow-y:auto;flex:1">
-          <div data-css="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
-            <div data-on-click="switchPushTab" data-args='${_dataArgs('email')}' id="pushTabEmailBtn" data-css="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid var(--primary);color:var(--primary);margin-bottom:-2px">📧 邮件发送</div>
-            <div data-on-click="switchPushTab" data-args='${_dataArgs('bot')}' id="pushTabBotBtn" data-css="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px">🤖 按渠道发送</div>
+      <div class="card modal-card-560-col">
+        <div class="card-hd">📤 推送通知 <span class="muted-11-400">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline ml-auto" data-on-click="closePushModal">×</button></div>
+        <div class="card-bd oy-auto flex-1">
+          <div class="push-tabs">
+            <div class="push-tab-active" data-on-click="switchPushTab" data-args='${_dataArgs('email')}' id="pushTabEmailBtn">📧 邮件发送</div>
+            <div class="push-tab" data-on-click="switchPushTab" data-args='${_dataArgs('bot')}' id="pushTabBotBtn">🤖 按渠道发送</div>
           </div>
           <div id="pushTabEmail">
             <div class="form-group">
@@ -52,16 +52,16 @@ async function showPushModal(sid, product, version, pkgType, chain){
             </div>
             <div id="pushCustomerList" class="push-target"></div>
             <div id="pushManualInput" class="hidden">
-              <textarea id="pushEmail" rows="3" placeholder="输入邮箱，多个用逗号或换行分隔" data-css="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;resize:vertical" data-on-input="onPushEmailChange"></textarea>
-              <div id="pushEmailHint" data-css="font-size:11px;color:var(--muted);margin-top:4px"></div>
+              <textarea class="push-textarea" id="pushEmail" rows="3" placeholder="输入邮箱，多个用逗号或换行分隔" data-on-input="onPushEmailChange"></textarea>
+              <div class="muted-11 mt4" id="pushEmailHint"></div>
             </div>
           </div>
           <div id="pushTabBot" class="hidden">
-            <p class="cfg-hint" data-css="margin-bottom:8px;color:var(--gray-muted)">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
+            <p class="cfg-hint mb8 text-gray-muted">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
             <div id="pushBotChannelList" class="push-target"><div class="empty p8">加载中...</div></div>
           </div>
         </div>
-        <div data-css="padding:12px 16px;border-top:1px solid var(--border);background:var(--gray-bg)">
+        <div class="push-foot">
           <div class="flex gap8"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" data-on-click="confirmPush" disabled>确认推送</button><button class="btn btn-sm btn-outline" data-on-click="closePushModal">取消</button></div>
         </div>
       </div>
@@ -130,7 +130,7 @@ async function loadPushChannelSelect(){
     channels=(r.data||[]).filter(x=>x.type==='email' && x.is_active);
   }catch(e){}
   if(!channels.length){
-    el.innerHTML='<div data-css="padding:8px;color:var(--danger);font-size:12px">暂无可用 SMTP 渠道,请先在通知渠道中配置邮箱</div>';
+    el.innerHTML='<div class="p8 danger-12">暂无可用 SMTP 渠道,请先在通知渠道中配置邮箱</div>';
     return;
   }
   const nsfocus=channels.find(c=>c.config?.smtp_host==='mail.nsfocus.com');
@@ -152,7 +152,7 @@ async function loadPushCustomerList(){
       el.innerHTML='<div class="empty p8 text-muted">暂无有邮箱的客户,请先在客户管理中设置邮箱</div>';
       return;
     }
-    el.innerHTML=list.map(c=>`<label class="item" data-custid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px">
+    el.innerHTML=list.map(c=>`<label class="item pick-row" data-custid="${c.id}">
       <input class="shrink0" type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" data-on-change="onCustomerCheck" data-args='${_dataArgs('$el')}'>
       <span class="flex1">
         <span class="fw500">${escHtml(c.name)}</span>
@@ -181,7 +181,7 @@ async function loadPushBotChannels(){
     const sub=isEmail
       ? `${escHtml((c.config?.smtp_user)||'')} → 自己`
       : typeLabel[c.type]||c.type;
-    return `<label class="item" data-botchid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 12px">
+    return `<label class="item pick-row-lg" data-botchid="${c.id}">
       <input class="shrink0" type="radio" name="botch" value="${c.id}" data-on-change="onBotChannelCheck" data-args='${_dataArgs('$el')}'>
       <span class="flex1">
         <span class="fw500">${escHtml(c.name)}</span>
@@ -279,12 +279,12 @@ function showPushResult(data, success){
     const icon = ok ? '✓' : '✗';
     const color = ok ? 'var(--success)' : 'var(--danger)';
     const logBtn = (!ok && r.log_path)
-      ? ` <a href="#" data-on-click="showPushLogByPath" data-prevent data-args='${_dataArgs(r.log_path, r.channel || '')}' data-css="color:var(--primary);font-size:11px;margin-left:6px">📋 日志</a>`
+      ? ` <a class="text-primary fs11 ml6" href="#" data-on-click="showPushLogByPath" data-prevent data-args='${_dataArgs(r.log_path, r.channel || '')}'>📋 日志</a>`
       : '';
-    return `<div data-css="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#ffffff">
+    return `<div class="push-meta-row">
       <span class="fw600">${icon}</span>
       <span>${escHtml(r.channel||'')}</span>
-      ${r.error ? `<span data-css="color:rgba(255,255,255,.7);font-size:11px">${escHtml(r.error)}</span>` : ''}
+      ${r.error ? `<span class="push-dim">${escHtml(r.error)}</span>` : ''}
       ${logBtn}
     </div>`;
   }).join('');
