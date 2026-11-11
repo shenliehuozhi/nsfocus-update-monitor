@@ -1,7 +1,8 @@
 """Sources, Channels, Subscriptions, Customers, History — concise API routes."""
 
-from flask import Blueprint, request, jsonify, g
+from flask import Blueprint, request, jsonify, g, current_app
 from src.web.auth import require_auth
+from src.web.response_cache import DBStampCache
 from src.core.logger import get_logger
 logger = get_logger('api')
 
@@ -1200,6 +1201,10 @@ def get_package_types():
 
 bp_latest = Blueprint('latest', __name__, url_prefix='/api/latest')
 
+# 2.4MB payload rebuilt on every data-page visit; invalidated by the DB file
+# stamp, so any collection/push/status write naturally refreshes it.
+_latest_snapshots_cache = DBStampCache()
+
 
 @bp_latest.route('/snapshots', methods=['GET'])
 @require_auth
@@ -1211,8 +1216,14 @@ def get_latest_snapshots():
       - snapshots list (only is_active=true sources, all snapshots kept in DB)
     """
     import json as _json
+    from src.models import database as _db
     from src.models.database import query
     from src.models.snapshot import list_sources
+
+    stamp = DBStampCache.stamp(_db.DB_PATH)
+    cached = _latest_snapshots_cache.get(stamp)
+    if cached is not None:
+        return current_app.response_class(cached, content_type='application/json; charset=utf-8')
 
     # 一次返回所有状态(active/superseded/withdrawn),前端按 status 给最新包/撤回/替代打 badge
     status_filter = "status IN ('active', 'superseded', 'withdrawn')"
@@ -1308,6 +1319,7 @@ def get_latest_snapshots():
             rec.pop('rollback_confirmed_at', None)
             rec.pop('rollback_cycles', None)
             rec.pop('product_name', None)
+            rec.pop('source_id', None)  # grouping key already in source_map
             # Keep path_id in response — needed by frontend dataBuildFeed to group
             # rows by (path_id = MD5(url + chain)) so multi-chain shared URLs
             # show as separate rows instead of collapsing into N "same files".
@@ -1320,7 +1332,13 @@ def get_latest_snapshots():
                 rec['source_url'] = src_url[len(BASE_URL):]
             source_map[sid]['snapshots'].append(rec)
 
-    return jsonify({'code': 0, 'data': source_map})
+    # ensure_ascii=False + compact: ~16% smaller raw body (2.4MB → 2.0MB) and
+    # less client parse work; JSON is UTF-8 per RFC 8259.
+    body = current_app.json.dumps(
+        {'code': 0, 'data': source_map}, ensure_ascii=False, separators=(',', ':')
+    ) + '\n'
+    _latest_snapshots_cache.put(stamp, body)
+    return current_app.response_class(body, content_type='application/json; charset=utf-8')
 
 
 # ── Snapshot Search (dedicated endpoint for full-text incl. description) ──

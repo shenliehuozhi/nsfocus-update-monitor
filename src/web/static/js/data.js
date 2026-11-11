@@ -2220,7 +2220,6 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
       const historyCount = typeSnaps.length - 1;
       const typeLabel = MAP[pkgType] || pkgType || '';
       const isLatestPkg = historyCount > 0; // multiple packages exist, this one is the latest by published_at
-      const sz = latest.file_size > 1048576 ? (latest.file_size / 1048576).toFixed(1) + 'M' : (latest.file_size / 1024).toFixed(0) + 'K';
       const urg = latest.urgency === 'critical' ? 'badge-err' : latest.urgency === 'high' ? 'badge-warn' : 'badge-ok';
       const isRb = latest.status === 'withdrawn';
       const isNewPkg = latest.status === 'active' && !latest.last_delivered_at;
@@ -2242,7 +2241,6 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
         ${historyCount > 0 ? `<div class="data-history hidden" id="dh_${escHtml(histKey)}">
           ${typeSnaps.slice(1).map(s => {
-            const sz2 = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
             const urg2 = s.urgency === 'critical' ? 'badge-err' : s.urgency === 'high' ? 'badge-warn' : 'badge-ok';
             const isRb2 = s.status === 'withdrawn';
             return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" data-on-click="_toggleClass" data-args='${_dataArgs('data-hist-expanded')}'>
@@ -2273,12 +2271,16 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
 }
 
 function dataSnapDetailHtml(s, MAP) {
-  const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
+  // file_size is null in the list payload (detail endpoint has it); don't
+  // render "NaN K" when it was never loaded.
+  const sz = s.file_size != null
+    ? (s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K')
+    : '';
   const typeLabel = MAP[s.package_type] || s.package_type || '';
   return `<div class="data-detail-grid">
     <span class="data-detail-k">类型</span><span>${typeLabel}</span>
     <span class="data-detail-k">版本</span><span>${escHtml(s.package_version || '')}</span>
-    <span class="data-detail-k">大小</span><span>${sz}</span>
+    ${sz ? `<span class="data-detail-k">大小</span><span>${sz}</span>` : ''}
     ${s.min_sys_version ? `<span class="data-detail-k">依赖</span><span>≥ ${escHtml(s.min_sys_version)}</span>` : ''}
     ${s.published_at ? `<span class="data-detail-k">发布</span><span>${fmtTZ(s.published_at, true)}</span>` : ''}
     ${s.first_seen_at ? `<span class="data-detail-k">发现</span><span>${fmtTZ(s.first_seen_at, true)}</span>` : ''}
