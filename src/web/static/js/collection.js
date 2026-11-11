@@ -48,20 +48,20 @@ function _renderSingleBanner(state){
   const latestClean = src.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
   const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
   banner.innerHTML=`
-    <div style="display:flex;align-items:center;gap:10px">
-      <div data-banner-role="phase-icon" style="font-size:15px">${phaseIcon}</div>
-      <div style="flex:1">
-        <div data-banner-role="title" style="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
-        <div data-banner-role="sub-title" style="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
+    <div data-css="display:flex;align-items:center;gap:10px">
+      <div data-banner-role="phase-icon" data-css="font-size:15px">${phaseIcon}</div>
+      <div data-css="flex:1">
+        <div data-banner-role="title" data-css="font-weight:600">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
+        <div data-banner-role="sub-title" data-css="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
       </div>
-      <div id="single-banner-log-btn" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
-      <div id="single-banner-close" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
+      <div id="single-banner-log-btn" data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
+      <div id="single-banner-close" data-css="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
     </div>
-    <div style="height:6px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden">
-      <div id="single-banner-bar" style="height:100%;background:rgba(255,255,255,0.85);border-radius:3px;transition:width 0.4s;width:${pct}%"></div>
+    <div data-css="height:6px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden">
+      <div id="single-banner-bar" data-css="height:100%;background:rgba(255,255,255,0.85);border-radius:3px;transition:width 0.4s;width:${pct}%"></div>
     </div>
-    <div id="single-banner-latest-wrap" style="display:${latestShort ? 'block' : 'none'};font-family:monospace;font-size:11.5px;background:rgba(0,0,0,0.18);border-radius:4px;padding:4px 8px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
-    <div id="single-banner-log" style="display:none;max-height:500px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
+    <div id="single-banner-latest-wrap" data-css="display:${latestShort ? 'block' : 'none'};font-family:monospace;font-size:11.5px;background:rgba(0,0,0,0.18);border-radius:4px;padding:4px 8px;color:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
+    <div id="single-banner-log" data-css="display:none;max-height:500px;overflow-y:auto;background:rgba(0,0,0,0.2);border-radius:6px;padding:6px 10px;font-family:monospace;font-size:11px;line-height:1.5"></div>
   `;
   // Toggle log viewer
   banner.querySelector('#single-banner-log-btn').onclick=(ev)=>{
@@ -77,7 +77,7 @@ function _renderSingleBanner(state){
         _renderSingleLog(state);
         return;
       }
-      log.innerHTML = '<div style="opacity:0.6">⏳ 加载日志...</div>';
+      log.innerHTML = '<div data-css="opacity:0.6">⏳ 加载日志...</div>';
       const sid = state.source_id;
       const params = new URLSearchParams({file:'app.log', lines:2000});
       if(sid) params.set('source_id', String(sid));
@@ -106,7 +106,7 @@ function _renderSingleLog(state){
   const logLines = state.log_lines || [];
   const tailLines = state._tail_lines || [];
   const lines = logLines.length > 0 ? logLines : tailLines;
-  log.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+  log.innerHTML = lines.map(l=>`<div data-css="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
   log.scrollTop = log.scrollHeight;
 }
 
@@ -158,7 +158,7 @@ function _updateSingleBannerInPlace(state){
     const wasScrollBottom = (logEl.scrollTop + logEl.clientHeight) >= logEl.scrollHeight - 5;
     // Prefer scheduler summary (log_lines); fall back to app.log tail
     const lines = logLines.length > 0 ? logLines : tailLines;
-    logEl.innerHTML = lines.map(l=>`<div style="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
+    logEl.innerHTML = lines.map(l=>`<div data-css="margin-bottom:2px;word-break:break-all">${escHtml(l)}</div>`).join('');
     if(wasScrollBottom) logEl.scrollTop = logEl.scrollHeight;
   }
 }
@@ -339,11 +339,11 @@ function showCollectProgress(){
   // Remove existing modal if any
   const old=document.getElementById('collectModal');if(old)old.remove();
   document.getElementById('app').insertAdjacentHTML('beforeend',`
-    <div id="collectModal" style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeCollectModal()">
-      <div class="card" style="width:420px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()">
-        <div class="card-hd">🔄 采集进度 <button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="closeCollectModal()">✕ 关闭</button></div>
+    <div id="collectModal" data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.45);z-index:999;display:flex;align-items:center;justify-content:center" data-on-click="closeCollectModal" data-self>
+      <div class="card" data-css="width:420px;max-height:90vh;overflow-y:auto" >
+        <div class="card-hd">🔄 采集进度 <button class="btn btn-xs btn-outline" data-css="margin-left:auto" data-on-click="closeCollectModal">✕ 关闭</button></div>
         <div class="card-bd" id="collectModalBody">
-          <div style="text-align:center;padding:12px 0"><div style="font-size:32px;margin-bottom:8px">⏳</div><p style="font-size:13px">加载进度...</p></div>
+          <div data-css="text-align:center;padding:12px 0"><div data-css="font-size:32px;margin-bottom:8px">⏳</div><p data-css="font-size:13px">加载进度...</p></div>
         </div>
       </div>
     </div>
@@ -359,18 +359,19 @@ function closeCollectModal(){
   document.body.classList.remove('warning-open');
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
 }
+function _closeCollectAndDashboard(){closeCollectModal();dashboard();}
 function pollProgress(){
   const body=document.getElementById('collectModalBody');
   if(!body)return; // Modal closed, stop polling
   // Guard: if no collection is running on backend, clear timer and skip request
   if(!_collectRunning){if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}return;}
   api('/system/collect/progress').then(pr=>{
-    if(!pr.data){if(body)body.innerHTML='<p style="text-align:center;color:var(--muted)">无法获取进度</p>';return;}
+    if(!pr.data){if(body)body.innerHTML='<p data-css="text-align:center;color:var(--muted)">无法获取进度</p>';return;}
     const p=pr.data.progress||{};
     // 2026-08-21: 同时调 _showCollectBanner,让底部悬浮卡片在仪表盘也可见
     if(p.phase){_showCollectBanner(p);}
     if(!p.active&&!p.phase){
-      body.innerHTML='<p style="text-align:center;color:var(--muted)">当前无采集任务</p><button class="btn btn-sm btn-outline" style="width:100%;margin-top:12px" onclick="closeCollectModal()">关闭</button>';
+      body.innerHTML='<p data-css="text-align:center;color:var(--muted)">当前无采集任务</p><button class="btn btn-sm btn-outline" data-css="width:100%;margin-top:12px" data-on-click="closeCollectModal">关闭</button>';
       _collectRunning=false;
       _hideCollectBanner();
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
@@ -380,24 +381,24 @@ function pollProgress(){
     let html='';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      html+=`<div style="margin-bottom:12px"><div style="background:var(--gray-border);border-radius:6px;height:8px;overflow:hidden"><div style="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div style="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
-      html+=`<div style="font-size:13px;text-align:center;margin-bottom:4px"><strong>📦 ${p.current_product||'...'}</strong></div>`;
-      if(p.current_version)html+=`<div style="font-size:11px;color:var(--muted);text-align:center">${p.current_version}</div>`;
-      html+=`<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:4px">已采集 ${p.items_collected||0} 项</div>`;
-      html+=`<button class="btn btn-xs btn-outline" style="margin-top:10px;width:100%" onclick="closeCollectModal()">后台运行</button>`;
+      html+=`<div data-css="margin-bottom:12px"><div data-css="background:var(--gray-border);border-radius:6px;height:8px;overflow:hidden"><div data-css="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div data-css="font-size:11px;color:var(--muted);margin-top:4px;text-align:center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
+      html+=`<div data-css="font-size:13px;text-align:center;margin-bottom:4px"><strong>📦 ${p.current_product||'...'}</strong></div>`;
+      if(p.current_version)html+=`<div data-css="font-size:11px;color:var(--muted);text-align:center">${p.current_version}</div>`;
+      html+=`<div data-css="font-size:10px;color:var(--muted);text-align:center;margin-top:4px">已采集 ${p.items_collected||0} 项</div>`;
+      html+=`<button class="btn btn-xs btn-outline" data-css="margin-top:10px;width:100%" data-on-click="closeCollectModal">后台运行</button>`;
     }else if(p.phase==='detecting'){
-      html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">🔍</div><p style="text-align:center;font-size:13px">正在检测变化...</p>`;
+      html+=`<div data-css="text-align:center;font-size:32px;margin-bottom:8px">🔍</div><p data-css="text-align:center;font-size:13px">正在检测变化...</p>`;
     }else if(p.phase==='notifying'){
-      html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">📨</div><p style="text-align:center;font-size:13px">正在推送通知...</p>`;
+      html+=`<div data-css="text-align:center;font-size:32px;margin-bottom:8px">📨</div><p data-css="text-align:center;font-size:13px">正在推送通知...</p>`;
     }else if(p.phase==='done'){
       const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.style.display='none';
       const ok=p.errors&&p.errors.length>0?'warn':'ok';
-      html+=`<div style="text-align:center;font-size:32px;margin-bottom:8px">${ok==='ok'?'✅':'⚠️'}</div>`;
-      html+=`<p style="text-align:center;font-size:14px;font-weight:600">采集完成</p>`;
-      html+=`<div class="grid2" style="margin-top:10px"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
-      html+=`<p style="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;
-      if(p.errors&&p.errors.length)html+=`<div style="margin-top:8px;font-size:11px;color:var(--danger)">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
-      html+=`<button class="btn btn-sm btn-primary" style="width:100%;margin-top:12px" onclick="closeCollectModal();dashboard()">刷新仪表盘</button>`;
+      html+=`<div data-css="text-align:center;font-size:32px;margin-bottom:8px">${ok==='ok'?'✅':'⚠️'}</div>`;
+      html+=`<p data-css="text-align:center;font-size:14px;font-weight:600">采集完成</p>`;
+      html+=`<div class="grid2" data-css="margin-top:10px"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
+      html+=`<p data-css="font-size:11px;color:var(--muted);text-align:center;margin-top:6px">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;
+      if(p.errors&&p.errors.length)html+=`<div data-css="margin-top:8px;font-size:11px;color:var(--danger)">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
+      html+=`<button class="btn btn-sm btn-primary" data-css="width:100%;margin-top:12px" data-on-click="_closeCollectAndDashboard">刷新仪表盘</button>`;
       _collectRunning=false;
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
     }
@@ -467,11 +468,11 @@ async function pollDashProgress(){
     el.style.display='inline';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      el.innerHTML=`<span style="background:var(--primary);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">${pct}%</span> ${p.current_product||''} ${p.products_done}/${p.products_total}`;
+      el.innerHTML=`<span data-css="background:var(--primary);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">${pct}%</span> ${p.current_product||''} ${p.products_done}/${p.products_total}`;
     }else if(p.phase==='detecting'){
-      el.innerHTML='<span style="background:#f59e0b;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">检测中</span>';
+      el.innerHTML='<span data-css="background:#f59e0b;color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">检测中</span>';
     }else if(p.phase==='notifying'){
-      el.innerHTML='<span style="background:var(--success);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">推送中</span>';
+      el.innerHTML='<span data-css="background:var(--success);color:#fff;border-radius:4px;padding:1px 6px;font-size:11px">推送中</span>';
     }
   }catch(e){}
 }
@@ -488,6 +489,7 @@ async function toggleDebug(){
 // ── System Logs ──
 let _logTimer=null;
 async function logs(){
+  const _seq=_navSeq;
   if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
 
   // Get log files and current level
@@ -497,23 +499,24 @@ async function logs(){
   ]);
   const files=fR.data?.files||[],curLevel=lR.data?.level||'INFO';
 
-  let fOpts=files.map(f=>`<option value="${f.name}">${f.name} (${f.size_human||''})</option>`).join('');
+  let fOpts=files.map(f=>`<option value="${escHtml(f.name)}">${escHtml(f.name)} (${escHtml(f.size_human||'')})</option>`).join('');
   if(!fOpts)fOpts='<option value="app.log">app.log</option><option value="access.log">access.log</option>';
 
+  if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`
     <div class="card"><div class="card-hd">📋 系统日志
-      <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)">
+      <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted)">
         当前级别: <span class="badge badge-${curLevel==='DEBUG'?'warn':'ok'}">${curLevel}</span>
-        <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'}" onclick="toggleDebug()">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
+        <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'}" data-on-click="toggleDebug">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
       </span>
     </div><div class="card-bd">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
-        <div class="form-group" style="margin-bottom:0;min-width:180px"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
-        <div class="form-group" style="margin-bottom:0;min-width:120px"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
-        <div class="form-group" style="margin-bottom:0;min-width:80px"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
-        <div class="form-group" style="margin-bottom:0"><label>&nbsp;</label><div style="display:flex;gap:6px"><button class="btn btn-sm btn-primary" onclick="loadLogs()">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" onclick="toggleAutoRefresh()">自动刷新</button></div></div>
+      <div data-css="display:flex;gap:8px;flex-wrap:wrap;align-items:end;margin-bottom:12px">
+        <div class="form-group" data-css="margin-bottom:0;min-width:180px"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
+        <div class="form-group" data-css="margin-bottom:0;min-width:120px"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
+        <div class="form-group" data-css="margin-bottom:0;min-width:80px"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
+        <div class="form-group" data-css="margin-bottom:0"><label>&nbsp;</label><div data-css="display:flex;gap:6px"><button class="btn btn-sm btn-primary" data-on-click="loadLogs">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button></div></div>
       </div>
-      <div id="logContent" style="background:#0d1117;color:#c9d1d9;border-radius:8px;padding:14px;font:12px/1.6 'SF Mono','Fira Code','Consolas',monospace;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">
+      <div id="logContent" data-css="background:#0d1117;color:#c9d1d9;border-radius:8px;padding:14px;font:12px/1.6 'SF Mono','Fira Code','Consolas',monospace;max-height:600px;overflow-y:auto;white-space:pre-wrap;word-break:break-all">
         点击「查询」加载日志...
       </div>
     </div></div>`;
@@ -539,7 +542,7 @@ async function loadLogs(){
         else if(l.includes('[WARNING]'))cls='#d2991d';
         else if(l.includes('[INFO]'))cls='#7ee787';
         else if(l.includes('[DEBUG]'))cls='var(--gray-muted)';
-        return `<span style="color:${cls}">${l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
+        return `<span data-css="color:${cls}">${l.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</span>`;
       }).join('\n');
       if(!lines.length)box.textContent='(无匹配日志)';
     }else{

@@ -201,6 +201,27 @@ def _migrate_snapshots_url_based_if_needed():
     )
 
 
+# 脚本只允许同源文件；样式暂时保留 'unsafe-inline'（模板里还有大量 style=""）。
+# 事件处理器已全部改为 data-on-* 委托，因此 script-src 不需要 'unsafe-inline'。
+CSP_POLICY = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self'; "
+    "img-src 'self' data:; "
+    "font-src 'self' data:; "
+    "connect-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'none'"
+)
+
+
+def apply_security_headers(response):
+    response.headers['Content-Security-Policy'] = CSP_POLICY
+    return response
+
+
 def create_app(config_path=None):
     app = Flask(__name__,
                 template_folder='src/web/templates',
@@ -372,6 +393,10 @@ def create_app(config_path=None):
         _get_access_logger().info(f'{ip} {method} {path} {status} {duration_ms}ms')
         response.headers['X-Response-Time-ms'] = str(duration_ms)
         return response
+
+    @app.after_request
+    def _security_headers(response):
+        return apply_security_headers(response)
 
     # Initialize database
     from src.models.database import init_db

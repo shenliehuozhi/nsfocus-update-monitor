@@ -7,7 +7,8 @@
 - script 顺序固定（经典脚本，跨文件共享全局作用域）；
 - 不许出现跨文件 const/let 重声明（浏览器会直接 SyntaxError，整页白屏）；
 - 不许出现重复的顶层 function 声明（后加载的定义会静默覆盖前一份）；
-- HTML / JS 模板里 163 个内联 on* 处理器必须都能找到定义；
+- 模板里不许再写内联 on*（CSP），事件统一走 data-on-* 委托且动作函数必须存在；
+- data-args 必须是 _dataArgs() 或 JSON 字面量（不能再用 escAttr 二次转义）；
 - 每个文件都能被解析（本机 esprima，CI 用 node --check）。
 """
 import re
@@ -111,23 +112,127 @@ def _defined_names() -> set[str]:
     return names
 
 
-def _inline_handler_calls(source: str) -> set[str]:
-    calls = set()
-    for attr in re.finditer(r'\bon[a-z]+="([^"]*)"', source):
-        for call in re.finditer(r'(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(', attr.group(1)):
-            calls.add(call.group(1))
-    return calls
+INLINE_HANDLER = re.compile(
+    r'\bon(?:click|change|input|keydown|keyup|submit|blur|focus|'
+    r'mouse\w+|dblclick|contextmenu|load|error)="')
+DATA_ON = re.compile(r'data-on-([a-z]+)="([^"]*)"')
+DATA_ARGS = re.compile(r"data-args='([^']*)'")
+DISPATCH_TYPES = {'click', 'change', 'input', 'keydown'}
 
 
-def test_inline_handlers_are_all_defined():
-    """内联属性既在 HTML 骨架里，也在 JS 模板字符串里生成。"""
-    source = INDEX_HTML.read_text(encoding='utf-8') + '\n' + js_source()
-    calls = _inline_handler_calls(source)
-    assert len(calls) > 100, f'只扫到 {len(calls)} 个处理器，正则可能失效了'
-    missing = sorted(c for c in calls
-                     if c not in _defined_names()
-                     and c not in JS_KEYWORDS | BROWSER_GLOBALS)
-    assert not missing, f'内联处理器找不到定义: {missing}'
+def test_no_inline_event_handlers():
+    """CSP script-src 'self' 会拦截内联属性；属性既可能在 HTML，也可能在 JS 模板里。"""
+    hits = []
+    for path in script_paths() + [INDEX_HTML]:
+        for m in INLINE_HANDLER.finditer(path.read_text(encoding='utf-8')):
+            line = path.read_text(encoding='utf-8').count('\n', 0, m.start()) + 1
+            hits.append(f'{path.name}:{line}')
+    assert not hits, f'仍有内联事件属性，请改用 data-on-*: {hits}'
+
+
+def _data_on_names(source: str) -> tuple[set[str], set[str]]:
+    names, types = set(), set()
+    for m in DATA_ON.finditer(source):
+        types.add(m.group(1))
+        value = m.group(2)
+        if value.startswith('${'):
+            names |= set(re.findall(r"'([A-Za-z_$][\w$]*)'", value))
+        else:
+            names.add(value)
+    return names, types
+
+
+def test_data_on_handlers_are_defined():
+    source = js_source() + '\n' + INDEX_HTML.read_text(encoding='utf-8')
+    names, types = _data_on_names(source)
+    assert len(names) > 150, f'只扫到 {len(names)} 个 data-on 处理器，正则可能失效了'
+    assert types <= DISPATCH_TYPES, f'委托未监听的类型: {types - DISPATCH_TYPES}'
+    defined = _defined_names()
+    missing = sorted(n for n in names if n not in defined)
+    assert not missing, f'data-on 动作找不到定义: {missing}'
+
+
+def test_data_args_are_escaped_once():
+    source = js_source()
+    assert 'escAttr(JSON.stringify' not in source, \
+        'data-args 的 JSON 必须用 _dataArgs()/escHtml，escAttr 会破坏 JSON.parse'
+    assert 'function _dataArgs(' in source, '缺少 _dataArgs() 辅助函数'
+    bad = []
+    for m in DATA_ARGS.finditer(source):
+        value = m.group(1)
+        if value.startswith('${_dataArgs(') or value.startswith('['):
+            continue
+        bad.append(f'{source.count(chr(10), 0, m.start()) + 1}: {value[:60]}')
+    assert not bad, f'data-args 不是 _dataArgs()/JSON 字面量: {bad}'
+
+
+# 占位符只有写成字符串才会被 _actArg() 解析；裸标识符在模板求值时就抛 ReferenceError
+BARE_ARG_PLACEHOLDER = re.compile(r'[\s(,]\$(?:el|value|checked|event)\b')
+
+
+def test_data_args_placeholders_are_strings():
+    """裸写 $el/$value/$checked 会让页面函数在写 #app 前抛错，表现为导航点击无反应。"""
+    bad = []
+    for path in script_paths():
+        src = path.read_text(encoding='utf-8')
+        for m in BARE_ARG_PLACEHOLDER.finditer(src):
+            bad.append(f'{path.name}:{src.count(chr(10), 0, m.start()) + 1}: {m.group(0).strip()}')
+    assert not bad, f'data-args 占位符必须写成字符串（如 "$el"）: {bad}'
+
+
+STYLE_PROP_ASSIGN = re.compile(r"\.style\s*=\s*['\"]")
+
+
+def test_no_style_property_assignment():
+    """el.style = '...' 静默无效（style 是只读对象），必须写 el.style.cssText。"""
+    bad = []
+    for path in script_paths():
+        src = path.read_text(encoding='utf-8')
+        for m in STYLE_PROP_ASSIGN.finditer(src):
+            bad.append(f'{path.name}:{src.count(chr(10), 0, m.start()) + 1}')
+    assert not bad, f'请改用 .style.cssText = ...: {bad}'
+
+
+# 属性名后紧跟 = 与引号；排除 el.style=... 的 CSSOM 赋值（前面有 .）
+INLINE_STYLE = re.compile(r'''(?<![.\w-])style\s*=\s*["']''')
+DATA_CSS = re.compile(r'''\bdata-css\s*=\s*["']''')
+DATA_CSS_MAX = 1114  # 只减不增：新代码必须写 CSS 类
+
+
+def test_no_inline_style_attributes():
+    """CSP style-src 'self' 会拦截内联 style 属性；历史样式暂存 data-css，由 core.js 应用。"""
+    hits = []
+    for path in script_paths() + [INDEX_HTML]:
+        text = path.read_text(encoding='utf-8')
+        for m in INLINE_STYLE.finditer(text):
+            hits.append(f'{path.name}:{text.count(chr(10), 0, m.start()) + 1}')
+    assert not hits, f'仍有内联 style 属性，请改用 CSS 类: {hits}'
+
+
+def test_data_css_usage_only_shrinks():
+    source = js_source() + '\n' + INDEX_HTML.read_text(encoding='utf-8')
+    n = len(DATA_CSS.findall(source))
+    assert n <= DATA_CSS_MAX, (
+        f'data-css 从 {DATA_CSS_MAX} 涨到 {n}：新代码请写 CSS 类，'
+        'data-css 只用于历史模板且只减不增'
+    )
+
+
+def test_data_css_applier_present():
+    source = js_source()
+    assert 'function _applyDataCss(' in source, '缺少 data-css 应用函数'
+    assert "querySelectorAll('[data-css]')" in source
+    assert 'MutationObserver' in source, 'data-css 需要监听动态插入的节点'
+
+
+def test_no_runtime_style_injection():
+    source = js_source()
+    for bad in (
+        "createElement('style')", 'createElement("style")',
+        "setAttribute('style'", 'setAttribute("style"',
+        '.insertRule(', 'adoptedStyleSheets',
+    ):
+        assert bad not in source, f'CSP style-src 禁止运行时注入样式: {bad}'
 
 
 def test_bootstrap_dependencies_defined_before_it_runs():

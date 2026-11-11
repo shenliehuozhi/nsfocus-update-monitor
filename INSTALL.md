@@ -119,6 +119,7 @@ sudo docker run -d \
 | `MONITOR_PORT` | 否 | `9999` | Flask 监听端口 |
 | `MONITOR_SECRET_KEY` | 强烈建议 | 镜像内置占位 | 加密/签名密钥 |
 | `MONITOR_JWT_SECRET` | 强烈建议 | 镜像内置占位 | JWT 签名密钥 |
+| `MONITOR_COOKIE_SECURE` | 否 | `0` | 设为 `1` 时会话 Cookie 加 `Secure`（HTTPS/反向代理终止 TLS 时启用） |
 | `MONITOR_DATA_DIR` | 否 | `/app/data` | SQLite 数据库 + 初始密码文件目录 |
 | `MONITOR_LOG_DIR` | 否 | `/app/logs` | 应用日志目录 |
 | `MONITOR_DEBUG` | 否 | `false` | Flask debug 模式 |

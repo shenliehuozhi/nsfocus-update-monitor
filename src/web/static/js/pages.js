@@ -20,7 +20,7 @@ function _createFloatLog(logId, title, opts){
   const el = document.createElement('div');
   el.id = logId;
   el.style.cssText = FLOAT_LOG_CSS;
-  el.innerHTML = `<div style="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span style="flex:1">${title}</span><button onclick="document.getElementById('${logId}').style.display='none'" style="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div ${bodyAttrs} style="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
+  el.innerHTML = `<div data-css="display:flex;align-items:center;padding:10px 14px;border-bottom:1px solid var(--gray-border);font-size:12px;font-weight:600;color:var(--gray-disabled);gap:8px"><span data-css="flex:1">${title}</span><button data-on-click="_hideById" data-args='${_dataArgs(logId)}' data-css="background:none;border:none;cursor:pointer;color:var(--gray-disabled);font-size:16px;padding:0;line-height:1">×</button></div><div ${bodyAttrs} data-css="padding:10px 14px;max-height:200px;overflow-y:auto;background:var(--gray-bg);font-family:monospace;font-size:11px;color:var(--gray-disabled)"></div>`;
   return el;
 }
 
@@ -89,35 +89,37 @@ async function _cancelDisc(){
   }
 }
 function sesBadge(p,m){
-  if(p==='discover')return'<span class="badge" style="background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe">发现</span>';
-  if(m==='vm')return'<span class="badge" style="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc">采集-虚拟化</span>';
+  if(p==='discover')return'<span class="badge" data-css="background:#f5f3ff;color:#5b21b6;border:1px solid #ddd6fe">发现</span>';
+  if(m==='vm')return'<span class="badge" data-css="background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc">采集-虚拟化</span>';
   return'<span class="badge badge-blue">采集-标品</span>';
 }
 async function sessions(){
+  const _seq=_navSeq;
   const r=await api('/sessions');const my=r.data?.my_sessions||[],pool=r.data?.pool_status||{};
   let rows=my.map(s=>{
     let hbInfo='—';
     if(s.heartbeat_status){
       const hbColor=s.heartbeat_status==='正常'?'ok':s.heartbeat_status==='过期'?'err':s.heartbeat_status==='污染'?'warn':'err';
-      hbInfo=`<span class="badge badge-${hbColor}" style="cursor:pointer" onclick="showHbHistory(${s.id})" title="点击查看心跳历史">${s.heartbeat_status}</span>`;
+      hbInfo=`<span class="badge badge-${hbColor}" data-css="cursor:pointer" data-on-click="showHbHistory" data-args='${_dataArgs(s.id)}' title="点击查看心跳历史">${s.heartbeat_status}</span>`;
     }
     let hbTime=s.last_heartbeat_at?fmtTZ(s.last_heartbeat_at,true):'—';
-    return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td style="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" onclick="validateSes(${s.id})">验证</button> <button class="btn btn-soft-danger btn-xs" onclick="delSes(${s.id})">删除</button></td></tr>`;
+    return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td data-css="font-size:11px">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" data-on-click="validateSes" data-args='${_dataArgs(s.id)}'>验证</button> <button class="btn btn-soft-danger btn-xs" data-on-click="delSes" data-args='${_dataArgs(s.id)}'>删除</button></td></tr>`;
   }).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span style="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span style="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary" onclick="openAddSesModal()" style="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
+  if(navStale(_seq))return;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span data-css="color:var(--muted);font-weight:400;font-size:12px">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span data-css="color:var(--danger)">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary" data-on-click="openAddSesModal" data-css="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
   <!-- 健康度概览 -->
-  <div style="display:flex;gap:12px;margin-bottom:16px">
-    <div style="flex:1;background:var(--success-light);border:1px solid var(--success-border);border-radius:8px;padding:12px 16px">
-      <div style="font-size:22px;font-weight:700;color:var(--success-text)">${pool.active||0}</div>
-      <div style="font-size:11px;color:#166534">活跃</div>
+  <div data-css="display:flex;gap:12px;margin-bottom:16px">
+    <div data-css="flex:1;background:var(--success-light);border:1px solid var(--success-border);border-radius:8px;padding:12px 16px">
+      <div data-css="font-size:22px;font-weight:700;color:var(--success-text)">${pool.active||0}</div>
+      <div data-css="font-size:11px;color:#166534">活跃</div>
     </div>
-    <div style="flex:1;background:var(--danger-light);border:1px solid var(--danger-light);border-radius:8px;padding:12px 16px">
-      <div style="font-size:22px;font-weight:700;color:var(--danger)">${pool.expired||0}</div>
-      <div style="font-size:11px;color:var(--danger-text)">失效</div>
+    <div data-css="flex:1;background:var(--danger-light);border:1px solid var(--danger-light);border-radius:8px;padding:12px 16px">
+      <div data-css="font-size:22px;font-weight:700;color:var(--danger)">${pool.expired||0}</div>
+      <div data-css="font-size:11px;color:var(--danger-text)">失效</div>
     </div>
-    <div style="flex:1;background:#fefce8;border:1px solid #fef08a;border-radius:8px;padding:12px 16px">
-      <div style="font-size:22px;font-weight:700;color:#ca8a04">${pool.total-pool.active-pool.expired||0}</div>
-      <div style="font-size:11px;color:#a16207">未知</div>
+    <div data-css="flex:1;background:#fefce8;border:1px solid #fef08a;border-radius:8px;padding:12px 16px">
+      <div data-css="font-size:22px;font-weight:700;color:#ca8a04">${pool.total-pool.active-pool.expired||0}</div>
+      <div data-css="font-size:11px;color:#a16207">未知</div>
     </div>
   </div>
 
@@ -125,41 +127,58 @@ async function sessions(){
   <div id="hbModal"></div>`;}
 window._sesPurpose='collect';window._sesMode='standard';
 
+function _etPurposeChanged(el){
+  const m=document.getElementById('etM');
+  m.disabled=el.value==='discover';
+  if(el.value==='discover')m.value='standard';
+}
+async function _saveSessionEdit(id,mid,p,m){
+  const newP=document.getElementById('etP').value||p, newM=document.getElementById('etM').value||m;
+  _removeById(mid);
+  const r=await api(`/sessions/${id}`,{method:'PATCH',body:JSON.stringify({protocol:newP,mode:newM})});
+  if(r.code===0){toast('已更新');sessions();}else toast(r.message||'失败','error');
+}
+function _addSelectedChannel(){
+  const v=parseInt(document.getElementById('newChanSel').value);
+  if(v&&!(window._selChans||[]).includes(v)){window._selChans.push(v);renderChanTags();updateEmailFields();}
+  _removeById('chanSelModal');
+}
+
 function openAddSesModal(){
   const existing=document.getElementById('addSesModal');
   if(existing)existing.remove();
   const m=document.createElement('div');
   m.id='addSesModal';
-  m.innerHTML=`<div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)this.remove()">
-    <div class="card" style="width:420px" onclick="event.stopPropagation()">
-      <div class="card-hd">添加 Session <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div>
-      <div class="card-bd" style="padding:16px">
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;color:var(--muted);margin-bottom:4px">PHPSESSID <span style="color:#d97706">★ 必填</span></div>
-          <input id="addSesCookie" placeholder="粘贴 PHPSESSID 值" style="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
+  m.innerHTML=`<div data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" data-on-click="_removeSelf" data-self>
+    <div class="card" data-css="width:420px" >
+      <div class="card-hd">添加 Session <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div>
+      <div class="card-bd" data-css="padding:16px">
+        <div data-css="margin-bottom:12px">
+          <div data-css="font-size:11px;color:var(--muted);margin-bottom:4px">PHPSESSID <span data-css="color:#d97706">★ 必填</span></div>
+          <input id="addSesCookie" placeholder="粘贴 PHPSESSID 值" data-css="width:100%;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;box-sizing:border-box">
         </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
+        <div data-css="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;margin-bottom:12px">
           <div>
-            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">用途</div>
-            <div style="display:flex;background:var(--gray-border);border-radius:8px;padding:3px">
-              <button id="modalBtnCollect" onclick="setPurpose('collect')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)">采集</button>
-              <button id="modalBtnDiscover" onclick="setPurpose('discover')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-muted)">发现</button>
+            <div data-css="font-size:10px;color:var(--muted);margin-bottom:3px">用途</div>
+            <div data-css="display:flex;background:var(--gray-border);border-radius:8px;padding:3px">
+              <button id="modalBtnCollect" data-on-click="setPurpose" data-args='${_dataArgs('collect')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)">采集</button>
+              <button id="modalBtnDiscover" data-on-click="setPurpose" data-args='${_dataArgs('discover')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-muted)">发现</button>
             </div>
           </div>
           <div id="modalModeRow">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:3px">格式 <span style="font-weight:400;font-size:9px">标品稳定，虚拟化预留</span></div>
-            <div style="display:flex;background:var(--gray-border);border-radius:8px;padding:3px">
-              <button id="modalBtnStandard" onclick="setMode('standard')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)">标品</button>
-              <button id="modalBtnVm" onclick="setMode('vm')" style="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-disabled);text-decoration:line-through" title="虚拟化暂未支持，预留">虚拟化</button>
+            <div data-css="font-size:10px;color:var(--muted);margin-bottom:3px">格式 <span data-css="font-weight:400;font-size:9px">标品稳定，虚拟化预留</span></div>
+            <div data-css="display:flex;background:var(--gray-border);border-radius:8px;padding:3px">
+              <button id="modalBtnStandard" data-on-click="setMode" data-args='${_dataArgs('standard')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.15)">标品</button>
+              <button id="modalBtnVm" data-on-click="setMode" data-args='${_dataArgs('vm')}' data-css="padding:5px 14px;border:none;border-radius:6px;font-size:12px;font-weight:500;cursor:pointer;background:transparent;color:var(--gray-disabled);text-decoration:line-through" title="虚拟化暂未支持，预留">虚拟化</button>
             </div>
           </div>
         </div>
-        <div style="font-size:11px;color:var(--gray-muted);background:var(--success-light);border:1px solid var(--success-border);border-radius:6px;padding:8px 10px;margin-bottom:14px;line-height:1.6">
-          <span style="font-weight:600">采集</span>：获取产品升级包（规则包 / 系统包等）用于变更监控<br>
-          <span style="font-weight:600">发现</span>：探测绿盟产品线变化，自动识别新出现的产品和包类型，默认已内置当前全量产品及类型，可不添加。<span style="color:var(--danger);font-weight:600">注意：发现过程可能触发证书上传页面，所有升级包会被误判为虚拟化包；若需探测产品目录结构变化，请单独添加一个专用 session 用于发现。</span>
+        <div data-css="font-size:11px;color:var(--gray-muted);background:var(--success-light);border:1px solid var(--success-border);border-radius:6px;padding:8px 10px;margin-bottom:14px;line-height:1.6">
+          <span data-css="font-weight:600">采集</span>：获取产品升级包（规则包 / 系统包等）用于变更监控<br>
+          <span data-css="font-weight:600">发现</span>：探测绿盟产品线变化，自动识别新出现的产品和包类型，默认已内置当前全量产品及类型，可不添加。<span data-css="color:var(--danger);font-weight:600">注意：发现过程可能触发证书上传页面，所有升级包会被误判为虚拟化包；若需探测产品目录结构变化，请单独添加一个专用 session 用于发现。</span>
         </div>
-        <button id="addSesConfirm" class="btn btn-soft-primary" style="width:100%" onclick="confirmAddSes()">验证并添加</button>
-        <div style="margin-top:10px;font-size:11px;color:var(--muted);text-align:center">获取方式：浏览器登录 update.nsfocus.com → F12 开发者工具 → Application → Cookies → 复制 PHPSESSID</div>
+        <button id="addSesConfirm" class="btn btn-soft-primary" data-css="width:100%" data-on-click="confirmAddSes">验证并添加</button>
+        <div data-css="margin-top:10px;font-size:11px;color:var(--muted);text-align:center">获取方式：浏览器登录 update.nsfocus.com → F12 开发者工具 → Application → Cookies → 复制 PHPSESSID</div>
       </div>
     </div>
   </div>`;
@@ -218,10 +237,10 @@ async function editSesType(id,curP,curM){
   const overlay=document.createElement('div');
   overlay.className='confirm-modal active';
   overlay.id=mid;
-  overlay.innerHTML=`<div class="confirm-box" style="width:400px">
+  overlay.innerHTML=`<div class="confirm-box" data-css="width:400px">
     <div class="confirm-title">修改 Session 类型</div>
-    <div style="display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px">
-      <select class="dd" id="etP" onchange="document.getElementById('etM').disabled=this.value==='discover';if(this.value==='discover')document.getElementById('etM').value='standard';">
+    <div data-css="display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px">
+      <select class="dd" id="etP" data-on-change="_etPurposeChanged" data-args='${_dataArgs('$el')}'>
         <option value="discover" ${p==='discover'?'selected':''}>发现</option>
         <option value="collect" ${p==='collect'?'selected':''}>采集</option>
       </select>
@@ -231,8 +250,8 @@ async function editSesType(id,curP,curM){
       </select>
     </div>
     <div class="confirm-btns">
-      <button class="confirm-btn-cancel" onclick="document.getElementById('${mid}').remove()">取消</button>
-      <button class="confirm-btn-ok" onclick="(async()=>{const newP=document.getElementById('etP').value||'${p}',newM=document.getElementById('etM').value||'${m}';document.getElementById('${mid}').remove();const r=await api('/sessions/${id}',{method:'PATCH',body:JSON.stringify({protocol:newP,mode:newM})});if(r.code===0){toast('已更新');sessions();}else toast(r.message||'失败','error');})()">确认</button>
+      <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs(mid)}'>取消</button>
+      <button class="confirm-btn-ok" data-on-click="_saveSessionEdit" data-args='${_dataArgs(id, mid, p, m)}'>确认</button>
     </div>
   </div>`;
   overlay.addEventListener('click',(e)=>{if(e.target===overlay)overlay.remove();});
@@ -248,12 +267,12 @@ async function showHbHistory(sid){
     const labelMap={'正常':'正常','过期':'过期','污染':'污染','错误':'错误','ok':'正常','expired':'过期'};
     const stColor=stMap[h.status]||'warn';
     const label=labelMap[h.status]||h.status||'未知';
-    return `<tr><td style="font-size:11px">${fmtTZ(h.created_at,true)||h.created_at||''}</td><td><span class="badge badge-${stColor}">${label}</span></td><td>${h.latency_ms||0}ms</td><td style="font-size:11px">${h.error_msg||h.error_message||'—'}</td></tr>`;
+    return `<tr><td data-css="font-size:11px">${fmtTZ(h.created_at,true)||h.created_at||''}</td><td><span class="badge badge-${stColor}">${label}</span></td><td>${h.latency_ms||0}ms</td><td data-css="font-size:11px">${h.error_msg||h.error_message||'—'}</td></tr>`;
   }).join('');
   document.getElementById('hbModal').innerHTML=`
-    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)document.getElementById('hbModal').innerHTML=''">
-      <div class="card" style="width:600px;max-height:80vh;overflow-y:auto" onclick="event.stopPropagation()">
-        <div class="card-hd">💓 心跳历史 — Session #${sid} <button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="document.getElementById('hbModal').innerHTML=''">关闭</button></div>
+    <div data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" data-on-click="_clearHtmlById" data-self data-args='${_dataArgs('hbModal')}'>
+      <div class="card" data-css="width:600px;max-height:80vh;overflow-y:auto" >
+        <div class="card-hd">💓 心跳历史 — Session #${sid} <button class="btn btn-xs btn-outline" data-css="margin-left:auto" data-on-click="_clearHtmlById" data-args='${_dataArgs('hbModal')}'>关闭</button></div>
         <div class="card-bd pt0"><table><tr><th>时间</th><th>状态</th><th>延迟</th><th>说明</th></tr>${rows||'<tr><td colspan="4" class="empty">暂无心跳记录</td></tr>'}</table></div>
       </div>
     </div>`;
@@ -263,34 +282,36 @@ async function showHbHistory(sid){
 let editingChId=0;let chList=[];let _origChConfig={};
 function _maskWebhook(url){if(!url)return'';return url.replace(/key=[^&]+/,'key=********');}
 async function channels(){
+  const _seq=_navSeq;
   const r=await api('/channels');chList=r.data||[];
   const typeMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','apprise':'Apprise','email':'邮件'};
   const typeCNMap={'wecom':'企微','dingtalk':'钉钉','feishu':'飞书','email':'邮件','apprise':'Apprise'};
-let rows=chList.map(c=>{let typeLabel=typeMap[c.type]||c.type;let extra='';if(c.type==='email'&&c.config){extra=`<br><span style="font-size:11px;color:var(--muted)">SMTP:${c.config.smtp_host||'-'}:${c.config.smtp_port||'-'} 发件人:${c.config.smtp_user||'-'}</span>`;}
+let rows=chList.map(c=>{let typeLabel=escHtml(typeMap[c.type]||c.type);let extra='';if(c.type==='email'&&c.config){extra=`<br><span data-css="font-size:11px;color:var(--muted)">SMTP:${escHtml(c.config.smtp_host||'-')}:${escHtml(c.config.smtp_port||'-')} 发件人:${escHtml(c.config.smtp_user||'-')}</span>`;}
   // 5 个渠道(dingtalk/feishu/wecom/apprise/email)都支持「📋 日志」按钮 — 测试按钮触发后写入 /tmp/<type>_test_<id>.log,失败时常驻可见
-  const testLogBtn=`<button class="btn btn-xs btn-outline" onclick="showTestLog(${c.id},'${escAttr(c.name)}')">📋 日志</button>`;
-  return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${c.name}${extra}</td><td>${chTypeChip(c.type)}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openChModal(${c.id})">编辑</button> <button class="btn btn-xs btn-success" onclick="testCh(${c.id},'${c.type}')">测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" onclick="delCh(${c.id})">删除</button></td></tr>`;}).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openChModal()">+ 添加渠道</button><table class="mt16"><tr><th style="width:50px">ID</th><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
+  const testLogBtn=`<button class="btn btn-xs btn-outline" data-on-click="showTestLog" data-args='${_dataArgs(c.id, c.name)}'>📋 日志</button>`;
+  return `<tr><td data-css="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${escHtml(c.name)}${extra}</td><td>${chTypeChip(c.type)}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openChModal" data-args='${_dataArgs(c.id)}'>编辑</button> <button class="btn btn-xs btn-success" data-on-click="testCh" data-args='${_dataArgs(c.id, c.type)}'>测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" data-on-click="delCh" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`;}).join('');
+  if(navStale(_seq))return;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openChModal">+ 添加渠道</button><table class="mt16"><tr><th data-css="width:50px">ID</th><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
 function chTypeCh(){
   const t=document.getElementById('cht').value,d=document.getElementById('chcfg');
   d.innerHTML=t==='email'?`
     <div class="cfg-row">
       <div class="form-group">
         <label>邮箱模板</label>
-        <select class="dd" id="chtmpl" onchange="onEmailTmplChange()">
+        <select class="dd" id="chtmpl" data-on-change="onEmailTmplChange">
           ${Object.entries(EMAIL_PROVIDERS).map(([k,p])=>{
             const detail = p.host ? `${p.host}:${p.port}` : '';
-            return `<option value="${k}">${p.name}${detail ? ' ('+detail+')' : ''}</option>`;
+            return `<option value="${k}">${escHtml(p.name)}${detail ? ' ('+escHtml(detail)+')' : ''}</option>`;
           }).join('')}
         </select>
       </div>
     </div>
-    <p class="cfg-hint" style="margin-top:-6px;color:#c27800;font-weight:600">⚠️ 建议使用公司邮箱(@nsfocus.com),可避免客户收到邮件时误判为钓鱼邮件。163/QQ 等公共邮箱发出的通知,因发件域名与公司不匹配,容易被客户质疑真实性。</p>
+    <p class="cfg-hint" data-css="margin-top:-6px;color:#c27800;font-weight:600">⚠️ 建议使用公司邮箱(@nsfocus.com),可避免客户收到邮件时误判为钓鱼邮件。163/QQ 等公共邮箱发出的通知,因发件域名与公司不匹配,容易被客户质疑真实性。</p>
     <div class="cfg-row">
       <div class="form-group"><label>SMTP</label><input id="sh"></div>
       <div class="form-group">
         <label>加密方式</label>
-        <select class="dd" id="senc" onchange="onEmailEncChange()">
+        <select class="dd" id="senc" data-on-change="onEmailEncChange">
           <option value="ssl">SSL (端口 465)</option>
           <option value="starttls">STARTTLS (端口 587)</option>
         </select>
@@ -298,7 +319,7 @@ function chTypeCh(){
     </div>
     <div class="cfg-row">
       <div class="form-group">
-        <label>端口 <span style="font-size:10px;color:var(--muted)">根据加密方式自动填,通常无需修改</span></label>
+        <label>端口 <span data-css="font-size:10px;color:var(--muted)">根据加密方式自动填,通常无需修改</span></label>
         <input id="sp" value="465">
       </div>
     </div>
@@ -306,32 +327,32 @@ function chTypeCh(){
       <div class="form-group"><label>用户</label><input id="su" placeholder="user@example.com"></div>
       <div class="form-group"><label>密码</label><input id="sw" type="password" placeholder="留空则不修改"></div>
     </div>
-    <p class="cfg-hint" style="margin-top:-6px;color:#c27800">⚠️ 用户名必须填写完整邮箱地址(含 @domain 后缀),SMTP 服务器会用它作为登录账号和发件人。</p>
-    <p id="emailTmplHint" class="cfg-hint" style="margin-top:-6px;color:var(--gray-muted)"></p>
+    <p class="cfg-hint" data-css="margin-top:-6px;color:#c27800">⚠️ 用户名必须填写完整邮箱地址(含 @domain 后缀),SMTP 服务器会用它作为登录账号和发件人。</p>
+    <p id="emailTmplHint" class="cfg-hint" data-css="margin-top:-6px;color:var(--gray-muted)"></p>
     <div class="cfg-row">
       <div class="form-group"><label>发件名</label><input id="sf" value="绿盟升级通知"></div>
     </div>
-    <p class="cfg-hint" style="margin-top:-6px;color:var(--gray-muted)">收件人由订阅规则的"客户邮箱"决定,不在此处配置。手动推送时可指定收件人。</p>
+    <p class="cfg-hint" data-css="margin-top:-6px;color:var(--gray-muted)">收件人由订阅规则的"客户邮箱"决定,不在此处配置。手动推送时可指定收件人。</p>
     <div class="cfg-row">
-      <div class="form-group"><label>每小时上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div>
-      <div class="form-group"><label>每天上限 <span style="font-size:10px;color:var(--muted)">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div>
+      <div class="form-group"><label>每小时上限 <span data-css="font-size:10px;color:var(--muted)">0=不限</span></label><input id="seh" type="number" value="0" min="0"></div>
+      <div class="form-group"><label>每天上限 <span data-css="font-size:10px;color:var(--muted)">0=不限</span></label><input id="sed" type="number" value="0" min="0"></div>
     </div>
   ` : t==='dingtalk' ? `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://oapi.dingtalk.com/robot/send?access_token=xxx"></div>
     <div class="form-group"><label>Secret (加签密钥 - 可选)</label><input id="cs" placeholder="留空则不修改;后台启用加签时必填"></div>
-    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 钉钉机器人后台的安全设置 <strong>3 选 1,推荐选「加签」</strong></p>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">
+    <p class="cfg-hint" data-css="margin-top:8px;color:#c27800;font-weight:600">🔐 钉钉机器人后台的安全设置 <strong>3 选 1,推荐选「加签」</strong></p>
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">
       钉钉的 Secret 是<strong>可选字段</strong>:
       <br>· 后台 <strong>未勾选「加签」</strong> → Secret 留空也可以推送(走裸 webhook)
       <br>· 后台 <strong>勾选了「加签」</strong> → Secret 必须填写,否则推送被服务端拒收(errcode 300024 / 310000)
     </p>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">
       操作步骤(选加签时):
       钉钉群 → 群设置 → 智能群助手 → 添加机器人 → 自定义 →
       <strong>安全设置勾选「加签」</strong>(勾上后会显示一段密钥串)→
       把这段密钥<strong>完整复制到上方 Secret 输入框</strong>。
     </p>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">
       💡 <strong>Secret 留空的 fallback 风险</strong>:若后台未启用加签,推送仍会成功,
       但 webhook URL 本身没加密保护 — 任何拿到 URL 的人都能冒充机器人推送。建议至少启用
       「加签」或「IP 白名单」中的一种。
@@ -339,19 +360,19 @@ function chTypeCh(){
   ` : t==='feishu' ? `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="https://open.feishu.cn/open-apis/bot/v2/hook/xxx"></div>
     <div class="form-group"><label>Secret (签名校验密钥 - 可选)</label><input id="cs" placeholder="留空则不修改;后台启用签名校验时必填"></div>
-    <p class="cfg-hint" style="margin-top:8px;color:#c27800;font-weight:600">🔐 飞书机器人后台的安全设置 <strong>3 选 1,推荐选「签名校验」</strong></p>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">
+    <p class="cfg-hint" data-css="margin-top:8px;color:#c27800;font-weight:600">🔐 飞书机器人后台的安全设置 <strong>3 选 1,推荐选「签名校验」</strong></p>
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">
       飞书的 Secret 是<strong>可选字段</strong>:
       <br>· 后台 <strong>未勾选「签名校验」</strong> → Secret 留空也可以推送(走裸 webhook)
       <br>· 后台 <strong>勾选了「签名校验」</strong> → Secret 必须填写,否则推送被服务端拒收(errcode 230xxx)
     </p>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">
       操作步骤(选签名校验时):
       飞书群 → 群设置 → 群机器人 → 添加机器人 → 自定义机器人 →
       <strong>安全设置勾选「签名校验」</strong>(勾上后会显示一段密钥串)→
       把这段密钥<strong>完整复制到上方 Secret 输入框</strong>。
     </p>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">
       💡 <strong>Secret 留空的 fallback 风险</strong>:若后台未启用签名校验,推送仍会成功,
       但 webhook URL 本身没加密保护 — 任何拿到 URL 的人都能冒充机器人推送。建议至少启用
       「签名校验」或「IP 白名单」中的一种。
@@ -359,7 +380,7 @@ function chTypeCh(){
   ` : `
     <div class="form-group"><label>Webhook URL</label><input id="cw" placeholder="留空则不修改"></div>
     <div class="form-group"><label>Secret (可选)</label><input id="cs" placeholder="留空则不修改"></div>
-    <p class="cfg-hint" style="margin-top:-4px;color:var(--gray-muted)">企业微信机器人为可选,后台有密钥就填,没有就留空。当前<strong>不要配置 Secret</strong>(字段为预留位,本项目<strong>未实现</strong>企业微信机器人加签验签;企业微信机器人相比钉钉暂无强制安全设置,无需此密钥)。</p>
+    <p class="cfg-hint" data-css="margin-top:-4px;color:var(--gray-muted)">企业微信机器人为可选,后台有密钥就填,没有就留空。当前<strong>不要配置 Secret</strong>(字段为预留位,本项目<strong>未实现</strong>企业微信机器人加签验签;企业微信机器人相比钉钉暂无强制安全设置,无需此密钥)。</p>
   `;
   // Reset template selection when channel type changes
   if(t==='email'){document.getElementById('chtmpl').value='custom';onEmailTmplChange();}
@@ -420,14 +441,14 @@ function openChModal(id){
   editingChId=id||0;
   const title=id?'编辑渠道':'添加渠道';
   const typeOptionsHtml=['wecom','dingtalk','feishu','apprise','email'].map(t=>{
-    return `<div class="ch-type-option" data-t="${t}" style="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:6px" onmouseenter="if(!this.dataset.selected)this.style.background='var(--primary-fade)'" onmouseleave="if(!this.dataset.selected)this.style.background='transparent'" onclick="selectChType('${t}')">${chTypeChip(t)}</div>`;
+    return `<div class="ch-type-option" data-t="${t}" data-css="display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;border-radius:6px" data-on-click="selectChType" data-args='${_dataArgs(t)}'>${chTypeChip(t)}</div>`;
   }).join('');
-  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div id="chTypeDropdown" style="position:relative"><div id="chTypeCurrent" onclick="toggleChTypeDropdown()" style="cursor:pointer;min-height:22px"></div><div id="chTypeMenu" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:10;padding:4px">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
+  const formHtml=`<div class="grid2"><div class="form-group"><label>名称</label><input id="chn"></div><div class="form-group"><label>类型</label><div id="chTypeDropdown" data-css="position:relative"><div id="chTypeCurrent" data-on-click="toggleChTypeDropdown" data-css="cursor:pointer;min-height:22px"></div><div id="chTypeMenu" data-css="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.12);z-index:10;padding:4px">${typeOptionsHtml}</div><input type="hidden" id="cht" value="wecom"></div></div></div><div id="chcfg"></div>`;
   const modal=document.createElement('div');
   modal.id='chModalWrap';
-  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${title} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px">${formHtml}<div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveCh()">保存</button><button class="btn btn-outline" onclick="document.getElementById('chModalWrap').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" data-css="width:480px;max-height:90vh;overflow-y:auto" ><div class="card-hd">${title} <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px">${formHtml}<div data-css="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" data-css="flex:1" data-on-click="saveCh">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   // 初始化"当前选中"的 chip 显示(无 id 时默认 wecom,有 id 时由 if 分支处理)
   if(!id){selectChType('wecom',false);}
@@ -550,13 +571,13 @@ async function showTestLog(id, name){
   const m=document.createElement('div');
   m.id='testLogModal';
   m.className='confirm-modal active';
-  m.innerHTML=`<div class="confirm-box" style="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+  m.innerHTML=`<div class="confirm-box" data-css="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
     <div class="confirm-icon">📋</div>
     <div class="confirm-title">测试日志 - ${escHtml(name)}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(logPath)} | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
-    <pre style="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
-    <div class="confirm-btns" style="margin-top:14px">
-      <button class="confirm-btn-cancel" onclick="document.getElementById('testLogModal').remove()">关闭</button>
+    <div data-css="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(logPath)} | ${r.code===0 ? new Date(r.data.mtime*1000).toLocaleString('zh-CN') : ''}</div>
+    <pre data-css="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
+    <div class="confirm-btns" data-css="margin-top:14px">
+      <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs('testLogModal')}'>关闭</button>
     </div>
   </div>`;
   m.addEventListener('click', e=>{if(e.target===m)m.remove();});
@@ -566,14 +587,16 @@ async function delCh(id){await confirmAct('删除此渠道？', async ()=>{const
 // ── Customers ──
 let custProdOpts='';
 async function customers(){
+  const _seq=_navSeq;
   const r=await api('/customers');const list=r.data||[];
   // Pre-load product options
   const oR=await api('/options/products').catch(()=>({data:['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)']}));
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   custProdOpts=`<option value="">全部产品</option>`+PROD.map(p=>`<option>${p}</option>`).join('');
 
-  let rows=list.map(c=>`<tr><td style="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td style="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.attachment_max_mb?'<span style="font-size:11px;color:var(--muted)">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" onclick="openCModal(${c.id},'${escAttr(c.name)}','${escAttr(c.company||'')}','${escAttr(c.email||'')}','${escAttr(c.phone||'')}','${escAttr((c.owned_products||[]).join('|'))}',${c.attachment_max_mb||0})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delC(${c.id})">删除</button></td></tr>`).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openCModal()">+ 添加客户</button><table class="mt16"><tr><th style="width:50px">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
+  let rows=list.map(c=>`<tr><td data-css="color:var(--muted);font-size:12px;width:50px">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td data-css="font-size:11px">${esc((c.owned_products||[]).join(', '))}</td><td>${c.attachment_max_mb?'<span data-css="font-size:11px;color:var(--muted)">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" data-on-click="openCModal" data-args='${_dataArgs(c.id, c.name, c.company||'', c.email||'', c.phone||'', (c.owned_products||[]).join('|'), c.attachment_max_mb||0)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delC" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`).join('');
+  if(navStale(_seq))return;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openCModal">+ 添加客户</button><table class="mt16"><tr><th data-css="width:50px">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
 function removeCProd(btn){
   btn.closest('div').remove();
@@ -603,7 +626,7 @@ function addCProd(p){
   }
   let c=document.getElementById('cprods');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
-  d.innerHTML=`<select class="cp2 sel-sm dd" style="flex:1;min-width:0" onchange="onCProdChange(this)">${custProdOpts}</select><button class="btn btn-danger btn-xs" onclick="removeCProd(this)">×</button>`;
+  d.innerHTML=`<select class="cp2 sel-sm dd" data-css="flex:1;min-width:0" data-on-change="onCProdChange" data-args='${_dataArgs('$el')}'>${custProdOpts}</select><button class="btn btn-danger btn-xs" data-on-click="removeCProd" data-args='${_dataArgs('$el')}'>×</button>`;
   c.appendChild(d);
   if(p){
     setTimeout(()=>{d.querySelector('.cp2').value=p;},80);
@@ -613,9 +636,9 @@ function addCProd(p){
 function openCModal(id,n,co,em,ph,pr,attMb){
   let modal=document.createElement('div');
   modal.id='cModalWrap';
-  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:480px;max-height:90vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑客户':'添加客户'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span style="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" onclick="addCProd()">+ 添加产品</button></div><div style="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" style="flex:1" onclick="saveC()">保存</button><button class="btn btn-outline" onclick="document.getElementById('cModalWrap').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" data-css="width:480px;max-height:90vh;overflow-y:auto" ><div class="card-hd">${id?'编辑客户':'添加客户'} <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span data-css="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" data-on-click="addCProd">+ 添加产品</button></div><div data-css="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" data-css="flex:1" data-on-click="saveC">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('cModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   document.getElementById('cid').value=id||'';
   document.getElementById('cnm').value=n||'';
@@ -668,7 +691,7 @@ const TPL_META={
 };
 function tplBadgeHtml(tpl){
   const m=TPL_META[tpl]||TPL_META.full;
-  return `<span style="display:inline-block;white-space:nowrap"><span class="badge" style="background:${m.bg};color:${m.fg};font-size:10px;padding:1px 6px;border-radius:8px">${m.key}</span> ${m.name}</span>`;
+  return `<span data-css="display:inline-block;white-space:nowrap"><span class="badge" data-css="background:${m.bg};color:${m.fg};font-size:10px;padding:1px 6px;border-radius:8px">${m.key}</span> ${m.name}</span>`;
 }
 function _ruleTemplateValueForChannel(r,cid){
   if(!r)return '';
@@ -683,7 +706,7 @@ function templateForRuleChannel(r,chRow,channels){
   const cid=typeof chRow==='object'&&chRow?chRow.channel_id:chRow;
   const channel=_channelByIdFromList(channels,cid);
   const chType=channel.type||(chRow&&chRow.channel_type)||'';
-  if(chType==='email')return {type:chType,template:'',html:'<span style="font-size:11px;color:var(--muted)">邮件 HTML</span>'};
+  if(chType==='email')return {type:chType,template:'',html:'<span data-css="font-size:11px;color:var(--muted)">邮件 HTML</span>'};
   const rcTpl=typeof chRow==='object'&&chRow?(chRow.template||''):'';
   let tpl=rcTpl||_ruleTemplateValueForChannel(r,cid)||CHAN_DEFAULT_TPL[chType]||'full';
   if(chType==='feishu'&&tpl!=='feishu_full')tpl='feishu_full';
@@ -694,14 +717,14 @@ function renderRuleTemplateSummary(r,channels){
   const rows=(r.channels||[]).filter(ch=>typeof ch==='object'?ch&&ch.channel_id:ch);
   if(!rows.length){
     const tpl=(typeof r.template==='string'&&r.template)?r.template:'';
-    return tpl?tplBadgeHtml(TPL_META[tpl]?tpl:'full'):'<span style="color:var(--muted)">—</span>';
+    return tpl?tplBadgeHtml(TPL_META[tpl]?tpl:'full'):'<span data-css="color:var(--muted)">—</span>';
   }
   return rows.map(ch=>{
     const cid=typeof ch==='object'&&ch?ch.channel_id:ch;
     const channel=_channelByIdFromList(channels,cid);
     const info=templateForRuleChannel(r,ch,channels);
     const title=escHtml(`${channel.name||'渠道'} #${cid}`);
-    return `<div title="${title}" style="margin:1px 0">${info.html}</div>`;
+    return `<div title="${title}" data-css="margin:1px 0">${info.html}</div>`;
   }).join('');
 }
 function getChannelById(cid){
@@ -743,6 +766,7 @@ function emailPlaceholder(){
 // 收件人邮箱也用 B 模式,value 永远空 → router per-customer fallback 生效
 function emailDefaultValue(){ return ''; }
 async function subscriptions(){
+  const _seq=_navSeq;
   // Build the minimal data needed for isChainStale() — sid→vendor paths only.
   // Calling dataPage() here would reset the right-side feed state and trigger
   // an extra /latest/snapshots fetch for no benefit. We only need _nameToSid
@@ -763,11 +787,12 @@ async function subscriptions(){
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   let pOpts=PROD.map(p=>`<option>${p}</option>`).join('');
-  let chOpts=channels.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
-  let custOpts=list.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+  let chOpts=channels.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
+  let custOpts=list.map(c=>`<option value="${c.id}">${escHtml(c.name)}</option>`).join('');
 
-let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span style="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill" style="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span style="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span style="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span style="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span style="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span style="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span style="font-size:11px;color:var(--muted)">—</span>';return `<tr><td style="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td style="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td style="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span style="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span style="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span style="color:var(--muted)">—</span>`}</td><td style="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td style="white-space:nowrap;font-size:11px">${digestLabel}</td><td style="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td style="white-space:nowrap;font-size:11px">${r.valid_until||'—'}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" style="cursor:pointer" onclick="toggleRule(${r.id})">${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" onclick="openRModal(${r.id})">编辑</button> <button class="btn btn-danger btn-xs" onclick="delRule(${r.id})">删除</button></td></tr>`;}).join('');
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" onclick="openRModal()">+ 创建规则</button><table class="mt16" style="table-layout:fixed;width:100%"><tr><th style="width:50px">ID</th><th style="width:150px">名称</th><th style="width:130px">客户 / 收件人</th><th style="width:320px">通知对象</th><th style="width:220px">订阅条件</th><th style="width:70px">推送</th><th style="width:90px">通知模板</th><th style="width:100px">有效期</th><th style="width:60px">状态</th><th style="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span data-css="color:var(--primary);font-weight:600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill" data-css="display:inline-flex;align-items:center;gap:4px;padding:2px 6px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:16px;font-size:11px;margin:1px 3px 1px 0;vertical-align:middle;max-width:260px"><span data-css="color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px;display:block">${escHtml(pathStr)}</span><span data-css="background:${isLeaf?'var(--primary-light)':'var(--warn-light)'};color:${isLeaf?'#1e40af':'#92400e'};font-size:10px;padding:0 4px;border-radius:6px;font-weight:600;white-space:nowrap">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span data-css="color:var(--muted)">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span data-css="color:var(--muted)">—</span>';let custEmail=cust&&cust.email?'<span data-css="font-size:11px;color:var(--muted);display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span data-css="font-size:11px;color:var(--muted)">—</span>';return `<tr><td data-css="color:var(--muted);font-size:12px;width:50px">${r.id}</td><td data-css="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rb} ${escHtml(r.name)}</td><td data-css="max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px"><div data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${custName}">${custName}</div>${custEmail}</td><td data-css="max-width:320px;font-size:11px;line-height:1.5">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span data-css="color:var(--muted)">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div title="${escHtml(titleParts)}" data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span data-css="color:var(--muted)">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span data-css="color:var(--muted)">—</span>`}</td><td data-css="font-size:11px;max-width:200px;overflow:visible">${condHtml}</td><td data-css="white-space:nowrap;font-size:11px">${digestLabel}</td><td data-css="white-space:nowrap;font-size:11px">${renderRuleTemplateSummary(r,channels)}</td><td data-css="white-space:nowrap;font-size:11px">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'}" data-css="cursor:pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
+  if(navStale(_seq))return;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openRModal">+ 创建规则</button><table class="mt16" data-css="table-layout:fixed;width:100%"><tr><th data-css="width:50px">ID</th><th data-css="width:150px">名称</th><th data-css="width:130px">客户 / 收件人</th><th data-css="width:320px">通知对象</th><th data-css="width:220px">订阅条件</th><th data-css="width:70px">推送</th><th data-css="width:90px">通知模板</th><th data-css="width:100px">有效期</th><th data-css="width:60px">状态</th><th data-css="width:100px">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
 
@@ -860,32 +885,32 @@ async function openChainSelectorModal(existingChains) {
 
   let modal = document.createElement('div');
   modal.id = 'chainSelModal';
-  modal.style = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center';
   modal.onclick = function(e) { if (e.target === this) this.remove(); };
 
   // 右侧：已选路径列表
   const selectedHtml = chains.length === 0
-    ? '<div id="chainSelList"><div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">未选择路径</div></div>'
+    ? '<div id="chainSelList"><div data-css="color:var(--muted);font-size:12px;text-align:center;padding:20px">未选择路径</div></div>'
     : `<div id="chainSelList">${renderChainSelList(chains)}</div>`;
 
   modal.innerHTML = `
-  <div class="card" style="width:860px;max-height:90vh;display:flex;flex-direction:column" onclick="event.stopPropagation()">
-    <div class="card-hd">选择订阅路径 <span style="font-size:12px;color:var(--muted);font-weight:400;margin-left:8px">点击路径节点添加到右侧列表</span>
-      <button onclick="this.closest('#chainSelModal').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button>
+  <div class="card" data-css="width:860px;max-height:90vh;display:flex;flex-direction:column" >
+    <div class="card-hd">选择订阅路径 <span data-css="font-size:12px;color:var(--muted);font-weight:400;margin-left:8px">点击路径节点添加到右侧列表</span>
+      <button data-on-click="_removeClosest" data-args='${_dataArgs('#chainSelModal')}' data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button>
     </div>
-    <div style="display:flex;flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--border)">
-      <div id="chainSelTree" style="flex:1;overflow-y:auto;padding:12px;border-right:1px solid var(--border);max-height:70vh">
-        <div style="color:var(--muted);font-size:12px;margin-bottom:10px">📂 点击节点添加到右侧「已选路径」，再次点击取消</div>
-        <div id="chainTreeBody"><div style="color:var(--muted);font-size:13px;text-align:center;padding:40px">📂 加载产品数据中...</div></div>
+    <div data-css="display:flex;flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--border)">
+      <div id="chainSelTree" data-css="flex:1;overflow-y:auto;padding:12px;border-right:1px solid var(--border);max-height:70vh">
+        <div data-css="color:var(--muted);font-size:12px;margin-bottom:10px">📂 点击节点添加到右侧「已选路径」，再次点击取消</div>
+        <div id="chainTreeBody"><div data-css="color:var(--muted);font-size:13px;text-align:center;padding:40px">📂 加载产品数据中...</div></div>
       </div>
-      <div style="width:300px;overflow-y:auto;padding:12px;background:var(--gray-bg)" id="chainSelRight">
-        <div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${chains.length}）</div>
+      <div data-css="width:300px;overflow-y:auto;padding:12px;background:var(--gray-bg)" id="chainSelRight">
+        <div data-css="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${chains.length}）</div>
         ${selectedHtml}
       </div>
     </div>
-    <div style="padding:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
-      <button class="btn btn-outline" onclick="document.getElementById('chainSelModal').remove()">取消</button>
-      <button class="btn btn-primary" onclick="confirmChainSelection()">确定</button>
+    <div data-css="padding:12px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:8px">
+      <button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chainSelModal')}'>取消</button>
+      <button class="btn btn-primary" data-on-click="confirmChainSelection">确定</button>
     </div>
   </div>`;
 
@@ -912,9 +937,9 @@ async function openChainSelectorModal(existingChains) {
   });
 
   if (!treeHtml) {
-    treeHtml = '<div style="color:var(--muted);font-size:12px">无产品数据，请先完成产品发现与采集</div>';
+    treeHtml = '<div data-css="color:var(--muted);font-size:12px">无产品数据，请先完成产品发现与采集</div>';
   }
-  treeBody.innerHTML = '<div style="font-family:system-ui">' + treeHtml + '</div>';
+  treeBody.innerHTML = '<div data-css="font-family:system-ui">' + treeHtml + '</div>';
 }
 
 // 链选择器：节点点击 toggle 选中（全局函数，供 inline onclick 调用）
@@ -958,7 +983,7 @@ function csTreeNodeClick(nodeEl) {
   }
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
-    rightDiv.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
+    rightDiv.innerHTML = `<div data-css="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
   }
 }
 
@@ -1011,22 +1036,22 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
 
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = isPkg ? name : (MAP[name] || name);
-    const childCount = hasChildren ? ` <span style="color:var(--gray-disabled);font-size:11px">(${children.length})</span>` : '';
-    const selClass = isSelected ? ' style="background:var(--primary-light);border-radius:4px"' : '';
+    const childCount = hasChildren ? ` <span data-css="color:var(--gray-disabled);font-size:11px">(${children.length})</span>` : '';
+    const selClass = isSelected ? ' data-css="background:var(--primary-light);border-radius:4px"' : '';
     const childDivId = hasChildren ? ('cst_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
     const arrow = hasChildren
-      ? `<span onclick="csTreeToggleById('${childDivId}', this); event.stopPropagation();" style="cursor:pointer;color:var(--gray-disabled);font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
-      : `<span style="width:13px;flex-shrink:0;margin-right:4px"></span>`;
+      ? `<span data-on-click="csTreeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}' data-css="cursor:pointer;color:var(--gray-disabled);font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
+      : `<span data-css="width:13px;flex-shrink:0;margin-right:4px"></span>`;
 
     const isLeafNode = !hasChildren;
     const leafAttr = ' data-is-leaf="' + (isLeafNode ? '1' : '0') + '"';
-    let html = `<div class="tree-node"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" onclick="csTreeNodeClick(this); event.stopPropagation();" style="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer"${selClass}>`;
+    let html = `<div class="tree-node"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" data-on-click="csTreeNodeClick" data-stop data-args='${_dataArgs('$el')}' data-css="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer"${selClass}>`;
     html += arrow;
-    html += `<span style="font-size:13px;color:var(--gray-muted);flex-shrink:0">${icon} ${escHtml(label)}${childCount}</span>`;
+    html += `<span data-css="font-size:13px;color:var(--gray-muted);flex-shrink:0">${icon} ${escHtml(label)}${childCount}</span>`;
     html += `</div>`;
 
     if (hasChildren) {
-      html += `<div id="${childDivId}" class="tree-children" data-target="${childDivId}" style="display:none">`;
+      html += `<div id="${childDivId}" class="tree-children" data-target="${childDivId}" data-css="display:none">`;
       children.forEach(([childName, childNode]) => { html += renderNode(childNode, childName, depth + 1); });
       html += `</div>`;
     }
@@ -1040,7 +1065,7 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     return a.localeCompare(b, 'zh');
   }) : [];
   // 产品名作为可折叠分组头
-  const prodLabel = `<div style="font-weight:700;font-size:13px;color:#1e40af;padding:6px 4px 4px;border-bottom:1px solid var(--gray-border);margin-bottom:4px">${escHtml(alias || String(sid))}</div>`;
+  const prodLabel = `<div data-css="font-weight:700;font-size:13px;color:#1e40af;padding:6px 4px 4px;border-bottom:1px solid var(--gray-border);margin-bottom:4px">${escHtml(alias || String(sid))}</div>`;
   // 始终从真实根节点开始渲染，保持完整的链层级深度
   html += prodLabel;
   rootChildren.forEach(([name, node]) => { html += renderNode(node, name, 0); });
@@ -1095,19 +1120,19 @@ function confirmChainSelection() {
 // 渲染已选路径列表（在链选择器右侧面板）
 function renderChainSelList(chains) {
   if (!chains || chains.length === 0) {
-    return '<div style="color:var(--muted);font-size:12px;text-align:center;padding:20px">未选择路径</div>';
+    return '<div data-css="color:var(--muted);font-size:12px;text-align:center;padding:20px">未选择路径</div>';
   }
   return chains.map((c, i) => {
     const pathStr = c.chain.join(' › ');
     const isLeaf = c.match !== 'subtree';
     const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const matchHtml = isLeaf
-      ? `<span style="font-size:10px;padding:2px 6px;background:var(--primary-light);color:#1e40af;border-radius:8px;font-weight:600">leaf（仅当前节点）</span>`
-      : `<span style="font-size:10px;padding:2px 6px;background:var(--warn-light);color:#92400e;border-radius:8px;font-weight:600">sub（包含子节点）</span>`;
-    return `<div style="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid var(--gray-bg);font-size:12px;flex-wrap:wrap">
-      <span style="flex:1;min-width:0;color:var(--gray-muted);word-break:break-all">${escHtml(pathStr)}</span>
+      ? `<span data-css="font-size:10px;padding:2px 6px;background:var(--primary-light);color:#1e40af;border-radius:8px;font-weight:600">leaf（仅当前节点）</span>`
+      : `<span data-css="font-size:10px;padding:2px 6px;background:var(--warn-light);color:#92400e;border-radius:8px;font-weight:600">sub（包含子节点）</span>`;
+    return `<div data-css="display:flex;align-items:center;gap:6px;padding:6px 4px;border-bottom:1px solid var(--gray-bg);font-size:12px;flex-wrap:wrap">
+      <span data-css="flex:1;min-width:0;color:var(--gray-muted);word-break:break-all">${escHtml(pathStr)}</span>
       ${matchHtml}${staleBadge}
-      <button onclick="removeChainCond(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 2px">×</button>
+      <button data-on-click="removeChainCond" data-args='${_dataArgs(i)}' data-css="background:none;border:none;color:var(--danger);cursor:pointer;font-size:14px;padding:0 2px">×</button>
     </div>`;
   }).join('');
 }
@@ -1129,7 +1154,7 @@ function removeChainCond(idx) {
   // 同时更新右侧面板
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
-    rightDiv.innerHTML = `<div style="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
+    rightDiv.innerHTML = `<div data-css="font-weight:600;font-size:13px;margin-bottom:8px">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
   }
 }
 
@@ -1154,10 +1179,10 @@ function renderCondPills() {
     const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const pill = document.createElement('div');
     pill.className = 'cond-pill';
-    pill.style = 'display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0';
-    pill.innerHTML = `${staleBadge}<span style="color:#1e40af;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
-      <span style="background:${isLeaf ? 'var(--primary-light)' : 'var(--warn-light)'};color:${isLeaf ? '#1e40af' : '#92400e'};font-size:10px;padding:1px 5px;border-radius:8px;font-weight:600">${matchLabel}</span>
-      <button onclick="removeCondPill(${i})" style="background:none;border:none;color:var(--gray-disabled);cursor:pointer;font-size:14px;line-height:1;padding:0">×</button>`;
+    pill.style.cssText = 'display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0';
+    pill.innerHTML = `${staleBadge}<span data-css="color:#1e40af;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(pathStr)}">${escHtml(pathStr)}</span>
+      <span data-css="background:${isLeaf ? 'var(--primary-light)' : 'var(--warn-light)'};color:${isLeaf ? '#1e40af' : '#92400e'};font-size:10px;padding:1px 5px;border-radius:8px;font-weight:600">${matchLabel}</span>
+      <button data-on-click="removeCondPill" data-args='${_dataArgs(i)}' data-css="background:none;border:none;color:var(--gray-disabled);cursor:pointer;font-size:14px;line-height:1;padding:0">×</button>`;
     container.appendChild(pill);
   });
 }
@@ -1177,7 +1202,7 @@ function addCond(p,v,t){
   let c=document.getElementById('rconds');
   let po=PROD.map(x=>`<option>${x}</option>`).join('');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center';
-  d.innerHTML=`<select class="cp sel-sm dd" style="flex:1;min-width:0" onchange="loadCV(this)">${po}</select><select class="cv sel-sm dd" style="flex:1;min-width:0"><option value="">全部版本</option></select><select class="ct sel-sm dd" style="flex:1;min-width:0"><option value="">全部类型</option></select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  d.innerHTML=`<select class="cp sel-sm dd" data-css="flex:1;min-width:0" data-on-change="loadCV" data-args='${_dataArgs('$el')}'>${po}</select><select class="cv sel-sm dd" data-css="flex:1;min-width:0"><option value="">全部版本</option></select><select class="ct sel-sm dd" data-css="flex:1;min-width:0"><option value="">全部类型</option></select><button class="btn btn-danger btn-xs" data-on-click="_removeParent">×</button>`;
   c.appendChild(d);
   if(p){setTimeout(()=>{d.querySelector('.cp').value=p;loadCV(d.querySelector('.cp'),true);},80);setTimeout(()=>{if(v)d.querySelector('.cv').value=v;if(t)d.querySelector('.ct').value=t;},160);}
   else{setTimeout(()=>loadCV(d.querySelector('.cp')),50);}
@@ -1212,18 +1237,18 @@ function renderChanTags(){
     if (isEmail) {
       // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
       // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
-      return `<div style="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
-        <span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span>
-        <input data-cid="${c.id}" data-field="customer_emails" placeholder="${emailPlaceholder()}" value="${emailDefaultValue()}" onchange="onChanFieldChange(${c.id}, 'customer_emails', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
-        <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" onchange="onChanFieldChange(${c.id}, 'attachment_max_mb', this.value)" style="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
-        <button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
+      return `<div data-css="display:grid;grid-template-columns:1fr 2fr 1fr auto;align-items:center;gap:8px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}">
+        <span data-css="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span data-css="opacity:0.6">(${escHtml(c.type)})</span> <span data-css="opacity:0.5;font-family:monospace">#${c.id}</span></span>
+        <input data-cid="${c.id}" data-field="customer_emails" placeholder="${escHtml(emailPlaceholder())}" value="${emailDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'customer_emails', '$value')}' data-css="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg}">
+        <input data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'attachment_max_mb', '$value')}' data-css="font-size:12px;padding:4px 6px;border-radius:4px;border:1px solid ${bd};background:#fff;color:${fg};width:100%">
+        <button data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道" data-css="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button>
       </div>`;
     }
-    return `<div style="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span style="opacity:0.6">(${escHtml(c.type)})</span> <span style="opacity:0.5;font-family:monospace">#${c.id}</span></span><span style="font-size:11px;opacity:0.75">模板</span><select class="sel-sm dd" data-cid="${c.id}" data-field="template" onchange="onChanFieldChange(${c.id}, 'template', this.value)" style="border-color:${bd};color:${fg};min-width:140px">${opts}</select><button onclick="removeChanTag(${c.id})" title="移除渠道" style="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
+    return `<div data-css="display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:10px;padding:6px 10px;background:${bg};border:1px solid ${bd};border-radius:8px;font-size:12px;color:${fg}"><span data-css="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span data-css="opacity:0.6">(${escHtml(c.type)})</span> <span data-css="opacity:0.5;font-family:monospace">#${c.id}</span></span><span data-css="font-size:11px;opacity:0.75">模板</span><select class="sel-sm dd" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}' data-css="border-color:${bd};color:${fg};min-width:140px">${opts}</select><button data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道" data-css="background:none;border:none;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0 2px;opacity:0.7">×</button></div>`;
   };
 
-  robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span style="color:var(--muted);font-size:12px">未添加机器人渠道</span>';
-  emailEl.innerHTML=emailChans.length?emailChans.map(tagHtml).join(''):'<span style="color:var(--muted);font-size:12px">未添加邮箱渠道</span>';
+  robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span data-css="color:var(--muted);font-size:12px">未添加机器人渠道</span>';
+  emailEl.innerHTML=emailChans.length?emailChans.map(tagHtml).join(''):'<span data-css="color:var(--muted);font-size:12px">未添加邮箱渠道</span>';
 
   // 回显每个渠道当前选中的模板(渲染后单独设 selected,避免 inline template 内 escaped)
   const tpls=window._chanTpls||{};
@@ -1321,19 +1346,19 @@ function openChanSelModal(filterType){
     emptyLabel='没有可添加的机器人渠道(请先在「通知渠道」页创建)';
   }
   if(!avail.length){toast(emptyLabel,'warn');return;}
-  const opts=avail.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
+  const opts=avail.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
   const modal=document.createElement('div');
   modal.id='chanSelModal';
-  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:360px" onclick="event.stopPropagation()"><div class="card-hd">${headerLabel} <button onclick="document.getElementById('chanSelModal').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><div class="form-group"><label>渠道</label><select class="dd" id="newChanSel" style="width:100%">${opts}</select></div><div style="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" style="flex:1" onclick="(function(){const v=parseInt(document.getElementById('newChanSel').value);if(v&&!(window._selChans||[]).includes(v)){window._selChans.push(v);renderChanTags();updateEmailFields();}document.getElementById('chanSelModal').remove();})()">添加</button><button class="btn btn-outline" onclick="document.getElementById('chanSelModal').remove()">取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" data-css="width:360px" ><div class="card-hd">${headerLabel} <button data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}' data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px"><div class="form-group"><label>渠道</label><select class="dd" id="newChanSel" data-css="width:100%">${opts}</select></div><div data-css="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" data-css="flex:1" data-on-click="_addSelectedChannel">添加</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
 }
 
 function addChan(cid){
   let c=document.getElementById('rchans');
   let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:5px;align-items:center';
-  d.innerHTML=`<select class="chsel sel-sm dd" style="flex:1;min-width:0">${window._chOpts||''}</select><button class="btn btn-danger btn-xs" onclick="this.parentElement.remove()">×</button>`;
+  d.innerHTML=`<select class="chsel sel-sm dd" data-css="flex:1;min-width:0">${window._chOpts||''}</select><button class="btn btn-danger btn-xs" data-on-click="_removeParent">×</button>`;
   c.appendChild(d);
   if(cid){setTimeout(()=>{d.querySelector('.chsel').value=cid;},50);}
 }
@@ -1352,11 +1377,11 @@ async function loadCV(s,loadType){
 async function openRModal(id){
   // Ensure we have channels and customers loaded
   let chOpts=window._chOpts;
-  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}" title="#${c.id}">${c.name} <span style="color:var(--gray-muted)">#${c.id}</span>${c.email?' ('+c.email+')':''}</option>`).join(''):'';
+  let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}" title="#${c.id}">${escHtml(c.name)} <span data-css="color:var(--gray-muted)">#${c.id}</span>${c.email?' ('+escHtml(c.email)+')':''}</option>`).join(''):'';
   if(!chOpts){
     const[cR,custR]=await Promise.all([api('/channels'),api('/customers')]);
     const chans=cR.data||[];
-    chOpts=chans.map(c=>`<option value="${c.id}">${c.name} (${c.type})</option>`).join('');
+    chOpts=chans.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
     window._chOpts=chOpts;
     window._chData=chans; // [{id,name,type},...]
     if(custR?.data)window._custs=custR.data;
@@ -1364,57 +1389,57 @@ async function openRModal(id){
 
   let modal=document.createElement('div');
   modal.id='rModalWrap';
-  modal.style='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" style="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto" onclick="event.stopPropagation()"><div class="card-hd">${id?'编辑规则':'创建规则'} <button onclick="this.closest('[id]').remove()" style="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" style="padding:16px"><input type="hidden" id="rid">
+  modal.innerHTML=`<div class="card" data-css="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto" ><div class="card-hd">${id?'编辑规则':'创建规则'} <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px"><input type="hidden" id="rid">
     <div class="form-section"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
-    <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" onchange="onCustChange()" required><option value="">请选择客户</option>${custOpts}</select></div>
-    <div id="custInfoRow" class="form-group" style="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
-    <div id="custAttachRow" class="form-group" style="margin-top:2px;font-size:12px;color:var(--muted);display:none">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
-    <div class="form-group"><label>有效期至</label><input id="rvu" type="date" onclick="this.showPicker()" style="min-width:140px" placeholder="不限制"></div>
+    <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" data-on-change="onCustChange" required><option value="">请选择客户</option>${custOpts}</select></div>
+    <div id="custInfoRow" class="form-group" data-css="margin-top:2px;font-size:12px;color:var(--muted);display:none">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
+    <div id="custAttachRow" class="form-group" data-css="margin-top:2px;font-size:12px;color:var(--muted);display:none">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
+    <div class="form-group"><label>有效期至</label><input id="rvu" type="date" data-on-click="_showPicker" data-css="min-width:140px" placeholder="不限制"></div>
     </div>
 
     <div class="form-section"><div class="form-section-title">订阅条件</div>
-    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" onchange="toggleAllMode()" style="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
-    <div id="rcondsWrap"><div id="rconds" style="min-height:32px"><div id="rcondsEmpty" style="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" onclick="(async ()=>{ await openChainSelectorModal(); })()">+ 添加路径</button></div>
+    <label data-css="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:12px;margin-bottom:8px"><input type="checkbox" id="rall" data-on-change="toggleAllMode" data-css="margin:0"> 📡 订阅全部产品与类型，不设筛选条件</label>
+    <div id="rcondsWrap"><div id="rconds" data-css="min-height:32px"><div id="rcondsEmpty" data-css="color:var(--muted);font-size:12px;margin-bottom:6px">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openChainSelectorModal">+ 添加路径</button></div>
     </div>
 
     <div class="form-section"><div class="form-section-title">推送配置</div>
-    <div class="form-group"><label>推送模式 <span id="rmodeTip" style="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select class="dd" id="rdm" onchange="onDigestModeChange()"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
-    <div id="dcfg" class="hidden" style="background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
-    <div id="delayWrap"><div class="form-group"><label>延迟(d) <span title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）" style="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" min="0" style="width:80px"></div></div>
-    <div id="winSection" class="hidden" style="margin-top:6px"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" onchange="onWinToggle()"> ⏰ 启用推送时间窗口</label></div>
-    <div id="winCfg" class="hidden" style="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
-      <div id="winDaysRow" style="margin-bottom:8px"><label style="margin-right:8px">周几：</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label style="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
-      <div><label style="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" style="width:100px"> ～ <input id="winEnd" type="time" value="23:59" style="width:100px"></div>
+    <div class="form-group"><label>推送模式 <span id="rmodeTip" data-css="cursor:help;color:var(--info);margin-left:4px" title=""></span></label><select class="dd" id="rdm" data-on-change="onDigestModeChange"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
+    <div id="dcfg" class="hidden" data-css="background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:8px;padding:10px 14px;margin-bottom:8px;font-size:12px"></div>
+    <div id="delayWrap"><div class="form-group"><label>延迟(d) <span title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）" data-css="cursor:help;color:var(--info)">ℹ️</span></label><input id="rdl" type="number" value="0" min="0" data-css="width:80px"></div></div>
+    <div id="winSection" class="hidden" data-css="margin-top:6px"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="checkbox" id="rwin" data-on-change="onWinToggle"> ⏰ 启用推送时间窗口</label></div>
+    <div id="winCfg" class="hidden" data-css="background:#fff3e0;border:1px solid #ffcc80;border-radius:8px;padding:10px 14px;margin-top:6px;font-size:12px">
+      <div id="winDaysRow" data-css="margin-bottom:8px"><label data-css="margin-right:8px">周几：</label><label data-css="margin-right:10px"><input type="checkbox" class="win-day" value="1">周一</label><label data-css="margin-right:10px"><input type="checkbox" class="win-day" value="2">周二</label><label data-css="margin-right:10px"><input type="checkbox" class="win-day" value="3">周三</label><label data-css="margin-right:10px"><input type="checkbox" class="win-day" value="4">周四</label><label data-css="margin-right:10px"><input type="checkbox" class="win-day" value="5">周五</label><label data-css="margin-right:10px"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
+      <div><label data-css="margin-right:8px">时间段：</label><input id="winStart" type="time" value="00:00" data-css="width:100px"> ～ <input id="winEnd" type="time" value="23:59" data-css="width:100px"></div>
     </div>
     </div>
 
     <div class="form-section"><div class="form-section-title">通知渠道</div>
     <!-- 2026-07-11: 4 模板说明 (A=完整 / B=智能裁剪 / C=极简 / D=飞书全量) -->
     <!-- 仅钉钉/企微/飞书 走模板机制;邮箱是 HTML 全量单封,不走这 4 档 -->
-    <div style="margin-bottom:10px;padding:8px 10px;background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.6">
-      <div style="font-weight:600;margin-bottom:4px;color:var(--text)827">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
-      <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">
+    <div data-css="margin-bottom:10px;padding:8px 10px;background:var(--primary-fade);border:1px solid var(--primary-light);border-radius:6px;font-size:11px;color:var(--muted);line-height:1.6">
+      <div data-css="font-weight:600;margin-bottom:4px;color:var(--text)827">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
+      <div data-css="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">
         <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微默认</div>
         <div><b>B · 智能裁剪</b></div><div>优先完整描述 → 超长自动剥英文段 → 仍超则只保留 attention 关键行 → 兜底只 head+链接</div>
         <div><b>C · 极简</b></div><div>只 head + 链接,描述完全省略,适合「通知到人即可,详情自己点」的内部群</div>
         <div><b>D · 飞书全量</b></div><div>飞书专属单段展示,放宽到 30KB;飞书默认</div>
       </div>
     </div>
-    <div style="margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">🤖 机器人渠道 <span id="robotCount" style="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="openChanSelModal('non_email')">📥 添加机器人渠道</button></div>
-      <div id="rchansRobotTags" style="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
+    <div data-css="margin-bottom:8px">
+      <div data-css="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">🤖 机器人渠道 <span id="robotCount" data-css="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-sm btn-primary" data-css="margin-left:auto" data-on-click="openChanSelModal" data-args='${_dataArgs('non_email')}'>📥 添加机器人渠道</button></div>
+      <div id="rchansRobotTags" data-css="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
     </div>
-    <div style="margin-bottom:8px">
-      <div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">📧 邮箱渠道 <span id="emailCount" style="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="openChanSelModal('email')">📥 添加邮箱渠道</button></div>
-      <div id="rchansEmailTags" style="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
+    <div data-css="margin-bottom:8px">
+      <div data-css="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;margin-bottom:4px">📧 邮箱渠道 <span id="emailCount" data-css="font-weight:400;color:var(--muted);font-size:11px"></span><button class="btn btn-sm btn-primary" data-css="margin-left:auto" data-on-click="openChanSelModal" data-args='${_dataArgs('email')}'>📥 添加邮箱渠道</button></div>
+      <div id="rchansEmailTags" data-css="display:flex;flex-direction:column;gap:6px;min-height:28px;margin-bottom:8px"></div>
     </div>
     </div>
 
-    <div class="form-section"><label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" style="margin:0"> 📢 包回退通知</label></div>
-    <div style="display:flex;gap:8px;margin-top:14px;padding:12px 16px;border-top:1px solid var(--border);background:var(--card);border-radius:0 0 10px 10px;margin-left:-16px;margin-right:-16px;margin-bottom:-16px"><button class="btn btn-soft-primary" style="flex:1" onclick="saveRule()">保存</button><button class="btn btn-outline" onclick="document.getElementById('rModalWrap').remove()">取消</button></div></div></div>`;
+    <div class="form-section"><label data-css="display:inline-flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"><input type="checkbox" id="rnr" data-css="margin:0"> 📢 包回退通知</label></div>
+    <div data-css="display:flex;gap:8px;margin-top:14px;padding:12px 16px;border-top:1px solid var(--border);background:var(--card);border-radius:0 0 10px 10px;margin-left:-16px;margin-right:-16px;margin-bottom:-16px"><button class="btn btn-soft-primary" data-css="flex:1" data-on-click="saveRule">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   // 推送模式 tooltip
   const modeTips={'':'检测到版本变化立即推送','weekly':'每周汇总推送一次','monthly':'每月汇总推送一次','quarterly':'每季汇总推送一次'};
@@ -1516,13 +1541,13 @@ function onDigestModeChange(){
   if(wdr)wdr.style.display='none'; // 汇总模式：隐藏周几（只有时间段）
   d.classList.remove('hidden');
   if(m==='weekly'){
-    d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每周推送日</label><select class="dd" id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;
+    d.innerHTML=`<label data-css="font-weight:600;margin-bottom:4px;display:block">⏰ 每周推送日</label><select class="dd" id="dc-weekday"><option value="0">周一</option><option value="1">周二</option><option value="2">周三</option><option value="3">周四</option><option value="4">周五</option><option value="5">周六</option><option value="6" selected>周日</option></select>`;
   }else if(m==='monthly'){
-    d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每月推送日</label><div style="display:flex;gap:8px;align-items:center"><select class="dd" id="dc-month"><option value="last" selected>最后一天</option>${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}号</option>`).join('')}</select></div>`;
+    d.innerHTML=`<label data-css="font-weight:600;margin-bottom:4px;display:block">⏰ 每月推送日</label><div data-css="display:flex;gap:8px;align-items:center"><select class="dd" id="dc-month"><option value="last" selected>最后一天</option>${Array.from({length:28},(_,i)=>`<option value="${i+1}">${i+1}号</option>`).join('')}</select></div>`;
   }else if(m==='quarterly'){
-    d.innerHTML=`<label style="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select class="dd" id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
+    d.innerHTML=`<label data-css="font-weight:600;margin-bottom:4px;display:block">⏰ 每季推送日</label><select class="dd" id="dc-quarter"><option value="last" selected>季度最后一天</option><option value="first">季度第一天</option></select>`;
   }
-  d.innerHTML+='<div style="margin-top:6px;color:#b45309">⚠️ 汇总只发企微/钉钉/飞书；规则里绑定的邮箱渠道会被跳过</div>';
+  d.innerHTML+='<div data-css="margin-top:6px;color:#b45309">⚠️ 汇总只发企微/钉钉/飞书；规则里绑定的邮箱渠道会被跳过</div>';
 }
 function onWinToggle(){
   const w=document.getElementById('winCfg');

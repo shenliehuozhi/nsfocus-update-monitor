@@ -36,7 +36,7 @@ async function setDashRange(card, range){
   });
   if(card==='cust'){
     // 客户推送独立 fetch
-    const r=await fetch(API+'/customers/push-summary?days='+range,{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{items:[]}}));
+    const r=await api('/customers/push-summary?days='+range).catch(()=>({data:{items:[]}}));
     _renderCustPushTable(r.data?.items||[], range);
   }else if(card==='tl'){
     // 包发布趋势 fetch 整个 dashboard (timeline 用 range_tl)
@@ -63,7 +63,13 @@ function _renderDashFromData(d){
   window._productStats=d.product_stats||[];
 }
 
+function _confirmRestartService(){
+  confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true);
+}
+function _ackEventAndReload(id){ackEvent(id);loadEventsCenterModal();}
+
 async function dashboard(range){
+  const _seq=_navSeq;
   // range 兼容旧的全局参数 (默认用 _dashRanges.pie)
   if(range && !window._dashInit){
     _dashRanges.cust=String(range);
@@ -76,8 +82,8 @@ async function dashboard(range){
   const pieRange=_dashRanges.pie;
   const[dR,hR,cR]=await Promise.all([
     api('/dashboard?range_recent='+custRange+'&range_tl='+tlRange+'&range_pie='+pieRange),
-    fetch(API+'/system/health',{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{}})),
-    fetch(API+'/customers/push-summary?days='+custRange,{headers:{'Authorization':'Bearer '+T}}).then(r=>r.json()).catch(()=>({data:{items:[]}}))
+    api('/system/health').catch(()=>({data:{}})),
+    api('/customers/push-summary?days='+custRange).catch(()=>({data:{items:[]}}))
   ]);
   _dashData=dR.data||{};
   // 调度器状态直接复用 /system/health 返回的那份,省一次 /settings/scheduler 请求
@@ -104,7 +110,7 @@ async function dashboard(range){
   // 2026-08-25: 顶部告警只在"无可用采集 session"时显示
   // 其他情况(部分污染/过期)由 Session 菜单自己的卡片提示,不再在仪表盘顶部打扰
   if(_cTotal===0){
-    sesWarn=`<div class="info-bar" style="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" onclick="showPage('sessions')">Session 管理</a> 添加 PHPSESSID 才能采集<br><span style="color:var(--muted);font-size:12px">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
+    sesWarn=`<div class="info-bar" data-css="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" data-on-click="showPage" data-args='${_dataArgs('sessions')}'>Session 管理</a> 添加 PHPSESSID 才能采集<br><span data-css="color:var(--muted);font-size:12px">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
   }
   // 采集进度条改用 _showCollectBanner() (2026-08-21),仿 _showDiscBanner 风格:底部悬浮卡片 + 进度条
   // 这里不再单独控制 dashRunningBar,改由 dataPage 内 _collectPollTimer 调度。
@@ -126,172 +132,173 @@ async function dashboard(range){
   }
 
 
+  if(navStale(_seq))return;
   document.getElementById('app').innerHTML=
     sesWarn +
     `<div class="grid3">
       <div class="stat tint-info">
-        <div class="num">${d.session_status?.collect_active||0}<span style="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span style="color:#5b21b6">${d.session_status?.discover_active||0}</span></div>
-        <div class="label">活跃 Session <span style="color:var(--muted);font-weight:400">(采集 / 发现)</span></div>
+        <div class="num">${d.session_status?.collect_active||0}<span data-css="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span data-css="color:#5b21b6">${d.session_status?.discover_active||0}</span></div>
+        <div class="label">活跃 Session <span data-css="color:var(--muted);font-weight:400">(采集 / 发现)</span></div>
       </div>
       <div class="stat tint-neutral"><div class="num">${d.total_snapshots||0}</div><div class="label">监控快照</div></div>
-      <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-success':'tint-danger')}" style="display:flex;flex-direction:column;justify-content:center;gap:8px;padding:14px 12px">
-        <div style="display:flex;align-items:center;justify-content:center;gap:10px">
-          <span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sch.is_running?'var(--primary)':(sch.enabled?'var(--success)':'var(--danger)')};box-shadow:0 0 0 4px ${sch.is_running?'rgba(67,97,238,0.2)':(sch.enabled?'rgba(12,166,120,0.2)':'rgba(229,72,77,0.2)')};flex-shrink:0"></span>
-          <span style="font-size:14px;font-weight:600;color:var(--text)">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
+      <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-success':'tint-danger')}" data-css="display:flex;flex-direction:column;justify-content:center;gap:8px;padding:14px 12px">
+        <div data-css="display:flex;align-items:center;justify-content:center;gap:10px">
+          <span data-css="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sch.is_running?'var(--primary)':(sch.enabled?'var(--success)':'var(--danger)')};box-shadow:0 0 0 4px ${sch.is_running?'rgba(67,97,238,0.2)':(sch.enabled?'rgba(12,166,120,0.2)':'rgba(229,72,77,0.2)')};flex-shrink:0"></span>
+          <span data-css="font-size:14px;font-weight:600;color:var(--text)">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
         </div>
-        <div style="font-size:11px;color:var(--muted);line-height:1.4">采集器状态</div>
+        <div data-css="font-size:11px;color:var(--muted);line-height:1.4">采集器状态</div>
       </div>
     </div>
-    <div class="grid3" style="margin-top:14px">
+    <div class="grid3" data-css="margin-top:14px">
       <div class="stat tint-primary">
         <div class="num" id="dashUptime">—</div>
         <div class="label">已运行时间</div>
       </div>
       <div class="stat ${d.product_total>0?(d.product_active===d.product_total?'tint-success':(d.product_active>0?'tint-warn':'tint-danger')):'tint-neutral'}">
-        <div class="num">${d.product_active||0}<span style="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span style="color:var(--muted)">${d.product_total||0}</span></div>
+        <div class="num">${d.product_active||0}<span data-css="font-size:14px;color:var(--muted);font-weight:500;margin:0 4px">/</span><span data-css="color:var(--muted)">${d.product_total||0}</span></div>
         <div class="label">已启用产品 / 总数</div>
-        ${d.product_total>0 && d.product_active!==d.product_total?`<div style="font-size:11px;color:var(--muted);margin-top:6px">未启用 <b style="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
+        ${d.product_total>0 && d.product_active!==d.product_total?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px">未启用 <b data-css="color:var(--warn)">${d.product_total-d.product_active}</b></div>`:''}
       </div>
       <div class="stat ${pt.total>0?(pt.failed>0?'tint-warn':'tint-success'):'tint-neutral'}">
         <div class="num">${ptRate===null?'—':ptRate+'%'}</div>
         <div class="label">${pt.total>0?`今日推送 ${pt.total} 条`:'今日推送'}</div>
-        ${pt.failed>0?`<div style="font-size:11px;color:var(--muted);margin-top:6px"><b style="color:var(--danger)">${pt.failed}</b> 失败</div>`:''}
+        ${pt.failed>0?`<div data-css="font-size:11px;color:var(--muted);margin-top:6px"><b data-css="color:var(--danger)">${pt.failed}</b> 失败</div>`:''}
       </div>
     </div>
-    <div style="display:flex;flex-direction:column;gap:12px;margin-top:12px">
+    <div data-css="display:flex;flex-direction:column;gap:12px;margin-top:12px">
       <div class="info-bar info-bar-stat">
-        <span class="info-seg info-seg-time">⏱️ 上次采集: <b>${lastCol}</b>${sch.last_mode?' <span class="info-tag">'+mode_label[sch.last_mode]+'</span>':''}<span id="dashProgress" style="display:none;margin-left:8px;font-size:12px;color:var(--primary);font-weight:600"></span></span>
+        <span class="info-seg info-seg-time">⏱️ 上次采集: <b>${lastCol}</b>${sch.last_mode?' <span class="info-tag">'+mode_label[sch.last_mode]+'</span>':''}<span id="dashProgress" data-css="display:none;margin-left:8px;font-size:12px;color:var(--primary);font-weight:600"></span></span>
         <span class="info-seg info-seg-next">⏭️ 下次采集: <b>${nextCol}</b></span>
         <span class="info-seg info-seg-week">📊 本周: <b class="info-num">${d.push_week?.total||0}</b>次 <b class="info-ok">${d.push_week?.success||0}✓</b> ${d.push_week?.failed>0?'<b class="info-err">'+d.push_week.failed+'✗</b>':('<b class="info-muted">0✗</b>')}</span>
       </div>
     </div>
 
-    <div class="dash-grid" style="display:grid;grid-template-columns:1fr 1.5fr 1fr;grid-template-rows:auto 430px;gap:12px;margin-top:12px;align-items:stretch">
+    <div class="dash-grid" data-css="display:grid;grid-template-columns:1fr 1.5fr 1fr;grid-template-rows:auto 430px;gap:12px;margin-top:12px;align-items:stretch">
     <!-- Row 1 Col 1: 运维健康 -->
-    <div class="card" style="grid-column:1;grid-row:1;display:flex;flex-direction:column;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
-        <span style="color:var(--primary);font-size:13px">🩺 运维健康</span>
-        <span style="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
-          <button class="btn btn-soft-primary" onclick="triggerCollect()" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
-          <button class="btn btn-soft-danger" onclick="confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async()=>{let r=await api('/system/restart',{method:'POST'});if(r.code===0)toast('服务正在重启…','success');else toast('失败: '+r.message,'error');},'🔄','确认重启',true)" style="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
+    <div class="card" data-css="grid-column:1;grid-row:1;display:flex;flex-direction:column;min-width:0">
+      <div data-css="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--border);background:rgba(67,97,238,0.04);border-radius:10px 10px 0 0;flex-shrink:0">
+        <span data-css="color:var(--primary);font-size:13px">🩺 运维健康</span>
+        <span data-css="margin-left:auto;display:flex;gap:6px;align-items:center;position:relative;z-index:1">
+          <button class="btn btn-soft-primary" data-on-click="triggerCollect" data-css="height:30px;border-radius:6px;padding:0 14px;font-size:12px">⏎ 手动采集</button>
+          <button class="btn btn-soft-danger" data-on-click="_confirmRestartService" data-css="height:30px;border-radius:6px;padding:0 14px;font-size:12px">🔄 重启服务</button>
         </span>
       </div>
-      <div class="card-bd" style="flex:1;padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;overflow-y:auto">
-        ${h.product_health&&h.product_health.length>0?`<div style="min-width:160px;flex:1">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">采集</div>
-          <div style="display:flex;flex-direction:column;gap:2px">
+      <div class="card-bd" data-css="flex:1;padding:8px 10px;display:flex;flex-wrap:wrap;gap:10px;align-content:flex-start;overflow-y:auto">
+        ${h.product_health&&h.product_health.length>0?`<div data-css="min-width:160px;flex:1">
+          <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">采集</div>
+          <div data-css="display:flex;flex-direction:column;gap:2px">
             ${h.product_health.slice(0,12).map(p=>{
               const statusIcon=(p.health_status==='ok'||p.health_status==='正常')?'💚':p.health_status&&p.health_status!=='未知'&&p.health_status!=='ok'?'❌':'⚪';
               const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
-              return `<div style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray-disabled)">
-                <span style="flex-shrink:0">${statusIcon}</span>
-                <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name||'未知'}</span>
-                <span style="color:var(--gray-disabled);font-size:10px;flex-shrink:0">${last}</span>
+              return `<div data-css="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--gray-disabled)">
+                <span data-css="flex-shrink:0">${statusIcon}</span>
+                <span data-css="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name||'未知')}</span>
+                <span data-css="color:var(--gray-disabled);font-size:10px;flex-shrink:0">${last}</span>
               </div>`}).join('')}
           </div>
         </div>`:''}
-        ${h.push_today?`<div style="min-width:110px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">推送</div>
-          <div style="display:flex;gap:4px;flex-wrap:wrap">
+        ${h.push_today?`<div data-css="min-width:110px">
+          <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">推送</div>
+          <div data-css="display:flex;gap:4px;flex-wrap:wrap">
             <span class="badge ${h.push_success_rate>=80?'badge-ok':h.push_success_rate>=50?'badge-warn':'badge-err'}">${h.push_success_rate||0}%</span>
             <span class="badge badge-grey">${h.push_today.total||0}条</span>
           </div>
-          <div style="font-size:10px;color:var(--gray-disabled);margin-top:3px">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
+          <div data-css="font-size:10px;color:var(--gray-disabled);margin-top:3px">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
         </div>`:''}
-        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div style="min-width:80px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">快照</div>
+        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div data-css="min-width:80px">
+          <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">快照</div>
           <span class="badge badge-blue">${h.active_snapshots} 个</span>
         </div>`:''}
-        ${h.异常日志&&h.异常日志.length>0?`<div style="min-width:140px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">异常 (2h内)</div>
-          <div style="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
-            ${h.异常日志.slice(0,3).map(l=>`<div style="font-size:10px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
+        ${h.异常日志&&h.异常日志.length>0?`<div data-css="min-width:140px">
+          <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">异常 (2h内)</div>
+          <div data-css="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
+            ${h.异常日志.slice(0,3).map(l=>`<div data-css="font-size:10px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
           </div>
         </div>`:''}
-        ${h.queue?.overdue>0?`<div style="min-width:100px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">队列</div>
+        ${h.queue?.overdue>0?`<div data-css="min-width:100px">
+          <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">队列</div>
           <span class="badge badge-warn">⏰ 超时 ${h.queue.overdue} 条</span>
         </div>`:''}
-        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div style="min-width:130px">
-          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">限流</div>
-          <div style="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
-            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err" style="font-size:10px">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
+        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div data-css="min-width:130px">
+          <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">限流</div>
+          <div data-css="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
+            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err" data-css="font-size:10px">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
       </div>
     </div>
     <!-- Row 1 Col 2: 事件中心 -->
-    <div class="card" style="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0">
-      <div class="card-hd" style="background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
-        <span style="color:var(--danger)">🔔 事件中心</span>
-        <span id="eventsCenterCounts" style="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
-        <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" onclick="openEventsCenterModal()" style="margin-left:6px;flex-shrink:0">查看更多 ↗</button>
+    <div class="card" data-css="grid-column:2;grid-row:2;display:flex;flex-direction:column;min-width:0">
+      <div class="card-hd" data-css="background:rgba(239,68,68,0.04);border-radius:10px 10px 0 0">
+        <span data-css="color:var(--danger)">🔔 事件中心</span>
+        <span id="eventsCenterCounts" data-css="margin-left:auto;display:flex;gap:4px;align-items:center;font-size:11px"></span>
+        <button id="eventsCenterExpandBtn" class="btn btn-xs btn-soft-primary" data-on-click="openEventsCenterModal" data-css="margin-left:6px;flex-shrink:0">查看更多 ↗</button>
       </div>
-      <div class="card-bd" id="eventsCenterBody" style="flex:1;padding:8px 12px;overflow-y:auto">
-        <div style="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
+      <div class="card-bd" id="eventsCenterBody" data-css="flex:1;padding:8px 12px;overflow-y:auto">
+        <div data-css="text-align:center;color:var(--muted);font-size:12px;padding:20px 0">—</div>
       </div>
     </div>
     <!-- Row 1 Col 3: 最近更新 -->
-    <div class="card" style="grid-column:3;grid-row:1;display:flex;flex-direction:column;min-width:0">
-      <div class="card-hd" style="color:var(--muted);font-size:11px;flex-shrink:0">📋 最近更新</div>
-      <div class="card-bd" style="flex:1;padding:8px 12px;overflow-y:auto">
+    <div class="card" data-css="grid-column:3;grid-row:1;display:flex;flex-direction:column;min-width:0">
+      <div class="card-hd" data-css="color:var(--muted);font-size:11px;flex-shrink:0">📋 最近更新</div>
+      <div class="card-bd" data-css="flex:1;padding:8px 12px;overflow-y:auto">
         ${_recentPackageGroups(d.recent_deliveries||[]).map(g=>{
           const bad=g.failed>0, icon=bad?'✗':(g.sent>0?'✓':'·');
           const color=bad?'var(--danger)':(g.sent>0?'var(--success)':'var(--muted)');
           const tip=`推送 ${g.total} 次 · ${g.sent}✓ ${g.failed}✗\n${[...g.customers].join('、')||'—'}`;
-          return `<div class="pill-tip" data-tip="${escHtml(tip)}" style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--gray-border);white-space:nowrap">
-            <span style="color:${color};flex-shrink:0;font-size:13px">${icon}</span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis">${escHtml(g.product||'—')} ${escHtml(g.ver||'')}${g.file?' ('+escHtml(g.file.slice(0,22))+')':''}</span>
-            <span style="color:var(--muted);font-size:11px;flex-shrink:0">${g.customers.size}客户</span>
-            <span style="color:var(--muted);font-size:11px;flex-shrink:0">${fmtTZ(g.sent_at,true)}</span>
+          return `<div class="pill-tip" data-tip="${escHtml(tip)}" data-css="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:12px;border-bottom:1px solid var(--gray-border);white-space:nowrap">
+            <span data-css="color:${color};flex-shrink:0;font-size:13px">${icon}</span>
+            <span data-css="flex:1;overflow:hidden;text-overflow:ellipsis">${escHtml(g.product||'—')} ${escHtml(g.ver||'')}${g.file?' ('+escHtml(g.file.slice(0,22))+')':''}</span>
+            <span data-css="color:var(--muted);font-size:11px;flex-shrink:0">${g.customers.size}客户</span>
+            <span data-css="color:var(--muted);font-size:11px;flex-shrink:0">${fmtTZ(g.sent_at,true)}</span>
           </div>`;
-        }).join('')||'<div style="text-align:center;color:var(--muted);font-size:12px;padding:18px 0">暂无推送</div>'}
+        }).join('')||'<div data-css="text-align:center;color:var(--muted);font-size:12px;padding:18px 0">暂无推送</div>'}
       </div>
     </div>
 
     <!-- Row 2 Col 1: 客户推送分布 -->
-    <div class="card" style="grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+    <div class="card" data-css="grid-column:1;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" data-css="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📨 客户推送分布</span>
-        <div id="custRange" style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-primary" onclick="setDashRange('cust','7')">7天</button>
-          <button class="btn btn-xs btn-outline" onclick="setDashRange('cust','30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="setDashRange('cust','90')">90天</button>
+        <div id="custRange" data-css="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-primary" data-on-click="setDashRange" data-args='${_dataArgs('cust', '7')}'>7天</button>
+          <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('cust', '30')}'>30天</button>
+          <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('cust', '90')}'>90天</button>
         </div>
       </div>
-      <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-        <div id="custPushTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
+      <div class="card-bd" data-css="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
+        <div id="custPushTable" data-css="height:100%;overflow-y:auto;padding:4px 0"></div>
       </div>
     </div>
 
     <!-- Row 2 Col 2: 包发布趋势 (中间,与事件中心对齐) -->
-    <div class="card" style="grid-column:2;grid-row:1;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+    <div class="card" data-css="grid-column:2;grid-row:1;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" data-css="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📈 包发布趋势</span>
-        <div id="tlRange" style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-primary" onclick="setDashRange('tl','7')">7天</button>
-          <button class="btn btn-xs btn-outline" onclick="setDashRange('tl','30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="setDashRange('tl','90')">90天</button>
+        <div id="tlRange" data-css="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-primary" data-on-click="setDashRange" data-args='${_dataArgs('tl', '7')}'>7天</button>
+          <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('tl', '30')}'>30天</button>
+          <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('tl', '90')}'>90天</button>
         </div>
       </div>
-      <div class="card-bd" style="flex:1;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">
-        <canvas id="chartTimeline" width="700" height="200" style="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
-        <div id="tlLegend" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;line-height:1.4;flex:1;overflow-y:auto;overflow-x:hidden;padding-right:4px"></div>
+      <div class="card-bd" data-css="flex:1;padding:12px;box-sizing:border-box;display:flex;flex-direction:column;overflow:hidden">
+        <canvas id="chartTimeline" width="700" height="200" data-css="width:100%;height:200px;display:block;flex-shrink:0"></canvas>
+        <div id="tlLegend" data-css="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;line-height:1.4;flex:1;overflow-y:auto;overflow-x:hidden;padding-right:4px"></div>
       </div>
     </div>
 
     <!-- Row 2 Col 3: 产品发布分布 -->
-    <div class="card" style="grid-column:3;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
-      <div class="card-hd" style="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
+    <div class="card" data-css="grid-column:3;grid-row:2;display:flex;flex-direction:column;min-width:0;height:430px">
+      <div class="card-hd" data-css="display:flex;align-items:center;gap:8px;font-size:12px;flex-shrink:0">
         <span>📊 产品发布分布</span>
-        <div id="pieRange" style="display:flex;gap:4px;margin-left:8px">
-          <button class="btn btn-xs btn-primary" onclick="setDashRange('pie','7')">7天</button>
-          <button class="btn btn-xs btn-outline" onclick="setDashRange('pie','30')">30天</button>
-          <button class="btn btn-xs btn-outline" onclick="setDashRange('pie','90')">90天</button>
+        <div id="pieRange" data-css="display:flex;gap:4px;margin-left:8px">
+          <button class="btn btn-xs btn-primary" data-on-click="setDashRange" data-args='${_dataArgs('pie', '7')}'>7天</button>
+          <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('pie', '30')}'>30天</button>
+          <button class="btn btn-xs btn-outline" data-on-click="setDashRange" data-args='${_dataArgs('pie', '90')}'>90天</button>
         </div>
       </div>
-      <div class="card-bd" style="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
-        <div id="prodDistTable" style="height:100%;overflow-y:auto;padding:4px 0"></div>
+      <div class="card-bd" data-css="flex:1;padding:0;overflow:hidden;box-sizing:border-box">
+        <div id="prodDistTable" data-css="height:100%;overflow-y:auto;padding:4px 0"></div>
       </div>
     </div>
     </div>
@@ -380,10 +387,10 @@ async function fetchEventsHeader(){
     const centerCounts = document.getElementById('eventsCenterCounts');
     if (centerCounts) {
       const parts2 = [];
-      if(c.CRITICAL) parts2.push(`<span style="background:var(--danger-light);color:var(--danger-text);padding:1px 6px;border-radius:8px;font-weight:600">🔴${c.CRITICAL}</span>`);
-      if(c.ERROR) parts2.push(`<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">🟠${c.ERROR}</span>`);
-      if(c.WARNING) parts2.push(`<span style="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">⚠️${c.WARNING}</span>`);
-      centerCounts.innerHTML = parts2.length ? parts2.join(' ') : '<span style="color:var(--success)">✅</span>';
+      if(c.CRITICAL) parts2.push(`<span data-css="background:var(--danger-light);color:var(--danger-text);padding:1px 6px;border-radius:8px;font-weight:600">🔴${c.CRITICAL}</span>`);
+      if(c.ERROR) parts2.push(`<span data-css="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">🟠${c.ERROR}</span>`);
+      if(c.WARNING) parts2.push(`<span data-css="background:#fef3c7;color:#92400e;padding:1px 6px;border-radius:8px;font-weight:600">⚠️${c.WARNING}</span>`);
+      centerCounts.innerHTML = parts2.length ? parts2.join(' ') : '<span data-css="color:var(--success)">✅</span>';
     }
   }catch(e){}
 }
@@ -412,7 +419,7 @@ function renderEventsCenterFromData(events){
   const body = document.getElementById('eventsCenterBody');
   if (!body) return;
   if (!events || !events.length) {
-    body.innerHTML = '<div style="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
+    body.innerHTML = '<div data-css="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
     return;
   }
   // 2026-09-01: 仪表盘卡片现在宽度足够,直接按弹窗表格格式渲染
@@ -424,25 +431,25 @@ function renderEventsCenterFromData(events){
 
 // 仪表盘卡片专用表格(去掉"已读"按钮,仅显示 NEW/已读状态标签;列宽按卡片适配)
 function renderEventsCenterTable(events){
-  const head = `<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+  const head = `<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
     <colgroup>
-      <col style="width:160px">
-      <col style="width:100px">
-      <col style="width:130px">
+      <col data-css="width:160px">
+      <col data-css="width:100px">
+      <col data-css="width:130px">
       <col>
-      <col style="width:140px">
-      <col style="width:100px">
-      <col style="width:60px">
+      <col data-css="width:140px">
+      <col data-css="width:100px">
+      <col data-css="width:60px">
     </colgroup>
-    <thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
-      <tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
+    <thead data-css="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
+      <tr data-css="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
       </tr>
     </thead>
     <tbody>`;
@@ -455,14 +462,14 @@ function renderEventsCenterTable(events){
 function _deliveryErrorItemsHtml(m){
   const items = ((m && m.items) || []).filter(it => it && it.queue_id);
   if(!items.length) return '';
-  return '<div style="margin-bottom:8px">'+items.map(it=>{
+  return '<div data-css="margin-bottom:8px">'+items.map(it=>{
     const owner = [it.customer_name, it.rule_name].filter(Boolean).join(' / ') || ('规则 '+it.rule_id);
     const prod = [it.product_name, it.version].filter(Boolean).join(' ');
-    return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
-      <span style="color:var(--danger)">✗</span>
+    return `<div data-css="display:flex;align-items:center;gap:8px;margin-top:4px;flex-wrap:wrap">
+      <span data-css="color:var(--danger)">✗</span>
       <span>队列 #${it.queue_id} · ${escHtml(owner)}${prod?' '+escHtml(prod):''}</span>
-      <span style="color:var(--muted)">${escHtml(String(it.reason||''))} ${escHtml(String(it.error||'').slice(0,80))}</span>
-      <button class="btn btn-xs btn-soft-primary" onclick="event.stopPropagation();retryDelivery(${Number(it.queue_id)},this)">重新入队</button>
+      <span data-css="color:var(--muted)">${escHtml(String(it.reason||''))} ${escHtml(String(it.error||'').slice(0,80))}</span>
+      <button class="btn btn-xs btn-soft-primary" data-on-click="retryDelivery" data-stop data-args='${_dataArgs(Number(it.queue_id), '$el')}'>重新入队</button>
     </div>`;
   }).join('')+'</div>';
 }
@@ -507,20 +514,20 @@ function renderEventsCenterTableRow(e){
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
-    + (e.source_url ? `<div style="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
-    : (e.source_url ? `<div style="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span style="color:var(--muted)">—</span>');
+    + (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
+    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span data-css="color:var(--muted)">—</span>');
   const channelCell = e.channel_type
     ? `<div>${escHtml(e.channel_type)}</div>`
-    + (e.channel_id ? `<div style="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
-    + (e.customer_id ? `<div style="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
-    : '<span style="color:var(--muted)">—</span>';
+    + (e.channel_id ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
+    + (e.customer_id ? `<div data-css="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
+    : '<span data-css="color:var(--muted)">—</span>';
   // 详情面板 — 用 eventCardDetail- 前缀避免跟弹窗 eventTableDetail- 撞 ID
   const detailId = 'eventCardDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
-  const detail = `<tr id="${detailId}" style="display:none;background:var(--gray-bg)"><td colspan="7" style="padding:10px 12px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
-    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td colspan="7" data-css="padding:10px 12px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
+    <div data-css="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
       <span><b>event_type:</b> ${escHtml(t)}</span>
-      <span><b>severity:</b> <span style="color:${sevColor}">${escHtml(e.severity)}</span></span>
+      <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
       ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
       ${e.rule_id?`<span><b>rule_id:</b> ${e.rule_id}</span>`:''}
       ${m.username?`<span><b>用户名:</b> ${escHtml(m.username)}</span>`:''}
@@ -531,8 +538,8 @@ function renderEventsCenterTableRow(e){
     </div>
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
-      <summary style="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
-      <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto">${detailJson}</pre>
+      <summary data-css="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
+      <pre data-css="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto">${detailJson}</pre>
     </details>
   </td></tr>`;
   let rowStyle = 'border-bottom:1px solid var(--gray-border);cursor:pointer';
@@ -545,17 +552,17 @@ function renderEventsCenterTableRow(e){
       rowStyle += ';border-left:2px solid #ca8a04';
     }
   }
-  return `<tr style="${rowStyle}" onclick="toggleEventsCenterCardRow(${e.id})" title="点击展开详情">
-    <td style="padding:6px 8px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
-    <td style="padding:6px"><span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
-    <td style="padding:6px;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t)}">${escHtml(t)}</td>
-    <td style="padding:6px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(title)}">${escHtml(title)}</td>
-    <td style="padding:6px;color:var(--text);font-size:11px">${productCell}</td>
-    <td style="padding:6px;color:var(--text);font-size:11px">${channelCell}</td>
-    <td style="padding:6px;text-align:center;font-size:10px">
+  return `<tr data-css="${rowStyle}" data-on-click="toggleEventsCenterCardRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
+    <td data-css="padding:6px 8px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
+    <td data-css="padding:6px"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td data-css="padding:6px;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(t)}">${escHtml(t)}</td>
+    <td data-css="padding:6px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(title)}">${escHtml(title)}</td>
+    <td data-css="padding:6px;color:var(--text);font-size:11px">${productCell}</td>
+    <td data-css="padding:6px;color:var(--text);font-size:11px">${channelCell}</td>
+    <td data-css="padding:6px;text-align:center;font-size:10px">
       ${isUnread
-        ? '<span style="background:var(--danger);color:#fff;padding:1px 6px;border-radius:4px">NEW</span>'
-        : '<span style="background:#f3e8ff;color:#7c3aed;padding:1px 6px;border-radius:4px">已读</span>'}</td>
+        ? '<span data-css="background:var(--danger);color:#fff;padding:1px 6px;border-radius:4px">NEW</span>'
+        : '<span data-css="background:#f3e8ff;color:#7c3aed;padding:1px 6px;border-radius:4px">已读</span>'}</td>
   </tr>${detail}`;
 }
 
@@ -581,45 +588,45 @@ function openEventsCenterModal(){
     m = document.createElement('div');
     m.id = 'eventsCenterModal';
     m.innerHTML = `
-      <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeEventsCenterModal()">
-        <div class="card" style="width:960px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column">
-          <div class="card-hd" style="display:flex;align-items:center">
-            <span style="color:var(--danger)">🔔 事件中心</span>
-            <span id="eventsCenterModalCount" style="margin-left:8px;color:var(--muted);font-size:11px;font-weight:400"></span>
-            <span onclick="closeEventsCenterModal()" style="margin-left:auto;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1;padding:0 4px">×</span>
+      <div class="modal-overlay" data-css="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" data-on-click="closeEventsCenterModal" data-self>
+        <div class="card" data-css="width:960px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column">
+          <div class="card-hd" data-css="display:flex;align-items:center">
+            <span data-css="color:var(--danger)">🔔 事件中心</span>
+            <span id="eventsCenterModalCount" data-css="margin-left:8px;color:var(--muted);font-size:11px;font-weight:400"></span>
+            <span data-on-click="closeEventsCenterModal" data-css="margin-left:auto;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1;padding:0 4px">×</span>
           </div>
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
-            <span style="color:var(--muted)">严重度</span>
-            <select id="eventsCenterModalSev" class="sel-sm dd" onchange="eventsCenterGoPage(0)">
+          <div data-css="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
+            <span data-css="color:var(--muted)">严重度</span>
+            <select id="eventsCenterModalSev" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
               <option value="">全部</option>
               <option value="CRITICAL">🔴 CRITICAL</option>
               <option value="ERROR">🟠 ERROR</option>
               <option value="WARNING">⚠️ WARNING</option>
               <option value="INFO">ℹ️ INFO</option>
             </select>
-            <span style="color:var(--muted)">时间范围</span>
-            <select id="eventsCenterModalHours" class="sel-sm dd" onchange="eventsCenterGoPage(0)">
+            <span data-css="color:var(--muted)">时间范围</span>
+            <select id="eventsCenterModalHours" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
               <option value="24">近 24 小时</option>
               <option value="168" selected>近 7 天</option>
               <option value="720">近 30 天</option>
               <option value="2160">近 90 天</option>
             </select>
-            <button class="btn btn-xs btn-outline" onclick="eventsCenterAckCurrent()" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)" style="margin-left:auto">一键已读</button>
-            <button class="btn btn-xs btn-outline" onclick="loadEventsCenterModal()">🔄 刷新</button>
+            <button class="btn btn-xs btn-outline" data-on-click="eventsCenterAckCurrent" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)" data-css="margin-left:auto">一键已读</button>
+            <button class="btn btn-xs btn-outline" data-on-click="loadEventsCenterModal">🔄 刷新</button>
           </div>
-          <div class="card-bd" id="eventsCenterModalBody" style="flex:1;overflow:auto;padding:0">
-            <div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
+          <div class="card-bd" id="eventsCenterModalBody" data-css="flex:1;overflow:auto;padding:0">
+            <div data-css="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>
           </div>
-          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:12px">
-            <span id="eventsCenterModalPagerInfo" style="color:var(--muted)"></span>
-            <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-              <button id="eventsCenterModalPrevBtn" class="btn btn-xs btn-outline" onclick="eventsCenterPrevPage()">← 上一页</button>
-              <span id="eventsCenterModalPageInfo" style="color:var(--muted);font-size:11px;min-width:60px;text-align:center"></span>
-              <button id="eventsCenterModalNextBtn" class="btn btn-xs btn-outline" onclick="eventsCenterNextPage()">下一页 →</button>
+          <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:12px">
+            <span id="eventsCenterModalPagerInfo" data-css="color:var(--muted)"></span>
+            <div data-css="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <button id="eventsCenterModalPrevBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterPrevPage">← 上一页</button>
+              <span id="eventsCenterModalPageInfo" data-css="color:var(--muted);font-size:11px;min-width:60px;text-align:center"></span>
+              <button id="eventsCenterModalNextBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterNextPage">下一页 →</button>
             </div>
           </div>
-          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;justify-content:flex-end">
-            <button class="btn btn-outline" onclick="closeEventsCenterModal()">关闭</button>
+          <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;justify-content:flex-end">
+            <button class="btn btn-outline" data-on-click="closeEventsCenterModal">关闭</button>
           </div>
         </div>
       </div>
@@ -675,13 +682,13 @@ async function loadEventsCenterModal(){
   if(sev) params.set('severity', sev);
   // 第一次加载才显示"加载中",后续刷新不闪(避免 AP-127)
   if(!eventsCenterState.loadedOnce){
-    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>';
+    body.innerHTML = '<div data-css="padding:40px;text-align:center;color:var(--muted);font-size:13px">加载中…</div>';
   }
   const r = await api('/system/events?' + params.toString());
   // DOM 守卫:modal 可能已关闭(避免写已卸载元素)
   if(document.getElementById('eventsCenterModalBody') !== body) return;
   if(r.code !== 0){
-    body.innerHTML = '<div style="padding:40px;text-align:center;color:var(--danger);font-size:13px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
+    body.innerHTML = '<div data-css="padding:40px;text-align:center;color:var(--danger);font-size:13px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
     return;
   }
   const data = r.data || {};
@@ -689,7 +696,7 @@ async function loadEventsCenterModal(){
   const total = data.total || 0;
   eventsCenterState.total = total;
   if(!events.length){
-    body.innerHTML = '<div style="padding:60px 20px;text-align:center;color:var(--success);font-size:14px">✅ 当前条件下无事件</div>';
+    body.innerHTML = '<div data-css="padding:60px 20px;text-align:center;color:var(--success);font-size:14px">✅ 当前条件下无事件</div>';
     if(countEl) countEl.textContent = '(共 0 条)';
     if(pagerInfo) pagerInfo.textContent = '';
     if(pageInfo) pageInfo.textContent = '0 / 0';
@@ -714,25 +721,25 @@ async function loadEventsCenterModal(){
 
 // 表格渲染 — 字段作为表头
 function renderEventsTable(events){
-  const head = `<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+  const head = `<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
     <colgroup>
-      <col style="width:140px">
-      <col style="width:80px">
-      <col style="width:130px">
+      <col data-css="width:140px">
+      <col data-css="width:80px">
+      <col data-css="width:130px">
       <col>
-      <col style="width:140px">
-      <col style="width:110px">
-      <col style="width:70px">
+      <col data-css="width:140px">
+      <col data-css="width:110px">
+      <col data-css="width:70px">
     </colgroup>
-    <thead style="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
-      <tr style="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>
-        <th style="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
+    <thead data-css="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
+      <tr data-css="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">时间</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">严重度</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">类型</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">标题</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">产品 / URL</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2">渠道</th>
+        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
       </tr>
     </thead>
     <tbody>`;
@@ -767,20 +774,20 @@ function renderEventsTableRow(e){
   const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
-    + (e.source_url ? `<div style="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
-    : (e.source_url ? `<div style="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span style="color:var(--muted)">—</span>');
+    + (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
+    : (e.source_url ? `<div data-css="color:var(--muted);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '<span data-css="color:var(--muted)">—</span>');
   const channelCell = e.channel_type
     ? `<div>${escHtml(e.channel_type)}</div>`
-    + (e.channel_id ? `<div style="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
-    + (e.customer_id ? `<div style="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
-    : '<span style="color:var(--muted)">—</span>';
+    + (e.channel_id ? `<div data-css="color:var(--muted);font-size:10px;margin-top:2px">#${e.channel_id}</div>` : '')
+    + (e.customer_id ? `<div data-css="color:var(--muted);font-size:10px">客户 ${e.customer_id}</div>` : '')
+    : '<span data-css="color:var(--muted)">—</span>';
   // 详情面板 — 用 eventTableDetail- 前缀避免跟 dashboard 卡片的 eventDetail- 撞 ID(AP-133)
   const detailId = 'eventTableDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
-  const detail = `<tr id="${detailId}" style="display:none;background:var(--gray-bg)"><td colspan="7" style="padding:12px 16px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
-    <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
+  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td colspan="7" data-css="padding:12px 16px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
+    <div data-css="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:8px">
       <span><b>event_type:</b> ${escHtml(t)}</span>
-      <span><b>severity:</b> <span style="color:${sevColor}">${escHtml(e.severity)}</span></span>
+      <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
       ${e.is_rollback?'<span><b>回滚事件</b></span>':''}
       ${e.rule_id?`<span><b>rule_id:</b> ${e.rule_id}</span>`:''}
       ${m.username?`<span><b>用户名:</b> ${escHtml(m.username)}</span>`:''}
@@ -791,8 +798,8 @@ function renderEventsTableRow(e){
     </div>
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
-      <summary style="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
-      <pre style="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>
+      <summary data-css="cursor:pointer;color:var(--muted);user-select:none">📦 原始 message JSON</summary>
+      <pre data-css="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>
     </details>
   </td></tr>`;
   // 重要事件视觉强化:CRITICAL 未读加左侧粗红条 + 浅红背景;ERROR 橙条;INFO/WARNING 普通
@@ -806,17 +813,17 @@ function renderEventsTableRow(e){
       rowStyle += ';border-left:2px solid #ca8a04';
     }
   }
-  return `<tr style="${rowStyle}" onclick="toggleEventsTableRow(${e.id})" title="点击展开详情">
-    <td style="padding:8px 12px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
-    <td style="padding:8px"><span style="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
-    <td style="padding:8px;color:var(--muted);font-size:11px">${escHtml(t)}</td>
-    <td style="padding:8px;color:var(--text);overflow:hidden;text-overflow:ellipsis">${escHtml(title)}</td>
-    <td style="padding:8px;color:var(--text);font-size:11px">${productCell}</td>
-    <td style="padding:8px;color:var(--text);font-size:11px">${channelCell}</td>
-    <td style="padding:8px;text-align:center">
+  return `<tr data-css="${rowStyle}" data-on-click="toggleEventsTableRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
+    <td data-css="padding:8px 12px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
+    <td data-css="padding:8px"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
+    <td data-css="padding:8px;color:var(--muted);font-size:11px">${escHtml(t)}</td>
+    <td data-css="padding:8px;color:var(--text);overflow:hidden;text-overflow:ellipsis">${escHtml(title)}</td>
+    <td data-css="padding:8px;color:var(--text);font-size:11px">${productCell}</td>
+    <td data-css="padding:8px;color:var(--text);font-size:11px">${channelCell}</td>
+    <td data-css="padding:8px;text-align:center">
       ${isUnread
-        ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id});loadEventsCenterModal()" style="font-size:10px;padding:1px 6px">已读</button>`
-        : '<span style="background:#f3e8ff;color:#7c3aed;font-size:10px;padding:2px 8px;border-radius:4px">已读</span>'}</td>
+        ? `<button class="btn btn-xs btn-soft-success" data-on-click="_ackEventAndReload" data-stop data-args='${_dataArgs(e.id)}' data-css="font-size:10px;padding:1px 6px">已读</button>`
+        : '<span data-css="background:#f3e8ff;color:#7c3aed;font-size:10px;padding:2px 8px;border-radius:4px">已读</span>'}</td>
   </tr>${detail}`;
 }
 
@@ -858,9 +865,9 @@ async function eventsCenterAckCurrent(){
     ' ',
     '标记为已读',
     false,  // 含 INFO 也是正常清理,不再警告
-    `<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:12px 0;background:#f3e8ff;border:1px solid #e9d5ff;border-radius:8px">
-       <span style="font-size:20px;line-height:1">✓</span>
-       <span style="font-size:12px;color:#7c3aed;line-height:1.5">将标记当前过滤条件下 <b>${targets.length}</b> 个 severity 类别(${targets.join(' / ')})的全部未读事件</span>
+    `<div data-css="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:12px 0;background:#f3e8ff;border:1px solid #e9d5ff;border-radius:8px">
+       <span data-css="font-size:20px;line-height:1">✓</span>
+       <span data-css="font-size:12px;color:#7c3aed;line-height:1.5">将标记当前过滤条件下 <b>${targets.length}</b> 个 severity 类别(${targets.join(' / ')})的全部未读事件</span>
      </div>`
   );
 }
@@ -872,18 +879,18 @@ async function renderEventsCenter(){
     const r = await api('/system/events?limit=10');
     if (document.getElementById('eventsCenterBody') !== body) return;
     if (r.code !== 0) {
-      body.innerHTML = `<div style="text-align:center;color:var(--muted);font-size:12px;padding:16px 0">加载失败,点击 <a href="#" onclick="renderEventsCenter();return false">重试</a></div>`;
+      body.innerHTML = `<div data-css="text-align:center;color:var(--muted);font-size:12px;padding:16px 0">加载失败,点击 <a href="#" data-on-click="renderEventsCenter" data-prevent>重试</a></div>`;
       return;
     }
     const events = r.data?.events || [];
     if (!events.length) {
-      body.innerHTML = '<div style="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
+      body.innerHTML = '<div data-css="text-align:center;color:var(--success);font-size:13px;padding:30px 0">✅ 系统正常,无事件</div>';
       return;
     }
     renderEventsCenterFromData(events);
   }catch(e){
     if (document.getElementById('eventsCenterBody') === body) {
-      body.innerHTML = `<div style="text-align:center;color:var(--danger);font-size:12px;padding:16px 0">网络错误</div>`;
+      body.innerHTML = `<div data-css="text-align:center;color:var(--danger);font-size:12px;padding:16px 0">网络错误</div>`;
     }
   }
 }
@@ -899,15 +906,15 @@ async function loadEvents(){
   try{
     const r = await api('/system/events?' + params.toString());
     const list = document.getElementById('eventsList');
-    if(r.code !== 0){list.innerHTML='<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';console.error('[events] API error', r);return;}
+    if(r.code !== 0){list.innerHTML='<div data-css="padding:20px;text-align:center;color:var(--muted);font-size:12px">加载失败: '+escHtml(r.message||'未知错误')+'</div>';console.error('[events] API error', r);return;}
     const events = r.data?.events || [];
     if(!events.length){
-      list.innerHTML='<div style="padding:24px;text-align:center;color:var(--muted);font-size:13px">✅ 当前条件下无事件</div>';
+      list.innerHTML='<div data-css="padding:24px;text-align:center;color:var(--muted);font-size:13px">✅ 当前条件下无事件</div>';
       return;
     }
     list.innerHTML = events.map(renderEvent).join('');
   }catch(e){
-    document.getElementById('eventsList').innerHTML='<div style="padding:20px;text-align:center;color:var(--danger);font-size:12px">网络错误</div>';
+    document.getElementById('eventsList').innerHTML='<div data-css="padding:20px;text-align:center;color:var(--danger);font-size:12px">网络错误</div>';
   }
 }
 
@@ -916,18 +923,18 @@ function renderEvent(e){
   const sevColor = {CRITICAL:'#dc2626',ERROR:'#ea580c',WARNING:'#ca8a04',INFO:'#6b7280'}[e.severity] || '#6b7280';
   const sevBg = {CRITICAL:'#fef2f2',ERROR:'#fff7ed',WARNING:'#fefce8',INFO:'#f9fafb'}[e.severity] || '#f9fafb';
   const isUnread = (e.severity === 'CRITICAL' || e.severity === 'ERROR' || e.severity === 'WARNING') && !e.acked_at;
-  const ackBtn = isUnread ? `<button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();ackEvent(${e.id})" style="margin-left:8px">✓ 已读</button>` : '';
-  return `<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--gray-bg);background:${isUnread?sevBg:'transparent'};${isUnread?'border-left:3px solid '+sevColor:''}cursor:pointer" onclick="toggleEventDetail(${e.id})">
-    <span style="font-size:14px;flex-shrink:0;margin-top:1px">${sevIcon}</span>
-    <div style="flex:1;min-width:0">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-        <span style="font-weight:600;color:${sevColor};font-size:12px">${escHtml(e.severity)}</span>
-        <span style="color:var(--muted);font-size:11px">${escHtml(e.event_type)}</span>
-        ${e.product_name ? `<span style="color:var(--primary);font-size:11px">${escHtml(e.product_name)}</span>` : ''}
-        <span style="color:var(--muted);font-size:11px;margin-left:auto">${escHtml(serverTime(e.created_at, true))}</span>
+  const ackBtn = isUnread ? `<button class="btn btn-xs btn-soft-success" data-on-click="ackEvent" data-stop data-args='${_dataArgs(e.id)}' data-css="margin-left:8px">✓ 已读</button>` : '';
+  return `<div data-css="display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid var(--gray-bg);background:${isUnread?sevBg:'transparent'};${isUnread?'border-left:3px solid '+sevColor:''}cursor:pointer" data-on-click="toggleEventDetail" data-args='${_dataArgs(e.id)}'>
+    <span data-css="font-size:14px;flex-shrink:0;margin-top:1px">${sevIcon}</span>
+    <div data-css="flex:1;min-width:0">
+      <div data-css="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span data-css="font-weight:600;color:${sevColor};font-size:12px">${escHtml(e.severity)}</span>
+        <span data-css="color:var(--muted);font-size:11px">${escHtml(e.event_type)}</span>
+        ${e.product_name ? `<span data-css="color:var(--primary);font-size:11px">${escHtml(e.product_name)}</span>` : ''}
+        <span data-css="color:var(--muted);font-size:11px;margin-left:auto">${escHtml(serverTime(e.created_at, true))}</span>
       </div>
-      <div style="font-size:12px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.message || '')}</div>
-      <div id="eventDetail${e.id}" style="display:none;margin-top:8px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;color:var(--muted)">
+      <div data-css="font-size:12px;color:var(--text);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(e.message || '')}</div>
+      <div id="eventDetail${e.id}" data-css="display:none;margin-top:8px;padding:8px;background:var(--gray-bg);border-radius:4px;font-size:11px;color:var(--muted)">
         ${e.source_url ? `<div><b>URL:</b> ${escHtml(e.source_url)}</div>` : ''}
         ${e.rule_id ? `<div><b>规则 ID:</b> ${e.rule_id}</div>` : ''}
         ${e.channel_id ? `<div><b>渠道 ID:</b> ${e.channel_id}</div>` : ''}

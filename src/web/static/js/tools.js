@@ -7,13 +7,13 @@ async function toolsPage(){
       <div class="card-hd">🛠️ 其他工具</div>
       <div class="card-bd">
         <div class="tools-grid">
-          <div class="tool-card" onclick="toolDiffRuleOpen()">
+          <div class="tool-card" data-on-click="toolDiffRuleOpen">
             <div class="tool-ico">🔍</div>
             <div class="tool-title">IDPS 规则库 Diff</div>
             <div class="tool-desc">输入 vendor portal 规则库链接 (限 IPS / IDS 产品), 实时拉取所有升级包, 选择任意 2 个版本对比新增 / 修改 / 删除的规则, 支持 CSV / xlsx 导出。</div>
             <span class="tool-tag">IDPS · 规则库</span>
           </div>
-          <div class="tool-card" onclick="toolDiffWafOpen()">
+          <div class="tool-card" data-on-click="toolDiffWafOpen">
             <div class="tool-ico">🛡️</div>
             <div class="tool-title">WAF 规则库 Diff</div>
             <div class="tool-desc">输入 vendor portal 规则库链接 (限 WAF 产品), 实时拉取所有升级包, 选择任意 2 个版本对比新增 / 修改 / 删除的规则, 支持 CSV / xlsx 导出。</div>
@@ -81,53 +81,53 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
     <div class="card">
       <div class="card-hd">
         ${title}
-        <button class="btn btn-outline btn-sm" onclick="toolsPage()" style="margin-left:auto">← 返回工具列表</button>
+        <button class="btn btn-outline btn-sm" data-on-click="toolsPage" data-css="margin-left:auto">← 返回工具列表</button>
       </div>
       <div class="card-bd">
         <div class="rd-toolbar">
-          <button class="btn btn-outline" id="rdPickerBtn" onclick="toolDiffOpenPicker('${expectedKind}')" title="从已有产品目录选择路径, 自动填 URL">📂 选择产品路径</button>
+          <button class="btn btn-outline" id="rdPickerBtn" data-on-click="toolDiffOpenPicker" data-args='${_dataArgs(expectedKind)}' title="从已有产品目录选择路径, 自动填 URL">📂 选择产品路径</button>
           <input type="text" id="rdUrl" placeholder="${placeholder}" title="可手动编辑 URL,或点「选择产品路径」自动填充">
-          <button class="btn btn-primary" id="rdFetchBtn" onclick="rdFetch(false)">🚀 提取规则信息</button>
-          <button class="btn btn-primary btn-sm" id="rdForceBtn" onclick="rdFetch(true)" title="跳过本地缓存, 重新从 vendor portal 拉取">🔄 强制刷新</button>
+          <button class="btn btn-primary" id="rdFetchBtn" data-on-click="rdFetch" data-args='${_dataArgs(false)}'>🚀 提取规则信息</button>
+          <button class="btn btn-primary btn-sm" id="rdForceBtn" data-on-click="rdFetch" data-args='${_dataArgs(true)}' title="跳过本地缓存, 重新从 vendor portal 拉取">🔄 强制刷新</button>
           <span class="rd-status" id="rdStatus"></span>
         </div>
-        <div id="rdUrlHint" style="display:none;font-size:12px;margin:-8px 0 14px;padding:0 4px;color:var(--muted)"></div>
+        <div id="rdUrlHint" data-css="display:none;font-size:12px;margin:-8px 0 14px;padding:0 4px;color:var(--muted)"></div>
 
         <div id="rdStep1">
-          <div id="rdStep1Header" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <div style="font-size:13px;font-weight:600;color:var(--text)">
+          <div id="rdStep1Header" data-css="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <div data-css="font-size:13px;font-weight:600;color:var(--text)">
               ① 选择 2 个版本(只能选 2 个, 第 3 次勾选会自动取消最早选的)
             </div>
-            <button class="btn btn-outline btn-sm" id="rdReselectBtn" style="display:none" onclick="rdReselect()">✏️ 修改选择</button>
+            <button class="btn btn-outline btn-sm" id="rdReselectBtn" data-css="display:none" data-on-click="rdReselect">✏️ 修改选择</button>
           </div>
           <div class="rd-table-container" id="rdPkgTableContainer">
             <table class="rd-table" id="rdPkgTable">
               <thead><tr>
-                <th style="width:36px"></th><th style="width:100px">版本号</th><th style="width:230px">文件名</th><th style="width:150px">发布时间 (CST)</th><th style="width:60px">大小</th><th style="width:260px">MD5</th>
+                <th data-css="width:36px"></th><th data-css="width:100px">版本号</th><th data-css="width:230px">文件名</th><th data-css="width:150px">发布时间 (CST)</th><th data-css="width:60px">大小</th><th data-css="width:260px">MD5</th>
               </tr></thead>
               <tbody></tbody>
             </table>
           </div>
-          <div id="rdSelectedBar" style="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:18px">
-            <span id="rdSelectedText" style="font-size:13px;color:var(--text);flex:1"></span>
-            <button class="btn btn-primary btn-sm" id="rdCompareBtn" onclick="rdCompare()">🔄 生成对比结果</button>
+          <div id="rdSelectedBar" data-css="display:none;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border:1px solid var(--border);border-radius:10px;margin-bottom:18px">
+            <span id="rdSelectedText" data-css="font-size:13px;color:var(--text);flex:1"></span>
+            <button class="btn btn-primary btn-sm" id="rdCompareBtn" data-on-click="rdCompare">🔄 生成对比结果</button>
           </div>
         </div>
 
-        <div id="rdStep2" style="display:none">
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">
+        <div id="rdStep2" data-css="display:none">
+          <div data-css="font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text)">
             ② 对比结果
           </div>
           <div id="rdSummary"></div>
-          <div id="rdFilterBar" style="display:none;margin-bottom:14px;font-size:12px;color:var(--muted)">
-            当前过滤: <code id="rdFilterLabel" style="background:var(--primary-light);padding:2px 6px;border-radius:4px;color:var(--primary)"></code>
-            <button class="btn btn-outline btn-xs" style="margin-left:8px" onclick="rdClearFilter()">清除过滤</button>
+          <div id="rdFilterBar" data-css="display:none;margin-bottom:14px;font-size:12px;color:var(--muted)">
+            当前过滤: <code id="rdFilterLabel" data-css="background:var(--primary-light);padding:2px 6px;border-radius:4px;color:var(--primary)"></code>
+            <button class="btn btn-outline btn-xs" data-css="margin-left:8px" data-on-click="rdClearFilter">清除过滤</button>
           </div>
           <div id="rdResultGroups"></div>
-          <div style="display:flex;gap:8px;align-items:center;margin-top:14px">
-            <button class="btn btn-primary" onclick="rdExport('xlsx')">📥 导出 xlsx</button>
-            <button class="btn btn-success" onclick="rdExport('csv')">📥 导出 CSV</button>
-            <button class="btn btn-outline" onclick="rdExport('csv', true)">📋 复制 CSV 到剪贴板</button>
+          <div data-css="display:flex;gap:8px;align-items:center;margin-top:14px">
+            <button class="btn btn-primary" data-on-click="rdExport" data-args='${_dataArgs('xlsx')}'>📥 导出 xlsx</button>
+            <button class="btn btn-success" data-on-click="rdExport" data-args='${_dataArgs('csv')}'>📥 导出 CSV</button>
+            <button class="btn btn-outline" data-on-click="rdExport" data-args='${_dataArgs('csv', true)}'>📋 复制 CSV 到剪贴板</button>
             <span class="rd-status" id="rdExportStatus"></span>
           </div>
         </div>
@@ -171,10 +171,10 @@ async function toolDiffOpenPicker(expectedKind){
   overlay.className = 'rd-picker-overlay';
   overlay.onclick = (ev) => { if (ev.target === overlay) overlay.remove(); };
   overlay.innerHTML = `
-    <div class="rd-picker-modal" onclick="event.stopPropagation()">
+    <div class="rd-picker-modal" >
       <div class="rd-picker-hd">
         <span class="rd-picker-title">📂 选择产品路径 · ${kindLabel}</span>
-        <button class="btn btn-xs btn-outline" onclick="document.getElementById('rdPickerOverlay').remove()">✕ 关闭</button>
+        <button class="btn btn-xs btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rdPickerOverlay')}'>✕ 关闭</button>
       </div>
       <div class="rd-picker-bd">
         <div class="rd-picker-loading">加载产品目录中...</div>
@@ -199,14 +199,14 @@ async function toolDiffOpenPicker(expectedKind){
     }
   } catch (e) {
     const bd = overlay.querySelector('.rd-picker-bd');
-    bd.innerHTML = `<div class="rd-picker-error">⚠️ 加载失败: ${escHtml(e.message || String(e))}<br><span style="font-size:11px;color:var(--muted)">请手动输入 URL 或重试</span></div>`;
+    bd.innerHTML = `<div class="rd-picker-error">⚠️ 加载失败: ${escHtml(e.message || String(e))}<br><span data-css="font-size:11px;color:var(--muted)">请手动输入 URL 或重试</span></div>`;
     // 保留弹层,用户可手动关闭或重试
     return;
   }
 
   const bd = overlay.querySelector('.rd-picker-bd');
   if (products.length === 0) {
-    bd.innerHTML = `<div class="rd-picker-error">⚠️ 当前没有可用的 ${kindLabel} 产品 (白名单: ${[...whitelist].join(' / ')})<br><span style="font-size:11px;color:var(--muted)">请先到「产品」页启用相应产品并完成包路径发现</span></div>`;
+    bd.innerHTML = `<div class="rd-picker-error">⚠️ 当前没有可用的 ${kindLabel} 产品 (白名单: ${[...whitelist].join(' / ')})<br><span data-css="font-size:11px;color:var(--muted)">请先到「产品」页启用相应产品并完成包路径发现</span></div>`;
     return;
   }
 
@@ -225,21 +225,21 @@ async function toolDiffOpenPicker(expectedKind){
     const bodyId = cardId + '_body';
     let treeHtml;
     if (allPaths.length === 0) {
-      treeHtml = `<div style="color:var(--muted);font-size:12px;padding:8px 12px">该产品尚未完成包路径发现,请先到「产品」页执行「发现」</div>`;
+      treeHtml = `<div data-css="color:var(--muted);font-size:12px;padding:8px 12px">该产品尚未完成包路径发现,请先到「产品」页执行「发现」</div>`;
     } else if (ruleLibPaths.length === 0) {
-      treeHtml = `<div style="color:var(--muted);font-size:12px;padding:8px 12px">该产品下没有规则库路径 (共 ${allPaths.length} 条 path, 无匹配)</div>`;
+      treeHtml = `<div data-css="color:var(--muted);font-size:12px;padding:8px 12px">该产品下没有规则库路径 (共 ${allPaths.length} 条 path, 无匹配)</div>`;
     } else {
       // 复用采集数据左侧目录的 buildDataTreeHtml 渲染树形结构
       // sid 用独立 namespace 避免跟正常采集数据页冲突; snapshotsMap 传空 (DIFF 不需要快照)
       treeHtml = buildDataTreeHtml({paths: ruleLibPaths}, {}, typeCN, {}, '', `${rdpKind}_${idx}`);
     }
-    return `<div class="rd-picker-product" id="${cardId}" style="border-bottom:1px solid var(--gray-bg)">
-      <div class="rd-picker-prod-hd" onclick="toolDiffToggleProduct(this)">
+    return `<div class="rd-picker-product" id="${cardId}" data-css="border-bottom:1px solid var(--gray-bg)">
+      <div class="rd-picker-prod-hd" data-on-click="toolDiffToggleProduct" data-args='${_dataArgs('$el')}'>
         <span class="rd-picker-arrow">▶</span>
         <span>${escHtml(p.name)}</span>
         <span class="rd-picker-count">${ruleLibPaths.length} / ${allPaths.length} paths</span>
       </div>
-      <div class="rd-picker-paths-wrap" id="${bodyId}" style="display:none">${treeHtml}</div>
+      <div class="rd-picker-paths-wrap" id="${bodyId}" data-css="display:none">${treeHtml}</div>
     </div>`;
   }).join('');
 
@@ -351,10 +351,9 @@ async function rdFetch(force){
   const t0 = Date.now();
   try {
     const qs = '?url=' + encodeURIComponent(url) + (force ? '&force=1' : '');
-    const r = await fetch(API + '/diff/fetch' + qs, { headers: { 'Authorization': 'Bearer ' + T }});
-    const j = await r.json();
+    const j = await api('/diff/fetch' + qs);
     if (j.code !== 0) {
-      rdToast('提取失败: ' + (j.message || ('HTTP ' + r.status)), 'error', 6000);
+      rdToast('提取失败: ' + (j.message || '网络错误'), 'error', 6000);
       status.textContent = '';
       return;
     }
@@ -366,8 +365,8 @@ async function rdFetch(force){
       _rd.sourceKind = j.data.source_kind;
     }
     const cacheTag = j.data.cache === 'hit'
-      ? `<span style="color:var(--success);font-weight:500">📦 来自缓存</span> (${j.data.fetched_at || ''} CST, ${((Date.now()-t0)/1000).toFixed(1)}s)`
-      : `<span style="color:var(--primary);font-weight:500">🌐 新拉取</span> (${((Date.now()-t0)/1000).toFixed(1)}s)`;
+      ? `<span data-css="color:var(--success);font-weight:500">📦 来自缓存</span> (${j.data.fetched_at || ''} CST, ${((Date.now()-t0)/1000).toFixed(1)}s)`
+      : `<span data-css="color:var(--primary);font-weight:500">🌐 新拉取</span> (${((Date.now()-t0)/1000).toFixed(1)}s)`;
     status.innerHTML = `✓ 共 ${_rd.packages.length} 个升级包 ${cacheTag}`;
     rdRenderPkgTable();
     document.getElementById('rdStep1').style.display = 'block';
@@ -397,7 +396,7 @@ async function rdUrlValidate(){
 
   if (!isVendorDomain || (!isIpsPath && !isWafPath)) {
     hint.style.display = 'block';
-    hint.innerHTML = '<span style="color:var(--danger)">⚠️ 仅支持 update.nsfocus.com 域名的 listNewipsDetail/ (IPS / IDS) 或 listWafV...Detail/ (WAF) 详情页</span>';
+    hint.innerHTML = '<span data-css="color:var(--danger)">⚠️ 仅支持 update.nsfocus.com 域名的 listNewipsDetail/ (IPS / IDS) 或 listWafV...Detail/ (WAF) 详情页</span>';
     return;
   }
 
@@ -412,7 +411,7 @@ async function rdUrlValidate(){
     if (fetchBtn) fetchBtn.disabled = true;
     if (forceBtn) forceBtn.disabled = true;
     hint.style.display = 'block';
-    hint.innerHTML = `<span style="color:var(--danger);font-weight:600">🚫 入口跟 URL 不匹配</span> · 当前是 <b>${_rdKindLabel[expected]}</b> 工具,但 URL 是 <b>${_rdKindLabel[sniffKind]}</b> 链接。请点 ← 返回切到 <b>${_rdKindLabel[sniffKind]}</b> 工具,或改正 URL`;
+    hint.innerHTML = `<span data-css="color:var(--danger);font-weight:600">🚫 入口跟 URL 不匹配</span> · 当前是 <b>${_rdKindLabel[expected]}</b> 工具,但 URL 是 <b>${_rdKindLabel[sniffKind]}</b> 链接。请点 ← 返回切到 <b>${_rdKindLabel[sniffKind]}</b> 工具,或改正 URL`;
     return;
   } else {
     if (fetchBtn) fetchBtn.disabled = false;
@@ -422,7 +421,7 @@ async function rdUrlValidate(){
 
   // 看缓存里有没有现成的 cache-status 可查
   hint.style.display = 'block';
-  hint.innerHTML = '<span style="color:var(--muted)">🔍 校验中...</span>';
+  hint.innerHTML = '<span data-css="color:var(--muted)">🔍 校验中...</span>';
 
   // 2026-07-14: 反推 URL 对应的 chain 路径(从 _dataAll 里的 package_type.paths 查)
   // _dataAll 未加载时主动 loadDataAll() 一次(in flight 用 _rdChainLoading 防重复请求)
@@ -468,15 +467,14 @@ async function rdUrlValidate(){
   })();
 
   try {
-    const r = await fetch(API + '/diff/cache-status?url=' + encodeURIComponent(url), { headers: { 'Authorization': 'Bearer ' + T }});
-    const j = await r.json();
+    const j = await api('/diff/cache-status?url=' + encodeURIComponent(url));
     let baseHint;
     if (j.code === 0 && j.data && j.data.exists) {
       const age = j.data.age_seconds || 0;
       const ageStr = age < 60 ? `${age}秒前` : age < 3600 ? `${Math.floor(age/60)}分钟前` : `${Math.floor(age/3600)}小时前`;
-      baseHint = `<span style="color:var(--success)">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>`;
+      baseHint = `<span data-css="color:var(--success)">📦 有 ${ageStr} 的本地缓存,点「提取」秒级返回;如需最新数据点「强制刷新」覆盖</span>`;
     } else {
-      baseHint = `<span style="color:var(--muted)">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>`;
+      baseHint = `<span data-css="color:var(--muted)">🌐 无缓存,提取时将实时拉取 vendor portal (约 2-5 秒)</span>`;
     }
     // 链路径(可能有 0 条 = URL 不在已采集产品里,或多条 = 跨产品共用 URL)
     const matches = await chainPromise;
@@ -487,18 +485,15 @@ async function rdUrlValidate(){
         `${i + 1}. ` + m.chain.join(' > ') + (m.srcName ? `  [${m.srcName}]` : '')
       ).join('\n');
       const headerText = `链路 (${matches.length} 条匹配):`;
-      // escape 给 inline onclick 用(避免引号/换行/中文出错)
-      const safeText = plainText.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/"/g, '&quot;');
-      const safeHeader = headerText.replace(/"/g, '&quot;');
-      chainHtml = '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
-      chainHtml += `<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">`;
-      chainHtml += `<span style="color:var(--muted);font-weight:600">📍 ${headerText}</span>`;
-      chainHtml += `<button class="btn btn-xs btn-outline" onclick="rdCopyChains('${safeHeader}\\n${safeText}')" title="复制为纯文本(可贴工单/微信)">📋 复制链路</button>`;
+      chainHtml = '<div data-css="margin-top:8px;padding-top:8px;border-top:1px solid var(--border)">';
+      chainHtml += `<div data-css="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">`;
+      chainHtml += `<span data-css="color:var(--muted);font-weight:600">📍 ${headerText}</span>`;
+      chainHtml += `<button class="btn btn-xs btn-outline" data-on-click="rdCopyChains" data-args='${_dataArgs(headerText + '\n' + plainText)}' title="复制为纯文本(可贴工单/微信)">📋 复制链路</button>`;
       chainHtml += `</div>`;
       matches.forEach((m, i) => {
-        const segments = m.chain.map(s => `<span style="color:var(--primary)">${escHtml(s)}</span>`).join(` <span style="color:var(--muted)">›</span> `);
-        const srcLabel = m.srcName ? `<span style="color:var(--muted);font-size:11px"> [${escHtml(m.srcName)}]</span>` : '';
-        chainHtml += `<div style="margin-top:2px;padding-left:14px">${i + 1}. ${segments}${srcLabel}</div>`;
+        const segments = m.chain.map(s => `<span data-css="color:var(--primary)">${escHtml(s)}</span>`).join(` <span data-css="color:var(--muted)">›</span> `);
+        const srcLabel = m.srcName ? `<span data-css="color:var(--muted);font-size:11px"> [${escHtml(m.srcName)}]</span>` : '';
+        chainHtml += `<div data-css="margin-top:2px;padding-left:14px">${i + 1}. ${segments}${srcLabel}</div>`;
       });
       chainHtml += '</div>';
     }
@@ -510,8 +505,8 @@ async function rdUrlValidate(){
 
 // 复制链路到剪贴板(rdUrlValidate 「📋 复制链路」按钮调用)
 // text = 转义后的字符串,JS 里 \\n 是换行,' \\' 是单引号,需要还原
-function rdCopyChains(escapedText){
-  const text = escapedText.replace(/\\n/g, '\n').replace(/\\'/g, "'").replace(/\\\\/g, '\\');
+function rdCopyChains(text){
+  text = String(text == null ? '' : text);
   const done = () => rdToast('链路已复制到剪贴板 (' + text.split('\n').length + ' 行)', 'success', 2000);
   const fail = (e) => rdToast('复制失败: ' + e.message, 'error', 4000);
   if (navigator.clipboard && navigator.clipboard.writeText) {
@@ -533,7 +528,7 @@ function rdCopyChains(escapedText){
 function rdRenderPkgTable(){
   const tbody = document.querySelector('#rdPkgTable tbody');
   if (!_rd.packages.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--muted)">无数据</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" data-css="text-align:center;padding:30px;color:var(--muted)">无数据</td></tr>';
     return;
   }
   // 升序展示(老的在上, 新的在下)
@@ -541,12 +536,12 @@ function rdRenderPkgTable(){
     const isSel = _rd.selected.includes(p.package_version);
     const pubCST = p.published_at ? p.published_at.replace(' ', ' ').slice(0, 19) : '—';
     return `<tr class="${isSel ? 'rd-pkg-selected' : ''}" data-ver="${escHtml(p.package_version)}">
-      <td><input type="checkbox" class="rd-pkg-cb" data-ver="${escHtml(p.package_version)}" ${isSel ? 'checked' : ''} onchange="rdToggleSel('${escAttr(p.package_version)}')"></td>
-      <td style="font-family:monospace">${p.package_version}</td>
-      <td style="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
-      <td style="font-size:12px">${pubCST}</td>
-      <td style="font-size:12px">${p.file_size_raw || '—'}</td>
-      <td style="font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span style="color:var(--muted)">—</span>'}</td>
+      <td><input type="checkbox" class="rd-pkg-cb" data-ver="${escHtml(p.package_version)}" ${isSel ? 'checked' : ''} data-on-change="rdToggleSel" data-args='${_dataArgs(p.package_version)}'></td>
+      <td data-css="font-family:monospace">${escHtml(p.package_version)}</td>
+      <td data-css="font-size:12px;color:var(--muted);max-width:230px;word-break:break-all;line-height:1.4" title="${escHtml(p.file_name)}">${escHtml(p.file_name)}</td>
+      <td data-css="font-size:12px">${pubCST}</td>
+      <td data-css="font-size:12px">${p.file_size_raw || '—'}</td>
+      <td data-css="font-size:11px;font-family:monospace;color:var(--muted);word-break:break-all" title="${escHtml(p.md5_hash||'')}">${p.md5_hash || '<span data-css="color:var(--muted)">—</span>'}</td>
     </tr>`;
   }).join('');
 }
@@ -571,7 +566,7 @@ function rdToggleSel(ver){
     bar.style.display = 'flex';
     reselectBtn.style.display = 'inline-flex';
     document.getElementById('rdSelectedText').innerHTML =
-      `已选: <b style="font-family:monospace">${_rd.selected[0]}</b>  →  <b style="font-family:monospace">${_rd.selected[1]}</b>`;
+      `已选: <b data-css="font-family:monospace">${_rd.selected[0]}</b>  →  <b data-css="font-family:monospace">${_rd.selected[1]}</b>`;
   } else {
     rdRenderPkgTable();  // 展开状态需要刷新表格来更新选中样式
     table.style.display = 'block';
@@ -600,9 +595,8 @@ async function rdCompare(){
   btn.disabled = true; btn.textContent = '⏳ 对比中...';
   document.getElementById('rdStep2').style.display = 'none';
   try {
-    const r = await fetch(API + '/diff/compare', {
+    const j = await api('/diff/compare', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         from_version: _rd.selected[0],
         to_version:   _rd.selected[1],
@@ -610,8 +604,7 @@ async function rdCompare(){
         source_kind:  _rd.sourceKind,
       }),
     });
-    const j = await r.json();
-    if (j.code !== 0) { rdToast('对比失败: ' + (j.message || r.status), 'error', 6000); return; }
+    if (j.code !== 0) { rdToast('对比失败: ' + (j.message || '网络错误'), 'error', 6000); return; }
     _rd.diffResult = j.data;
     rdRenderResult();
     document.getElementById('rdStep2').style.display = 'block';
@@ -636,22 +629,22 @@ function rdRenderResult(){
       <div class="rd-summary-item"><span class="label">FROM 版本</span><span class="val">${fromV}</span></div>
       <div class="rd-summary-item"><span class="label">TO 版本</span><span class="val">${toV}</span></div>
       <div class="rd-summary-item"><span class="label">中间版本数</span><span class="val">${intermediates.length}</span></div>
-      <div class="rd-summary-item" style="color:var(--success)"><span class="label">新增</span><span class="val">${(r.pure_new||[]).length}</span></div>
-      <div class="rd-summary-item" style="color:var(--primary)"><span class="label">修改</span><span class="val">${(r.pure_updated||[]).length}</span></div>
-      <div class="rd-summary-item" style="color:var(--danger)"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
+      <div class="rd-summary-item" data-css="color:var(--success)"><span class="label">新增</span><span class="val">${(r.pure_new||[]).length}</span></div>
+      <div class="rd-summary-item" data-css="color:var(--primary)"><span class="label">修改</span><span class="val">${(r.pure_updated||[]).length}</span></div>
+      <div class="rd-summary-item" data-css="color:var(--danger)"><span class="label">删除</span><span class="val">${(r.pure_deleted||[]).length}</span></div>
     </div>
     ${clickableVersions.length > 0
-      ? `<div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+      ? `<div data-css="font-size:12px;color:var(--muted);margin-bottom:14px">
           📍 点击版本过滤结果:
-          ${intermediates.map(v => `<a href="javascript:void(0)" class="rd-version-chip" data-ver="${escHtml(v)}" onclick="rdApplyFilter('${escAttr(v)}')"><code>${v}</code></a>`).join(' ')}
-          <a href="javascript:void(0)" class="rd-version-chip rd-version-latest" data-ver="${escHtml(toV)}" onclick="rdApplyFilter('${escAttr(toV)}')"><code>最新 ${toV}</code></a>
+          ${intermediates.map(v => `<a href="#" data-prevent class="rd-version-chip" data-ver="${escHtml(v)}" data-on-click="rdApplyFilter" data-args='${_dataArgs(v)}'><code>${v}</code></a>`).join(' ')}
+          <a href="#" data-prevent class="rd-version-chip rd-version-latest" data-ver="${escHtml(toV)}" data-on-click="rdApplyFilter" data-args='${_dataArgs(toV)}'><code>最新 ${toV}</code></a>
         </div>`
       : ''}
     ${!stats.from_has_rule_blocks
-      ? `<div class="info-bar" style="background:var(--warn-light);border-color:var(--warn-light);color:#92400e;margin-bottom:14px">⚠️ FROM 版本 (${fromV}) 描述中未找到「新增规则/更新规则」清单, 可能是较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
+      ? `<div class="info-bar" data-css="background:var(--warn-light);border-color:var(--warn-light);color:#92400e;margin-bottom:14px">⚠️ FROM 版本 (${fromV}) 描述中未找到「新增规则/更新规则」清单, 可能是较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
       : ''}
     ${!stats.to_has_rule_blocks
-      ? `<div class="info-bar" style="background:var(--warn-light);border-color:var(--warn-light);color:#92400e;margin-bottom:14px">⚠️ TO 版本 (${toV}) 描述中未找到「新增规则/更新规则」清单, 较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
+      ? `<div class="info-bar" data-css="background:var(--warn-light);border-color:var(--warn-light);color:#92400e;margin-bottom:14px">⚠️ TO 版本 (${toV}) 描述中未找到「新增规则/更新规则」清单, 较老的版本格式. 净新增/修改/删除数字可能不准确.</div>`
       : ''}
   `;
   rdRenderGroups();
@@ -722,7 +715,7 @@ function rdRenderGroups(){
   const renderGroup = (title, icon, color, count, items, typeKey) => {
     const emptyNote = filterVer ? `在 <code>${filterVer}</code> 中无${typeKey === 'new' ? '新增' : typeKey === 'updated' ? '更新' : '删除'}规则` : null;
     if (items.length === 0 && emptyNote) {
-      return `<div class="rd-group" style="margin-bottom:12px;color:var(--muted);font-size:13px">${icon} ${title}: ${emptyNote}</div>`;
+      return `<div class="rd-group" data-css="margin-bottom:12px;color:var(--muted);font-size:13px">${icon} ${title}: ${emptyNote}</div>`;
     }
     if (items.length === 0) return '';  // 未过滤时该组 0 条,不渲染标题
     const headers = {
@@ -736,38 +729,38 @@ function rdRenderGroups(){
       deleted: '100px',
     }[typeKey];
     return `
-      <div class="rd-group" style="margin-bottom:18px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:8px;color:${color};display:flex;align-items:center;gap:8px">
+      <div class="rd-group" data-css="margin-bottom:18px">
+        <div data-css="font-size:13px;font-weight:600;margin-bottom:8px;color:${color};display:flex;align-items:center;gap:8px">
           ${icon} ${title}
-          <span style="font-size:11px;font-weight:normal;color:var(--muted)">(${items.length} 条${filterVer ? ` · 过滤自 ${count} 条` : ''})</span>
+          <span data-css="font-size:11px;font-weight:normal;color:var(--muted)">(${items.length} 条${filterVer ? ` · 过滤自 ${count} 条` : ''})</span>
         </div>
-        <div class="rd-table-container" style="max-height:none">
+        <div class="rd-table-container" data-css="max-height:none">
           <table class="rd-table">
             <thead><tr>
-              <th style="width:90px">${headers[0]}</th>
+              <th data-css="width:90px">${headers[0]}</th>
               <th>${headers[1]}</th>
-              <th style="width:${widths}">${headers[2]}</th>
+              <th data-css="width:${widths}">${headers[2]}</th>
             </tr></thead>
             <tbody>${items.map(x => {
               if (typeKey === 'new') {
                 return `<tr>
                   <td><code class="rd-cve">[${x.id}]</code></td>
                   <td>${escHtml(x.name)}</td>
-                  <td><a href="javascript:void(0)" class="rd-version-chip" onclick="rdApplyFilter('${escAttr(x.first_added_in)}')"><code>${x.first_added_in || ''}</code></a></td>
+                  <td><a href="#" data-prevent class="rd-version-chip" data-on-click="rdApplyFilter" data-args='${_dataArgs(x.first_added_in)}'><code>${x.first_added_in || ''}</code></a></td>
                 </tr>`;
               } else if (typeKey === 'updated') {
                 const versions = (x.updated_in_versions || []).slice().sort(_rdVerCmpDesc);
                 return `<tr>
                   <td><code class="rd-cve">[${x.id}]</code></td>
                   <td>${escHtml(x.name)}</td>
-                  <td class="rd-versions">${versions.map(v => `<a href="javascript:void(0)" class="rd-version-chip rd-version-inline" onclick="rdApplyFilter('${v}')"><code>${v}</code></a>`).join(' ')}</td>
+                  <td class="rd-versions">${versions.map(v => `<a href="#" data-prevent class="rd-version-chip rd-version-inline" data-on-click="rdApplyFilter" data-args='${_dataArgs(v)}'><code>${v}</code></a>`).join(' ')}</td>
                 </tr>`;
               } else {
                 // deleted
                 return `<tr>
                   <td><code class="rd-cve">[${x.id}]</code></td>
                   <td>${escHtml(x.name)}</td>
-                  <td style="font-size:12px;color:var(--muted)">${fromVer || ''}</td>
+                  <td data-css="font-size:12px;color:var(--muted)">${fromVer || ''}</td>
                 </tr>`;
               }
             }).join('')}</tbody>
@@ -782,7 +775,7 @@ function rdRenderGroups(){
     renderGroup('新增规则', '🟢', 'var(--success)', (r.pure_new || []).length, newItems, 'new') +
     renderGroup('修改规则', '🔵', 'var(--primary)', (r.pure_updated || []).length, updItems, 'updated') +
     renderGroup('删除规则', '🔴', 'var(--danger)', (r.pure_deleted || []).length, delItems, 'deleted') ||
-    '<div style="text-align:center;padding:30px;color:var(--muted)">无规则数据</div>';
+    '<div data-css="text-align:center;padding:30px;color:var(--muted)">无规则数据</div>';
 }
 
 function rdApplyFilter(ver){
@@ -805,7 +798,7 @@ async function rdExport(fmt, copy=false){
     // 直接生成 CSV 文本给剪贴板
     const r = await fetch(API + '/diff/export', {
       method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+      headers: _authHeaders(),
       body: JSON.stringify({ diff_result: _rd.diffResult, format: 'csv', filename }),
     });
     const txt = await r.text();
@@ -820,7 +813,7 @@ async function rdExport(fmt, copy=false){
   // 走 download 流程
   const r = await fetch(API + '/diff/export', {
     method: 'POST',
-    headers: { 'Authorization': 'Bearer ' + T, 'Content-Type': 'application/json' },
+    headers: _authHeaders(),
     body: JSON.stringify({ diff_result: _rd.diffResult, format: fmt, filename }),
   });
   if (!r.ok) { rdToast('导出失败: HTTP ' + r.status, 'error'); return; }

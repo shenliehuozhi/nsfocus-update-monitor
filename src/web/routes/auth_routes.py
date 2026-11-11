@@ -3,7 +3,8 @@
 from flask import Blueprint, request, jsonify, g
 import bcrypt
 
-from src.web.auth import create_token, require_auth
+from src.web.auth import (SESSION_COOKIE, clear_auth_cookies, create_token,
+                          require_auth, set_auth_cookies)
 from src.models.user import get_by_username, create_user as create_user_db
 
 bp = Blueprint('auth', __name__, url_prefix='/api/auth')
@@ -94,13 +95,21 @@ def login():
     _audit(user['id'], 'login', {'username': user['username']})
     token = create_token(user['id'], user['username'])
     audit.info(f'[LOGIN] token created, total time {_t.time()-_t0:.3f}s')
-    return jsonify({
+    # 浏览器只通过 HttpOnly Cookie 持有凭证，响应体不再回传 token（避免 JS 可读）
+    resp = jsonify({
         'code': 0,
         'data': {
-            'token': token,
             'user': {'id': user['id'], 'username': user['username'], 'is_admin': bool(user['is_admin'])}
         }
     })
+    return set_auth_cookies(resp, token)
+
+
+@bp.route('/logout', methods=['POST'])
+def logout():
+    """Clear session cookies. Idempotent — works with an expired/missing token."""
+    resp = jsonify({'code': 0, 'message': '已退出登录'})
+    return clear_auth_cookies(resp)
 
 
 @bp.route('/register', methods=['POST'])
@@ -150,10 +159,14 @@ def me():
     user = get_by_id(g.user_id)
     if not user:
         return jsonify({'code': 40400, 'message': '用户不存在'}), 404
-    return jsonify({
+    resp = jsonify({
         'code': 0,
         'data': {'id': user['id'], 'username': user['username'], 'is_admin': bool(user['is_admin'])}
     })
+    # 旧标签页/脚本仍用 Bearer 时，顺手换发 Cookie，下次请求即可不再暴露 token
+    if g.get('auth_source') == 'header' and not request.cookies.get(SESSION_COOKIE):
+        set_auth_cookies(resp, g.auth_token)
+    return resp
 
 
 @bp.route('/password', methods=['PUT'])

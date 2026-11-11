@@ -3,7 +3,7 @@
 ## 约定
 
 - 基础路径: `http://<HOST>:9999/api`
-- 认证: `Authorization: Bearer <JWT>`
+- 认证: 浏览器使用 HttpOnly Cookie（登录后由服务端下发 `nsm_session`）；脚本/API 客户端可继续使用 `Authorization: Bearer <JWT>`。Cookie 鉴权的 `POST/PUT/PATCH/DELETE` 必须回传 `X-CSRF-Token`（值取自可读 Cookie `nsm_csrf`）
 - Content-Type: `application/json`
 - 响应格式: `{"code": 0, "data": {...}}` 或 `{"code": 40001, "message": "..."}`
 
@@ -15,7 +15,7 @@
 | 40001 | 参数错误 |
 | 40100 | 未登录 |
 | 40101 | Token 过期 |
-| 40300 | 无权限 |
+| 40300 | 无权限 / CSRF 校验失败 |
 | 40400 | 资源不存在 |
 | 50000 | 服务器错误 |
 
@@ -35,16 +35,18 @@
 ```json
 // REQUEST
 {"username": "admin", "password": "xxx"}
-// RESPONSE
-{"code": 0, "data": {"token": "eyJ...", "user": {"id": 1, "username": "admin"}}}
+// RESPONSE (Set-Cookie: nsm_session=<HttpOnly JWT>; nsm_csrf=<可读>; SameSite=Lax)
+{"code": 0, "data": {"user": {"id": 1, "username": "admin", "is_admin": true}}}
 ```
+凭证只通过 Cookie 下发，响应体不含 token。脚本客户端可用 `curl -c cookies.txt -b cookies.txt` 维持会话；
+`Authorization: Bearer <JWT>` 仍然接受（旧会话/外部集成），且不需要 CSRF 头。
 
-### POST /api/auth/refresh
+### POST /api/auth/logout
 ```json
-// REQUEST - Header: Authorization: Bearer <old_token>
 // RESPONSE
-{"code": 0, "data": {"token": "eyJ..."}}
+{"code": 0, "message": "已退出登录"}
 ```
+清除 `nsm_session` / `nsm_csrf`；重复调用无副作用。
 
 ---
 

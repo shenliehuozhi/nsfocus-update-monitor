@@ -1,11 +1,42 @@
 // 经典脚本，无构建；按 index.html 中的顺序加载，跨文件共享全局作用域。
 const API='/api';
+// 会话凭证在 HttpOnly Cookie 里，JS 不保存 token；localStorage 仅用于兼容升级前
+// 已登录的旧标签页（/auth/me 成功后由 bootstrap 清掉）。
 let T=localStorage.getItem('token'),U=null;
+let _authExpired=false,_currentPage=null,_navSeq=0;
+// 页面渲染代际：await 之后写 #app 前必须校验，迟到的响应不能覆盖用户已切到的页面
+function navStale(seq){return seq!==_navSeq;}
+
+// CSRF 双提交：Cookie 鉴权的非安全方法必须回传服务端下发的 nsm_csrf
+function _csrfToken(){
+  const m=document.cookie.match(/(?:^|;\s*)nsm_csrf=([^;]*)/);
+  return m?decodeURIComponent(m[1]):'';
+}
+function _authHeaders(extra){
+  const h={'Content-Type':'application/json',...(extra||{})};
+  if(T)h['Authorization']='Bearer '+T;
+  const c=_csrfToken();
+  if(c)h['X-CSRF-Token']=c;
+  return h;
+}
+
+// 401 统一出口：token 过期/被吊销时所有页面都只是静默空数据，必须主动回登录页。
+// 只处理「本来已登录」的情况：凭证在 HttpOnly Cookie 里，不能再用 T 判断。
+function _handleUnauthorized(){
+  if(!U||_authExpired)return;
+  _authExpired=true;
+  _clearAllTimers();
+  T=null;U=null;localStorage.removeItem('token');
+  toast('登录已过期，请重新登录','error');
+  renderLogin();
+}
 
  function api(path,opts={}){
-  const h={'Content-Type':'application/json'};
-  if(T)h['Authorization']='Bearer '+T;
-  return fetch(API+path,{...opts,headers:h}).then(r=>{
+  return fetch(API+path,{...opts,headers:_authHeaders(),credentials:'same-origin'}).then(r=>{
+    if(r.status===401&&path!=='/auth/login'){
+      _handleUnauthorized();
+      return {code:401,message:'登录已过期'};
+    }
     if(!r.ok){
       // Try to parse server's JSON error message first
       return r.json().catch(()=>({})).then(body=>{
@@ -22,6 +53,108 @@ function toast(m,s='success'){
 
 function escHtml(s){
   return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// 历史模板的内联样式统一改写为 data-css：CSP 的 style-src 不放行内联 style 属性，
+// 而 CSSOM（el.style）不受限制。节点插入后由 MutationObserver 应用，视觉与语义不变。
+// 新代码请直接写 CSS 类，不要再新增 data-css。
+function _applyDataCss(root){
+  if(!root||root.nodeType!==1&&root.nodeType!==9&&root.nodeType!==11)return;
+  const els=root.nodeType===1&&root.hasAttribute('data-css')?[root]:[];
+  if(root.querySelectorAll)root.querySelectorAll('[data-css]').forEach(el=>els.push(el));
+  els.forEach(el=>{
+    const css=el.getAttribute('data-css');
+    el.removeAttribute('data-css');
+    // data-css 在前、脚本已设置的样式在后，保持「脚本覆盖模板」的原有优先级
+    if(css)el.style.cssText=css+';'+el.style.cssText;
+  });
+}
+(function(){
+  if(typeof MutationObserver==='undefined'){_applyDataCss(document);return;}
+  new MutationObserver(ms=>{
+    ms.forEach(m=>m.addedNodes.forEach(n=>_applyDataCss(n)));
+  }).observe(document.documentElement,{childList:true,subtree:true});
+  _applyDataCss(document);
+})();
+
+// data-args 的 JSON 必须走 HTML 属性转义（escHtml），不能用 escAttr：
+// escAttr 会给 ' 和 \\ 加反斜杠，破坏 JSON.parse。
+function _dataArgs(){
+  return escHtml(JSON.stringify(Array.prototype.slice.call(arguments)));
+}
+
+// ── 事件委托（CSP：模板里不再写内联 on*）──────────────────────────────
+// 写法：data-on-click="fn" data-args='[...]'
+// 参数占位符：$el（当前元素）、$event、$value（el.value）、$checked（el.checked）。
+// 修饰：data-stop 阻止冒泡，data-self 仅 e.target===元素自身时触发，
+//       data-key 限定按键，data-prevent 等价内联的 return false。
+// 从目标向上逐层执行，data-stop 后停止，等价于原生内联处理器的冒泡语义。
+function _actArg(v,el,ev){
+  if(v==='$el')return el;
+  if(v==='$event')return ev;
+  if(v==='$value')return el.value;
+  if(v==='$checked')return el.checked;
+  return v;
+}
+function _actRun(el,ev){
+  if(el.hasAttribute('data-stop'))ev.stopPropagation();
+  if(el.hasAttribute('data-self')&&ev.target!==el)return;
+  if(el.hasAttribute('data-key')&&ev.key!==el.getAttribute('data-key'))return;
+  const name=el.getAttribute('data-on-'+ev.type);
+  if(!name)return;
+  if(!/^[A-Za-z_$][\w$]*$/.test(name)){console.error('非法动作名:',name);return;}
+  const fn=window[name];
+  if(typeof fn!=='function'){console.error('缺少动作函数:',name);return;}
+  let args=[];
+  const raw=el.getAttribute('data-args');
+  if(raw){
+    try{args=JSON.parse(raw).map(v=>_actArg(v,el,ev));}
+    catch(err){console.error('data-args 解析失败:',el,err);return;}
+  }
+  if(el.hasAttribute('data-prevent'))ev.preventDefault();
+  fn.apply(el,args);
+}
+['click','change','input','keydown'].forEach(type=>{
+  document.addEventListener(type,ev=>{
+    if(!ev.target||!ev.target.closest)return;
+    for(let el=ev.target;el&&el!==document;el=el.parentElement){
+      if(el.hasAttribute&&(el.hasAttribute('data-on-'+type)||el.hasAttribute('data-stop'))){
+        _actRun(el,ev);
+        if(ev.cancelBubble)break;
+      }
+    }
+  });
+});
+
+// 常用小动作（复杂内联表达式的等价实现）
+function _noop(){}
+function _removeById(id){const el=document.getElementById(id);if(el)el.remove();}
+function _clearHtmlById(id){const el=document.getElementById(id);if(el)el.innerHTML='';}
+function _showById(id){const el=document.getElementById(id);if(el)el.style.display='block';}
+function _hideById(id){const el=document.getElementById(id);if(el)el.style.display='none';}
+function _setDisplay(id,show){const el=document.getElementById(id);if(el)el.style.display=show?'':'none';}
+function _removeSelf(){this.remove();}
+function _removeClosestId(){const el=this.closest('[id]');if(el)el.remove();}
+function _removeClosest(sel){const el=this.closest(sel);if(el)el.remove();}
+function _removeParent(){if(this.parentElement)this.parentElement.remove();}
+function _toggleClass(cls){this.classList.toggle(cls);}
+function _toggleByIdClass(id,cls){const el=document.getElementById(id);if(el)el.classList.toggle(cls);}
+function _setBlock(id,show){const el=document.getElementById(id);if(el)el.style.display=show?'block':'none';}
+function _showPicker(){if(this.showPicker)this.showPicker();}
+function _menuShowPwd(){showPwdModal();closeUserMenu();}
+function _menuLogout(){logout();closeUserMenu();}
+
+function _confirmRun(id,ctr){
+  const b=this;b.disabled=true;b.textContent='处理中...';
+  const box=document.getElementById(id);if(box)box.remove();
+  const fn=window._confirmCBs[ctr];
+  if(fn){delete window._confirmCBs[ctr];fn();}
+}
+function _discConfirmRun(ctr){
+  const b=this;b.disabled=true;b.textContent='处理中...';
+  closeDiscConfirm();
+  const fn=window._confirmCBs[ctr];
+  if(fn){delete window._confirmCBs[ctr];fn();}
 }
 
 // confirmAct(msg, asyncFn) — shows modal, calls asyncFn() on confirm
@@ -49,13 +182,8 @@ function confirmAct(msg, asyncFn, icon='⚠️', okLabel='确认', isWarning=fal
     <div class="confirm-title">${msg}</div>
     ${bodyHtml}
     <div class="confirm-btns">
-      <button class="confirm-btn-cancel" onclick="document.getElementById('${id}').remove()">取消</button>
-      <button class="confirm-btn-ok${isWarning?' warning':''}" onclick="
-        var b=event.currentTarget; b.disabled=true; b.textContent='处理中...';
-        document.getElementById('${id}').remove();
-        var fn=window._confirmCBs[${ctr}];
-        if(fn){delete window._confirmCBs[${ctr}];fn();}
-      ">${okLabel}</button>
+      <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs(id)}'>取消</button>
+      <button class="confirm-btn-ok${isWarning?' warning':''}" data-on-click="_confirmRun" data-args='${_dataArgs(id, ctr)}'>${okLabel}</button>
     </div>
   </div>`;
   overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
@@ -74,24 +202,19 @@ function discConfirmAct(msg, asyncFn, icon='🗂️', okLabel='确认', bodyHtml
   window._confirmCBs[ctr] = asyncFn;
   // 复用 _showModal 的 disc 主题样式
   document.getElementById('app').insertAdjacentHTML('beforeend',
-    `<div id="${id}-overlay" onclick="if(event.target===this)closeDiscConfirm()" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">
-       <div id="${id}-box" style="background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto;padding:24px">
-         <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
-           <div style="font-size:36px;line-height:1;flex-shrink:0">${icon}</div>
-           <div style="flex:1">
-             <div style="font-size:16px;font-weight:700;color:#1a2332;margin-bottom:6px">${msg}</div>
+    `<div id="${id}-overlay" data-on-click="closeDiscConfirm" data-self data-css="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">
+       <div id="${id}-box" data-css="background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto;padding:24px">
+         <div data-css="display:flex;align-items:flex-start;gap:12px;margin-bottom:16px">
+           <div data-css="font-size:36px;line-height:1;flex-shrink:0">${icon}</div>
+           <div data-css="flex:1">
+             <div data-css="font-size:16px;font-weight:700;color:#1a2332;margin-bottom:6px">${msg}</div>
            </div>
-           <div onclick="closeDiscConfirm()" style="cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1">×</div>
+           <div data-on-click="closeDiscConfirm" data-css="cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1">×</div>
          </div>
          ${bodyHtml}
-         <div style="display:flex;gap:10px;margin-top:20px">
-           <button class="btn" onclick="closeDiscConfirm()" style="flex:1;background:var(--gray-bg);color:var(--text);border:1px solid var(--gray-border)">取消</button>
-           <button class="btn" onclick="
-             var b=event.currentTarget; b.disabled=true; b.textContent='处理中...';
-             closeDiscConfirm();
-             var fn=window._confirmCBs[${ctr}];
-             if(fn){delete window._confirmCBs[${ctr}];fn();}
-           " style="flex:1;background:#7c3aed;color:#fff;border:none;font-weight:600">${okLabel}</button>
+         <div data-css="display:flex;gap:10px;margin-top:20px">
+           <button class="btn" data-on-click="closeDiscConfirm" data-css="flex:1;background:var(--gray-bg);color:var(--text);border:1px solid var(--gray-border)">取消</button>
+           <button class="btn" data-on-click="_discConfirmRun" data-args='${_dataArgs(ctr)}' data-css="flex:1;background:#7c3aed;color:#fff;border:none;font-weight:600">${okLabel}</button>
          </div>
        </div>
      </div>`);
@@ -118,27 +241,49 @@ function renderLogin(){
   document.body.className='login-bg';
   _startBgRotation();
   document.getElementById('header').style.display='none';
-  document.getElementById('app').innerHTML=`<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;gap:24px">
-    <div style="text-align:center">
-      <div style="font-size:48px;margin-bottom:16px">🛡️</div>
-      <div style="font-size:16px;color:var(--gray-muted);margin-bottom:24px">绿盟升级监控</div>
-      <button class="btn btn-primary" onclick="showLoginForm()" style="padding:10px 32px;font-size:14px">登录系统</button>
+  document.getElementById('app').innerHTML=`<div data-css="display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;gap:24px">
+    <div data-css="text-align:center">
+      <div data-css="font-size:48px;margin-bottom:16px">🛡️</div>
+      <div data-css="font-size:16px;color:var(--gray-muted);margin-bottom:24px">绿盟升级监控</div>
+      <button class="btn btn-primary" data-on-click="showLoginForm" data-css="padding:10px 32px;font-size:14px">登录系统</button>
     </div>
   </div>`;
 }
 
 function showLoginForm(){
-  document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>🛡️ 绿盟升级监控</h2><div class="form-group"><label>用户名</label><input id="lu" placeholder="admin" autofocus></div><div class="form-group"><label>密码</label><input id="lp" type="password" onkeydown="if(event.key==='Enter')doLogin()"></div><button class="btn btn-primary" style="width:100%;justify-content:center" onclick="doLogin()">登录</button></div></div>`;
+  document.getElementById('app').innerHTML=`<div class="login-box card"><div class="card-bd"><h2>🛡️ 绿盟升级监控</h2><div class="form-group"><label>用户名</label><input id="lu" placeholder="admin" autofocus></div><div class="form-group"><label>密码</label><input id="lp" type="password" data-on-keydown="doLogin" data-key="Enter"></div><button class="btn btn-primary" data-css="width:100%;justify-content:center" data-on-click="doLogin">登录</button></div></div>`;
   document.getElementById('lu').focus();
 }
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
-  if(r.code===0){T=r.data.token;U=r.data.user;localStorage.setItem('token',T);_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
+  if(r.code===0){_authExpired=false;T=null;localStorage.removeItem('token');U=r.data.user;_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').style.display='flex';showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
+}
+function _clearPageTimers(page){
+  if(page==='dashboard'){
+    if(_uptimeTimer){clearInterval(_uptimeTimer);_uptimeTimer=null;}
+    if(window._eventsRefreshTimer){clearInterval(window._eventsRefreshTimer);window._eventsRefreshTimer=null;}
+    if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
+  }else if(page==='logs'){
+    if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
+  }else if(page==='observability'){
+    if(window._obsTimer){clearInterval(window._obsTimer);window._obsTimer=null;}
+  }
+}
+function _clearAllTimers(){
+  _clearPageTimers('dashboard');_clearPageTimers('logs');_clearPageTimers('observability');
+  if(window._eventsHeaderTimer){clearInterval(window._eventsHeaderTimer);window._eventsHeaderTimer=null;}
+  if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer);window._eventsCenterModalTimer=null;}
+  if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
+  if(_collectBannerPollTimer){clearInterval(_collectBannerPollTimer);_collectBannerPollTimer=null;}
+  if(_singleCollTimer){clearInterval(_singleCollTimer);_singleCollTimer=null;}
+  if(window._discTimer){clearInterval(window._discTimer);window._discTimer=null;}
+  if(_banTimer){clearInterval(_banTimer);_banTimer=null;}
+  if(typeof stopProductsPolls==='function')stopProductsPolls();
+  _stopBgRotation();
 }
 function logout(){
-  if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
-  if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
-  if(window._obsTimer){clearInterval(window._obsTimer);window._obsTimer=null;}
+  api('/auth/logout',{method:'POST'}).catch(()=>{});
+  _clearAllTimers();_currentPage=null;
   T=null;U=null;localStorage.removeItem('token');renderLogin();
 }
 
@@ -257,13 +402,26 @@ document.addEventListener('keydown', e => {
 addEventListener('scroll', e => { if(_dd.pop && !_dd.pop.contains(e.target)) ddClose(); }, true);
 addEventListener('resize', ddClose);
 
+// 页面函数多为 async：异常只落在 Promise 里时用户只会看到「点击没反应」。
+// 统一在这里暴露——控制台留栈，界面给一条可读提示（401 已由 api() 单独处理）。
+function _pageRenderError(page,err){
+  console.error(`[page] ${page} 渲染失败:`,err);
+  if(_authExpired)return;
+  toast(`页面加载失败：${(err&&err.message)||err}`,'error');
+}
 function showPage(n){
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
-  // 观测页的自动刷新只在观测页存活，切走就停，避免后台持续拉取
-  if(window._obsTimer && n!=='observability'){clearInterval(window._obsTimer);window._obsTimer=null;}
+  // 页面级轮询只在该页存活：切走即停，避免离开后仍每 N 秒请求并写已卸载的 DOM
+  _clearPageTimers(_currentPage);
+  _currentPage=n;_navSeq++;
   const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,observability,tools:toolsPage};
-  if(pages[n])pages[n]();
+  if(pages[n]){
+    try{
+      const p=pages[n]();
+      if(p&&typeof p.catch==='function')p.catch(e=>_pageRenderError(n,e));
+    }catch(e){_pageRenderError(n,e);}
+  }
   // 2026-08-25: 每次切页都检查后端是否有活动采集,有的话启动 banner 全局轮询
   // 这样从其他菜单页面也能看到进度 banner 更新(banner 是全站浮动卡片)
   api('/system/collect/progress').then(pr=>{

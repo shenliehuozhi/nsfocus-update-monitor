@@ -6,15 +6,15 @@ async function showAboutModal(){
   if(!m){
     m=document.createElement('div');m.id='aboutModal';
     m.innerHTML=`
-      <div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closeAboutModal()">
-        <div class="card" style="width:480px;max-width:92vw">
-          <div class="card-hd">ⓘ 关于 nsfocus-monitor <span onclick="closeAboutModal()" style="float:right;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1">×</span></div>
-          <div class="card-bd" id="aboutBody" style="font-size:13px">
-            <div style="color:var(--gray-muted);text-align:center;padding:24px">加载中…</div>
+      <div class="modal-overlay" data-css="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" data-on-click="closeAboutModal" data-self>
+        <div class="card" data-css="width:480px;max-width:92vw">
+          <div class="card-hd">ⓘ 关于 nsfocus-monitor <span data-on-click="closeAboutModal" data-css="float:right;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1">×</span></div>
+          <div class="card-bd" id="aboutBody" data-css="font-size:13px">
+            <div data-css="color:var(--gray-muted);text-align:center;padding:24px">加载中…</div>
           </div>
-          <div class="card-bd" style="border-top:1px solid var(--gray-border);padding-top:12px;display:flex;justify-content:flex-end;gap:8px">
-            <button class="btn btn-primary" onclick="copyAboutToClipboard()">复制全部信息</button>
-            <button class="btn" onclick="closeAboutModal()">关闭</button>
+          <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding-top:12px;display:flex;justify-content:flex-end;gap:8px">
+            <button class="btn btn-primary" data-on-click="copyAboutToClipboard">复制全部信息</button>
+            <button class="btn" data-on-click="closeAboutModal">关闭</button>
           </div>
         </div>
       </div>`;
@@ -32,10 +32,10 @@ async function showAboutModal(){
       _aboutInfo=r.data;
       document.getElementById('aboutBody').innerHTML=renderAboutBody(r.data);
     } else {
-      document.getElementById('aboutBody').innerHTML='<div style="color:var(--danger);padding:12px">加载失败: '+escHtml(r.message||JSON.stringify(r))+'</div>';
+      document.getElementById('aboutBody').innerHTML='<div data-css="color:var(--danger);padding:12px">加载失败: '+escHtml(r.message||JSON.stringify(r))+'</div>';
     }
   }catch(e){
-    document.getElementById('aboutBody').innerHTML='<div style="color:var(--danger);padding:12px">网络错误: '+escHtml(String(e))+'</div>';
+    document.getElementById('aboutBody').innerHTML='<div data-css="color:var(--danger);padding:12px">网络错误: '+escHtml(String(e))+'</div>';
   }
 }
 
@@ -66,13 +66,13 @@ function renderAboutBody(info){
   rows.push(['数据目录', info.data_dir || '?']);
   rows.push(['进程启动', fmtAboutUTC(info.process_start)]);
   rows.push(['获取时间', fmtAboutUTC(new Date().toISOString())]);
-  return `<table style="width:100%;border-collapse:collapse">
+  return `<table data-css="width:100%;border-collapse:collapse">
     ${rows.map(([k,v])=>`<tr>
-      <td style="padding:6px 8px;color:var(--gray-muted);white-space:nowrap;vertical-align:top;width:100px">${escHtml(k)}</td>
-      <td style="padding:6px 8px;font-family:monospace;font-size:12px;word-break:break-all">${escHtml(String(v))}</td>
+      <td data-css="padding:6px 8px;color:var(--gray-muted);white-space:nowrap;vertical-align:top;width:100px">${escHtml(k)}</td>
+      <td data-css="padding:6px 8px;font-family:monospace;font-size:12px;word-break:break-all">${escHtml(String(v))}</td>
     </tr>`).join('')}
   </table>
-  <div style="margin-top:12px;padding:8px 10px;background:var(--gray-bg);border-radius:6px;font-size:11px;color:var(--gray-muted)">
+  <div data-css="margin-top:12px;padding:8px 10px;background:var(--gray-bg);border-radius:6px;font-size:11px;color:var(--gray-muted)">
     💡 同一份可执行文件 / 同一次 commit 是同一版本,以上信息组合可唯一标识当前实例。
     报问题时把"复制全部信息"贴出来。
   </div>`;
@@ -153,7 +153,7 @@ function showPwdModal(){
   let m=document.getElementById('pwdModal');
   if(!m){
     m=document.createElement('div');m.id='pwdModal';
-    m.innerHTML=`<div class="modal-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" onclick="if(event.target===this)closePwdModal()"><div class="card" style="width:380px;max-width:90vw"><div class="card-hd">🔒 修改密码</div><div class="card-bd"><div class="form-group"><label>旧密码</label><input id="pwdOld" type="password"></div><div class="form-group"><label>新密码</label><input id="pwdNew" type="password" placeholder="至少4位"></div><div class="form-group"><label>确认新密码</label><input id="pwdConfirm" type="password"></div><div class="flex gap8"><button class="btn btn-primary btn-sm" onclick="doChangePwd()">确认修改</button><button class="btn btn-sm btn-outline" onclick="closePwdModal()">取消</button></div></div></div></div>`;
+    m.innerHTML=`<div class="modal-overlay" data-css="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" data-on-click="closePwdModal" data-self><div class="card" data-css="width:380px;max-width:90vw"><div class="card-hd">🔒 修改密码</div><div class="card-bd"><div class="form-group"><label>旧密码</label><input id="pwdOld" type="password"></div><div class="form-group"><label>新密码</label><input id="pwdNew" type="password" placeholder="至少4位"></div><div class="form-group"><label>确认新密码</label><input id="pwdConfirm" type="password"></div><div class="flex gap8"><button class="btn btn-primary btn-sm" data-on-click="doChangePwd">确认修改</button><button class="btn btn-sm btn-outline" data-on-click="closePwdModal">取消</button></div></div></div></div>`;
     document.body.appendChild(m);
   }
   m.style.display='';
@@ -181,7 +181,7 @@ function toggleSection(key){
   icon.textContent=open?'▸':'▾';
 }
 
-async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'var(--success-text)':'var(--danger)';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;const btns=row.querySelectorAll('[data-action]');btns.forEach(b=>{const isActionBtn=b.tagName==='BUTTON'&&!b.getAttribute('onclick')?.startsWith('editProduct');b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
+async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.style.opacity=active?'':'0.6';const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.style.color=active?'var(--success-text)':'var(--danger)';}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;row.querySelectorAll('button[data-on-click]').forEach(b=>{b.disabled=!active;b.style.opacity=active?'':'0.35';b.style.cursor=active?'pointer':'not-allowed';});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
 function _updateBatchUI(){
   const cbs=document.querySelectorAll('.prod-cb');
   const checked=document.querySelectorAll('.prod-cb:checked');

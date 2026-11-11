@@ -1749,14 +1749,14 @@ def discover_pkg_types_batch():
 def sse_pkg_refresh_progress(source_id: int):
     """SSE stream for package-type refresh progress of a single product.
 
-    Auth: token via query param ?token=xxx (for EventSource compatibility).
+    Auth: session cookie (browser) or token via query param ?token=xxx
+    (for EventSource clients that cannot send headers).
     Returns server-sent events with log lines as they are produced.
     """
     from flask import request, Response, stream_with_context
-    from src.web.auth import decode_token
+    from src.web.auth import SESSION_COOKIE, decode_token
 
-    # Auth from query param (SSE can't send headers)
-    token = request.args.get('token', '')
+    token = request.args.get('token', '') or request.cookies.get(SESSION_COOKIE, '')
     payload = decode_token(token) if token else None
     if not payload:
         return {'code': 401, 'message': '请先登录'}, 401

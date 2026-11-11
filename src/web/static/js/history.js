@@ -1,6 +1,7 @@
 // 经典脚本，无构建；按 index.html 中的顺序加载，跨文件共享全局作用域。
 // ── History ──
 async function history(){
+  const _seq=_navSeq;
   const _q=new URLSearchParams(location.hash.split('?')[1]||'');
   let days=_q.get('days')||'30';
   // feat/customer-push-card 2026-09-02: 支持 cust query 下钻 (来自 dashboard 客户推送卡片)
@@ -25,7 +26,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr style="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${h.product_name||''}</td><td>${typeCN(h.package_type)}</td><td title="${escHtml(h.file_name||'')}" style="max-width:380px"><span style="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr data-css="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td title="${escHtml(h.file_name||'')}" data-css="max-width:380px"><span data-css="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
@@ -54,17 +55,17 @@ async function history(){
         // package_type: 同 chain-scoped 派生,d.derived_package_type 来自 delivery_log 的 chain_json 末项
         // 老链路 chain_json='[]' 时 fallback 到 h.package_type
         const pkgType = d.derived_package_type || h.package_type;
-        html += `<tr style="background:var(--gray-bg)">
+        html += `<tr data-css="background:var(--gray-bg)">
             <td>${fmtTZ(d.sent_at||h.pushed_at||h.first_seen_at||'',true)}</td>
-            <td>${_custName||d.customer_name||'—'}</td>
-            <td>${h.product_name||''}</td>
+            <td>${escHtml(_custName||d.customer_name||'—')}</td>
+            <td>${escHtml(h.product_name||'')}</td>
             <td>${typeCN(pkgType)}</td>
-            <td title="${escHtml(h.file_name||'')}" style="max-width:380px"><span style="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
-            <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${h.urgency||''}</span></td>
+            <td title="${escHtml(h.file_name||'')}" data-css="max-width:380px"><span data-css="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
+            <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td>
             <td>${channelDisp}</td>
-            <td title="${escHtml(recipient)}" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
+            <td title="${escHtml(recipient)}" data-css="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
-            <td><button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" onclick="resendTargeted(${h.id},${d.channel_id||0},${d.customer_id||0},this)">📤 重推</button></td>
+            <td><button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" data-on-click="resendTargeted" data-args='${_dataArgs(h.id, d.channel_id||0, d.customer_id||0, '$el')}'>📤 重推</button></td>
         </tr>`;
       });
     }
@@ -72,16 +73,17 @@ async function history(){
   // 2026-11-09: 过滤条 — 订阅规则 / 客户 / 时间范围, 三者都写进 hash, 可分享也可从仪表盘卡片带 cust 下钻进来
   const _selCss='max-width:190px';
   const _opt=(v,l,sel)=>`<option value="${v}" ${String(v)===String(sel)?'selected':''}>${escHtml(l)}</option>`;
-  const ruleSel=`<select id="histRule" class="sel-sm dd" onchange="histSetFilter('rule',this.value)" title="按订阅规则过滤" style="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
-  const custSel=`<select id="histCust" class="sel-sm dd" onchange="histSetFilter('cust',this.value)" title="按客户过滤" style="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
-  const daysSel=`<select id="histDays" class="sel-sm dd" onchange="histSetFilter('days',this.value)" style="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
+  const ruleSel=`<select id="histRule" class="sel-sm dd" data-on-change="histSetFilter" data-args='${_dataArgs('rule', '$value')}' title="按订阅规则过滤" data-css="${_selCss}">${_opt('','全部订阅规则',rule)}${(ruleR.data||[]).map(x=>_opt(x.id,x.name||('规则#'+x.id),rule)).join('')}</select>`;
+  const custSel=`<select id="histCust" class="sel-sm dd" data-on-change="histSetFilter" data-args='${_dataArgs('cust', '$value')}' title="按客户过滤" data-css="${_selCss}">${_opt('','全部客户',cust)}${(custR.data||[]).map(c=>_opt(c.id,c.name,cust)).join('')}</select>`;
+  const daysSel=`<select id="histDays" class="sel-sm dd" data-on-change="histSetFilter" data-args='${_dataArgs('days', '$value')}' data-css="${_selCss}">${[[1,'近1天'],[3,'近3天'],[7,'近7天'],[30,'近30天'],[90,'近90天'],[365,'近1年'],[0,'全部']].map(([v,l])=>_opt(v,l,days)).join('')}</select>`;
   // 分页条 (2026-11-09 P1): total 现在是包数, 每页 200 包。原先既不显示总数也无法翻到
   // 第 2 页, 用户以为 200 包就是全部 —— 这跟上次"客户显示不全"是同一类静默截断。
   const total=r.data?.total||0;
   const pages=Math.max(1,Math.ceil(total/200));
-  const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" style="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
-  const pager=`<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)"><span>共 <b style="color:var(--text)">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} onclick="histSetPage(${page-1})">← 上一页</button><button ${_pgBtn(page>=pages)} onclick="histSetPage(${page+1})">下一页 →</button></div>`;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span style="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" onclick="history()">刷新</a><button class="btn btn-xs btn-outline" style="color:var(--danger);border-color:var(--danger)" onclick="confirmClearHistory()">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th style="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
+  const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" data-css="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
+  const pager=`<div data-css="display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)"><span>共 <b data-css="color:var(--text)">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} data-on-click="histSetPage" data-args='${_dataArgs(page-1)}'>← 上一页</button><button ${_pgBtn(page>=pages)} data-on-click="histSetPage" data-args='${_dataArgs(page+1)}'>下一页 →</button></div>`;
+  if(navStale(_seq))return;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline" data-css="color:var(--danger);border-color:var(--danger)" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th data-css="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
 }
 
 // 翻页: 只改 page, 保留当前过滤条件
@@ -111,7 +113,7 @@ async function confirmClearHistory(){
 function _renderRecentDeliveries(deliveries,range){
   if(!deliveries||!deliveries.length)return '';
   const ranges={1:'1天',7:'7天',30:'1个月',365:'1年'};
-  let btns=Object.entries(ranges).map(([v,l])=>`<button class="btn btn-xs ${range===v?'btn-primary':'btn-outline'}" onclick="dashboard('${v}')">${l}</button>`).join('');
+  let btns=Object.entries(ranges).map(([v,l])=>`<button class="btn btn-xs ${range===v?'btn-primary':'btn-outline'}" data-on-click="dashboard" data-args='${_dataArgs(v)}'>${l}</button>`).join('');
   // Aggregate: group by customer+product+chain-specific type
   // derived_package_type 来自后端 CASE: chain_json 末项 OR snapshots.package_type fallback
   // 同一物理 snap + 不同 chain_json 会分成两行 (e.g. WAF V6.0.9规则升级包 vs 海光 V6.0.9规则升级)
@@ -130,13 +132,33 @@ function _renderRecentDeliveries(deliveries,range){
   });
   let rows=Object.values(agg).sort((a,b)=>b.last.localeCompare(a.last)).slice(0,15).map(a=>{
     let stIcon=a.status==='sent'?'✅':'❌';
-    return `<tr><td>${a.cust}</td><td>${a.prod}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${[...a.channels].join(', ')}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
+    return `<tr><td>${escHtml(a.cust)}</td><td>${escHtml(a.prod)}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${escHtml([...a.channels].join(', '))}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
   }).join('');
-  return `<div class="card" style="margin-top:14px"><div class="card-hd">📨 最近推送明细 <span style="margin-left:auto;font-weight:400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
+  return `<div class="card" data-css="margin-top:14px"><div class="card-hd">📨 最近推送明细 <span data-css="margin-left:auto;font-weight:400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
 }
 
 // ── Settings ──
+function _toggleMaintenance(el){
+  const v=el.checked?'1':'0';
+  api('/settings/config',{method:'PUT',body:JSON.stringify({maintenance_mode:v})})
+    .then(r=>toast(r.code===0?(v==='1'?'🔇 维护模式已开启':'🔔 维护模式已关闭'):'失败',r.code===0?'success':'error'));
+}
+async function _toggleApiLocal(el){
+  const v=el.checked?'1':'0';
+  if(v==='1'){
+    await confirmAct('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\n\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。', async()=>{
+      api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'1'})})
+        .then(r=>toast(r.code===0?'🔒 API 已锁定为 localhost':'失败',r.code===0?'success':'error'));
+    },'⚠️','确认开启',true);
+    el.checked=false;
+  }else{
+    api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'0'})})
+      .then(r=>toast(r.code===0?'🔓 API 已开放':'失败',r.code===0?'success':'error'));
+  }
+}
+
 async function settings(){
+  const _seq=_navSeq;
   const r=await api('/settings/config').catch(()=>({data:{}}));
   const cfg=r.data||{};
   // 获取渠道列表（用于系统事件通知渠道选择）
@@ -151,17 +173,18 @@ async function settings(){
   let isCollecting=false;
   try{const cr=JSON.parse(cfg.collection_running||'{}');isCollecting=cr.status==='1';}catch(e){}
 
+  if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
     ${isCollecting?'<div class="warning-banner">⚠️ 采集正在进行中，保存配置将同时停止采集</div>':''}
     <div class="cfg-section">
       <div class="cfg-section-hd">🔶 开关选项</div>
-      <div class="cfg-row" style="grid-template-columns:1fr 1fr 1fr">
-        <div class="cfg-flag" style="background:#fff8e6;border:1px solid #f5c842">
-          <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} onchange="let v=this.checked?'1':'0';api('/settings/config',{method:'PUT',body:JSON.stringify({maintenance_mode:v})}).then(r=>toast(r.code===0?(v==='1'?'🔇 维护模式已开启':'🔔 维护模式已关闭'):'失败',r.code===0?'success':'error'))"><span class="toggle-slider"></span></label><span>🔧 维护模式</span></label>
+      <div class="cfg-row" data-css="grid-template-columns:1fr 1fr 1fr">
+        <div class="cfg-flag" data-css="background:#fff8e6;border:1px solid #f5c842">
+          <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} data-on-change="_toggleMaintenance" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label><span>🔧 维护模式</span></label>
           <span class="cfg-flag-desc">开启后所有推送静默（采集照常），调试时避免误发通知</span>
         </div>
-        <div class="cfg-flag" style="background:#ffeef0;border:1px solid #f5a0a8">
-          <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} onchange="(async()=>{let v=this.checked?'1':'0';if(v==='1'){await confirmAct('⚠️ 开启后将拒绝所有非本机(127.0.0.1)的 API 请求。\n\n你当前通过外部 IP 访问时，开启后页面将无法正常工作。', async()=>{api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'1'})}).then(r=>toast(r.code===0?'🔒 API 已锁定为 localhost':'失败',r.code===0?'success':'error'));},'⚠️','确认开启',true);this.checked=false;}else{api('/settings/config',{method:'PUT',body:JSON.stringify({api_localhost_only:'0'})}).then(r=>toast(r.code===0?'🔓 API 已开放':'失败',r.code===0?'success':'error'));}})()"><span class="toggle-slider"></span></label><span>🔒 API 仅限本机</span></label>
+        <div class="cfg-flag" data-css="background:#ffeef0;border:1px solid #f5a0a8">
+          <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-apilocal" ${cfg.api_localhost_only==='1'?'checked':''} data-on-change="_toggleApiLocal" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label><span>🔒 API 仅限本机</span></label>
           <span class="cfg-flag-desc">/api/* 仅允许 127.0.0.1 调用，TCP 层校验不可伪造</span>
         </div>
       </div>
@@ -171,7 +194,7 @@ async function settings(){
       <div class="cfg-section-hd">📡 采集设置</div>
       <div class="cfg-row">
         <div class="cfg-toggle">
-          <label class="toggle-switch"><input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''} onchange="handleSchedulerToggle(this)"><span class="toggle-slider"></span></label>
+          <label class="toggle-switch"><input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''} data-on-change="handleSchedulerToggle" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label>
           <span>启用调度器</span>
         </div>
         <p class="cfg-hint">关闭后采集和心跳任务暂停，可用于维护调试</p>
@@ -203,23 +226,23 @@ async function settings(){
         <div class="form-group"><label>附件上限 <span class="cfg-unit">(MB)</span></label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p class="cfg-hint">邮件附件最大体积；超过则在正文显示下载地址</p></div>
       </div>
       <div class="cfg-row">
-        <div class="form-group"><label>历史保留条数 <span style="font-size:10px;color:var(--muted)">(每版本+包类型组合)</span></label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||5}" min="1" max="10"><p class="cfg-hint">每个(版本+包类型)组合保留几条历史快照。后端磁盘存储与前端采集数据页显示共用此值;超出自动删旧。</p></div>
+        <div class="form-group"><label>历史保留条数 <span data-css="font-size:10px;color:var(--muted)">(每版本+包类型组合)</span></label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||5}" min="1" max="10"><p class="cfg-hint">每个(版本+包类型)组合保留几条历史快照。后端磁盘存储与前端采集数据页显示共用此值;超出自动删旧。</p></div>
       </div>
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd" style="display:flex;align-items:center;gap:10px">
+      <div class="cfg-section-hd" data-css="display:flex;align-items:center;gap:10px">
         <span>🔇 静默时段</span>
-        <label class="toggle-switch"><input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} onchange="document.getElementById('quiet-times').style.display=this.checked?'':'none'"><span class="toggle-slider"></span></label>
+        <label class="toggle-switch"><input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('quiet-times', '$checked')}'><span class="toggle-slider"></span></label>
         <span>启用</span>
       </div>
-      <div id="quiet-times" style="display:${cfg.quiet_hours_enabled==='1'?'':'none'}">
+      <div id="quiet-times" data-css="display:${cfg.quiet_hours_enabled==='1'?'':'none'}">
         <div class="cfg-row cfg-row-inline">
           <div class="form-group"><label>开始时间</label><input id="cfg-quiet-start" type="time" value="${cfg.quiet_hours_start||'22:00'}"></div>
           <span class="cfg-sep">—</span>
           <div class="form-group"><label>结束时间</label><input id="cfg-quiet-end" type="time" value="${cfg.quiet_hours_end||'08:00'}"></div>
         </div>
-        <p class="cfg-hint" style="margin-top:-6px">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
+        <p class="cfg-hint" data-css="margin-top:-6px">此时段内不发送任何通知（邮件/Webhook），采集仍正常进行</p>
       </div>
     </div>
 
@@ -227,18 +250,18 @@ async function settings(){
       <div class="cfg-section-hd">⏰ 高级选项</div>
       <div class="cfg-row">
         <div class="form-group"><label>主动心跳</label>
-          <label class="toggle-switch"><input type="checkbox" id="cfg-heartbeat-enabled" ${cfg.heartbeat_enabled==='1'?'checked':''} onchange="document.getElementById('heartbeat-interval-row').style.display=this.checked?'':'none'"><span class="toggle-slider"></span></label>
+          <label class="toggle-switch"><input type="checkbox" id="cfg-heartbeat-enabled" ${cfg.heartbeat_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('heartbeat-interval-row', '$checked')}'><span class="toggle-slider"></span></label>
           <p class="cfg-hint">开启后定时发送心跳请求维持Session活跃</p>
         </div>
       </div>
-      <div class="cfg-row" id="heartbeat-interval-row" style="display:${cfg.heartbeat_enabled==='1'?'':'none'}">
+      <div class="cfg-row" id="heartbeat-interval-row" data-css="display:${cfg.heartbeat_enabled==='1'?'':'none'}">
         <div class="form-group"><label>心跳间隔 <span class="cfg-unit">(分钟)</span></label><input id="cfg-heartbeat" type="number" value="${cfg.heartbeat_interval||30}" min="5" max="120"><p class="cfg-hint">Session 保活间隔，默认30分钟</p></div>
       </div>
       <div class="cfg-row">
         <div class="form-group"><label>预检 URL <span class="tp" data-tip="采集前/主动心跳时用于快速探测 Session 状态的轻量接口。\n\n【判定机制】\n• HTTP 200 + 正常 HTML → Session 正常\n• 重定向到 /update/upLic → Session 已过期(vendor 把过期会话踢到 license 页)\n• 响应 body 含 downloadsVm/id → Session 被虚拟化上下文污染(被带进 upLic/Vm 格式上下文,返回的不是预期页面)\n\n【选择建议】需是返回 v2 升级包列表的轻量 GET 接口,响应稳定 + 无重定向。默认 /update/listBvsV6/v/bvssys 是绿盟升级站点默认入口(对应 v2 升级包列表页)。改错会导致 Session 状态判错:过期/污染漏报或误报。\n\n【生效时机】保存后下次采集/心跳生效,无需重启进程。">ⓘ</span></label>
-          <div style="display:flex;gap:6px;align-items:center">
-            <input id="cfg-heartbeat-url" type="text" value="${cfg.heartbeat_url||'/update/listBvsV6/v/bvssys'}" placeholder="/update/listBvsV6/v/bvssys" readonly style="background:var(--gray-bg);flex:1">
-            <button type="button" id="cfg-heartbeat-url-edit" class="btn btn-xs btn-outline" onclick="editHeartbeatUrl()">✏️ 编辑</button>
+          <div data-css="display:flex;gap:6px;align-items:center">
+            <input id="cfg-heartbeat-url" type="text" value="${cfg.heartbeat_url||'/update/listBvsV6/v/bvssys'}" placeholder="/update/listBvsV6/v/bvssys" readonly data-css="background:var(--gray-bg);flex:1">
+            <button type="button" id="cfg-heartbeat-url-edit" class="btn btn-xs btn-outline" data-on-click="editHeartbeatUrl">✏️ 编辑</button>
           </div>
           <p class="cfg-hint">默认 /update/listBvsV6/v/bvssys (绿盟升级站点默认端点)。修改会影响 Session 过期/污染判断,点编辑后需二次确认</p>
         </div>
@@ -267,7 +290,7 @@ async function settings(){
     <div class="cfg-section">
       <div class="cfg-section-hd">📤 通知联系信息</div>
       <p class="cfg-section-sub">用于在邮件正文与底部显示运维联系方式。由于邮件通常通过第三方 SMTP 渠道(如阿里云/腾讯企业邮箱)而非公司域名发送,客户收到邮件时可能误判为钓鱼邮件。配置后,客户可看到明确的发件人姓名、邮箱和联系电话。</p>
-      <p class="cfg-section-sub" style="color:#c27800">⚠️ 姓名、邮箱、电话<strong>三项必须全部填写</strong>才会显示;任一为空则邮件中不展示该信息(避免半填给客户造成更大困惑)。</p>
+      <p class="cfg-section-sub" data-css="color:#c27800">⚠️ 姓名、邮箱、电话<strong>三项必须全部填写</strong>才会显示;任一为空则邮件中不展示该信息(避免半填给客户造成更大困惑)。</p>
       <div class="cfg-row">
         <div class="form-group"><label>工程师姓名</label><input id="cfg-ops-name" type="text" value="${cfg.ops_contact_name||''}" placeholder="如:张三" maxlength="50"></div>
         <div class="form-group"><label>工程师邮箱</label><input id="cfg-ops-email" type="email" value="${cfg.ops_contact_email||''}" placeholder="如:zhangsan@company.com" maxlength="100"></div>
@@ -282,29 +305,29 @@ async function settings(){
       <p class="cfg-section-sub">系统异常时发送告警通知，与订阅规则推送独立</p>
       <div class="cfg-row">
         <div class="cfg-toggle">
-          <label class="toggle-switch"><input id="cfg-event-enabled" type="checkbox" ${cfg.event_enabled?'checked':''} onchange="document.getElementById('event-config-area').style.display=this.checked?'block':'none'"><span class="toggle-slider"></span></label>
+          <label class="toggle-switch"><input id="cfg-event-enabled" type="checkbox" ${cfg.event_enabled?'checked':''} data-on-change="_setBlock" data-args='${_dataArgs('event-config-area', '$checked')}'><span class="toggle-slider"></span></label>
           <span>启用系统事件通知</span>
         </div>
       </div>
-      <div id="event-config-area" style="display:${cfg.event_enabled?'block':'none'}">
+      <div id="event-config-area" data-css="display:${cfg.event_enabled?'block':'none'}">
         <div class="cfg-row">
           <div class="form-group"><label>通知渠道</label>
             <select class="dd" id="cfg-event-channel">
               <option value="">-- 选择渠道 --</option>
-              ${(cfg.channels||[]).filter(ch=>ch.type!=='email').map(ch=>`<option value="${ch.id}" ${cfg.event_channel_id==ch.id?'selected':''}>${ch.name} (${ch.type})</option>`).join('')}
+              ${(cfg.channels||[]).filter(ch=>ch.type!=='email').map(ch=>`<option value="${ch.id}" ${cfg.event_channel_id==ch.id?'selected':''}>${escHtml(ch.name)} (${escHtml(ch.type)})</option>`).join('')}
             </select>
             <p class="cfg-hint">通知将发送到此渠道（需先在渠道管理中添加）。仅支持企微/钉钉/飞书：邮件渠道已不保存收件人，系统通知会发不出去</p>
           </div>
         </div>
         <div class="cfg-row">
           <div class="form-group"><label>事件类型</label>
-            <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;white-space:nowrap">
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_summary" ${(cfg.event_types||[]).includes('push_summary')?'checked':''}> 推送汇总</label>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="channel_error" ${(cfg.event_types||[]).includes('channel_error')?'checked':''}> 渠道体检失败</label>
-              <label style="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="delivery_error" ${(cfg.event_types||[]).includes('delivery_error')?'checked':''}> 投递终止</label>
+            <div data-css="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;white-space:nowrap">
+              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_summary" ${(cfg.event_types||[]).includes('push_summary')?'checked':''}> 推送汇总</label>
+              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
+              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
+              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
+              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="channel_error" ${(cfg.event_types||[]).includes('channel_error')?'checked':''}> 渠道体检失败</label>
+              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="delivery_error" ${(cfg.event_types||[]).includes('delivery_error')?'checked':''}> 投递终止</label>
             </div>
             <p class="cfg-hint">推送汇总合并本 cycle 所有推送成功/失败详情(单条不再发);采集完成=cycle 末汇总;空=全部启用</p>
           </div>
@@ -313,9 +336,9 @@ async function settings(){
     </div>
 
     ${isCollecting?
-      '<p class="cfg-hint" style="color:#c00;margin-bottom:12px">采集进行中，系统配置无法直接修改。点击"强制停止并保存"将中断采集。</p>':
+      '<p class="cfg-hint" data-css="color:#c00;margin-bottom:12px">采集进行中，系统配置无法直接修改。点击"强制停止并保存"将中断采集。</p>':
       ''}
-    <button class="btn btn-primary" onclick="${isCollecting?'forceStopAndSave':'saveSettings'}()">${isCollecting?'强制停止并保存':'保存配置'}</button>
+    <button class="btn btn-primary" data-on-click="${isCollecting?'forceStopAndSave':'saveSettings'}">${isCollecting?'强制停止并保存':'保存配置'}</button>
   </div></div>
 `;}
 
@@ -362,7 +385,7 @@ function _hideDiscBanner(){
   const mini=document.createElement('div');
   mini.id='disc-mini-btn';
   mini.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:24px;padding:8px 16px;box-shadow:0 4px 16px rgba(124,58,237,0.4);z-index:3000;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px';
-  mini.innerHTML='<span style="font-size:15px">🔍</span><span>自动发现进行中…</span>';
+  mini.innerHTML='<span data-css="font-size:15px">🔍</span><span>自动发现进行中…</span>';
   mini.onclick=async()=>{
     mini.remove();
     const s=await api('/system/products/discover/status');
@@ -408,19 +431,19 @@ function _collectBannerHtml(state) {
   // 2026-08-22: 旧顶部红条的核心提醒挪到 phase 行右边,不再占独立一行,避免
   // 撑高 banner 高度。完成时不显示。
   const warnSuffix = isDone ? '' :
-    ' <span style="color:#ff5757;font-weight:600">⚠️ 请勿增删改配置</span>';
+    ' <span data-css="color:#ff5757;font-weight:600">⚠️ 请勿增删改配置</span>';
   return `
-    <div style="flex:1;min-width:0">
-      <div style="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}${warnSuffix}</div>
-      <div id="collect-banner-phase" style="opacity:0.9;font-size:12px;line-height:1.5">
+    <div data-css="flex:1;min-width:0">
+      <div data-css="font-weight:600;margin-bottom:6px;line-height:1.4">${titleText}${warnSuffix}</div>
+      <div id="collect-banner-phase" data-css="opacity:0.9;font-size:12px;line-height:1.5">
         <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>
       </div>
-      <div style="margin-top:8px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
-        <div id="collect-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+      <div data-css="margin-top:8px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
+        <div id="collect-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
-    <div onclick="event.stopPropagation();_openCollectLog()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
-    <div onclick="event.stopPropagation();_hideCollectBanner()" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
+    <div data-on-click="_openCollectLog" data-stop data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
+    <div data-on-click="_hideCollectBanner" data-stop data-css="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
 }
 
 function _showCollectBanner(state) {
@@ -439,7 +462,7 @@ function _showCollectBanner(state) {
     document.body.appendChild(banner);
     // 点击 banner (空白处) 跳转到仪表盘
     banner.addEventListener('click', (e) => {
-      if (e.target.closest('div[onclick]')) return;
+      if (e.target.closest('[data-on-click]')) return;
       showPage('dashboard');
     });
   }
@@ -479,17 +502,17 @@ function _showDiscBanner(state){
   banner.id='disc-banner';
   banner.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:linear-gradient(135deg,#7c3aed,#7c3aed);color:#fff;border-radius:10px;padding:10px 20px;box-shadow:0 8px 32px rgba(124,58,237,0.4);z-index:3000;min-width:320px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:10px';
   banner.innerHTML=`
-    <div style="flex:1">
-      <div style="font-weight:600;margin-bottom:4px">🔍 自动发现任务进行中</div>
-      <div id="disc-banner-phase" style="opacity:0.9;font-size:12px">${formatDiscPhase(state)}</div>
-      <div style="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
-        <div id="disc-banner-bar" style="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
+    <div data-css="flex:1">
+      <div data-css="font-weight:600;margin-bottom:4px">🔍 自动发现任务进行中</div>
+      <div id="disc-banner-phase" data-css="opacity:0.9;font-size:12px">${formatDiscPhase(state)}</div>
+      <div data-css="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
+        <div id="disc-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
-    <div onclick="event.stopPropagation();_showDiscLogFloat()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">📋 日志</div>
-    <div onclick="event.stopPropagation();_reopenDiscModal()" style="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">查看</div>
-    <div onclick="event.stopPropagation();_cancelDisc()" style="background:rgba(255,255,255,0.25);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer" title="停止自动发现(已完成产品丢弃)">⏹ 停止</div>
-    <div onclick="event.stopPropagation();_hideDiscBanner()" style="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
+    <div data-on-click="_showDiscLogFloat" data-stop data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">📋 日志</div>
+    <div data-on-click="_reopenDiscModal" data-stop data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">查看</div>
+    <div data-on-click="_cancelDisc" data-stop data-css="background:rgba(255,255,255,0.25);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer" title="停止自动发现(已完成产品丢弃)">⏹ 停止</div>
+    <div data-on-click="_hideDiscBanner" data-stop data-css="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
   banner.onclick=_reopenDiscModal;
   document.body.appendChild(banner);
 
@@ -530,13 +553,13 @@ function _showDiscBanner(state){
       if(logBody && s.data.log_lines?.length){
         const renderLogLine=l=>{
           const txt=escHtml(l);
-          if(l.startsWith('🔍')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--primary)">${txt}</div>`;
-          if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed;font-weight:600">${txt}</div>`;
-          if(l.startsWith('  →')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#0891b2">${txt}</div>`;
-          if(l.startsWith('✅')||l.startsWith('✔')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text);font-weight:600">${txt}</div>`;
-          if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)">${txt}</div>`;
-          if(l.startsWith('[')) return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)">${txt}</div>`;
-          return `<div style="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-muted)">${txt}</div>`;
+          if(l.startsWith('🔍')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--primary)">${txt}</div>`;
+          if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed;font-weight:600">${txt}</div>`;
+          if(l.startsWith('  →')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#0891b2">${txt}</div>`;
+          if(l.startsWith('✅')||l.startsWith('✔')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text);font-weight:600">${txt}</div>`;
+          if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)">${txt}</div>`;
+          if(l.startsWith('[')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)">${txt}</div>`;
+          return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-muted)">${txt}</div>`;
         };
         logBody.innerHTML=s.data.log_lines.map(renderLogLine).join('');
         logBody.scrollTop=logBody.scrollHeight;
@@ -566,6 +589,7 @@ function _showDiscBanner(state){
 }
 
 async function products(){
+  const _seq=_navSeq;
   // 检查是否有待确认的发现结果（来自temp file）
   let pendingDiscResult = null;
   let pendingDiscStale = false;
@@ -591,48 +615,48 @@ async function products(){
   const errors=allProds.filter(p=>p.health_status==='error').length;
 
   let h=`<div class="card">
-    <div class="card-hd" style="display:flex;align-items:center;justify-content:space-between">
-      <div style="display:flex;align-items:center;gap:4px">
+    <div class="card-hd" data-css="display:flex;align-items:center;justify-content:space-between">
+      <div data-css="display:flex;align-items:center;gap:4px">
         🏭 产品管理
         <span class="tp" data-tip="自动扫描绿盟升级站点，发现并添加新产品的入口页面">ⓘ</span>
       </div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <button class="btn btn-sm" id="disc-btn" style="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" onclick="_handleDiscBtn()">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
+      <div data-css="display:flex;align-items:center;gap:8px">
+        <button class="btn btn-sm" id="disc-btn" data-css="border-color:${pendingDiscResult?'#f59e0b':'#7c3aed'};color:${pendingDiscResult?'#d97706':'#7c3aed'};background:${pendingDiscResult?'var(--warn-light)':'#f5f3ff'};font-weight:600" data-on-click="_handleDiscBtn">${pendingDiscResult?'⚠️ 待确认':'🔍 自动发现'}</button>
         <span class="tp" data-tip="自动扫描绿盟更新站点:\n• 用途:发现新增/下线产品 + 重新发现每个产品的包类型\n• 场景:首次接入系统 / 绿盟上线新产品 / 没找到自己想要的产品时全量扫描(\u{1F50D})或单产品刷新(\u{1F504})\n• 耗时:长任务(数分钟到十几分钟,跟现有产品数相关),可中途取消\n• 注意:后台每 4 小时自动 quick cycle,无需手动定期刷;立刻抓取绿盟站点,确认发现 Session 有效">ⓘ</span>
-        <button class="btn btn-sm" style="background:#eef4ff;border:1px solid var(--primary-light);color:var(--primary-text)" onclick="showProductForm()">+ 手动添加</button>
+        <button class="btn btn-sm" data-css="background:#eef4ff;border:1px solid var(--primary-light);color:var(--primary-text)" data-on-click="showProductForm">+ 手动添加</button>
         <span class="tp" data-tip="手动录入产品:\n• 用途:自动发现没扫到的产品(自定义/灰度/私有/内部测试)\n• 建议:绿盟标准产品 — 用「自动发现」批量加\n• 不推荐:已有同名产品(去重检查会失败)\n• 下一步:保存后弹窗问是否立即刷新包类型">ⓘ</span>
       </div>
     </div>
     <div class="card-bd">
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px">
+      <div data-css="display:flex;gap:8px;align-items:center;margin-bottom:10px;font-size:13px">
         <span>共 <strong>${total}</strong> 个</span>
-        <span style="color:var(--success-text)">● 启用 <strong>${enabled}</strong></span>
-        <span style="color:var(--gray-disabled)">○ 禁用 <strong>${disabled}</strong></span>
-        ${errors>0?'<span style="color:var(--danger)">● 异常 <strong>'+errors+'</strong></span>':''}
+        <span data-css="color:var(--success-text)">● 启用 <strong>${enabled}</strong></span>
+        <span data-css="color:var(--gray-disabled)">○ 禁用 <strong>${disabled}</strong></span>
+        ${errors>0?'<span data-css="color:var(--danger)">● 异常 <strong>'+errors+'</strong></span>':''}
         <span class="tp" data-tip="采集状态反映上次刷新包类型的结果：正常=成功，异常=失败，未知=从未刷新过">ⓘ 采集状态</span>
-        <span id="prod-sel-count" style="font-size:12px;color:var(--gray-disabled);margin-left:8px"></span>
-        <button class="btn btn-sm" id="btn-batch-enable" onclick="batchEnable()" disabled style="background:var(--success-text);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量启用</button>
-        <button class="btn btn-sm" id="btn-batch-disable" onclick="batchDisable()" disabled style="background:var(--danger);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量禁用</button>
-        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-          <input id="prod-search" placeholder="搜索产品…" oninput="filterProducts()" style="padding:4px 10px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;width:140px">
-          <select id="prod-filter" class="sel-sm dd" onchange="filterProducts()">
+        <span id="prod-sel-count" data-css="font-size:12px;color:var(--gray-disabled);margin-left:8px"></span>
+        <button class="btn btn-sm" id="btn-batch-enable" data-on-click="batchEnable" disabled data-css="background:var(--success-text);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量启用</button>
+        <button class="btn btn-sm" id="btn-batch-disable" data-on-click="batchDisable" disabled data-css="background:var(--danger);color:#fff;border:none;cursor:pointer;opacity:0.4;padding:2px 10px;font-size:12px">批量禁用</button>
+        <div data-css="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <input id="prod-search" placeholder="搜索产品…" data-on-input="filterProducts" data-css="padding:4px 10px;border:1px solid var(--gray-border);border-radius:6px;font-size:13px;width:140px">
+          <select id="prod-filter" class="sel-sm dd" data-on-change="filterProducts">
             <option value="all">全部</option>
             <option value="enabled">仅启用</option>
             <option value="disabled">仅禁用</option>
           </select>
         </div>
       </div>
-      <div style="overflow-x:auto">
-      <table class="table" style="table-layout:auto;width:100%">
+      <div data-css="overflow-x:auto">
+      <table class="table" data-css="table-layout:auto;width:100%">
         <thead><tr>
-          <th style="width:36px">#</th>
-          <th style="width:40px"><input type="checkbox" id="prod-sel-all" onchange="toggleAllProds(this.checked)" style="cursor:pointer" title="全选/取消全选"></th>
-          <th style="width:64px">状态</th>
+          <th data-css="width:36px">#</th>
+          <th data-css="width:40px"><input type="checkbox" id="prod-sel-all" data-on-change="toggleAllProds" data-args='${_dataArgs('$checked')}' data-css="cursor:pointer" title="全选/取消全选"></th>
+          <th data-css="width:64px">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
           <th>包类型</th>
-          <th style="width:76px" title="正常=上次采集成功，异常=上次采集失败，未知=从未采集">采集状态</th>
-          <th style="width:100px">最近采集</th>
+          <th data-css="width:76px" title="正常=上次采集成功，异常=上次采集失败，未知=从未采集">采集状态</th>
+          <th data-css="width:100px">最近采集</th>
           <th>操作</th>
         </tr></thead>
         <tbody id="prod-tbody">`;
@@ -640,6 +664,7 @@ async function products(){
   h+=`</tbody></table></div></div></div>`;
   h+=`<div id="disc-area"></div>`;
   h+=`<div id="pform-area"></div>`;
+  if(navStale(_seq))return;
   document.getElementById('app').innerHTML=h;
   _initDiscObserver();
 }
@@ -656,6 +681,11 @@ function _showDiscLogFloat(){
   el.style.display='block';
 }
 
+function _viewDiscResult(stale){
+  closeModal('disc');
+  showDiscoverResult(window._discLastDone||{}, !!stale);
+}
+
 function _reopenDiscModal(){
   clearInterval(window._discTimer);
   const b=document.getElementById('disc-banner');
@@ -664,12 +694,12 @@ function _reopenDiscModal(){
     if(s.code===0 && (s.data.active||s.data.phase==='done')){
       _showModal('disc');
       const logId=window.__discLogId||'disc-float-log';
-      modalBody('disc',`<div style="padding:24px;text-align:center;position:relative">
-        <div style="position:absolute;top:12px;right:16px;cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1" onclick="closeModal('disc')">×</div>
-        <div style="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${formatDiscPhase(s.data)}</div>
-        <div style="font-size:13px;color:var(--gray-muted);margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
-        <div style="margin-top:10px"><button class="btn" onclick="document.getElementById('${logId}').style.display='block'" style="background:none;border:1px solid var(--gray-border);border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button></div>
-        ${s.data.phase==='done'?'<div style="margin-top:12px"><button class="btn btn-primary" onclick="closeModal(\'disc\');showDiscoverResult(window._discLastDone||{}, !!s.data.is_stale)">查看结果</button></div>':''}
+      modalBody('disc',`<div data-css="padding:24px;text-align:center;position:relative">
+        <div data-css="position:absolute;top:12px;right:16px;cursor:pointer;font-size:20px;color:var(--gray-disabled);line-height:1" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>×</div>
+        <div data-css="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${formatDiscPhase(s.data)}</div>
+        <div data-css="font-size:13px;color:var(--gray-muted);margin-bottom:12px">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
+        <div data-css="margin-top:10px"><button class="btn" data-on-click="_showById" data-args='${_dataArgs(logId)}' data-css="background:none;border:1px solid var(--gray-border);border-radius:6px;cursor:pointer;font-size:12px;color:#7c3aed;padding:4px 12px">📋 查看日志</button></div>
+        ${s.data.phase==='done'?`<div data-css="margin-top:12px"><button class="btn btn-primary" data-on-click="_viewDiscResult" data-args='${_dataArgs(!!s.data.is_stale)}'>查看结果</button></div>`:''}
       </div>`);
       if(s.data.phase==='done'&&s.data.result){
         setTimeout(()=>showDiscoverResult(s.data.result, !!s.data.is_stale),100);
@@ -688,8 +718,8 @@ function _showModal(id){
     ? `background:#fff;border-radius:12px;border:2px solid #7c3aed;box-shadow:0 8px 24px rgba(124,58,237,0.15),0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`
     : `background:#fff;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.25);width:100%;max-width:580px;max-height:85vh;overflow-y:auto`;
   document.getElementById('app').insertAdjacentHTML('beforeend',
-    `<div id="${id}-overlay" onclick="if(event.target===this)closeModal('${id}')" style="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">`+
-    `<div id="${id}-box" style="${boxStyle}"></div>`+
+    `<div id="${id}-overlay" data-on-click="closeModal" data-self data-args='${_dataArgs(id)}' data-css="position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px">`+
+    `<div id="${id}-box" data-css="${boxStyle}"></div>`+
     `</div>`);
 }
 function closeModal(id){
@@ -699,7 +729,7 @@ function closeModal(id){
   if(b)b.remove();
 }
 function modalBody(id,h){const b=document.getElementById(id+'-box');if(b)b.innerHTML=h;}
-function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft" style="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--gray-border)">${btns}</div>`);}}
+function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft" data-css="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--gray-border)">${btns}</div>`);}}
 
 function _hlthColor(s){return{'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[s]||'var(--gray-muted)';}
 function _hlthLabel(s){return{'ok':'正常','error':'异常','unknown':'未知'}[s]||'未知';}

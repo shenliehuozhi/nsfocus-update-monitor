@@ -45,8 +45,8 @@ const CH_TYPE_CN = {email:'邮件',wecom:'企微',dingtalk:'钉钉',feishu:'飞�
 function chTypeChip(type, withIcon=true){
   const s = CH_TYPE_STYLE[type] || {bg:'#f8fafc', fg:'#475569', border:'#e2e7ee', icon:'•'};
   const cn = CH_TYPE_CN[type] || type;
-  const iconHtml = withIcon ? `<span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${s.fg};color:#fff;font-size:9px;font-weight:700;line-height:1;margin-right:4px;font-family:Arial,sans-serif">${s.icon}</span>` : '';
-  return `<span style="display:inline-flex;align-items:center;padding:1px 8px 1px 4px;background:${s.bg};color:${s.fg};border:1px solid ${s.border};border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${iconHtml}${cn}</span>`;
+  const iconHtml = withIcon ? `<span data-css="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:${s.fg};color:#fff;font-size:9px;font-weight:700;line-height:1;margin-right:4px;font-family:Arial,sans-serif">${s.icon}</span>` : '';
+  return `<span data-css="display:inline-flex;align-items:center;padding:1px 8px 1px 4px;background:${s.bg};color:${s.fg};border:1px solid ${s.border};border-radius:10px;font-size:11px;font-weight:600;white-space:nowrap">${iconHtml}${cn}</span>`;
 }
 
 function toggleChTypeDropdown(){
@@ -56,7 +56,7 @@ function toggleChTypeDropdown(){
 function selectChType(t, triggerCfgChange=true){
   document.getElementById('cht').value=t;
   const cur=document.getElementById('chTypeCurrent');
-  if(cur)cur.innerHTML=chTypeChip(t)+' <span style="color:var(--muted);font-size:11px;margin-left:4px">▾</span>';
+  if(cur)cur.innerHTML=chTypeChip(t)+' <span data-css="color:var(--muted);font-size:11px;margin-left:4px">▾</span>';
   document.querySelectorAll('.ch-type-option').forEach(o=>{
     const isSel=o.dataset.t===t;
     o.dataset.selected=isSel?'1':'';
@@ -117,46 +117,39 @@ function _matchEmailProvider(host){
   return 'custom';
 }
 
-// 全局 table thead 高度统一 (dashboard 三个表格表头对齐) — 立即执行, 不依赖任何渲染
-(function(){
-  const s=document.createElement('style');
-  s.setAttribute('data-injected','thead36');
-  s.textContent='table thead th{height:36px !important;min-height:0 !important;max-height:36px !important;line-height:1.2 !important;padding-top:8px !important;padding-bottom:8px !important}';
-  if(document.head)document.head.appendChild(s);
-  else document.addEventListener('DOMContentLoaded',()=>document.head.appendChild(s));
-})();
+// 全局 table thead 高度统一（规则在 app.css 末尾，CSP 禁止运行时注入 <style>）
 
 function _renderProdDistTable(data){
   const container = document.getElementById('prodDistTable');
   if(!container) return;
   if(!data || data.length===0){
-    container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无数据</div>'; return;
+    container.innerHTML='<div data-css="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无数据</div>'; return;
   }
   const total = data.reduce((s,e)=>s+e.count,0);
   const cmap = _buildProdColorMap(data.map(d=>d.name));
-  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
-    '<thead><tr style="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
-      '<th style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">产品</th>'+
-      '<th style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
-      '<th style="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
+  container.innerHTML='<table data-css="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr data-css="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
+      '<th data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">产品</th>'+
+      '<th data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
+      '<th data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
     '</tr></thead><tbody>'+
     data.map((item)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
       const color = cmap[item.name] || 'var(--gray-disabled)';
-      return `<tr style="border-bottom:1px solid var(--gray-bg)">
-        <td style="padding:9px 12px">
-          <div style="display:flex;align-items:center;gap:6px;min-width:0">
-            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
+      return `<tr data-css="border-bottom:1px solid var(--gray-bg)">
+        <td data-css="padding:9px 12px">
+          <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
+            <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
+            <span data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
           </div>
         </td>
-        <td style="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
-        <td style="padding:9px 12px">
-          <div style="display:flex;align-items:center;gap:6px">
-            <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
-              <div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
+        <td data-css="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
+        <td data-css="padding:9px 12px">
+          <div data-css="display:flex;align-items:center;gap:6px">
+            <div data-css="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
+              <div data-css="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
             </div>
-            <span style="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${pct}%</span>
+            <span data-css="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${pct}%</span>
           </div>
         </td>
       </tr>`;
@@ -197,18 +190,18 @@ function _renderCustPushTable(items, days){
   const container = document.getElementById('custPushTable');
   if(!container) return;
   if(!items || items.length===0){
-    container.innerHTML='<div style="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无客户</div>';
+    container.innerHTML='<div data-css="padding:16px;text-align:center;color:var(--gray-disabled);font-size:12px">暂无客户</div>';
     return;
   }
   // 2026-11-09 修复"客户显示不全": 0 推送客户不再隐藏, 全量渲染(后端已按 total DESC 排序, 0 推送自然沉底)
 // 2026-09-04: 客户推送表 — 响应式: 渲染后用 JS 算 card 实际宽度按比例分配三列, 任意视口都对齐
   // 列宽比例 35%/15%/50% (跟用户截图的视觉比例一致), padding 让 td 内容左/右对齐
   // 用 table-layout:fixed + JS 设 th/td width (table-layout:auto 下 td 内容长度会破坏比例)
-  container.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-'<thead><tr style="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
-      '<th data-col="0" style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
-      '<th data-col="1" style="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">推送</th>'+
-      '<th data-col="2" style="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">状态</th>'+
+  container.innerHTML='<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
+'<thead><tr data-css="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
+      '<th data-col="0" data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">客户</th>'+
+      '<th data-col="1" data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">推送</th>'+
+      '<th data-col="2" data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">状态</th>'+
     '</tr></thead><tbody>'+
     items.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -222,22 +215,22 @@ function _renderCustPushTable(items, days){
         '点击查看该客户推送历史',
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
-      return `<tr style="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s;${isZero?'opacity:.5':''}" class="pill-tip" data-tip="${escHtml(tipLines)}" onclick="location.hash='history?days=${days}&cust=${c.id}';setTimeout(()=>showPage('history'),0)">
-        <td data-col="0" style="padding:9px 12px;box-sizing:border-box">
-          <div style="display:flex;align-items:center;gap:6px;min-width:0">
-            <span style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${isZero?'var(--gray-disabled)':color}"></span>
-            <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
+      return `<tr data-css="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s;${isZero?'opacity:.5':''}" class="pill-tip" data-tip="${escHtml(tipLines)}" data-on-click="_gotoHistoryDays" data-args='${_dataArgs(days, c.id)}'>
+        <td data-col="0" data-css="padding:9px 12px;box-sizing:border-box">
+          <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
+            <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${isZero?'var(--gray-disabled)':color}"></span>
+            <span data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
-        <td data-col="1" style="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${isZero?'var(--gray-disabled)':(failed>0?'var(--danger)':'var(--success)')};font-variant-numeric:tabular-nums">${total}</td>
-        <td data-col="2" style="padding:9px 12px;box-sizing:border-box">
+        <td data-col="1" data-css="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${isZero?'var(--gray-disabled)':(failed>0?'var(--danger)':'var(--success)')};font-variant-numeric:tabular-nums">${total}</td>
+        <td data-col="2" data-css="padding:9px 12px;box-sizing:border-box">
           ${isZero
-            ? '<span style="color:var(--gray-disabled);font-size:11px">无推送</span>'
-            : `<div style="display:flex;align-items:center;gap:6px">
-                <div style="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
-                  <div style="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
+            ? '<span data-css="color:var(--gray-disabled);font-size:11px">无推送</span>'
+            : `<div data-css="display:flex;align-items:center;gap:6px">
+                <div data-css="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
+                  <div data-css="width:${failPct}%;height:100%;background:${failed>0?'var(--danger)':'var(--success)'};border-radius:4px"></div>
                 </div>
-                <span style="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${failPct}%</span>
+                <span data-css="color:var(--gray-muted);font-size:11px;min-width:36px;text-align:right">${failPct}%</span>
               </div>`}
         </td>
       </tr>`;
@@ -505,17 +498,17 @@ function _renderTimelineChart_Redraw(d, mx, e){
       const valStyle = isHovered
         ? 'margin-left:auto;font-weight:700;color:var(--primary);font-variant-numeric:tabular-nums'
         : 'margin-left:auto;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums';
-      return `<div style="${wrapStyle}">
-        <span style="${dotStyle}"></span>
-        <span style="${nameStyle}" title="${p}">${p}</span>
-        <span style="${valStyle}">${val}</span>
+      return `<div data-css="${wrapStyle}">
+        <span data-css="${dotStyle}"></span>
+        <span data-css="${nameStyle}" title="${p}">${p}</span>
+        <span data-css="${valStyle}">${val}</span>
       </div>`;
     }).join('');
 
-    let html = `<div style="font-size:11px;color:var(--gray-muted);margin-bottom:6px">${dateStr}</div>`;
-    html += `<div style="display:flex;gap:14px">`;
-    html += `<div style="flex:1;min-width:140px">${buildCol(left)}</div>`;
-    if (right.length) html += `<div style="flex:1;min-width:140px">${buildCol(right)}</div>`;
+    let html = `<div data-css="font-size:11px;color:var(--gray-muted);margin-bottom:6px">${dateStr}</div>`;
+    html += `<div data-css="display:flex;gap:14px">`;
+    html += `<div data-css="flex:1;min-width:140px">${buildCol(left)}</div>`;
+    if (right.length) html += `<div data-css="flex:1;min-width:140px">${buildCol(right)}</div>`;
     html += `</div>`;
 
     let tip = document.getElementById('chartTip');
@@ -548,8 +541,8 @@ function _renderTlLegend(allProducts, visible){
   const sorted = [...new Set(allProducts||[])].sort((a,b)=>a.localeCompare(b,'zh'));
   container.innerHTML = sorted.map((p) => {
     const on = visible[p];
-    return `<span onclick="_toggleTlProd('${escAttr(p)}')" style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'var(--gray-disabled)'};text-decoration:${on?'none':'line-through'}">
-      <span style="width:10px;height:2px;background:${prodColor[p]};display:inline-block;border-radius:4px"></span>
+    return `<span data-on-click="_toggleTlProd" data-args='${_dataArgs(p)}' data-css="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;margin:2px;border-radius:4px;cursor:pointer;font-size:11px;border:1px solid ${on?prodColor[p]:'#ddd'};background:${on?'transparent':'#f5f5f5'};color:${on?prodColor[p]:'var(--gray-disabled)'};text-decoration:${on?'none':'line-through'}">
+      <span data-css="width:10px;height:2px;background:${prodColor[p]};display:inline-block;border-radius:4px"></span>
       ${escHtml(p)}
     </span>`;
   }).join('');
@@ -599,6 +592,7 @@ let _srcUrlChainMap = {};
 let _srcUrlPathIdMap = {};
 
 async function dataPage() {
+  const _seq=_navSeq;
   _dataPage = 1;
   _dataSelectedSid = null;
   _dataSelectedChain = null;
@@ -643,8 +637,8 @@ async function dataPage() {
 
   // Fetch scheduler + detailed progress in parallel
   const [sR, prR] = await Promise.all([
-    fetch(API + '/settings/scheduler', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({})),
-    fetch(API + '/system/collect/progress', { headers: { 'Authorization': 'Bearer ' + T } }).then(r => r.json()).catch(() => ({})),
+    api('/settings/scheduler').catch(() => ({})),
+    api('/system/collect/progress').catch(() => ({})),
   ]);
   console.log('[debug scheduler]', JSON.stringify(sR));
   const sch = sR.data || {};
@@ -663,7 +657,7 @@ async function dataPage() {
   // Progress % for display
   const pct = (p.products_total && p.products_total > 0) ? Math.round(p.products_done / p.products_total * 100) : 0;
   const progressHtml = isRunning
-    ? `<span style="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0})</span>`
+    ? `<span data-css="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0})</span>`
     : '';
 
   const totalActive = Object.values(_dataAll).filter(s => s.is_active).length;
@@ -677,20 +671,20 @@ async function dataPage() {
     <div class="data-toolbar">
 <div class="data-search-wrap">
         <span class="data-search-icon">🔍</span>
-        <input class="data-search" id="dataSearch" placeholder="按所选字段搜索…" value="${escHtml(_dataQuery)}" oninput="dataSearchDebounced(this.value)">
-        <select id="dataSearchField" class="sel-sm dd" onchange="dataSearchFieldChange()" style="margin-left:6px">
+        <input class="data-search" id="dataSearch" placeholder="按所选字段搜索…" value="${escHtml(_dataQuery)}" data-on-input="dataSearchDebounced" data-args='${_dataArgs('$value')}'>
+        <select id="dataSearchField" class="sel-sm dd" data-on-change="dataSearchFieldChange" data-css="margin-left:6px">
           <option value="description" selected>描述</option>
           <option value="product_name">产品名</option>
           <option value="version_branch">版本号</option>
           <option value="file_name">文件名</option>
           <option value="package_type">包类型</option>
         </select>
-        ${_dataQuery ? '<span class="data-search-clear" onclick="dataSearch(\'\')">×</span>' : ''}
+        ${_dataQuery ? `<span class="data-search-clear" data-on-click="dataSearch" data-args='[""]'>×</span>` : ''}
       </div>
       <div class="data-filters">
         <span class="data-filter-label">筛选:</span>
         ${filterHtml}
-        <select id="dataUrgencyFilter" class="sel-sm dd" onchange="dataUrgencyChange(this.value)" style="margin-left:8px">
+        <select id="dataUrgencyFilter" class="sel-sm dd" data-on-change="dataUrgencyChange" data-args='${_dataArgs('$value')}' data-css="margin-left:8px">
           <option value="">紧急度</option>
           <option value="critical">🔴 critical</option>
           <option value="high">⚠️ high</option>
@@ -710,6 +704,7 @@ async function dataPage() {
     </div>
   </div>`;
 
+  if(navStale(_seq))return;
   document.getElementById('app').innerHTML = h;
   dataRenderLeft();
   dataRenderRight(sch, p, { lastText, nextText, isRunning, curMode, mode_label, progressHtml });
@@ -726,6 +721,9 @@ async function dataPage() {
 
   // ── One-time event delegation (NEVER inside dataRenderLeft) ──
   document.getElementById('dataLeft').addEventListener('click', function(e) {
+    // data-on-* 委托在 document 上执行；带 data-stop 的子元素等价于原内联 stopPropagation，
+    // 必须在祖先监听器里提前放行，否则会同时触发树节点/卡片折叠。
+    if (e.target.closest('[data-stop]')) return;
     // Card header toggle
     var cardHd = e.target.closest('[data-action="cardToggle"]');
     if (cardHd) {
@@ -794,9 +792,15 @@ let _dataSelectedPkgHint = null; // package_type hint for intermediate node filt
 let _dataSelectedPathId = null; // path_id for exact chain match (avoids URL-collision false positives)
 let _dataSelectedNode = null; // the tree node the user clicked (for descendants URL collection)
 
+function _gotoHistoryDays(days,cust){
+  location.hash=`history?days=${days}&cust=${cust}`;
+  setTimeout(()=>showPage('history'),0);
+}
+function _pushChannelChanged(val){_pushChannelId=parseInt(val);updatePushConfirmState();}
+
 function dataChipHtml(key, label) {
   const active = _dataFilters[key] ? 'data-chip-active' : '';
-  return `<button class="data-chip ${active}" onclick="dataToggleFilter('${key}')">${label}</button>`;
+  return `<button class="data-chip ${active}" data-filter-key="${key}" data-on-click="dataToggleFilter" data-args='${_dataArgs(key)}'>${label}</button>`;
 }
 
 function dataSearchFieldChange() {
@@ -973,9 +977,9 @@ function dataSortedSources(filt) {
 // withdrawn → ↩已撤回(红 + 删除线)
 // superseded → ⊘已替代(灰)
 function statusBadge(status) {
-  if (status === 'withdrawn')  return '<span class="badge badge-err" style="font-size:10px">↩已撤回</span>';
-  if (status === 'superseded') return '<span class="badge badge-grey" style="font-size:10px">⊘已替代</span>';
-  return '<span class="badge badge-ok" style="font-size:10px">🆕最新包</span>';
+  if (status === 'withdrawn')  return '<span class="badge badge-err" data-css="font-size:10px">↩已撤回</span>';
+  if (status === 'superseded') return '<span class="badge badge-grey" data-css="font-size:10px">⊘已替代</span>';
+  return '<span class="badge badge-ok" data-css="font-size:10px">🆕最新包</span>';
 }
 // 是否是已撤回/已替代的旧包(用于视觉弱化)
 function isOldSnapshot(s) {
@@ -1044,12 +1048,12 @@ function _diagnoseChainStale(chain, match) {
 // Red ⚠ badge shown on stale-chain pills; tooltip explains the cause.
 function chainWarnBadge(chain, match) {
   const tip = _diagnoseChainStale(chain, match);
-  return `<span class="chain-stale-warn" title="${escHtml(tip)}" style="color:var(--danger);font-weight:700;cursor:help;font-size:13px;flex-shrink:0;margin-left:2px">⚠️</span>`;
+  return `<span class="chain-stale-warn" title="${escHtml(tip)}" data-css="color:var(--danger);font-weight:700;cursor:help;font-size:13px;flex-shrink:0;margin-left:2px">⚠️</span>`;
 }
 
 function buildFlatVerTreeHtml(snapshots) {
   const MAP = { sys: '系统', rule: '规则', nti: '威胁情报', av: '病毒库', apprule: '应用规则', url: 'URL库', wcs: '恶意站点', judge: '研判', geo: '地理库', interface: '接口', special: '特殊', other: '其他', merge: '合并', client: '客户端', av_stream: '流式病毒库', test: '测试', engine: '引擎' };
-  if (!snapshots || snapshots.length === 0) return '<div style="color:var(--muted);font-size:12px;padding:8px">暂无数据</div>';
+  if (!snapshots || snapshots.length === 0) return '<div data-css="color:var(--muted);font-size:12px;padding:8px">暂无数据</div>';
   const byVer = {};
   // 2026-08-08: 用 _dataSelectedChain 派生 group key,不读 snap.version_branch。
   // 路径不空(走 buildFlatVerTreeHtml 通常意味着 paths 空)时 — group key 只能是
@@ -1079,7 +1083,7 @@ function buildFlatVerTreeHtml(snapshots) {
     const blockId = 'fv_' + ver.replace(/\W/g, '_');
     const isRb = snaps.some(s => s.status === 'withdrawn');
     const newCount = snaps.filter(s => s.status === 'active' && !s.last_delivered_at).length;
-    const badge = isRb ? ' <span style="color:var(--danger);font-size:10px">↩</span>' : '';
+    const badge = isRb ? ' <span data-css="color:var(--danger);font-size:10px">↩</span>' : '';
     const freshSnap = snaps.reduce((latest, s) => {
       if (!s.published_at) return latest;
       const t = new Date(s.published_at).getTime();
@@ -1090,45 +1094,45 @@ function buildFlatVerTreeHtml(snapshots) {
     let freshBadge = '';
     if (freshSnap) {
       const days = (now - new Date(freshSnap).getTime()) / 86400000;
-      if (days <= 30) freshBadge = ' <span style="color:var(--success);font-size:10px">活跃</span>';
-      else if (days <= 365) freshBadge = ' <span style="color:var(--warn);font-size:10px">低频</span>';
-      else freshBadge = ' <span style="color:var(--gray-disabled);font-size:10px">沉寂</span>';
+      if (days <= 30) freshBadge = ' <span data-css="color:var(--success);font-size:10px">活跃</span>';
+      else if (days <= 365) freshBadge = ' <span data-css="color:var(--warn);font-size:10px">低频</span>';
+      else freshBadge = ' <span data-css="color:var(--gray-disabled);font-size:10px">沉寂</span>';
     }
     const verLabel = escHtml(ver) + badge + freshBadge;
-    html += `<div class="ver-bar" onclick="verBarToggle(this,'${blockId}')" style="margin-bottom:4px">
-      <span class="tree-arrow" style="margin-right:4px">&#9658;</span>
-      <span style="font-weight:600;font-size:13px">${verLabel}</span>
-      <span style="margin-left:auto;font-size:11px;color:var(--muted)">${snaps.length} 个包</span>
+    html += `<div class="ver-bar" data-on-click="verBarToggle" data-args='${_dataArgs('$el', blockId)}' data-css="margin-bottom:4px">
+      <span class="tree-arrow" data-css="margin-right:4px">&#9658;</span>
+      <span data-css="font-weight:600;font-size:13px">${verLabel}</span>
+      <span data-css="margin-left:auto;font-size:11px;color:var(--muted)">${snaps.length} 个包</span>
     </div>`;
     // Build snapshot table
-    let tbl = `<div id="${blockId}" style="display:none;padding:4px 0 8px 28px">`;
+    let tbl = `<div id="${blockId}" data-css="display:none;padding:4px 0 8px 28px">`;
     snaps.forEach(s => {
       const sz = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
       const did = 'dd_v_' + s.id;
       const isRb = s.status === 'withdrawn';
       const isOld = isOldSnapshot(s);
-      const pkgTypeBadge = `<span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px">${MAP[s.package_type] || s.package_type || ''}</span>`;
-      const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue" style="font-size:10px">未推送</span>' : '');
-      tbl += `<div style="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" onclick="document.getElementById('${did}').classList.toggle('hidden')">
+      const pkgTypeBadge = `<span class="badge" data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px">${MAP[s.package_type] || s.package_type || ''}</span>`;
+      const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue" data-css="font-size:10px">未推送</span>' : '');
+      tbl += `<div data-css="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" data-on-click="_toggleByIdClass" data-args='${_dataArgs(did, 'hidden')}'>
         ${pkgTypeBadge}
         ${statusBadges}
-        <span style="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${s.file_name || ''}</span>
-        <span style="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
-        <span style="font-size:11px;color:var(--muted)">${sz}</span>
-        <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" style="font-size:10px">${s.urgency || ''}</span>
-        <button class="btn btn-xs btn-soft-success" onclick="event.stopPropagation();showPushModal(${s.id},'${escAttr(s.product_name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
+        <span data-css="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${escHtml(s.file_name || '')}</span>
+        <span data-css="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
+        <span data-css="font-size:11px;color:var(--muted)">${sz}</span>
+        <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" data-css="font-size:10px">${escHtml(s.urgency || '')}</span>
+        <button class="btn btn-xs btn-soft-success" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, s.product_name, pushVer, pushPkg)}'>推送</button>
       </div>
-      <div id="${did}" class="hidden" style="padding:4px 8px 4px 28px">
-        <div style="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
-          <b>文件:</b><span class="mono">${s.file_name || ''}</span>
-          <b>版本:</b><span>${s.package_version || ''}</span>
-          <b>MD5:</b><span class="mono">${s.md5_hash || ''}</span>
+      <div id="${did}" class="hidden" data-css="padding:4px 8px 4px 28px">
+        <div data-css="display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px;background:var(--success-light);padding:8px;border-radius:4px">
+          <b>文件:</b><span class="mono">${escHtml(s.file_name || '')}</span>
+          <b>版本:</b><span>${escHtml(s.package_version || '')}</span>
+          <b>MD5:</b><span class="mono">${escHtml(s.md5_hash || '')}</span>
           <b>大小:</b><span>${sz}</span>
-          ${s.min_sys_version ? `<b>依赖:</b><span>≥ ${s.min_sys_version}</span>` : ''}
+          ${s.min_sys_version ? `<b>依赖:</b><span>≥ ${escHtml(s.min_sys_version)}</span>` : ''}
           ${s.published_at ? `<b>发布:</b><span>${fmtTZ(s.published_at, true)}</span>` : ''}
-          ${s.source_url ? `<b>详情:</b><span><a href="https://update.nsfocus.com${s.source_url}" target="_blank">绿盟更新页</a></span>` : ''}
-          ${s.download_id ? `<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>` : ''}
-        </div>${s.description_raw ? `<div class="desc-box mt8">${s.description_raw.substring(0, 1200)}</div>` : ''}
+          ${s.source_url ? `<b>详情:</b><span><a href="https://update.nsfocus.com${escHtml(s.source_url)}" target="_blank">绿盟更新页</a></span>` : ''}
+          ${s.download_id ? `<b>下载:</b><span><a href="https://update.nsfocus.com/update/downloads/id/${escHtml(s.download_id)}" target="_blank">downloads/id/${escHtml(s.download_id)}</a></span>` : ''}
+        </div>${s.description_raw ? `<div class="desc-box mt8">${escHtml(s.description_raw.substring(0, 1200))}</div>` : ''}
       </div>`;
     });
     tbl += '</div>';
@@ -1154,12 +1158,12 @@ function dataRenderLeft() {
 
   // Update filter chip active states
   document.querySelectorAll('.data-chip').forEach(c => {
-    const m = c.getAttribute('onclick').match(/'([^']+)'/);
-    if (m) c.classList.toggle('data-chip-active', !!_dataFilters[m[1]]);
+    const key = c.getAttribute('data-filter-key');
+    if (key != null) c.classList.toggle('data-chip-active', !!_dataFilters[key]);
   });
 
   if (pageSlice.length === 0) {
-    document.getElementById('dataLeft').innerHTML = '<div class="empty" style="padding:24px;text-align:center;color:var(--muted)">未找到匹配条件的产品</div>';
+    document.getElementById('dataLeft').innerHTML = '<div class="empty" data-css="padding:24px;text-align:center;color:var(--muted)">未找到匹配条件的产品</div>';
     return;
   }
 
@@ -1191,17 +1195,17 @@ function dataRenderLeft() {
       treeHtml = buildDataTreeHtml(pt, src.snapshots_map, typeCN, src.ver_type_map || {}, src.name || '', sid);
     }
     const { hasRb, freshness } = dataSourceFlags(src);
-    const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok" style="font-size:10px">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn" style="font-size:10px">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey" style="font-size:10px">沉寂</span>' : ''));
+    const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok" data-css="font-size:10px">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn" data-css="font-size:10px">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey" data-css="font-size:10px">沉寂</span>' : ''));
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
-    html += `<div class="card" id="${cardId}" style="margin-bottom:10px">
-      <div class="card-hd" style="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
+    html += `<div class="card" id="${cardId}" data-css="margin-bottom:10px">
+      <div class="card-hd" data-css="cursor:pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
         <span>${escHtml(src.display_name || src.name || sid)}</span>
-        ${freshBadge && `<span style="margin-left:auto">${freshBadge}</span>`}
-        <button style="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" onmouseenter="this.style.background='var(--primary)';this.style.color='#fff'" onmouseleave="this.style.background='var(--primary-light)';this.style.color='var(--primary)'" onclick="event.stopPropagation();dataCollectProduct(${sid}, '${escAttr(src.name || sid)}')" title="立即采集此产品">采</button>
+        ${freshBadge && `<span data-css="margin-left:auto">${freshBadge}</span>`}
+        <button class="hover-primary" data-css="margin-left:8px;width:24px;height:24px;border-radius:50%;background:var(--primary-light);color:var(--primary);border:1px solid var(--border);font-size:12px;font-weight:600;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s,color .15s" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
       </div>
-      <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" style="display:none;padding-top:0">
-        <div style="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
+      <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" data-css="display:none;padding-top:0">
+        <div data-css="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
       </div>
     </div>`;
   });
@@ -1234,7 +1238,7 @@ function treeToggleById(childrenId, arrowEl) {
   const children = treeNode.nextElementSibling;
   if (!children || !children.classList.contains('tree-children')) return;
   // Find the arrow inside this tree-node to update its glyph
-  const arrow = treeNode.querySelector('span[data-toggle-arrow], span[onclick*="treeToggleById"]');
+  const arrow = treeNode.querySelector('span[data-toggle-arrow], .tree-arrow');
   const isHidden = children.style.display === 'none' || children.style.display === '';
   children.style.display = isHidden ? 'block' : 'none';
   if (arrow) arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
@@ -1583,20 +1587,20 @@ function dataRenderRight(sch, p, info) {
       } else {
         hdPathHtml += `<span class="data-hd-path-seg">${esc(segment)}</span>`;
       }
-      if (i < chainParts.length - 1) hdPathHtml += ' <span style="color:var(--muted)">→</span> ';
+      if (i < chainParts.length - 1) hdPathHtml += ' <span data-css="color:var(--muted)">→</span> ';
     });
   }
   const hdLabel = srcName ? `${esc(srcName)}${hdPathHtml ? ' → ' + hdPathHtml : ''} 的最新包` : '全部产品最新包';
-  const resetBtn = hasFilter ? `<button class="btn btn-xs" style="background:var(--warn-light);color:#8a7000;border:1px solid #e6c94c;margin-left:8px" onclick="dataClearFilter()">重置筛选</button>` : '';
+  const resetBtn = hasFilter ? `<button class="btn btn-xs" data-css="background:var(--warn-light);color:#8a7000;border:1px solid #e6c94c;margin-left:8px" data-on-click="dataClearFilter">重置筛选</button>` : '';
   const lastMode = mode_label[sch.last_mode] || '';
   const nextMode = mode_label[sch.next_mode] || '';
   // Build header: left=label, center=last/next timeline, right=progress+btn
-  const hdrRight = `<div class="hdr-right" style="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
-    <span style="color:var(--muted)">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
-    <span style="color:var(--border)">|</span>
-    <span style="color:var(--muted)">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
+  const hdrRight = `<div class="hdr-right" data-css="display:flex;align-items:center;gap:10px;flex-shrink:0;flex-wrap:wrap;font-size:12px">
+    <span data-css="color:var(--muted)">上次</span><span>${lastText}${lastMode ? ' [' + lastMode + ']' : ''}</span>
+    <span data-css="color:var(--border)">|</span>
+    <span data-css="color:var(--muted)">下次</span><span>${nextText}${nextMode ? ' [' + nextMode + ']' : ''}</span>
     ${progressHtml}
-    <button class="btn btn-xs btn-soft-primary" onclick="triggerCollect()">🔄 手动采集</button>${resetBtn}
+    <button class="btn btn-xs btn-soft-primary" data-on-click="triggerCollect">🔄 手动采集</button>${resetBtn}
   </div>`;
 
   if (rows.length === 0) {
@@ -1605,18 +1609,18 @@ function dataRenderRight(sch, p, info) {
     return;
   }
 
-  const colStyle = 'style="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
+  const colStyle = 'data-css="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
   let html = `<div class="feed-list">
 <div class="feed-hd">
-  <div class="feed-cell feed-arrow-hd" style="width:28px;flex-shrink:0"></div>
-  <div class="feed-cell" style="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
-  <div class="feed-cell" style="width:84px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
-  <div class="feed-cell" style="width:72px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
-  <div class="feed-cell" style="width:160px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">产品名称</div>
-  <div class="feed-cell" style="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">版本</div>
-  <div class="feed-cell" style="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">文件</div>
-  <div class="feed-cell" style="width:116px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发布时间</div>
-  <div class="feed-cell" style="width:130px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
+  <div class="feed-cell feed-arrow-hd" data-css="width:28px;flex-shrink:0"></div>
+  <div class="feed-cell" data-css="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
+  <div class="feed-cell" data-css="width:84px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
+  <div class="feed-cell" data-css="width:72px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
+  <div class="feed-cell" data-css="width:160px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">产品名称</div>
+  <div class="feed-cell" data-css="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">版本</div>
+  <div class="feed-cell" data-css="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">文件</div>
+  <div class="feed-cell" data-css="width:116px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发布时间</div>
+  <div class="feed-cell" data-css="width:130px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
 </div>`;
 
   pageSlice.forEach(r => {
@@ -1634,23 +1638,23 @@ function dataRenderRight(sch, p, info) {
     const isRb = r.status === 'withdrawn';
     const rowClass = isRb ? 'rollback' : '';
     let urgencyBadge = '';
-    if (r.urgency === 'critical') urgencyBadge = '<span class="badge badge-err" style="font-size:10px">🔴 critical</span>';
-    else if (r.urgency === 'high') urgencyBadge = '<span class="badge badge-warn" style="font-size:10px">⚠️ high</span>';
-    else if (r.urgency === 'normal') urgencyBadge = '<span class="badge badge-ok" style="font-size:10px">ℹ️ normal</span>';
+    if (r.urgency === 'critical') urgencyBadge = '<span class="badge badge-err" data-css="font-size:10px">🔴 critical</span>';
+    else if (r.urgency === 'high') urgencyBadge = '<span class="badge badge-warn" data-css="font-size:10px">⚠️ high</span>';
+    else if (r.urgency === 'normal') urgencyBadge = '<span class="badge badge-ok" data-css="font-size:10px">ℹ️ normal</span>';
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
-  <div class="feed-cell feed-arrow" style="width:28px;flex-shrink:0" onclick="dataRightToggleRow('${rid}')">▶</div>
-  <div class="feed-cell" style="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge" style="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
-  <div class="feed-cell" style="width:84px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
-  <div class="feed-cell" style="width:72px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
-  <div class="feed-cell" style="width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
-  <div class="feed-cell" style="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || chainVer || '')}">${escHtml(r.package_version || chainVer || '')}</div>
-  <div class="feed-cell" style="flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
-  <div class="feed-cell" style="width:116px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
-  <div class="feed-cell" style="width:130px;flex-shrink:0;white-space:nowrap">
-    <div class="data-right-actions" onclick="event.stopPropagation()">
-      <button class="btn btn-xs btn-soft-primary" onclick="dataRightGoto('${escAttr(r._sid)}','${escAttr(JSON.stringify(r._chain || []))}')">跳转</button>
-      <button class="btn btn-xs btn-soft-success" onclick="showPushModal(${r.id}, '${escAttr(r._srcName)}', '${escAttr((r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '')}', '${escAttr((r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '')}', '${escAttr(JSON.stringify(r._chain || []))}')">推送</button>
+  <div class="feed-cell feed-arrow" data-css="width:28px;flex-shrink:0" data-on-click="dataRightToggleRow" data-args='${_dataArgs(rid)}'>▶</div>
+  <div class="feed-cell" data-css="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge" data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
+  <div class="feed-cell" data-css="width:84px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
+  <div class="feed-cell" data-css="width:72px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
+  <div class="feed-cell" data-css="width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
+  <div class="feed-cell" data-css="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || chainVer || '')}">${escHtml(r.package_version || chainVer || '')}</div>
+  <div class="feed-cell" data-css="flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
+  <div class="feed-cell" data-css="width:116px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell" data-css="width:130px;flex-shrink:0;white-space:nowrap">
+    <div class="data-right-actions" >
+      <button class="btn btn-xs btn-soft-primary" data-on-click="dataRightGoto" data-args='${_dataArgs(r._sid, JSON.stringify(r._chain || []))}'>跳转</button>
+      <button class="btn btn-xs btn-soft-success" data-on-click="showPushModal" data-args='${_dataArgs(r.id, r._srcName, (r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '', (r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '', JSON.stringify(r._chain || []))}'>推送</button>
     </div>
   </div>
 </div>`;
@@ -1669,16 +1673,16 @@ function dataRenderRight(sch, p, info) {
   if (tp2 > 1) {
     const pg = _dataFeedPage;
     let phtml = '';
-    if (pg > 1) phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(${pg-1})">‹</button>`;
+    if (pg > 1) phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(pg-1)}'>‹</button>`;
     const win = 5;
     const st = Math.max(1, pg - Math.floor(win/2));
     const en = Math.min(tp2, st + win - 1);
     const s2 = Math.max(1, en - win + 1);
-    if (s2 > 1) { phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(1)">1</button>`; if (s2 > 2) phtml += `<span style="color:var(--muted);padding:0 2px">…</span>`; }
-    for (let i = s2; i <= en; i++) { phtml += `<button class="btn btn-xs${i===pg?' btn-primary':''}" onclick="dataFeedGoPage(${i})">${i}</button>`; }
-    if (en < tp2) { if (en < tp2-1) phtml += `<span style="color:var(--muted);padding:0 2px">…</span>`; phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(${tp2})">${tp2}</button>`; }
-    if (pg < tp2) phtml += `<button class="btn btn-xs" onclick="dataFeedGoPage(${pg+1})">›</button>`;
-    document.getElementById('dataPager').innerHTML = phtml + `<span style="color:var(--muted);font-size:11px;margin-left:8px">${rows.length}条/共${tp2}页</span>`;
+    if (s2 > 1) { phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(1)}'>1</button>`; if (s2 > 2) phtml += `<span data-css="color:var(--muted);padding:0 2px">…</span>`; }
+    for (let i = s2; i <= en; i++) { phtml += `<button class="btn btn-xs${i===pg?' btn-primary':''}" data-on-click="dataFeedGoPage" data-args='${_dataArgs(i)}'>${i}</button>`; }
+    if (en < tp2) { if (en < tp2-1) phtml += `<span data-css="color:var(--muted);padding:0 2px">…</span>`; phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(tp2)}'>${tp2}</button>`; }
+    if (pg < tp2) phtml += `<button class="btn btn-xs" data-on-click="dataFeedGoPage" data-args='${_dataArgs(pg+1)}'>›</button>`;
+    document.getElementById('dataPager').innerHTML = phtml + `<span data-css="color:var(--muted);font-size:11px;margin-left:8px">${rows.length}条/共${tp2}页</span>`;
   } else {
     document.getElementById('dataPager').innerHTML = '';
   }
@@ -1902,15 +1906,15 @@ if (!matchedPath && snap.source_url) {
       const isLast = (i === chain.length - 1);
       if (isLast) {
         const fullUrl = 'https://update.nsfocus.com' + leafUrl;
-        return `<a href="${escHtml(fullUrl)}" target="_blank" style="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
+        return `<a href="${escHtml(fullUrl)}" target="_blank" data-css="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
       }
       const nodeUrl = findNodeUrl(i + 1);
       const fullNodeUrl = nodeUrl ? ('https://update.nsfocus.com' + nodeUrl) : '';
       if (fullNodeUrl && nodeUrl !== entryUrl) {
-        return `<a href="${escHtml(fullNodeUrl)}" target="_blank" style="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
+        return `<a href="${escHtml(fullNodeUrl)}" target="_blank" data-css="color:var(--primary);text-decoration:underline">${escHtml(name)}</a>`;
       }
       return escHtml(name);
-    }).join(' <span style="color:var(--gray-disabled)">›</span> ');
+    }).join(' <span data-css="color:var(--gray-disabled)">›</span> ');
   }
 
   const t4 = performance.now();
@@ -1926,21 +1930,21 @@ if (!matchedPath && snap.source_url) {
 
   const detailHtml = `<div class="feed-detail" id="snap-detail-${snapId}">
   <div class="detail-inner">
-    <span class="data-detail-k">文件名</span><span style="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
-    <span class="data-detail-k">版本</span><span style="font-size:12.5px">${escHtml(snap.package_version || (matchedPath && matchedPath.chain && matchedPath.chain.length >= 2 ? matchedPath.chain[matchedPath.chain.length - 2] : '') || '')}</span>
-    <span class="data-detail-k">类型</span><span style="font-size:12.5px">${MAP[matchedPathPkg] || matchedPathPkg || ''}</span>
-    <span class="data-detail-k">紧急度</span><span style="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${snap.urgency || ''}</span></span>
-    <span class="data-detail-k">文件大小</span><span style="font-size:12.5px" id="snap-fs-${snapId}">—</span>
-    <span class="data-detail-k">发布时间</span><span style="font-size:12.5px">${fmtTZ(snap.published_at, true)}</span>
-    <span class="data-detail-k">首次发现</span><span style="font-size:12.5px">${fmtTZ(snap.first_seen_at, true)}</span>
-    <span class="data-detail-k">最近采集</span><span style="font-size:12.5px">${fmtTZ(snap.last_seen_at, true)}</span>
-    <span class="data-detail-k">下载地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}" target="_blank" style="color:var(--success)">${'https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || '')}</a></span>
-    <span class="data-detail-k">发布地址</span><span style="font-size:12.5px"><a href="${'https://update.nsfocus.com' + (snap.source_url || '')}" target="_blank" style="color:var(--primary)">${'https://update.nsfocus.com' + (snap.source_url || '')}</a></span>
-    ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span style="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
-    <span class="data-detail-k">MD5</span><span style="font-size:12.5px" id="snap-md5-${snapId}">—</span>
-    <span class="data-detail-k">页面哈希</span><span style="font-size:12.5px;word-break:normal;overflow-x:auto" id="snap-ph-${snapId}">—</span>
-    <span class="data-detail-k">需重启</span><span style="font-size:12.5px" id="snap-rr-${snapId}">—</span>
-    <span class="data-detail-k" style="grid-column:1/3;align-self:start">描述</span><span id="snap-desc-${snapId}" style="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">—</span>
+    <span class="data-detail-k">文件名</span><span data-css="font-size:12.5px">${escHtml(snap.file_name || '')}</span>
+    <span class="data-detail-k">版本</span><span data-css="font-size:12.5px">${escHtml(snap.package_version || (matchedPath && matchedPath.chain && matchedPath.chain.length >= 2 ? matchedPath.chain[matchedPath.chain.length - 2] : '') || '')}</span>
+    <span class="data-detail-k">类型</span><span data-css="font-size:12.5px">${MAP[matchedPathPkg] || matchedPathPkg || ''}</span>
+    <span class="data-detail-k">紧急度</span><span data-css="font-size:12.5px"><span class="badge ${snap.urgency === 'critical' ? 'badge-err' : snap.urgency === 'high' ? 'badge-warn' : 'badge-ok'}">${escHtml(snap.urgency || '')}</span></span>
+    <span class="data-detail-k">文件大小</span><span data-css="font-size:12.5px" id="snap-fs-${snapId}">—</span>
+    <span class="data-detail-k">发布时间</span><span data-css="font-size:12.5px">${fmtTZ(snap.published_at, true)}</span>
+    <span class="data-detail-k">首次发现</span><span data-css="font-size:12.5px">${fmtTZ(snap.first_seen_at, true)}</span>
+    <span class="data-detail-k">最近采集</span><span data-css="font-size:12.5px">${fmtTZ(snap.last_seen_at, true)}</span>
+    <span class="data-detail-k">下载地址</span><span data-css="font-size:12.5px"><a href="${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}" target="_blank" data-css="color:var(--success)">${escHtml('https://update.nsfocus.com/update/downloads/id/' + (snap.download_id || ''))}</a></span>
+    <span class="data-detail-k">发布地址</span><span data-css="font-size:12.5px"><a href="${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}" target="_blank" data-css="color:var(--primary)">${escHtml('https://update.nsfocus.com' + (snap.source_url || ''))}</a></span>
+    ${chainDisplayHtml ? `<span class="data-detail-k">层级路径</span><span data-css="font-size:12px;color:var(--primary)">${chainDisplayHtml}</span>` : ''}
+    <span class="data-detail-k">MD5</span><span data-css="font-size:12.5px" id="snap-md5-${snapId}">—</span>
+    <span class="data-detail-k">页面哈希</span><span data-css="font-size:12.5px;word-break:normal;overflow-x:auto" id="snap-ph-${snapId}">—</span>
+    <span class="data-detail-k">需重启</span><span data-css="font-size:12.5px" id="snap-rr-${snapId}">—</span>
+    <span class="data-detail-k" data-css="grid-column:1/3;align-self:start">描述</span><span id="snap-desc-${snapId}" data-css="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">—</span>
 </div>
 </div>`;
   const t5 = performance.now();
@@ -1956,7 +1960,7 @@ if (!matchedPath && snap.source_url) {
     const descEl = document.getElementById(`snap-desc-${snapId}`);
     if (descEl) {
       if (d.description_raw) {
-        descEl.outerHTML = `<div style="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">${escHtml(d.description_raw)}</div>`;
+        descEl.outerHTML = `<div data-css="grid-column:1/3;background:#fff;border:1px solid var(--border);border-radius:6px;padding:8px 12px;display:block;max-height:150px;overflow-y:auto;white-space:pre-wrap;overflow-wrap:break-word;font-size:12px;color:var(--gray-muted)">${escHtml(d.description_raw)}</div>`;
       } else {
         descEl.style.display = 'none';
       }
@@ -1973,7 +1977,7 @@ if (!matchedPath && snap.source_url) {
     }
     const rrEl = document.getElementById(`snap-rr-${snapId}`);
     if (rrEl && d.restart_required) {
-      rrEl.outerHTML = `<span class="data-detail-k">需重启</span><span style="font-size:12.5px">⚠️ 需要重启设备</span>`;
+      rrEl.outerHTML = `<span class="data-detail-k">需重启</span><span data-css="font-size:12.5px">⚠️ 需要重启设备</span>`;
     }
   }).catch(() => {});
 
@@ -2167,8 +2171,8 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
 
   let drillHtml = `<div class="data-drill">
     <div class="data-drill-hd">
-      <button class="btn btn-xs btn-outline" onclick="dataBackToAgg()">← 返回列表</button>
-      <span class="data-drill-title">📦 ${src.display_name || src.name}</span>
+      <button class="btn btn-xs btn-outline" data-on-click="dataBackToAgg">← 返回列表</button>
+      <span class="data-drill-title">📦 ${escHtml(src.display_name || src.name)}</span>
     </div>
     <div class="data-drill-body">`;
 
@@ -2182,9 +2186,9 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     const hasCritical = verSnaps.some(s => s.urgency === 'critical' && s.status === 'active');
 
     const verFlags = [];
-    if (hasCritical) verFlags.push('<span class="badge badge-err" style="font-size:10px">🔴critical</span>');
-    if (hasRb) verFlags.push('<span style="color:var(--danger);font-size:11px">含撤回</span>');
-    if (hasNew) verFlags.push('<span style="color:var(--primary);font-size:11px">有未推送</span>');
+    if (hasCritical) verFlags.push('<span class="badge badge-err" data-css="font-size:10px">🔴critical</span>');
+    if (hasRb) verFlags.push('<span data-css="color:var(--danger);font-size:11px">含撤回</span>');
+    if (hasNew) verFlags.push('<span data-css="color:var(--primary);font-size:11px">有未推送</span>');
 
     // 用 _dataSelectedChain[-1] 作 pkgType group key(用户点的 chain 的最深层),不读 snap.package_type
     const byType = {};
@@ -2202,11 +2206,11 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     const verBodyClass = isHighlight ? 'data-ver-body' : 'data-ver-body hidden';
 
     drillHtml += `<div class="data-ver-block ${isHighlight ? 'data-ver-highlight' : ''}" id="dvb_anchor_${escHtml(verKey)}">
-      <div class="data-ver-hd" onclick="dataToggleVer(this, '${escAttr(verKey)}')">
+      <div class="data-ver-hd" data-on-click="dataToggleVer" data-args='${_dataArgs('$el', verKey)}'>
         <span class="data-prod-arrow">${isHighlight ? '&#9660;' : '&#9658;'}</span>
         <span class="data-ver-label">${ver}</span>
-        <div style="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
-        <span style="color:var(--muted);font-size:11px;margin-left:8px">采集 ${latestCollected}</span>
+        <div data-css="display:flex;gap:6px;align-items:center;margin-left:auto">${verFlags.join('')}</div>
+        <span data-css="color:var(--muted);font-size:11px;margin-left:8px">采集 ${latestCollected}</span>
       </div>
       <div class="${verBodyClass}" id="dvb_${escHtml(verKey)}">`;
 
@@ -2223,17 +2227,17 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
       const histKey = verKey + '_' + pkgType;
 
       drillHtml += `<div class="data-type-row ${isRb ? 'data-type-rollback' : ''}">
-        <div class="data-type-main" onclick="dataToggleSnapDetail(this)">
-          ${isNewPkg ? '<span class="data-pill-new-dot" style="margin-right:4px"></span>' : ''}
-          ${isLatestPkg ? '<span class="badge badge-blue" style="font-size:10px;margin-right:4px">最新</span>' : ''}
+        <div class="data-type-main" data-on-click="dataToggleSnapDetail" data-args='${_dataArgs('$el')}'>
+          ${isNewPkg ? '<span class="data-pill-new-dot" data-css="margin-right:4px"></span>' : ''}
+          ${isLatestPkg ? '<span class="badge badge-blue" data-css="font-size:10px;margin-right:4px">最新</span>' : ''}
           <span class="data-type-label">${typeLabel}</span>
-          <span class="mono" style="color:var(--primary);font-size:12px">${(latest.file_name || '').substring(0, 35)}</span>
-          <span style="color:var(--muted);font-size:11px">${fmtTZ(latest.published_at)}</span>
-          <span class="badge ${urg}" style="font-size:10px">${latest.urgency || ''}</span>
-          ${latest.last_delivered_at ? '<span style="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
-            (latest.status === 'active' ? '<span style="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
-          <button class="btn btn-xs btn-soft-success" style="margin-left:auto" onclick="event.stopPropagation();showPushModal(${latest.id},'${escAttr(src.name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
-          ${historyCount > 0 ? `<span class="data-history-toggle" onclick="event.stopPropagation();dataToggleHistory(this,'${escAttr(histKey)}')">+${historyCount} 条历史 ▼</span>` : ''}
+          <span class="mono" data-css="color:var(--primary);font-size:12px">${escHtml((latest.file_name || '').substring(0, 35))}</span>
+          <span data-css="color:var(--muted);font-size:11px">${fmtTZ(latest.published_at)}</span>
+          <span class="badge ${urg}" data-css="font-size:10px">${latest.urgency || ''}</span>
+          ${latest.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
+            (latest.status === 'active' ? '<span data-css="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
+          <button class="btn btn-xs btn-soft-success" data-css="margin-left:auto" data-on-click="showPushModal" data-stop data-args='${_dataArgs(latest.id, src.name, pushVer, pushPkg)}'>推送</button>
+          ${historyCount > 0 ? `<span class="data-history-toggle" data-on-click="dataToggleHistory" data-stop data-args='${_dataArgs('$el', histKey)}'>+${historyCount} 条历史 ▼</span>` : ''}
         </div>
         <div class="data-snap-detail hidden">${dataSnapDetailHtml(latest, MAP)}</div>
         ${historyCount > 0 ? `<div class="data-history hidden" id="dh_${escHtml(histKey)}">
@@ -2241,12 +2245,12 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
             const sz2 = s.file_size > 1048576 ? (s.file_size / 1048576).toFixed(1) + 'M' : (s.file_size / 1024).toFixed(0) + 'K';
             const urg2 = s.urgency === 'critical' ? 'badge-err' : s.urgency === 'high' ? 'badge-warn' : 'badge-ok';
             const isRb2 = s.status === 'withdrawn';
-            return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" onclick="this.classList.toggle('data-hist-expanded')">
-              <span style="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
-              <span class="mono" style="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${(s.file_name || '').substring(0, 30)}</span>
-              <span class="badge ${urg2}" style="font-size:10px">${s.urgency || ''}</span>
-              ${s.last_delivered_at ? '<span style="font-size:11px;color:var(--success)">✅</span>' : '<span style="font-size:11px;color:var(--muted)">○</span>'}
-              <button class="btn btn-xs btn-soft-success" style="margin-left:4px" onclick="event.stopPropagation();showPushModal(${s.id},'${escAttr(src.name)}','${escAttr(pushVer)}','${escAttr(pushPkg)}')">推送</button>
+            return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" data-on-click="_toggleClass" data-args='${_dataArgs('data-hist-expanded')}'>
+              <span data-css="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
+              <span class="mono" data-css="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((s.file_name || '').substring(0, 30))}</span>
+              <span class="badge ${urg2}" data-css="font-size:10px">${escHtml(s.urgency || '')}</span>
+              ${s.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)">✅</span>' : '<span data-css="font-size:11px;color:var(--muted)">○</span>'}
+              <button class="btn btn-xs btn-soft-success" data-css="margin-left:4px" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>
             </div>`;
           }).join('')}
@@ -2273,15 +2277,15 @@ function dataSnapDetailHtml(s, MAP) {
   const typeLabel = MAP[s.package_type] || s.package_type || '';
   return `<div class="data-detail-grid">
     <span class="data-detail-k">类型</span><span>${typeLabel}</span>
-    <span class="data-detail-k">版本</span><span>${s.package_version || ''}</span>
+    <span class="data-detail-k">版本</span><span>${escHtml(s.package_version || '')}</span>
     <span class="data-detail-k">大小</span><span>${sz}</span>
-    ${s.min_sys_version ? `<span class="data-detail-k">依赖</span><span>≥ ${s.min_sys_version}</span>` : ''}
+    ${s.min_sys_version ? `<span class="data-detail-k">依赖</span><span>≥ ${escHtml(s.min_sys_version)}</span>` : ''}
     ${s.published_at ? `<span class="data-detail-k">发布</span><span>${fmtTZ(s.published_at, true)}</span>` : ''}
     ${s.first_seen_at ? `<span class="data-detail-k">发现</span><span>${fmtTZ(s.first_seen_at, true)}</span>` : ''}
-    ${s.md5_hash ? `<span class="data-detail-k">MD5</span><span class="mono">${s.md5_hash}</span>` : ''}
-    ${s.download_id ? `<span class="data-detail-k">下载</span><span><a href="https://update.nsfocus.com/update/downloads/id/${s.download_id}" target="_blank">downloads/id/${s.download_id}</a></span>` : ''}
-    ${s.source_url ? `<span class="data-detail-k">详情</span><span><a href="https://update.nsfocus.com${s.source_url}" target="_blank">绿盟更新页</a></span>` : ''}
-    ${s.description_raw ? `<div class="data-desc-box">${s.description_raw.substring(0, 800)}${s.description_raw.length > 800 ? '…' : ''}</div>` : ''}
+    ${s.md5_hash ? `<span class="data-detail-k">MD5</span><span class="mono">${escHtml(s.md5_hash)}</span>` : ''}
+    ${s.download_id ? `<span class="data-detail-k">下载</span><span><a href="https://update.nsfocus.com/update/downloads/id/${escHtml(s.download_id)}" target="_blank">downloads/id/${escHtml(s.download_id)}</a></span>` : ''}
+    ${s.source_url ? `<span class="data-detail-k">详情</span><span><a href="https://update.nsfocus.com${escHtml(s.source_url)}" target="_blank">绿盟更新页</a></span>` : ''}
+    ${s.description_raw ? `<div class="data-desc-box">${escHtml(s.description_raw.substring(0, 800))}${s.description_raw.length > 800 ? '…' : ''}</div>` : ''}
   </div>`;
 }
 
@@ -2346,39 +2350,39 @@ async function showPushModal(sid, product, version, pkgType, chain){
   _pushBotChannelId=0;
   if(_banTimer){clearInterval(_banTimer);_banTimer=null;}
   document.getElementById('app').insertAdjacentHTML('beforeend',
-    `<div id="pushModal" class="push-modal" onclick="if(event.target===this)closePushModal()">
-      <div class="card" onclick="event.stopPropagation()" style="width:560px;max-height:90vh;display:flex;flex-direction:column">
-        <div class="card-hd">📤 推送通知 <span style="color:var(--muted);font-weight:400;font-size:11px">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline" style="margin-left:auto" onclick="closePushModal()">×</button></div>
-        <div class="card-bd" style="overflow-y:auto;flex:1">
-          <div style="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
-            <div onclick="switchPushTab('email')" id="pushTabEmailBtn" style="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid var(--primary);color:var(--primary);margin-bottom:-2px">📧 邮件发送</div>
-            <div onclick="switchPushTab('bot')" id="pushTabBotBtn" style="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px">🤖 按渠道发送</div>
+    `<div id="pushModal" class="push-modal" data-on-click="closePushModal" data-self>
+      <div class="card"  data-css="width:560px;max-height:90vh;display:flex;flex-direction:column">
+        <div class="card-hd">📤 推送通知 <span data-css="color:var(--muted);font-weight:400;font-size:11px">${escHtml(product)} ${escHtml(version)} ${escHtml(pkgType)}</span><button class="btn btn-xs btn-outline" data-css="margin-left:auto" data-on-click="closePushModal">×</button></div>
+        <div class="card-bd" data-css="overflow-y:auto;flex:1">
+          <div data-css="display:flex;gap:0;border-bottom:2px solid var(--border);margin-bottom:14px">
+            <div data-on-click="switchPushTab" data-args='${_dataArgs('email')}' id="pushTabEmailBtn" data-css="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;border-bottom:2px solid var(--primary);color:var(--primary);margin-bottom:-2px">📧 邮件发送</div>
+            <div data-on-click="switchPushTab" data-args='${_dataArgs('bot')}' id="pushTabBotBtn" data-css="flex:1;text-align:center;padding:10px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;margin-bottom:-2px">🤖 按渠道发送</div>
           </div>
           <div id="pushTabEmail">
             <div class="form-group">
               <label>发件渠道 (SMTP)</label>
-              <div id="pushChannelSelect"><div class="empty" style="padding:8px">加载中...</div></div>
+              <div id="pushChannelSelect"><div class="empty" data-css="padding:8px">加载中...</div></div>
             </div>
             <div class="form-group">
               <label>收件人来源</label>
-              <div style="display:flex;gap:6px">
-                <label style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="customer" checked onchange="switchRecipientMode('customer')"> 👤 从客户选择</label>
-                <label style="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="manual" onchange="switchRecipientMode('manual')"> ✏️ 自定义填写</label>
+              <div data-css="display:flex;gap:6px">
+                <label data-css="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="customer" checked data-on-change="switchRecipientMode" data-args='${_dataArgs('customer')}'> 👤 从客户选择</label>
+                <label data-css="flex:1;padding:8px;border:1px solid var(--border);border-radius:6px;cursor:pointer;font-size:13px;text-align:center"><input type="radio" name="prec" value="manual" data-on-change="switchRecipientMode" data-args='${_dataArgs('manual')}'> ✏️ 自定义填写</label>
               </div>
             </div>
             <div id="pushCustomerList" class="push-target"></div>
             <div id="pushManualInput" class="hidden">
-              <textarea id="pushEmail" rows="3" placeholder="输入邮箱，多个用逗号或换行分隔" style="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;resize:vertical" oninput="onPushEmailChange()"></textarea>
-              <div id="pushEmailHint" style="font-size:11px;color:var(--muted);margin-top:4px"></div>
+              <textarea id="pushEmail" rows="3" placeholder="输入邮箱，多个用逗号或换行分隔" data-css="width:100%;box-sizing:border-box;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px;outline:none;resize:vertical" data-on-input="onPushEmailChange"></textarea>
+              <div id="pushEmailHint" data-css="font-size:11px;color:var(--muted);margin-top:4px"></div>
             </div>
           </div>
           <div id="pushTabBot" class="hidden">
-            <p class="cfg-hint" style="margin-bottom:8px;color:var(--gray-muted)">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
-            <div id="pushBotChannelList" class="push-target"><div class="empty" style="padding:8px">加载中...</div></div>
+            <p class="cfg-hint" data-css="margin-bottom:8px;color:var(--gray-muted)">将通知推送到所选渠道(企微/钉钉/邮件)。邮件渠道下,收件人为 SMTP 用户自身(测试链路用)。</p>
+            <div id="pushBotChannelList" class="push-target"><div class="empty" data-css="padding:8px">加载中...</div></div>
           </div>
         </div>
-        <div style="padding:12px 16px;border-top:1px solid var(--border);background:var(--gray-bg)">
-          <div class="flex gap8"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" onclick="confirmPush()" disabled>确认推送</button><button class="btn btn-sm btn-outline" onclick="closePushModal()">取消</button></div>
+        <div data-css="padding:12px 16px;border-top:1px solid var(--border);background:var(--gray-bg)">
+          <div class="flex gap8"><button class="btn btn-success btn-sm flex1" id="pushConfirmBtn" data-on-click="confirmPush" disabled>确认推送</button><button class="btn btn-sm btn-outline" data-on-click="closePushModal">取消</button></div>
         </div>
       </div>
     </div>`);
@@ -2446,13 +2450,13 @@ async function loadPushChannelSelect(){
     channels=(r.data||[]).filter(x=>x.type==='email' && x.is_active);
   }catch(e){}
   if(!channels.length){
-    el.innerHTML='<div style="padding:8px;color:var(--danger);font-size:12px">暂无可用 SMTP 渠道,请先在通知渠道中配置邮箱</div>';
+    el.innerHTML='<div data-css="padding:8px;color:var(--danger);font-size:12px">暂无可用 SMTP 渠道,请先在通知渠道中配置邮箱</div>';
     return;
   }
   const nsfocus=channels.find(c=>c.config?.smtp_host==='mail.nsfocus.com');
   const defaultCh=nsfocus||channels[0];
   _pushChannelId=defaultCh.id;
-  el.innerHTML='<select class="dd" id="pushChannelDropdown" onchange="_pushChannelId=parseInt(this.value);updatePushConfirmState()" style="width:100%">'
+  el.innerHTML='<select class="dd" id="pushChannelDropdown" data-on-change="_pushChannelChanged" data-args=\'["$value"]\' data-css="width:100%">'
     +channels.map(c=>`<option value="${c.id}" ${c.id===defaultCh.id?'selected':''}>${escHtml(c.name)} (${escHtml(c.config?.smtp_host||'')}:${c.config?.smtp_port||''})</option>`).join('')
     +'</select>';
 }
@@ -2460,20 +2464,20 @@ async function loadPushChannelSelect(){
 async function loadPushCustomerList(){
   const el=document.getElementById('pushCustomerList');
   if(!el) return;
-  el.innerHTML='<div class="empty" style="padding:8px">加载中...</div>';
+  el.innerHTML='<div class="empty" data-css="padding:8px">加载中...</div>';
   try{
     const r=await api('/customers');
     const list=(r.data||[]).filter(x=>(x.email||'').trim());
     if(!list.length){
-      el.innerHTML='<div class="empty" style="padding:8px;color:var(--muted)">暂无有邮箱的客户,请先在客户管理中设置邮箱</div>';
+      el.innerHTML='<div class="empty" data-css="padding:8px;color:var(--muted)">暂无有邮箱的客户,请先在客户管理中设置邮箱</div>';
       return;
     }
-    el.innerHTML=list.map(c=>`<label class="item" data-custid="${c.id}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px">
-      <input type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" onchange="onCustomerCheck(this)" style="flex-shrink:0">
-      <span style="flex:1;min-width:0">
-        <span style="font-weight:500">${escHtml(c.name)}</span>
-        <span style="color:var(--muted);font-size:11px;margin-left:6px">${escHtml(c.email)}</span>
-        ${c.company?`<span style="color:var(--muted);font-size:11px;margin-left:6px">· ${escHtml(c.company)}</span>`:''}
+    el.innerHTML=list.map(c=>`<label class="item" data-custid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 12px">
+      <input type="checkbox" data-custid="${c.id}" data-email="${escHtml(c.email)}" data-on-change="onCustomerCheck" data-args='${_dataArgs('$el')}' data-css="flex-shrink:0">
+      <span data-css="flex:1;min-width:0">
+        <span data-css="font-weight:500">${escHtml(c.name)}</span>
+        <span data-css="color:var(--muted);font-size:11px;margin-left:6px">${escHtml(c.email)}</span>
+        ${c.company?`<span data-css="color:var(--muted);font-size:11px;margin-left:6px">· ${escHtml(c.company)}</span>`:''}
       </span>
     </label>`).join('');
   }catch(e){el.innerHTML='<div class="empty">加载失败</div>';}
@@ -2488,7 +2492,7 @@ async function loadPushBotChannels(){
     list=(r.data||[]).filter(x=>x.is_active);
   }catch(e){}
   if(!list.length){
-    el.innerHTML='<div class="empty" style="padding:8px;color:var(--muted)">暂无可用渠道</div>';
+    el.innerHTML='<div class="empty" data-css="padding:8px;color:var(--muted)">暂无可用渠道</div>';
     return;
   }
   const typeLabel={wecom:'企微',dingtalk:'钉钉',feishu:'飞书',email:'邮件',apprise:'Apprise'};
@@ -2497,11 +2501,11 @@ async function loadPushBotChannels(){
     const sub=isEmail
       ? `${escHtml((c.config?.smtp_user)||'')} → 自己`
       : typeLabel[c.type]||c.type;
-    return `<label class="item" data-botchid="${c.id}" style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 12px">
-      <input type="radio" name="botch" value="${c.id}" onchange="onBotChannelCheck(this)" style="flex-shrink:0">
-      <span style="flex:1;min-width:0">
-        <span style="font-weight:500">${escHtml(c.name)}</span>
-        <span style="color:var(--muted);font-size:11px;margin-left:6px">${sub}</span>
+    return `<label class="item" data-botchid="${c.id}" data-css="display:flex;align-items:center;gap:8px;cursor:pointer;padding:10px 12px">
+      <input type="radio" name="botch" value="${c.id}" data-on-change="onBotChannelCheck" data-args='${_dataArgs('$el')}' data-css="flex-shrink:0">
+      <span data-css="flex:1;min-width:0">
+        <span data-css="font-weight:500">${escHtml(c.name)}</span>
+        <span data-css="color:var(--muted);font-size:11px;margin-left:6px">${sub}</span>
       </span>
     </label>`;
   }).join('');
@@ -2595,18 +2599,18 @@ function showPushResult(data, success){
     const icon = ok ? '✓' : '✗';
     const color = ok ? 'var(--success)' : 'var(--danger)';
     const logBtn = (!ok && r.log_path)
-      ? ` <a href="#" onclick="showPushLogByPath(${JSON.stringify(r.log_path)},${JSON.stringify(r.channel||'')});return false;" style="color:var(--primary);font-size:11px;margin-left:6px">📋 日志</a>`
+      ? ` <a href="#" data-on-click="showPushLogByPath" data-prevent data-args='${_dataArgs(r.log_path, r.channel || '')}' data-css="color:var(--primary);font-size:11px;margin-left:6px">📋 日志</a>`
       : '';
-    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#ffffff">
-      <span style="font-weight:600">${icon}</span>
+    return `<div data-css="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:12px;color:#ffffff">
+      <span data-css="font-weight:600">${icon}</span>
       <span>${escHtml(r.channel||'')}</span>
-      ${r.error ? `<span style="color:rgba(255,255,255,.7);font-size:11px">${escHtml(r.error)}</span>` : ''}
+      ${r.error ? `<span data-css="color:rgba(255,255,255,.7);font-size:11px">${escHtml(r.error)}</span>` : ''}
       ${logBtn}
     </div>`;
   }).join('');
   const head = success
-    ? `<div style="font-weight:700;color:#ffffff;margin-bottom:4px">推送完成</div>`
-    : `<div style="font-weight:700;color:#ffffff;margin-bottom:4px">推送失败</div>`;
+    ? `<div data-css="font-weight:700;color:#ffffff;margin-bottom:4px">推送完成</div>`
+    : `<div data-css="font-weight:700;color:#ffffff;margin-bottom:4px">推送失败</div>`;
   showRichToast(head + lines, success ? 'success' : 'error', 8000);
 }
 
@@ -2621,19 +2625,18 @@ async function showPushLogByPath(path, name){
 async function showLogFile(path, name){
   const existing=document.getElementById('testLogModal');if(existing)existing.remove();
   // Fetch via a generic log endpoint — we'll add it on backend
-  const r=await fetch(API+'/channels/log-file?path='+encodeURIComponent(path),{headers:{'Authorization':'Bearer '+T}});
-  const body=await r.json();
+  const body=await api('/channels/log-file?path='+encodeURIComponent(path));
   const content=body.code===0 ? body.data.content : `(${body.message||'读取失败'})`;
   const m=document.createElement('div');
   m.id='testLogModal';
   m.className='confirm-modal active';
-  m.innerHTML=`<div class="confirm-box" style="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+  m.innerHTML=`<div class="confirm-box" data-css="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
     <div class="confirm-icon">📋</div>
     <div class="confirm-title">日志 - ${escHtml(name)}</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${path}</div>
-    <pre style="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
-    <div class="confirm-btns" style="margin-top:14px">
-      <button class="confirm-btn-cancel" onclick="document.getElementById('testLogModal').remove()">关闭</button>
+    <div data-css="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(path)}</div>
+    <pre data-css="flex:1;min-height:300px;max-height:55vh;overflow:auto;background:var(--text);color:var(--gray-disabled);padding:12px;border-radius:6px;font-family:SF Mono,Fira Code,Consolas,monospace;font-size:12px;line-height:1.5;text-align:left;white-space:pre-wrap;word-break:break-all;margin:0">${escHtml(content)}</pre>
+    <div class="confirm-btns" data-css="margin-top:14px">
+      <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs('testLogModal')}'>关闭</button>
     </div>
   </div>`;
   m.addEventListener('click', e=>{if(e.target===m)m.remove();});

@@ -41,7 +41,9 @@ def test_auto_refresh_stops_when_leaving_page():
     core = (WEB / 'static/js/core.js').read_text(encoding='utf-8')
 
     assert 'setInterval' in page and 'clearInterval' in page
-    assert "n!=='observability'" in core
+    # 切页时统一清理页面级定时器，观测页只是其中一项
+    assert '_clearPageTimers(_currentPage)' in core
+    assert "page==='observability'" in core
     assert 'window._obsTimer' in core
     # 退出登录同样要停表
-    assert core.index('window._obsTimer') < core.index('T=null')
+    assert '_clearAllTimers();_currentPage=null;' in core

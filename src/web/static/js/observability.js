@@ -4,17 +4,17 @@ let _obsHours = 24;
 async function observability(){
   document.getElementById('app').innerHTML = `
     <div class="card">
-      <div class="card-hd" style="align-items:center">
+      <div class="card-hd" data-css="align-items:center">
         <span>📈 可观测性</span>
-        <span id="obsMeta" style="font-weight:400;color:var(--muted);font-size:11.5px"></span>
-        <span style="margin-left:auto;display:flex;gap:8px;align-items:center">
-          <select id="obsWindow" class="dd sel-sm" onchange="obsSetWindow(this.value)">
+        <span id="obsMeta" data-css="font-weight:400;color:var(--muted);font-size:11.5px"></span>
+        <span data-css="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <select id="obsWindow" class="dd sel-sm" data-on-change="obsSetWindow" data-args='${_dataArgs('$value')}'>
             <option value="6">最近 6 小时</option>
             <option value="24">最近 24 小时</option>
             <option value="168">最近 7 天</option>
             <option value="720">最近 30 天</option>
           </select>
-          <button class="btn btn-outline btn-sm" id="obsRefreshBtn" onclick="obsRefresh(true)">↻ 刷新</button>
+          <button class="btn btn-outline btn-sm" id="obsRefreshBtn" data-on-click="obsRefresh" data-args='${_dataArgs(true)}'>↻ 刷新</button>
         </span>
       </div>
       <div class="card-bd" id="obs-root"><div class="empty">加载中…</div></div>
@@ -73,7 +73,7 @@ function _obsRender(d){
   return `
     <div class="obs-kpis">
       ${_obsKpi('投递成功率', rateText,
-        `${del.total || 0} 条 · ${del.sent || 0} 成功 · <b style="color:${del.failed ? 'var(--danger)' : 'var(--muted)'}">${del.failed || 0} 失败</b>`,
+        `${del.total || 0} 条 · ${del.sent || 0} 成功 · <b data-css="color:${del.failed ? 'var(--danger)' : 'var(--muted)'}">${del.failed || 0} 失败</b>`,
         rateTint)}
       ${_obsKpi('待投递队列', dq.pending || 0,
         `逾期 ${dq.overdue || 0} · 重试中 ${dq.retrying || 0}`,
@@ -119,14 +119,14 @@ function _obsDeliveryCard(del){
     <td>${escHtml(_obsChannel(ch.channel_type))}</td>
     <td>${ch.total || 0}</td>
     <td>${ch.sent || 0}</td>
-    <td>${ch.failed ? `<b style="color:var(--danger)">${ch.failed}</b>` : '0'}</td>
+    <td>${ch.failed ? `<b data-css="color:var(--danger)">${ch.failed}</b>` : '0'}</td>
     <td>${ch.pending || 0}</td>
     <td>${_obsRateCell(ch.success_rate)}</td>
   </tr>`).join('');
   const undated = del.undated_failed || 0;
   return `<div class="card">
     <div class="card-hd">📤 投递成功率
-      <span class="obs-muted" style="margin-left:auto;font-weight:400;font-size:11.5px">${escHtml(_obsWindowLabel())}</span>
+      <span class="obs-muted" data-css="margin-left:auto;font-weight:400;font-size:11.5px">${escHtml(_obsWindowLabel())}</span>
     </div>
     <div class="card-bd pt0">
       <div class="obs-scroll"><table>
@@ -150,11 +150,11 @@ function _obsQueueCard(dq, dg){
       <div class="obs-section-title">即时投递队列</div>
       <div class="obs-mini">
         <div><b>${dq.pending || 0}</b><span>待处理</span></div>
-        <div><b style="color:${dq.overdue ? 'var(--warn)' : 'var(--text)'}">${dq.overdue || 0}</b><span>已逾期</span></div>
-        <div><b style="color:${dq.retrying ? 'var(--warn)' : 'var(--text)'}">${dq.retrying || 0}</b><span>重试中</span></div>
+        <div><b data-css="color:${dq.overdue ? 'var(--warn)' : 'var(--text)'}">${dq.overdue || 0}</b><span>已逾期</span></div>
+        <div><b data-css="color:${dq.retrying ? 'var(--warn)' : 'var(--text)'}">${dq.retrying || 0}</b><span>重试中</span></div>
         <div><b>${_obsAge(dq.oldest_age_minutes)}</b><span>最久等待</span></div>
       </div>
-      <div class="obs-section-title" style="margin-top:14px">汇总队列（按规则）</div>
+      <div class="obs-section-title" data-css="margin-top:14px">汇总队列（按规则）</div>
       <div class="obs-scroll"><table>
         <thead><tr><th>规则</th><th>待发</th><th>最久等待</th></tr></thead>
         <tbody>${rows || '<tr><td colspan="3" class="empty">暂无积压</td></tr>'}</tbody>
@@ -176,7 +176,7 @@ function _obsCollectionCard(col, rules){
         <span>下次采集</span><b>${_obsTime(col.next_run)}</b>
         <span>上次耗时</span><b>${_obsDur(col.last_duration_s)}</b>
         <span>近 20 轮均值</span><b>${_obsDur(col.avg_duration_s)}</b>
-        <span>数据源</span><b>${col.sources_total || 0} 个${stale ? ` · <span style="color:var(--danger)">${stale} 个超过 ${col.stale_after_hours || 24}h 未更新</span>` : ' · 全部新鲜'}</b>
+        <span>数据源</span><b>${col.sources_total || 0} 个${stale ? ` · <span data-css="color:var(--danger)">${stale} 个超过 ${col.stale_after_hours || 24}h 未更新</span>` : ' · 全部新鲜'}</b>
         <span>订阅规则</span><b>${rules.enabled || 0} / ${rules.total || 0} 启用 · ${rules.digest_enabled || 0} 汇总模式</b>
       </div>
       ${col.is_running && col.current ? `<div class="obs-foot">当前：${escHtml(col.current.mode || '')} ${escHtml(col.current.phase || '')}${col.current.items_collected != null ? ' · 已采集 ' + col.current.items_collected + ' 项' : ''}</div>` : ''}
@@ -189,11 +189,11 @@ function _obsEventsCard(ev){
   const rows = ['CRITICAL', 'ERROR', 'WARNING', 'INFO'].map(s => `<tr>
     <td>${_obsSevBadge(s)}</td>
     <td>${by[s] || 0}</td>
-    <td>${un[s] ? `<b style="color:var(--danger)">${un[s]}</b>` : (s === 'INFO' ? '—' : '0')}</td>
+    <td>${un[s] ? `<b data-css="color:var(--danger)">${un[s]}</b>` : (s === 'INFO' ? '—' : '0')}</td>
   </tr>`).join('');
   return `<div class="card">
     <div class="card-hd">🔔 事件与告警
-      <span class="obs-muted" style="margin-left:auto;font-weight:400;font-size:11.5px">窗口内 ${ev.window_total || 0} 条</span>
+      <span class="obs-muted" data-css="margin-left:auto;font-weight:400;font-size:11.5px">窗口内 ${ev.window_total || 0} 条</span>
     </div>
     <div class="card-bd pt0">
       <div class="obs-scroll"><table>
@@ -223,7 +223,7 @@ function _obsStorageCard(st){
 
 function _obsSchedulerCard(jobs){
   const rows = (jobs || []).map(j => `<tr>
-    <td>${escHtml(_obsJobLabel(j.id))}<span class="obs-muted" style="font-size:10.5px"> ${escHtml(j.id)}</span></td>
+    <td>${escHtml(_obsJobLabel(j.id))}<span class="obs-muted" data-css="font-size:10.5px"> ${escHtml(j.id)}</span></td>
     <td>${_obsTime(j.next_run)}</td>
     <td>${_obsCountdown(j.seconds_until)}</td>
   </tr>`).join('');
@@ -242,12 +242,12 @@ function _obsPromCard(){
   return `<div class="card">
     <div class="card-hd">🔌 外部观测接入</div>
     <div class="card-bd">
-      <div class="obs-foot" style="margin:0 0 6px">同一份指标同时提供 JSON 与 Prometheus 文本格式，可接入 Prometheus / Grafana。</div>
+      <div class="obs-foot" data-css="margin:0 0 6px">同一份指标同时提供 JSON 与 Prometheus 文本格式，可接入 Prometheus / Grafana。</div>
       <div class="obs-code">
         <code id="obsPromUrl">${escHtml(obsPrometheusUrl())}</code>
-        <button class="btn btn-outline btn-xs" onclick="obsCopyProm()">复制地址</button>
+        <button class="btn btn-outline btn-xs" data-on-click="obsCopyProm">复制地址</button>
       </div>
-      <div class="obs-foot">抓取鉴权：服务端设置 <code>MONITOR_METRICS_TOKEN</code> 后，请求头带 <code>X-Metrics-Token</code> 或 <code>Authorization: Bearer &lt;token&gt;</code>；未设置时静态令牌路径关闭，仅接受登录 JWT。页面不会保存或展示该令牌。</div>
+      <div class="obs-foot">抓取鉴权：服务端设置 <code>MONITOR_METRICS_TOKEN</code> 后，请求头带 <code>X-Metrics-Token</code> 或 <code>Authorization: Bearer &lt;token&gt;</code>；未设置时静态令牌路径关闭，仅接受登录会话（HttpOnly Cookie）。页面不会保存或展示该令牌。</div>
     </div>
   </div>`;
 }
@@ -267,7 +267,7 @@ function _obsRateCell(rate){
   if (rate === null || rate === undefined) return '<span class="obs-muted">—</span>';
   const pct = Math.max(0, Math.min(100, Math.round(Number(rate) * 100)));
   const cls = pct >= 95 ? '' : (pct >= 80 ? 'warn' : 'bad');
-  return `<div class="obs-rate"><span>${pct}%</span><div class="obs-bar ${cls}"><i style="width:${Math.max(2, pct)}%"></i></div></div>`;
+  return `<div class="obs-rate"><span>${pct}%</span><div class="obs-bar ${cls}"><i data-css="width:${Math.max(2, pct)}%"></i></div></div>`;
 }
 
 function _obsChannel(type){

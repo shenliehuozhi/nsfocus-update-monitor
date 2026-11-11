@@ -3,8 +3,8 @@
 GET /api/metrics?hours=24                → JSON
 GET /api/metrics?hours=24&format=prometheus → Prometheus text
 
-Auth: JWT Bearer (same as other APIs). For Prometheus scraping, set
-MONITOR_METRICS_TOKEN and send it as `X-Metrics-Token` or
+Auth: JWT via HttpOnly cookie (browser) or Bearer (API clients). For Prometheus
+scraping, set MONITOR_METRICS_TOKEN and send it as `X-Metrics-Token` or
 `Authorization: Bearer <token>` (Prometheus `authorization.credentials_file`
 natively sends the latter); JWT expires every 24h so it is impractical as a
 scrape credential. When the env var is unset, the static-token path is disabled.
@@ -19,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, Response, g, jsonify, request
 
 from src.core.logger import get_logger
-from src.web.auth import decode_token
+from src.web.auth import decode_token, request_token
 
 bp = Blueprint('metrics', __name__, url_prefix='/api/metrics')
 logger = get_logger('metrics')
@@ -30,7 +30,7 @@ _STALE_SOURCE_HOURS = 24
 
 
 def _auth(f):
-    """JWT bearer or (when configured) static X-Metrics-Token."""
+    """JWT (HttpOnly cookie or Bearer) or (when configured) static X-Metrics-Token."""
     @functools.wraps(f)
     def wrapper(*args, **kwargs):
         expected = os.getenv('MONITOR_METRICS_TOKEN', '')
@@ -40,15 +40,14 @@ def _auth(f):
                 g.user_id, g.username = 0, 'metrics-token'
                 return f(*args, **kwargs)
 
-        header = request.headers.get('Authorization', '')
-        if header.startswith('Bearer '):
-            bearer = header[len('Bearer '):]
+        token, _source = request_token()
+        if token:
             # Prometheus 的 authorization.credentials_file 只会发 Bearer 头，
             # 静态令牌也接受这种形式，避免抓取侧必须依赖反向代理注入自定义头
-            if expected and bearer and secrets.compare_digest(bearer, expected):
+            if expected and secrets.compare_digest(token, expected):
                 g.user_id, g.username = 0, 'metrics-token'
                 return f(*args, **kwargs)
-            payload = decode_token(bearer)
+            payload = decode_token(token)
             if payload:
                 g.user_id = payload['user_id']
                 g.username = payload['username']
