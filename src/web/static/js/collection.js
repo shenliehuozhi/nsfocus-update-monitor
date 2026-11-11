@@ -48,14 +48,14 @@ function _renderSingleBanner(state){
   const latestClean = src.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} /, '');
   const latestShort = latestClean.length > 120 ? latestClean.slice(0, 120) + '…' : latestClean;
   banner.innerHTML=`
-    <div data-css="display:flex;align-items:center;gap:10px">
+    <div class="flex-center-10">
       <div class="fs15" data-banner-role="phase-icon">${phaseIcon}</div>
       <div class="flex-1">
         <div class="fw600" data-banner-role="title">🔄 单产品采集 · ${escHtml(state.source_name||('sid='+state.source_id))}</div>
         <div data-banner-role="sub-title" data-css="opacity:0.9;font-size:12px">${phaseLabel} · 耗时 ${state.duration_s||0}s</div>
       </div>
-      <div id="single-banner-log-btn" data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
-      <div id="single-banner-close" data-css="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>
+      <div class="banner-chip pointer" id="single-banner-log-btn">📋 日志</div>
+      <div class="banner-close" id="single-banner-close" title="关闭">×</div>
     </div>
     <div data-css="height:6px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden">
       <div id="single-banner-bar" data-css="height:100%;background:rgba(255,255,255,0.85);border-radius:3px;transition:width 0.4s;width:${pct}%"></div>

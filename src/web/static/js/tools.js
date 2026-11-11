@@ -103,7 +103,7 @@ async function _toolDiffOpenImpl(title, placeholder, expectedKind){
           <div class="rd-table-container" id="rdPkgTableContainer">
             <table class="rd-table" id="rdPkgTable">
               <thead><tr>
-                <th data-css="width:36px"></th><th data-css="width:100px">版本号</th><th data-css="width:230px">文件名</th><th data-css="width:150px">发布时间 (CST)</th><th data-css="width:60px">大小</th><th data-css="width:260px">MD5</th>
+                <th class="w36"></th><th class="w100">版本号</th><th class="w230">文件名</th><th class="w150">发布时间 (CST)</th><th class="w60">大小</th><th class="w260">MD5</th>
               </tr></thead>
               <tbody></tbody>
             </table>
@@ -737,7 +737,7 @@ function rdRenderGroups(){
         <div class="rd-table-container" data-css="max-height:none">
           <table class="rd-table">
             <thead><tr>
-              <th data-css="width:90px">${headers[0]}</th>
+              <th class="w90">${headers[0]}</th>
               <th>${headers[1]}</th>
               <th data-css="width:${widths}">${headers[2]}</th>
             </tr></thead>

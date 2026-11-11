@@ -310,7 +310,7 @@ async function showLogFile(path, name){
   const m=document.createElement('div');
   m.id='testLogModal';
   m.className='confirm-modal active';
-  m.innerHTML=`<div class="confirm-box" data-css="width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column">
+  m.innerHTML=`<div class="confirm-box confirm-box-lg">
     <div class="confirm-icon">📋</div>
     <div class="confirm-title">日志 - ${escHtml(name)}</div>
     <div data-css="font-size:11px;color:var(--muted);margin-bottom:10px">文件: ${escHtml(path)}</div>

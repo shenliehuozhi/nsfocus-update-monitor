@@ -431,25 +431,25 @@ function renderEventsCenterFromData(events){
 
 // 仪表盘卡片专用表格(去掉"已读"按钮,仅显示 NEW/已读状态标签;列宽按卡片适配)
 function renderEventsCenterTable(events){
-  const head = `<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+  const head = `<table class="table-base table-fixed">
     <colgroup>
-      <col data-css="width:160px">
-      <col data-css="width:100px">
-      <col data-css="width:130px">
+      <col class="w160">
+      <col class="w100">
+      <col class="w130">
       <col>
-      <col data-css="width:140px">
-      <col data-css="width:100px">
-      <col data-css="width:60px">
+      <col class="w140">
+      <col class="w100">
+      <col class="w60">
     </colgroup>
-    <thead data-css="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
-      <tr data-css="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
+    <thead class="evt-thead">
+      <tr class="evt-head-row">
         <th class="evt-th">时间</th>
         <th class="evt-th">严重度</th>
         <th class="evt-th">类型</th>
         <th class="evt-th">标题</th>
         <th class="evt-th">产品 / URL</th>
         <th class="evt-th">渠道</th>
-        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
+        <th class="evt-th ta-center">状态</th>
       </tr>
     </thead>
     <tbody>`;
@@ -721,25 +721,25 @@ async function loadEventsCenterModal(){
 
 // 表格渲染 — 字段作为表头
 function renderEventsTable(events){
-  const head = `<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">
+  const head = `<table class="table-base table-fixed">
     <colgroup>
-      <col data-css="width:140px">
-      <col data-css="width:80px">
-      <col data-css="width:130px">
+      <col class="w140">
+      <col class="w80">
+      <col class="w130">
       <col>
-      <col data-css="width:140px">
-      <col data-css="width:110px">
-      <col data-css="width:70px">
+      <col class="w140">
+      <col class="w110">
+      <col class="w70">
     </colgroup>
-    <thead data-css="height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)">
-      <tr data-css="text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box">
+    <thead class="evt-thead">
+      <tr class="evt-head-row">
         <th class="evt-th">时间</th>
         <th class="evt-th">严重度</th>
         <th class="evt-th">类型</th>
         <th class="evt-th">标题</th>
         <th class="evt-th">产品 / URL</th>
         <th class="evt-th">渠道</th>
-        <th data-css="padding:8px 12px;height:36px;box-sizing:border-box;line-height:1.2;text-align:center">状态</th>
+        <th class="evt-th ta-center">状态</th>
       </tr>
     </thead>
     <tbody>`;

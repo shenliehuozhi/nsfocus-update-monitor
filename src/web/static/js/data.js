@@ -127,8 +127,8 @@ function _renderProdDistTable(data){
   }
   const total = data.reduce((s,e)=>s+e.count,0);
   const cmap = _buildProdColorMap(data.map(d=>d.name));
-  container.innerHTML='<table data-css="width:100%;border-collapse:collapse;font-size:12px">'+
-    '<thead><tr data-css="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
+  container.innerHTML='<table class="table-base">'+
+    '<thead><tr class="data-stats-thead">'+
       '<th class="data-th">产品</th>'+
       '<th data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
       '<th data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
@@ -136,15 +136,15 @@ function _renderProdDistTable(data){
     data.map((item)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
       const color = cmap[item.name] || 'var(--gray-disabled)';
-      return `<tr data-css="border-bottom:1px solid var(--gray-bg)">
-        <td data-css="padding:9px 12px">
+      return `<tr class="data-stats-row">
+        <td class="data-stats-td">
           <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
             <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
             <span data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
           </div>
         </td>
         <td data-css="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
-        <td data-css="padding:9px 12px">
+        <td class="data-stats-td">
           <div data-css="display:flex;align-items:center;gap:6px">
             <div data-css="flex:1;height:5px;background:var(--gray-bg);border-radius:4px;overflow:hidden">
               <div data-css="width:${pct}%;height:100%;background:${color};border-radius:4px"></div>
@@ -197,8 +197,8 @@ function _renderCustPushTable(items, days){
 // 2026-09-04: 客户推送表 — 响应式: 渲染后用 JS 算 card 实际宽度按比例分配三列, 任意视口都对齐
   // 列宽比例 35%/15%/50% (跟用户截图的视觉比例一致), padding 让 td 内容左/右对齐
   // 用 table-layout:fixed + JS 设 th/td width (table-layout:auto 下 td 内容长度会破坏比例)
-  container.innerHTML='<table data-css="width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed">'+
-'<thead><tr data-css="height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box">'+
+  container.innerHTML='<table class="table-base table-fixed">'+
+'<thead><tr class="data-stats-thead">'+
       '<th class="data-th" data-col="0">客户</th>'+
       '<th class="data-th" data-col="1">推送</th>'+
       '<th data-col="2" data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">状态</th>'+
@@ -216,14 +216,14 @@ function _renderCustPushTable(items, days){
       ].filter(Boolean).join('\n');
       const color = PIE_COLORS[_hashIdx(String(c.id||c.name))%PIE_COLORS.length];
       return `<tr data-css="border-bottom:1px solid var(--gray-bg);cursor:pointer;transition:background .12s;${isZero?'opacity:.5':''}" class="pill-tip" data-tip="${escHtml(tipLines)}" data-on-click="_gotoHistoryDays" data-args='${_dataArgs(days, c.id)}'>
-        <td data-col="0" data-css="padding:9px 12px;box-sizing:border-box">
+        <td class="data-stats-td box-border" data-col="0">
           <div data-css="display:flex;align-items:center;gap:6px;min-width:0">
             <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${isZero?'var(--gray-disabled)':color}"></span>
             <span class="ellipsis" title="${escHtml(c.name)}">${escHtml(c.name)}</span>
           </div>
         </td>
         <td data-col="1" data-css="padding:9px 14px 9px 12px;box-sizing:border-box;text-align:right;color:${isZero?'var(--gray-disabled)':(failed>0?'var(--danger)':'var(--success)')};font-variant-numeric:tabular-nums">${total}</td>
-        <td data-col="2" data-css="padding:9px 12px;box-sizing:border-box">
+        <td class="data-stats-td box-border" data-col="2">
           ${isZero
             ? '<span class="disabled-11">无推送</span>'
             : `<div data-css="display:flex;align-items:center;gap:6px">
@@ -1612,7 +1612,7 @@ function dataRenderRight(sch, p, info) {
   const colStyle = 'data-css="font-size:12px;padding:0 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"';
   let html = `<div class="feed-list">
 <div class="feed-hd">
-  <div class="feed-cell feed-arrow-hd" data-css="width:28px;flex-shrink:0"></div>
+  <div class="feed-cell feed-arrow-hd feed-arrow-w"></div>
   <div class="feed-cell" data-css="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
   <div class="feed-cell" data-css="width:84px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
   <div class="feed-cell" data-css="width:72px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
@@ -1643,7 +1643,7 @@ function dataRenderRight(sch, p, info) {
     else if (r.urgency === 'normal') urgencyBadge = '<span class="badge badge-ok badge-xs">ℹ️ normal</span>';
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
-  <div class="feed-cell feed-arrow" data-css="width:28px;flex-shrink:0" data-on-click="dataRightToggleRow" data-args='${_dataArgs(rid)}'>▶</div>
+  <div class="feed-cell feed-arrow feed-arrow-w" data-on-click="dataRightToggleRow" data-args='${_dataArgs(rid)}'>▶</div>
   <div class="feed-cell" data-css="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge" data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:middle" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
   <div class="feed-cell" data-css="width:84px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
   <div class="feed-cell" data-css="width:72px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>

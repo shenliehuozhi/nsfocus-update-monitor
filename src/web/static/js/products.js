@@ -381,7 +381,7 @@ function attach(node) {
     const childDivId = hasChildren ? ('tcd_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
     const arrow = hasChildren || isPkg
       ? `<span data-on-click="treeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}' data-css="cursor:pointer;color:var(--gray-disabled);font-size:13px;user-select:none;flex-shrink:0;margin-right:4px">&#9658;</span>`
-      : `<span data-css="width:13px;flex-shrink:0;margin-right:4px"></span>`;
+      : `<span class="tree-indent"></span>`;
     let html = `<div class="tree-node" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" data-pathid="${escHtml(nodePathId)}" data-css="padding-left:${indent}px;display:flex;align-items:center;padding-top:4px;padding-bottom:4px;min-height:28px;cursor:pointer">`;
     html += arrow;
     html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
@@ -927,13 +927,13 @@ function renderLogLine(l){
   }
   // 兼容旧 string(confirm 流程暂未结构化)
   const txt = escHtml(String(l));
-  if(txt.startsWith('🔍')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--primary)">${txt}</div>`;
-  if(txt.startsWith('📦')&&txt.includes('发现包类型')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed;font-weight:600">${txt}</div>`;
-  if(txt.startsWith('  →')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#0891b2">${txt}</div>`;
-  if(txt.startsWith('✅')||txt.startsWith('✔')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text);font-weight:600">${txt}</div>`;
-  if(txt.startsWith('❌')||txt.startsWith('⚠️')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)">${txt}</div>`;
-  if(txt.startsWith('[')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)">${txt}</div>`;
-  return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-muted)">${txt}</div>`;
+  if(txt.startsWith('🔍')) return `<div class="rd-ver-line text-primary">${txt}</div>`;
+  if(txt.startsWith('📦')&&txt.includes('发现包类型')) return `<div class="rd-ver-line text-purple fw600">${txt}</div>`;
+  if(txt.startsWith('  →')) return `<div class="rd-ver-line text-cyan">${txt}</div>`;
+  if(txt.startsWith('✅')||txt.startsWith('✔')) return `<div class="rd-ver-line text-success-text fw600">${txt}</div>`;
+  if(txt.startsWith('❌')||txt.startsWith('⚠️')) return `<div class="rd-ver-line text-danger">${txt}</div>`;
+  if(txt.startsWith('[')) return `<div class="rd-ver-line text-disabled">${txt}</div>`;
+  return `<div class="rd-ver-line text-gray-muted">${txt}</div>`;
 }
 
 async function discoverProducts(){
@@ -1090,7 +1090,7 @@ function showDiscoverResult(result, isStale){
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text)" data-on-click="toggleSection" data-args='${_dataArgs('add-prod')}'>
         <span id="sec-icon-add-prod">▾</span>🆕 新增产品 <span data-css="background:var(--success-text)20;color:var(--success-text);padding:1px 7px;border-radius:10px;font-size:11px">${added.length}</span>
       </div>
-      <div id="sec-body-add-prod" data-css="border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
+      <div class="tree-box" id="sec-body-add-prod">
         <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     </div>`;
@@ -1102,7 +1102,7 @@ function showDiscoverResult(result, isStale){
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)" data-on-click="toggleSection" data-args='${_dataArgs('rem-prod')}'>
         <span id="sec-icon-rem-prod">▾</span>⛔ 下线产品 <span data-css="background:var(--danger)20;color:var(--danger);padding:1px 7px;border-radius:10px;font-size:11px">${removed.length}</span>
       </div>
-      <div id="sec-body-rem-prod" data-css="border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
+      <div class="tree-box" id="sec-body-rem-prod">
         <table class="table m0 fs13"><thead><tr><th>产品名称</th><th>入口URL</th></tr></thead><tbody>${rows}</tbody></table>
       </div>
     </div>`;
@@ -1151,7 +1151,7 @@ function showDiscoverResult(result, isStale){
       <div data-css="font-size:12px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed" data-on-click="toggleSection" data-args='${_dataArgs('pkg-chg')}'>
         <span id="sec-icon-pkg-chg">▾</span>📦 包类型变更 <span data-css="background:#7c3aed20;color:#7c3aed;padding:1px 7px;border-radius:10px;font-size:11px">${pkgChangedProducts.length} 个产品</span>
       </div>
-      <div id="sec-body-pkg-chg" data-css="border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px">
+      <div class="tree-box" id="sec-body-pkg-chg">
         <table class="table m0 fs13"><thead><tr><th>产品</th><th>变更</th><th></th></tr></thead><tbody>${pkgRows}</tbody></table>
       </div>
     </div>`;

@@ -26,7 +26,7 @@ async function history(){
   list.forEach(h=>{
     let dels=h.deliveries||[];
     if(!dels.length){
-      html+=`<tr data-css="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td title="${escHtml(h.file_name||'')}" data-css="max-width:380px"><span data-css="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
+      html+=`<tr data-css="background:var(--gray-bg)"><td>${fmtTZ(h.pushed_at||h.first_seen_at||'',true)}</td><td>—</td><td>${escHtml(h.product_name||'')}</td><td>${typeCN(h.package_type)}</td><td class="max-w380" title="${escHtml(h.file_name||'')}"><span data-css="display:inline-block;padding:1px 6px;background:#fff;color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td><td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td><td>—</td><td>—</td><td>—</td></tr>`;
     }else{
       dels.forEach(d=>{
         // 2026-07-11: channel_name 可能含客户名,格式 "<原渠道名>|Nsf0cus|<客户名>"
@@ -60,7 +60,7 @@ async function history(){
             <td>${escHtml(_custName||d.customer_name||'—')}</td>
             <td>${escHtml(h.product_name||'')}</td>
             <td>${typeCN(pkgType)}</td>
-            <td title="${escHtml(h.file_name||'')}" data-css="max-width:380px"><span data-css="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
+            <td class="max-w380" title="${escHtml(h.file_name||'')}"><span data-css="display:inline-block;padding:1px 6px;background:var(--gray-bg);color:var(--text);border-radius:4px;font-family:'SF Mono','Fira Code',monospace;font-size:11px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:middle">${escHtml(h.file_name||'')}</span></td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td>
             <td>${channelDisp}</td>
             <td title="${escHtml(recipient)}" data-css="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
@@ -83,7 +83,7 @@ async function history(){
   const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" data-css="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
   const pager=`<div data-css="display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:12px;color:var(--muted);border-top:1px solid var(--border)"><span>共 <b data-css="color:var(--text)">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} data-on-click="histSetPage" data-args='${_dataArgs(page-1)}'>← 上一页</button><button ${_pgBtn(page>=pages)} data-on-click="histSetPage" data-args='${_dataArgs(page+1)}'>下一页 →</button></div>`;
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline" data-css="color:var(--danger);border-color:var(--danger)" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th data-css="width:140px">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline" data-css="color:var(--danger);border-color:var(--danger)" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th class="w140">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
 }
 
 // 翻页: 只改 page, 保留当前过滤条件
@@ -231,7 +231,7 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd" data-css="display:flex;align-items:center;gap:10px">
+      <div class="cfg-section-hd flex-center-10">
         <span>🔇 静默时段</span>
         <label class="toggle-switch"><input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('quiet-times', '$checked')}'><span class="toggle-slider"></span></label>
         <span>启用</span>
@@ -442,8 +442,8 @@ function _collectBannerHtml(state) {
         <div id="collect-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
-    <div data-on-click="_openCollectLog" data-stop data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer">📋 日志</div>
-    <div data-on-click="_hideCollectBanner" data-stop data-css="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
+    <div class="banner-chip pointer" data-on-click="_openCollectLog" data-stop>📋 日志</div>
+    <div class="banner-close" data-on-click="_hideCollectBanner" data-stop title="关闭">×</div>`;
 }
 
 function _showCollectBanner(state) {
@@ -509,10 +509,10 @@ function _showDiscBanner(state){
         <div id="disc-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
-    <div data-on-click="_showDiscLogFloat" data-stop data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">📋 日志</div>
-    <div data-on-click="_reopenDiscModal" data-stop data-css="background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap">查看</div>
-    <div data-on-click="_cancelDisc" data-stop data-css="background:rgba(255,255,255,0.25);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap;cursor:pointer" title="停止自动发现(已完成产品丢弃)">⏹ 停止</div>
-    <div data-on-click="_hideDiscBanner" data-stop data-css="background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px" title="关闭">×</div>`;
+    <div class="banner-chip" data-on-click="_showDiscLogFloat" data-stop>📋 日志</div>
+    <div class="banner-chip" data-on-click="_reopenDiscModal" data-stop>查看</div>
+    <div class="banner-chip-lit pointer" data-on-click="_cancelDisc" data-stop title="停止自动发现(已完成产品丢弃)">⏹ 停止</div>
+    <div class="banner-close" data-on-click="_hideDiscBanner" data-stop title="关闭">×</div>`;
   banner.onclick=_reopenDiscModal;
   document.body.appendChild(banner);
 
@@ -553,13 +553,13 @@ function _showDiscBanner(state){
       if(logBody && s.data.log_lines?.length){
         const renderLogLine=l=>{
           const txt=escHtml(l);
-          if(l.startsWith('🔍')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--primary)">${txt}</div>`;
-          if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#7c3aed;font-weight:600">${txt}</div>`;
-          if(l.startsWith('  →')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:#0891b2">${txt}</div>`;
-          if(l.startsWith('✅')||l.startsWith('✔')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--success-text);font-weight:600">${txt}</div>`;
-          if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--danger)">${txt}</div>`;
-          if(l.startsWith('[')) return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-disabled)">${txt}</div>`;
-          return `<div data-css="padding:1px 0;border-bottom:1px solid var(--gray-border);color:var(--gray-muted)">${txt}</div>`;
+          if(l.startsWith('🔍')) return `<div class="rd-ver-line text-primary">${txt}</div>`;
+          if(l.startsWith('📦')&&l.includes('发现包类型')) return `<div class="rd-ver-line text-purple fw600">${txt}</div>`;
+          if(l.startsWith('  →')) return `<div class="rd-ver-line text-cyan">${txt}</div>`;
+          if(l.startsWith('✅')||l.startsWith('✔')) return `<div class="rd-ver-line text-success-text fw600">${txt}</div>`;
+          if(l.startsWith('❌')||l.startsWith('⚠️')) return `<div class="rd-ver-line text-danger">${txt}</div>`;
+          if(l.startsWith('[')) return `<div class="rd-ver-line text-disabled">${txt}</div>`;
+          return `<div class="rd-ver-line text-gray-muted">${txt}</div>`;
         };
         logBody.innerHTML=s.data.log_lines.map(renderLogLine).join('');
         logBody.scrollTop=logBody.scrollHeight;
@@ -647,16 +647,16 @@ async function products(){
         </div>
       </div>
       <div data-css="overflow-x:auto">
-      <table class="table" data-css="table-layout:auto;width:100%">
+      <table class="table w-full">
         <thead><tr>
-          <th data-css="width:36px">#</th>
-          <th data-css="width:40px"><input class="pointer" type="checkbox" id="prod-sel-all" data-on-change="toggleAllProds" data-args='${_dataArgs('$checked')}' title="全选/取消全选"></th>
-          <th data-css="width:64px">状态</th>
+          <th class="w36">#</th>
+          <th class="w40"><input class="pointer" type="checkbox" id="prod-sel-all" data-on-change="toggleAllProds" data-args='${_dataArgs('$checked')}' title="全选/取消全选"></th>
+          <th class="w64">状态</th>
           <th>产品名称</th>
           <th>入口URL</th>
           <th>包类型</th>
-          <th data-css="width:76px" title="正常=上次采集成功，异常=上次采集失败，未知=从未采集">采集状态</th>
-          <th data-css="width:100px">最近采集</th>
+          <th class="w76" title="正常=上次采集成功，异常=上次采集失败，未知=从未采集">采集状态</th>
+          <th class="w100">最近采集</th>
           <th>操作</th>
         </tr></thead>
         <tbody id="prod-tbody">`;

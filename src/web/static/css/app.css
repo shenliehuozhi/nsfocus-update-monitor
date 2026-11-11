@@ -517,3 +517,48 @@ table thead th{height:36px!important;min-height:0!important;max-height:36px!impo
 .opacity-60{opacity:0.6}
 .break-all{word-break:break-all}
 .danger-11{color:var(--danger);font-size:11px}
+
+/* ── 工具类（data-css 组件化第四批）────────────────────────────── */
+.w36{width:36px}
+.w40{width:40px}
+.w50{width:50px}
+.w60{width:60px}
+.w64{width:64px}
+.w70{width:70px}
+.w76{width:76px}
+.w80{width:80px}
+.w90{width:90px}
+.w100{width:100px}
+.w110{width:110px}
+.w130{width:130px}
+.w140{width:140px}
+.w150{width:150px}
+.w160{width:160px}
+.w220{width:220px}
+.w230{width:230px}
+.w260{width:260px}
+.w320{width:320px}
+.w360{width:360px}
+.w400{width:400px}
+.w420{width:420px}
+.table-base{width:100%;border-collapse:collapse;font-size:12px}
+.table-fixed{table-layout:fixed}
+.ta-center{text-align:center}
+.box-border{box-sizing:border-box}
+.evt-thead{height:36px;background:var(--card);box-shadow:0 1px 0 var(--border)}
+.evt-head-row{text-align:left;color:var(--muted);font-weight:600;line-height:1.2;height:36px;box-sizing:border-box}
+.data-stats-thead{height:36px;background:var(--gray-bg);border-bottom:1px solid var(--gray-border);line-height:1.2;box-sizing:border-box}
+.data-stats-td{padding:9px 12px}
+.data-stats-row{border-bottom:1px solid var(--gray-bg)}
+.confirm-box-lg{width:720px;max-width:95vw;max-height:85vh;display:flex;flex-direction:column}
+.banner-chip{background:rgba(255,255,255,0.2);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap}
+.banner-chip-lit{background:rgba(255,255,255,0.25);border-radius:6px;padding:4px 10px;font-size:12px;white-space:nowrap}
+.banner-close{background:rgba(255,255,255,0.15);border-radius:6px;padding:4px 8px;font-size:14px;color:rgba(255,255,255,0.7);cursor:pointer;line-height:1;margin-left:4px}
+.rd-ver-line{padding:1px 0;border-bottom:1px solid var(--gray-border)}
+.text-cyan{color:#0891b2}
+.subtitle{font-weight:600;font-size:13px;margin-bottom:8px}
+.tree-box{border:1px solid var(--gray-border);border-radius:8px;overflow:hidden;margin-top:4px}
+.max-w380{max-width:380px}
+.flex-center-10{display:flex;align-items:center;gap:10px}
+.tree-indent{width:13px;flex-shrink:0;margin-right:4px}
+.feed-arrow-w{width:28px;flex-shrink:0}
