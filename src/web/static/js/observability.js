@@ -6,7 +6,7 @@ async function observability(){
     <div class="card">
       <div class="card-hd items-center">
         <span>📈 可观测性</span>
-        <span id="obsMeta" data-css="font-weight:400;color:var(--muted);font-size:11.5px"></span>
+        <span class="fw400 fs115 text-muted" id="obsMeta"></span>
         <span class="ml-auto flex items-center gap8">
           <select id="obsWindow" class="dd sel-sm" data-on-change="obsSetWindow" data-args='${_dataArgs('$value')}'>
             <option value="6">最近 6 小时</option>

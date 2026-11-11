@@ -63,7 +63,7 @@ async function history(){
             <td class="max-w380" title="${escHtml(h.file_name||'')}"><span class="code-chip-muted">${escHtml(h.file_name||'')}</span></td>
             <td><span class="badge badge-${h.urgency==='critical'?'err':h.urgency==='high'?'warn':'ok'}">${escHtml(h.urgency||'')}</span></td>
             <td>${channelDisp}</td>
-            <td title="${escHtml(recipient)}" data-css="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px">${escHtml(recipient)}</td>
+            <td class="max-w200 ellipsis fs11" title="${escHtml(recipient)}">${escHtml(recipient)}</td>
             <td><span class="badge ${d.delivery_status==='sent'?'badge-ok':'badge-err'}">${d.delivery_status==='sent'?'✅ 成功':'❌ 失败'}</span></td>
             <td><button class="btn btn-xs btn-primary" data-resend-sid="${h.id}" data-on-click="resendTargeted" data-args='${_dataArgs(h.id, d.channel_id||0, d.customer_id||0, '$el')}'>📤 重推</button></td>
         </tr>`;
@@ -83,7 +83,7 @@ async function history(){
   const _pgBtn=(dis)=>`class="btn btn-xs btn-outline" data-css="padding:2px 10px${dis?';opacity:.35;pointer-events:none':''}"`;
   const pager=`<div class="cfg-foot"><span>共 <b class="text-body">${total}</b> 个包 · 第 ${page}/${pages} 页 (每页 200)</span><button ${_pgBtn(page<=1)} data-on-click="histSetPage" data-args='${_dataArgs(page-1)}'>← 上一页</button><button ${_pgBtn(page>=pages)} data-on-click="histSetPage" data-args='${_dataArgs(page+1)}'>下一页 →</button></div>`;
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span data-css="margin-left:auto;font-size:12px;font-weight:400;color:var(--muted);display:flex;align-items:center;gap:8px">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline danger-outline-text" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th class="w140">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📜 推送历史 <span class="ml-auto muted-12 fw400 flex items-center gap8">${ruleSel}${custSel}${daysSel}<a href="#" data-on-click="history">刷新</a><button class="btn btn-xs btn-outline danger-outline-text" data-on-click="confirmClearHistory">🗑 清空</button></span></div><div class="card-bd pt0"><table><tr><th class="w140">时间</th><th>客户</th><th>产品</th><th>类型</th><th>文件名</th><th>紧急度</th><th>渠道</th><th>收件人</th><th>状态</th><th>操作</th></tr>${html||'<tr><td colspan="10" class="empty">暂无推送记录</td></tr>'}</table>${pager}</div></div>`;
 }
 
 // 翻页: 只改 page, 保留当前过滤条件
@@ -505,7 +505,7 @@ function _showDiscBanner(state){
     <div class="flex-1">
       <div class="fw600-mb4">🔍 自动发现任务进行中</div>
       <div class="opacity-90 fs12" id="disc-banner-phase">${formatDiscPhase(state)}</div>
-      <div data-css="margin-top:6px;height:3px;background:rgba(255,255,255,0.25);border-radius:4px">
+      <div class="banner-bar-3-tight">
         <div id="disc-banner-bar" data-css="height:100%;background:#fff;border-radius:4px;transition:width 0.4s;width:${pct}%"></div>
       </div>
     </div>
@@ -694,9 +694,9 @@ function _reopenDiscModal(){
     if(s.code===0 && (s.data.active||s.data.phase==='done')){
       _showModal('disc');
       const logId=window.__discLogId||'disc-float-log';
-      modalBody('disc',`<div data-css="padding:24px;text-align:center;position:relative">
+      modalBody('disc',`<div class="p24 ta-center pos-rel">
         <div class="dialog-x-abs" data-on-click="closeModal" data-args='${_dataArgs('disc')}'>×</div>
-        <div data-css="font-size:16px;font-weight:600;color:#7c3aed;margin-bottom:16px">${formatDiscPhase(s.data)}</div>
+        <div class="fs16 fw600 text-purple mb16">${formatDiscPhase(s.data)}</div>
         <div class="gray-muted-13 mb12">${s.data.active?'任务运行中，可关闭此窗口':'发现完成'}</div>
         <div class="mt10"><button class="btn btn-purple-outline" data-on-click="_showById" data-args='${_dataArgs(logId)}'>📋 查看日志</button></div>
         ${s.data.phase==='done'?`<div class="mt12"><button class="btn btn-primary" data-on-click="_viewDiscResult" data-args='${_dataArgs(!!s.data.is_stale)}'>查看结果</button></div>`:''}

@@ -196,7 +196,7 @@ def test_no_style_property_assignment():
 # 属性名后紧跟 = 与引号；排除 el.style=... 的 CSSOM 赋值（前面有 .）
 INLINE_STYLE = re.compile(r'''(?<![.\w-])style\s*=\s*["']''')
 DATA_CSS = re.compile(r'''\bdata-css\s*=\s*["']''')
-DATA_CSS_MAX = 160  # 只减不增：新代码必须写 CSS 类
+DATA_CSS_MAX = 97  # 只减不增：新代码必须写 CSS 类
 
 
 def test_no_inline_style_attributes():

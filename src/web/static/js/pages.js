@@ -106,7 +106,7 @@ async function sessions(){
     return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td class="fs11">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" data-on-click="validateSes" data-args='${_dataArgs(s.id)}'>验证</button> <button class="btn btn-soft-danger btn-xs" data-on-click="delSes" data-args='${_dataArgs(s.id)}'>删除</button></td></tr>`;
   }).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span class="muted-12 fw400">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span class="text-danger">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary" data-on-click="openAddSesModal" data-css="margin-left:auto;padding:5px 14px;font-size:12px">+ 添加 Session</button></div><div class="card-bd">
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span class="muted-12 fw400">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span class="text-danger">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openAddSesModal">+ 添加 Session</button></div><div class="card-bd">
   <!-- 健康度概览 -->
   <div class="flex gap12 mb16">
     <div class="stat-card-success">
@@ -178,7 +178,7 @@ function openAddSesModal(){
           <span class="fw600">发现</span>：探测绿盟产品线变化，自动识别新出现的产品和包类型，默认已内置当前全量产品及类型，可不添加。<span class="danger-600">注意：发现过程可能触发证书上传页面，所有升级包会被误判为虚拟化包；若需探测产品目录结构变化，请单独添加一个专用 session 用于发现。</span>
         </div>
         <button id="addSesConfirm" class="btn btn-soft-primary w-full" data-on-click="confirmAddSes">验证并添加</button>
-        <div data-css="margin-top:10px;font-size:11px;color:var(--muted);text-align:center">获取方式：浏览器登录 update.nsfocus.com → F12 开发者工具 → Application → Cookies → 复制 PHPSESSID</div>
+        <div class="mt10 muted-11 ta-center">获取方式：浏览器登录 update.nsfocus.com → F12 开发者工具 → Application → Cookies → 复制 PHPSESSID</div>
       </div>
     </div>
   </div>`;
@@ -239,7 +239,7 @@ async function editSesType(id,curP,curM){
   overlay.id=mid;
   overlay.innerHTML=`<div class="confirm-box w400">
     <div class="confirm-title">修改 Session 类型</div>
-    <div data-css="display:flex;gap:10px;align-items:center;justify-content:center;margin-bottom:18px">
+    <div class="flex gap10 items-center justify-center mb18">
       <select class="dd" id="etP" data-on-change="_etPurposeChanged" data-args='${_dataArgs('$el')}'>
         <option value="discover" ${p==='discover'?'selected':''}>发现</option>
         <option value="collect" ${p==='collect'?'selected':''}>采集</option>

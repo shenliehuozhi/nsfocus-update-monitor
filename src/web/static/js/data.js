@@ -130,8 +130,8 @@ function _renderProdDistTable(data){
   container.innerHTML='<table class="table-base">'+
     '<thead><tr class="data-stats-thead">'+
       '<th class="data-th">产品</th>'+
-      '<th data-css="padding:8px 12px;height:36px;box-sizing:border-box;text-align:right;color:var(--gray-muted);font-weight:500">包数量</th>'+
-      '<th data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;color:var(--gray-muted);font-weight:500">占比</th>'+
+      '<th class="data-th-num ta-right">包数量</th>'+
+      '<th class="data-th-num w160">占比</th>'+
     '</tr></thead><tbody>'+
     data.map((item)=>{
       const pct = total>0 ? (item.count/total*100).toFixed(1) : '0';
@@ -140,10 +140,10 @@ function _renderProdDistTable(data){
         <td class="data-stats-td">
           <div class="flex items-center gap6 min-w0">
             <span data-css="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${color}"></span>
-            <span data-css="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
+            <span class="ellipsis flex-1" title="${escHtml(item.name)}">${escHtml(item.name)}</span>
           </div>
         </td>
-        <td data-css="padding:9px 14px 9px 12px;text-align:right;color:var(--gray-disabled);font-variant-numeric:tabular-nums">${item.count}</td>
+        <td class="data-num-pad ta-right text-disabled">${item.count}</td>
         <td class="data-stats-td">
           <div class="flex items-center gap6">
             <div class="progress-track">
@@ -201,7 +201,7 @@ function _renderCustPushTable(items, days){
 '<thead><tr class="data-stats-thead">'+
       '<th class="data-th" data-col="0">客户</th>'+
       '<th class="data-th" data-col="1">推送</th>'+
-      '<th data-col="2" data-css="padding:8px 12px;height:36px;width:160px;box-sizing:border-box;text-align:left;color:var(--gray-muted);font-weight:500">状态</th>'+
+      '<th class="data-th-num w160 ta-left" data-col="2">状态</th>'+
     '</tr></thead><tbody>'+
     items.map((c,i)=>{
       const total = c.total||0, failed = c.failed||0;
@@ -657,7 +657,7 @@ async function dataPage() {
   // Progress % for display
   const pct = (p.products_total && p.products_total > 0) ? Math.round(p.products_done / p.products_total * 100) : 0;
   const progressHtml = isRunning
-    ? `<span data-css="color:var(--primary);font-weight:600;flex-shrink:0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0})</span>`
+    ? `<span class="text-primary fw600 shrink0">⏳ 采集中 ${pct}% ${p.current_product || ''} (${p.products_done||0}/${p.products_total||0})</span>`
     : '';
 
   const totalActive = Object.values(_dataAll).filter(s => s.is_active).length;
@@ -1048,7 +1048,7 @@ function _diagnoseChainStale(chain, match) {
 // Red ⚠ badge shown on stale-chain pills; tooltip explains the cause.
 function chainWarnBadge(chain, match) {
   const tip = _diagnoseChainStale(chain, match);
-  return `<span class="chain-stale-warn" title="${escHtml(tip)}" data-css="color:var(--danger);font-weight:700;cursor:help;font-size:13px;flex-shrink:0;margin-left:2px">⚠️</span>`;
+  return `<span class="chain-stale-warn text-danger fw700 cursor-help fs13 shrink0 ml2" title="${escHtml(tip)}">⚠️</span>`;
 }
 
 function buildFlatVerTreeHtml(snapshots) {
@@ -1116,7 +1116,7 @@ function buildFlatVerTreeHtml(snapshots) {
       tbl += `<div data-css="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" data-on-click="_toggleByIdClass" data-args='${_dataArgs(did, 'hidden')}'>
         ${pkgTypeBadge}
         ${statusBadges}
-        <span data-css="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${escHtml(s.file_name || '')}</span>
+        <span class="text-primary flex-1 ellipsis" title="${escHtml(s.file_name || '')}">${escHtml(s.file_name || '')}</span>
         <span class="muted-11">${fmtTZ(s.last_seen_at, true)}</span>
         <span class="muted-11">${sz}</span>
         <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'} badge-xs">${escHtml(s.urgency || '')}</span>
@@ -1205,7 +1205,7 @@ function dataRenderLeft() {
         <button class="hover-primary pager-btn" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
       </div>
       <div class="card-bd pt0" id="${treeBodyId}" data-action="treeNode" data-card-hd="${cardId}_hd" data-css="display:none;padding-top:0">
-        <div data-css="padding:8px 0 4px" id="${cardId}_tree">${treeHtml}</div>
+        <div class="py8-4" id="${cardId}_tree">${treeHtml}</div>
       </div>
     </div>`;
   });
@@ -1613,14 +1613,14 @@ function dataRenderRight(sch, p, info) {
   let html = `<div class="feed-list">
 <div class="feed-hd">
   <div class="feed-cell feed-arrow-hd feed-arrow-w"></div>
-  <div class="feed-cell" data-css="width:180px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">类型</div>
-  <div class="feed-cell" data-css="width:84px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
-  <div class="feed-cell" data-css="width:72px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
-  <div class="feed-cell" data-css="width:160px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">产品名称</div>
-  <div class="feed-cell" data-css="flex:1;min-width:160px;font-size:11px;color:var(--muted);font-weight:600;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">版本</div>
-  <div class="feed-cell" data-css="flex:1;min-width:200px;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">文件</div>
-  <div class="feed-cell" data-css="width:116px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">发布时间</div>
-  <div class="feed-cell" data-css="width:130px;flex-shrink:0;font-size:11px;color:var(--muted);font-weight:600">操作</div>
+  <div class="feed-cell w180 shrink0 muted-11 fw600">类型</div>
+  <div class="feed-cell w84 shrink0 muted-11 fw600" title="紧急程度根据描述关键词判定：🔴 critical=高危/严重/critical/远程代码执行/紧急，⚠️ high=中危/high/漏洞/绕过，ℹ️ normal=其他">紧急度</div>
+  <div class="feed-cell w72 shrink0 muted-11 fw600" title="基于发布时间的活跃状态：30天内=活跃，1年内=低频，更久=沉寂">状态</div>
+  <div class="feed-cell w160 shrink0 muted-11 fw600 ellipsis">产品名称</div>
+  <div class="feed-cell flex-1 min-w160 muted-11 fw600 pl16 ellipsis">版本</div>
+  <div class="feed-cell flex-1 min-w200 muted-11 fw600 ellipsis">文件</div>
+  <div class="feed-cell w116 shrink0 muted-11 fw600 ellipsis">发布时间</div>
+  <div class="feed-cell w130 shrink0 muted-11 fw600">操作</div>
 </div>`;
 
   pageSlice.forEach(r => {
@@ -1644,14 +1644,14 @@ function dataRenderRight(sch, p, info) {
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
   <div class="feed-cell feed-arrow feed-arrow-w" data-on-click="dataRightToggleRow" data-args='${_dataArgs(rid)}'>▶</div>
-  <div class="feed-cell" data-css="width:180px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" ${colStyle}><span class="badge snap-type-badge" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
-  <div class="feed-cell" data-css="width:84px;flex-shrink:0" ${colStyle}>${urgencyBadge}</div>
-  <div class="feed-cell" data-css="width:72px;flex-shrink:0" ${colStyle}>${statusBadge(r.status)}</div>
-  <div class="feed-cell" data-css="width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r._srcName)}">${r._srcName}</div>
-  <div class="feed-cell" data-css="flex:1;min-width:160px;padding-left:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.package_version || chainVer || '')}">${escHtml(r.package_version || chainVer || '')}</div>
-  <div class="feed-cell" data-css="flex:1;min-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
-  <div class="feed-cell" data-css="width:116px;flex-shrink:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
-  <div class="feed-cell" data-css="width:130px;flex-shrink:0;white-space:nowrap">
+  <div class="feed-cell w180 shrink0 ellipsis" ${colStyle}><span class="badge snap-type-badge" title="${escHtml(typeLabel)}">${typeLabel}</span></div>
+  <div class="feed-cell w84 shrink0" ${colStyle}>${urgencyBadge}</div>
+  <div class="feed-cell w72 shrink0" ${colStyle}>${statusBadge(r.status)}</div>
+  <div class="feed-cell w160 shrink0 ellipsis" title="${escHtml(r._srcName)}">${r._srcName}</div>
+  <div class="feed-cell flex-1 min-w160 pl16 ellipsis" title="${escHtml(r.package_version || chainVer || '')}">${escHtml(r.package_version || chainVer || '')}</div>
+  <div class="feed-cell flex-1 min-w200 ellipsis" title="${escHtml(r.file_name || '')}">${escHtml(r.file_name || '')}</div>
+  <div class="feed-cell w116 shrink0 fs12 ellipsis" title="${escHtml(fmtTZ(r.published_at, true))}">${fmtTZ(r.published_at, true)}</div>
+  <div class="feed-cell w130 shrink0 nowrap">
     <div class="data-right-actions" >
       <button class="btn btn-xs btn-soft-primary" data-on-click="dataRightGoto" data-args='${_dataArgs(r._sid, JSON.stringify(r._chain || []))}'>跳转</button>
       <button class="btn btn-xs btn-soft-success" data-on-click="showPushModal" data-args='${_dataArgs(r.id, r._srcName, (r._chain && r._chain.length >= 2) ? r._chain[r._chain.length - 2] : r.version_branch || '', (r._chain && r._chain.length > 0) ? r._chain[r._chain.length - 1] : r.package_type || '', JSON.stringify(r._chain || []))}'>推送</button>
@@ -2244,8 +2244,8 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
             const urg2 = s.urgency === 'critical' ? 'badge-err' : s.urgency === 'high' ? 'badge-warn' : 'badge-ok';
             const isRb2 = s.status === 'withdrawn';
             return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" data-on-click="_toggleClass" data-args='${_dataArgs('data-hist-expanded')}'>
-              <span data-css="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
-              <span class="mono" data-css="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((s.file_name || '').substring(0, 30))}</span>
+              <span class="muted-11 w130 shrink0">${fmtTZ(s.published_at, true)}</span>
+              <span class="mono text-primary fs12 flex-1 min-w0 ellipsis">${escHtml((s.file_name || '').substring(0, 30))}</span>
               <span class="badge ${urg2} badge-xs">${escHtml(s.urgency || '')}</span>
               ${s.last_delivered_at ? '<span class="text-success fs11">✅</span>' : '<span class="muted-11">○</span>'}
               <button class="btn btn-xs btn-soft-success ml4" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>

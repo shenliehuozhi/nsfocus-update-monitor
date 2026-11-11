@@ -381,7 +381,7 @@ function pollProgress(){
     let html='';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      html+=`<div class="mb12"><div data-css="background:var(--gray-border);border-radius:6px;height:8px;overflow:hidden"><div data-css="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div class="muted-11 mt4 ta-center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
+      html+=`<div class="mb12"><div class="progress-8"><div data-css="background:var(--primary);height:100%;width:${pct}%;transition:width .3s;border-radius:6px"></div></div><div class="muted-11 mt4 ta-center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
       html+=`<div class="fs13 ta-center mb4"><strong>📦 ${p.current_product||'...'}</strong></div>`;
       if(p.current_version)html+=`<div class="muted-11 ta-center">${p.current_version}</div>`;
       html+=`<div class="muted-10 ta-center mt4">已采集 ${p.items_collected||0} 项</div>`;
@@ -397,7 +397,7 @@ function pollProgress(){
       html+=`<p class="ta-center fs14 fw600">采集完成</p>`;
       html+=`<div class="grid2 mt10"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
       html+=`<p class="muted-11 mt6 ta-center">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;
-      if(p.errors&&p.errors.length)html+=`<div data-css="margin-top:8px;font-size:11px;color:var(--danger)">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
+      if(p.errors&&p.errors.length)html+=`<div class="mt8 fs11 text-danger">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
       html+=`<button class="btn btn-sm btn-primary w-full mt12" data-on-click="_closeCollectAndDashboard">刷新仪表盘</button>`;
       _collectRunning=false;
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}

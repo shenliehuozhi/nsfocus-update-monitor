@@ -533,7 +533,7 @@ function editPkgType(id){
       // 用 disc 的 modes 渲染树
       const discPt = { types: disc.types, paths: disc.paths, modes: disc.modes || {} };
       const discTreeHtml = buildTreeHtml(discPt, MAP);
-      pathTreeHtml = `<div data-css="margin-top:12px;font-size:11px;color:var(--gray-muted);margin-bottom:6px">📂 采集到的目录结构</div><div class="list-box-240">${discTreeHtml}</div>`;
+      pathTreeHtml = `<div class="mt12 fs11 text-gray-muted mb6">📂 采集到的目录结构</div><div class="list-box-240">${discTreeHtml}</div>`;
     }
 
     // 智能警告

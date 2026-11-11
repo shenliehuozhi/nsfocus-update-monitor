@@ -110,7 +110,7 @@ async function dashboard(range){
   // 2026-08-25: 顶部告警只在"无可用采集 session"时显示
   // 其他情况(部分污染/过期)由 Session 菜单自己的卡片提示,不再在仪表盘顶部打扰
   if(_cTotal===0){
-    sesWarn=`<div class="info-bar" data-css="background:var(--danger-light);border:1px solid var(--danger-border);color:var(--danger-text);margin-bottom:14px;padding:10px 14px;border-radius:8px;font-size:13px">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" data-on-click="showPage" data-args='${_dataArgs('sessions')}'>Session 管理</a> 添加 PHPSESSID 才能采集<br><span class="muted-12">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
+    sesWarn=`<div class="info-bar alert-danger-panel">🚨 <strong>无可用采集 Session</strong> — 请前往 <a href="#" data-on-click="showPage" data-args='${_dataArgs('sessions')}'>Session 管理</a> 添加 PHPSESSID 才能采集<br><span class="muted-12">提示:如果之前已添加过 session,请检查 Session 菜单里 session 是否被标记为过期或污染,需要重新添加</span></div>`;
   }
   // 采集进度条改用 _showCollectBanner() (2026-08-21),仿 _showDiscBanner 风格:底部悬浮卡片 + 进度条
   // 这里不再单独控制 dashRunningBar,改由 dataPage 内 _collectPollTimer 调度。
@@ -144,7 +144,7 @@ async function dashboard(range){
       <div class="stat ${sch.is_running?'tint-primary':(sch.enabled?'tint-success':'tint-danger')} ops-mini-col">
         <div class="flex items-center justify-center gap10">
           <span data-css="display:inline-block;width:10px;height:10px;border-radius:50%;background:${sch.is_running?'var(--primary)':(sch.enabled?'var(--success)':'var(--danger)')};box-shadow:0 0 0 4px ${sch.is_running?'rgba(67,97,238,0.2)':(sch.enabled?'rgba(12,166,120,0.2)':'rgba(229,72,77,0.2)')};flex-shrink:0"></span>
-          <span data-css="font-size:14px;font-weight:600;color:var(--text)">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
+          <span class="fs14 fw600 text-body">${sch.is_running?'采集中':(sch.enabled?'就绪':'已关闭')}</span>
         </div>
         <div class="muted-11 lh14">采集器状态</div>
       </div>
@@ -184,7 +184,7 @@ async function dashboard(range){
         </span>
       </div>
       <div class="card-bd ops-pane">
-        ${h.product_health&&h.product_health.length>0?`<div data-css="min-width:160px;flex:1">
+        ${h.product_health&&h.product_health.length>0?`<div class="min-w160 flex-1">
           <div class="metric-label">采集</div>
           <div class="col gap2">
             ${h.product_health.slice(0,12).map(p=>{
@@ -192,20 +192,20 @@ async function dashboard(range){
               const last=p.last_collected_at?fmtTZ(p.last_collected_at,true).slice(11,16):'—';
               return `<div class="ops-meta">
                 <span class="shrink0">${statusIcon}</span>
-                <span data-css="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml(p.name||'未知')}</span>
+                <span class="flex-1 ellipsis">${escHtml(p.name||'未知')}</span>
                 <span class="disabled-10 shrink0">${last}</span>
               </div>`}).join('')}
           </div>
         </div>`:''}
-        ${h.push_today?`<div data-css="min-width:110px">
+        ${h.push_today?`<div class="min-w110">
           <div class="metric-label">推送</div>
           <div class="flex wrap gap4">
             <span class="badge ${h.push_success_rate>=80?'badge-ok':h.push_success_rate>=50?'badge-warn':'badge-err'}">${h.push_success_rate||0}%</span>
             <span class="badge badge-grey">${h.push_today.total||0}条</span>
           </div>
-          <div data-css="font-size:10px;color:var(--gray-disabled);margin-top:3px">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
+          <div class="fs10 text-disabled mt3">成功 ${h.push_today.success||0} / 失败 ${h.push_today.failed||0}</div>
         </div>`:''}
-        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div data-css="min-width:80px">
+        ${h.active_snapshots!==undefined&&h.active_snapshots!==null?`<div class="min-w80">
           <div class="metric-label">快照</div>
           <span class="badge badge-blue">${h.active_snapshots} 个</span>
         </div>`:''}
@@ -215,11 +215,11 @@ async function dashboard(range){
             ${h.异常日志.slice(0,3).map(l=>`<div data-css="font-size:10px;color:${l.level==='ERROR'?'var(--danger)':'var(--warn)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px" title="${escHtml(l.msg)}">${l.level==='ERROR'?'❌':'⚠️'} ${l.msg.slice(-50)}</div>`).join('')}
           </div>
         </div>`:''}
-        ${h.queue?.overdue>0?`<div data-css="min-width:100px">
+        ${h.queue?.overdue>0?`<div class="min-w100">
           <div class="metric-label">队列</div>
           <span class="badge badge-warn">⏰ 超时 ${h.queue.overdue} 条</span>
         </div>`:''}
-        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div data-css="min-width:130px">
+        ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div class="min-w130">
           <div class="metric-label">限流</div>
           <div class="list-compact">
             ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err badge-xs">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
@@ -248,7 +248,7 @@ async function dashboard(range){
           const tip=`推送 ${g.total} 次 · ${g.sent}✓ ${g.failed}✗\n${[...g.customers].join('、')||'—'}`;
           return `<div class="pill-tip ops-evt-row" data-tip="${escHtml(tip)}">
             <span data-css="color:${color};flex-shrink:0;font-size:13px">${icon}</span>
-            <span data-css="flex:1;overflow:hidden;text-overflow:ellipsis">${escHtml(g.product||'—')} ${escHtml(g.ver||'')}${g.file?' ('+escHtml(g.file.slice(0,22))+')':''}</span>
+            <span class="flex-1 txt-clip">${escHtml(g.product||'—')} ${escHtml(g.ver||'')}${g.file?' ('+escHtml(g.file.slice(0,22))+')':''}</span>
             <span class="muted-11-shrink">${g.customers.size}客户</span>
             <span class="muted-11-shrink">${fmtTZ(g.sent_at,true)}</span>
           </div>`;
@@ -524,7 +524,7 @@ function renderEventsCenterTableRow(e){
   // 详情面板 — 用 eventCardDetail- 前缀避免跟弹窗 eventTableDetail- 撞 ID
   const detailId = 'eventCardDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
-  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td colspan="7" data-css="padding:10px 12px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
+  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td class="detail-cell" colspan="7">
     <div class="flex gap24 wrap mb8">
       <span><b>event_type:</b> ${escHtml(t)}</span>
       <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
@@ -539,7 +539,7 @@ function renderEventsCenterTableRow(e){
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
       <summary class="pointer text-muted no-select">📦 原始 message JSON</summary>
-      <pre data-css="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:200px;overflow-y:auto">${detailJson}</pre>
+      <pre class="log-panel">${detailJson}</pre>
     </details>
   </td></tr>`;
   let rowStyle = 'border-bottom:1px solid var(--gray-border);cursor:pointer';
@@ -553,7 +553,7 @@ function renderEventsCenterTableRow(e){
     }
   }
   return `<tr data-css="${rowStyle}" data-on-click="toggleEventsCenterCardRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
-    <td data-css="padding:6px 8px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
+    <td class="log-ts">${escHtml(serverTime(e.created_at, true))}</td>
     <td class="p6"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td class="p6 muted-11 ellipsis" title="${escHtml(t)}">${escHtml(t)}</td>
     <td class="p6 text-body ellipsis" title="${escHtml(title)}">${escHtml(title)}</td>
@@ -593,9 +593,9 @@ function openEventsCenterModal(){
           <div class="card-hd flex items-center">
             <span class="text-danger">🔔 事件中心</span>
             <span class="ml8 muted-11-400" id="eventsCenterModalCount"></span>
-            <span data-on-click="closeEventsCenterModal" data-css="margin-left:auto;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1;padding:0 4px">×</span>
+            <span class="ml-auto pointer text-gray-muted fs18 lh1 px4" data-on-click="closeEventsCenterModal">×</span>
           </div>
-          <div data-css="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg);font-size:12px">
+          <div class="evt-tools-bar">
             <span class="text-muted">严重度</span>
             <select id="eventsCenterModalSev" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
               <option value="">全部</option>
@@ -614,18 +614,18 @@ function openEventsCenterModal(){
             <button class="btn btn-xs btn-outline ml-auto" data-on-click="eventsCenterAckCurrent" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)">一键已读</button>
             <button class="btn btn-xs btn-outline" data-on-click="loadEventsCenterModal">🔄 刷新</button>
           </div>
-          <div class="card-bd" id="eventsCenterModalBody" data-css="flex:1;overflow:auto;padding:0">
+          <div class="card-bd flex-1 o-auto p0" id="eventsCenterModalBody">
             <div class="p40 ta-center muted-13">加载中…</div>
           </div>
-          <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;align-items:center;gap:12px;font-size:12px">
+          <div class="card-bd evt-foot">
             <span class="text-muted" id="eventsCenterModalPagerInfo"></span>
             <div class="ml-auto flex items-center gap6">
               <button id="eventsCenterModalPrevBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterPrevPage">← 上一页</button>
-              <span id="eventsCenterModalPageInfo" data-css="color:var(--muted);font-size:11px;min-width:60px;text-align:center"></span>
+              <span class="muted-11 min-w60 ta-center" id="eventsCenterModalPageInfo"></span>
               <button id="eventsCenterModalNextBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterNextPage">下一页 →</button>
             </div>
           </div>
-          <div class="card-bd" data-css="border-top:1px solid var(--gray-border);padding:8px 16px;display:flex;justify-content:flex-end">
+          <div class="card-bd evt-foot-end">
             <button class="btn btn-outline" data-on-click="closeEventsCenterModal">关闭</button>
           </div>
         </div>
@@ -696,7 +696,7 @@ async function loadEventsCenterModal(){
   const total = data.total || 0;
   eventsCenterState.total = total;
   if(!events.length){
-    body.innerHTML = '<div data-css="padding:60px 20px;text-align:center;color:var(--success);font-size:14px">✅ 当前条件下无事件</div>';
+    body.innerHTML = '<div class="empty-success-lg">✅ 当前条件下无事件</div>';
     if(countEl) countEl.textContent = '(共 0 条)';
     if(pagerInfo) pagerInfo.textContent = '';
     if(pageInfo) pageInfo.textContent = '0 / 0';
@@ -784,7 +784,7 @@ function renderEventsTableRow(e){
   // 详情面板 — 用 eventTableDetail- 前缀避免跟 dashboard 卡片的 eventDetail- 撞 ID(AP-133)
   const detailId = 'eventTableDetail-' + e.id;
   const detailJson = escHtml(JSON.stringify(m, null, 2));
-  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td colspan="7" data-css="padding:12px 16px;font-size:11px;line-height:1.6;border-top:1px solid var(--border)">
+  const detail = `<tr id="${detailId}" data-css="display:none;background:var(--gray-bg)"><td class="detail-cell-lg" colspan="7">
     <div class="flex gap24 wrap mb8">
       <span><b>event_type:</b> ${escHtml(t)}</span>
       <span><b>severity:</b> <span data-css="color:${sevColor}">${escHtml(e.severity)}</span></span>
@@ -799,7 +799,7 @@ function renderEventsTableRow(e){
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
       <summary class="pointer text-muted no-select">📦 原始 message JSON</summary>
-      <pre data-css="margin:6px 0 0;padding:8px;background:var(--card);border-radius:4px;font-family:monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-all;color:var(--muted);max-height:240px;overflow-y:auto">${detailJson}</pre>
+      <pre class="log-panel-tall">${detailJson}</pre>
     </details>
   </td></tr>`;
   // 重要事件视觉强化:CRITICAL 未读加左侧粗红条 + 浅红背景;ERROR 橙条;INFO/WARNING 普通
@@ -814,7 +814,7 @@ function renderEventsTableRow(e){
     }
   }
   return `<tr data-css="${rowStyle}" data-on-click="toggleEventsTableRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
-    <td data-css="padding:8px 12px;color:var(--muted);font-family:monospace;font-size:11px;white-space:nowrap">${escHtml(serverTime(e.created_at, true))}</td>
+    <td class="log-ts-lg">${escHtml(serverTime(e.created_at, true))}</td>
     <td class="p8"><span data-css="display:inline-block;padding:2px 6px;border-radius:4px;background:${sevColor}1a;color:${sevColor};font-weight:600;font-size:11px;white-space:nowrap">${sevIcon} ${escHtml(e.severity)}</span></td>
     <td class="p8 muted-11">${escHtml(t)}</td>
     <td class="p8 text-body txt-clip">${escHtml(title)}</td>
@@ -865,7 +865,7 @@ async function eventsCenterAckCurrent(){
     ' ',
     '标记为已读',
     false,  // 含 INFO 也是正常清理,不再警告
-    `<div data-css="display:flex;align-items:center;gap:10px;padding:10px 14px;margin:12px 0;background:#f3e8ff;border:1px solid #e9d5ff;border-radius:8px">
+    `<div class="info-purple-wide">
        <span class="fs20 lh1">✓</span>
        <span class="text-purple fs12 lh15">将标记当前过滤条件下 <b>${targets.length}</b> 个 severity 类别(${targets.join(' / ')})的全部未读事件</span>
      </div>`
