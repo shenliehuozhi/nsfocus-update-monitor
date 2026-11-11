@@ -1,0 +1,15 @@
+# systemd 以 append: 方式持有这些 fd，必须 copytruncate（无需重启服务）。
+# 安装：cp deploy/nsfocus-monitor.logrotate /etc/logrotate.d/nsfocus-monitor
+/root/nsfocus-monitor/logs/service.log
+/root/nsfocus-monitor/logs/service_error.log
+/root/nsfocus-monitor/logs/service_stdout.log
+/root/nsfocus-monitor/logs/service_stderr.log {
+    daily
+    rotate 7
+    maxsize 50M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+}

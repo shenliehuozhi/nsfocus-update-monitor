@@ -42,7 +42,8 @@ curl http://localhost:9999/api/health
 | `MONITOR_JWT_SECRET` | 是 | - | JWT 会话密钥，**生产必须修改**，建议 32+ 字符随机字符串 |
 | `MONITOR_SECRET_KEY` | 是 | - | Flask 密钥，**生产必须修改** |
 | `MONITOR_PORT` | 否 | `9999` | 服务监听端口 |
-| `MONITOR_LOG_LEVEL` | 否 | `INFO` | 日志级别：`DEBUG`/`INFO`/`WARNING`/`ERROR` |
+| `MONITOR_LOG_LEVEL` | 否 | `INFO` | 文件日志级别：`DEBUG`/`INFO`/`WARNING`/`ERROR` |
+| `MONITOR_CONSOLE_LOG_LEVEL` | 否 | 自动 | stderr 级别；交互终端默认 `INFO`，重定向到文件/管道时默认 `WARNING`（避免容器/ systemd 日志无轮转膨胀） |
 | `TZ` | 否 | `Asia/Shanghai` | 时区 |
 
 ---

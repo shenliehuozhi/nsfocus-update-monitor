@@ -1,6 +1,7 @@
 """Structured logging configuration with runtime level control."""
 
 import os
+import sys
 import logging
 import logging.handlers
 import threading
@@ -26,6 +27,22 @@ def _resolve_level(name: str) -> int:
         'ERROR': logging.ERROR,
     }
     return level_map.get(name.upper(), logging.INFO)
+
+
+def _console_log_level() -> int:
+    """stderr 在 systemd 下被无轮转追加到文件，全量 INFO 会持续膨胀（曾达 390M）。
+
+    交互终端保留 INFO 方便调试；stderr 被重定向到文件/管道时只留 WARNING+。
+    MONITOR_CONSOLE_LOG_LEVEL 可显式覆盖。
+    """
+    name = os.getenv('MONITOR_CONSOLE_LOG_LEVEL', '').strip().upper()
+    if name:
+        return _resolve_level(name)
+    try:
+        interactive = sys.stderr.isatty()
+    except Exception:
+        interactive = False
+    return logging.INFO if interactive else logging.WARNING
 
 
 def get_logger(name: str = 'monitor') -> logging.Logger:
@@ -62,7 +79,7 @@ def get_logger(name: str = 'monitor') -> logging.Logger:
             _console_handler.stream.reconfigure(encoding='utf-8')
     except Exception:
         pass
-    _console_handler.setLevel(logging.INFO)
+    _console_handler.setLevel(_console_log_level())
     _console_handler.setFormatter(fmt)
 
     _logger = logging.getLogger('monitor')
