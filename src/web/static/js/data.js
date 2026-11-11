@@ -977,9 +977,9 @@ function dataSortedSources(filt) {
 // withdrawn → ↩已撤回(红 + 删除线)
 // superseded → ⊘已替代(灰)
 function statusBadge(status) {
-  if (status === 'withdrawn')  return '<span class="badge badge-err" data-css="font-size:10px">↩已撤回</span>';
-  if (status === 'superseded') return '<span class="badge badge-grey" data-css="font-size:10px">⊘已替代</span>';
-  return '<span class="badge badge-ok" data-css="font-size:10px">🆕最新包</span>';
+  if (status === 'withdrawn')  return '<span class="badge badge-err badge-xs">↩已撤回</span>';
+  if (status === 'superseded') return '<span class="badge badge-grey badge-xs">⊘已替代</span>';
+  return '<span class="badge badge-ok badge-xs">🆕最新包</span>';
 }
 // 是否是已撤回/已替代的旧包(用于视觉弱化)
 function isOldSnapshot(s) {
@@ -1112,14 +1112,14 @@ function buildFlatVerTreeHtml(snapshots) {
       const isRb = s.status === 'withdrawn';
       const isOld = isOldSnapshot(s);
       const pkgTypeBadge = `<span class="badge" data-css="background:var(--snap-pkg-type-badge);color:var(--snap-pkg-type-color);font-size:10px">${MAP[s.package_type] || s.package_type || ''}</span>`;
-      const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue" data-css="font-size:10px">未推送</span>' : '');
+      const statusBadges = statusBadge(s.status) + (s.status === 'active' && !s.last_delivered_at ? ' <span class="badge badge-blue badge-xs">未推送</span>' : '');
       tbl += `<div data-css="display:flex;align-items:center;gap:8px;padding:4px 8px;cursor:pointer;font-size:12px;border-radius:4px;${isRb ? 'color:var(--muted);text-decoration:line-through' : isOld ? 'color:var(--muted)' : ''}" data-on-click="_toggleByIdClass" data-args='${_dataArgs(did, 'hidden')}'>
         ${pkgTypeBadge}
         ${statusBadges}
         <span data-css="color:var(--primary);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(s.file_name || '')}">${escHtml(s.file_name || '')}</span>
         <span data-css="color:var(--muted);font-size:11px">${fmtTZ(s.last_seen_at, true)}</span>
         <span data-css="font-size:11px;color:var(--muted)">${sz}</span>
-        <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'}" data-css="font-size:10px">${escHtml(s.urgency || '')}</span>
+        <span class="badge badge-${s.urgency === 'critical' ? 'err' : s.urgency === 'high' ? 'warn' : 'ok'} badge-xs">${escHtml(s.urgency || '')}</span>
         <button class="btn btn-xs btn-soft-success" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, s.product_name, pushVer, pushPkg)}'>推送</button>
       </div>
       <div id="${did}" class="hidden" data-css="padding:4px 8px 4px 28px">
@@ -1195,7 +1195,7 @@ function dataRenderLeft() {
       treeHtml = buildDataTreeHtml(pt, src.snapshots_map, typeCN, src.ver_type_map || {}, src.name || '', sid);
     }
     const { hasRb, freshness } = dataSourceFlags(src);
-    const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok" data-css="font-size:10px">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn" data-css="font-size:10px">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey" data-css="font-size:10px">沉寂</span>' : ''));
+    const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok badge-xs">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn badge-xs">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey badge-xs">沉寂</span>' : ''));
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
     html += `<div class="card" id="${cardId}" data-css="margin-bottom:10px">
@@ -1638,9 +1638,9 @@ function dataRenderRight(sch, p, info) {
     const isRb = r.status === 'withdrawn';
     const rowClass = isRb ? 'rollback' : '';
     let urgencyBadge = '';
-    if (r.urgency === 'critical') urgencyBadge = '<span class="badge badge-err" data-css="font-size:10px">🔴 critical</span>';
-    else if (r.urgency === 'high') urgencyBadge = '<span class="badge badge-warn" data-css="font-size:10px">⚠️ high</span>';
-    else if (r.urgency === 'normal') urgencyBadge = '<span class="badge badge-ok" data-css="font-size:10px">ℹ️ normal</span>';
+    if (r.urgency === 'critical') urgencyBadge = '<span class="badge badge-err badge-xs">🔴 critical</span>';
+    else if (r.urgency === 'high') urgencyBadge = '<span class="badge badge-warn badge-xs">⚠️ high</span>';
+    else if (r.urgency === 'normal') urgencyBadge = '<span class="badge badge-ok badge-xs">ℹ️ normal</span>';
     const rid = 'fr_' + r.id;
     html += `<div class="feed-row ${rowClass}" id="${rid}" data-sid="${escHtml(r._sid)}" data-id="${r.id}" data-snap-id="${r.id}">
   <div class="feed-cell feed-arrow" data-css="width:28px;flex-shrink:0" data-on-click="dataRightToggleRow" data-args='${_dataArgs(rid)}'>▶</div>
@@ -2186,7 +2186,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
     const hasCritical = verSnaps.some(s => s.urgency === 'critical' && s.status === 'active');
 
     const verFlags = [];
-    if (hasCritical) verFlags.push('<span class="badge badge-err" data-css="font-size:10px">🔴critical</span>');
+    if (hasCritical) verFlags.push('<span class="badge badge-err badge-xs">🔴critical</span>');
     if (hasRb) verFlags.push('<span data-css="color:var(--danger);font-size:11px">含撤回</span>');
     if (hasNew) verFlags.push('<span data-css="color:var(--primary);font-size:11px">有未推送</span>');
 
@@ -2232,7 +2232,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
           <span class="data-type-label">${typeLabel}</span>
           <span class="mono" data-css="color:var(--primary);font-size:12px">${escHtml((latest.file_name || '').substring(0, 35))}</span>
           <span data-css="color:var(--muted);font-size:11px">${fmtTZ(latest.published_at)}</span>
-          <span class="badge ${urg}" data-css="font-size:10px">${latest.urgency || ''}</span>
+          <span class="badge ${urg} badge-xs">${latest.urgency || ''}</span>
           ${latest.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)" title="已推送">✅</span>' :
             (latest.status === 'active' ? '<span data-css="font-size:11px;color:var(--muted)" title="未推送">○</span>' : '')}
           <button class="btn btn-xs btn-soft-success" data-css="margin-left:auto" data-on-click="showPushModal" data-stop data-args='${_dataArgs(latest.id, src.name, pushVer, pushPkg)}'>推送</button>
@@ -2246,7 +2246,7 @@ async function dataShowDrill(sid, url, verHint, pkgHint) {
             return `<div class="data-hist-row ${isRb2 ? 'data-type-rollback' : ''}" data-on-click="_toggleClass" data-args='${_dataArgs('data-hist-expanded')}'>
               <span data-css="color:var(--muted);font-size:11px;width:130px;flex-shrink:0">${fmtTZ(s.published_at, true)}</span>
               <span class="mono" data-css="color:var(--primary);font-size:12px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escHtml((s.file_name || '').substring(0, 30))}</span>
-              <span class="badge ${urg2}" data-css="font-size:10px">${escHtml(s.urgency || '')}</span>
+              <span class="badge ${urg2} badge-xs">${escHtml(s.urgency || '')}</span>
               ${s.last_delivered_at ? '<span data-css="font-size:11px;color:var(--success)">✅</span>' : '<span data-css="font-size:11px;color:var(--muted)">○</span>'}
               <button class="btn btn-xs btn-soft-success" data-css="margin-left:4px" data-on-click="showPushModal" data-stop data-args='${_dataArgs(s.id, src.name, pushVer, pushPkg)}'>推送</button>
               <div class="data-snap-detail hidden">${dataSnapDetailHtml(s, MAP)}</div>

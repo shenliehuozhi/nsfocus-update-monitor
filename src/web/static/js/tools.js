@@ -233,7 +233,7 @@ async function toolDiffOpenPicker(expectedKind){
       // sid 用独立 namespace 避免跟正常采集数据页冲突; snapshotsMap 传空 (DIFF 不需要快照)
       treeHtml = buildDataTreeHtml({paths: ruleLibPaths}, {}, typeCN, {}, '', `${rdpKind}_${idx}`);
     }
-    return `<div class="rd-picker-product" id="${cardId}" data-css="border-bottom:1px solid var(--gray-bg)">
+    return `<div class="rd-picker-product" id="${cardId}">
       <div class="rd-picker-prod-hd" data-on-click="toolDiffToggleProduct" data-args='${_dataArgs('$el')}'>
         <span class="rd-picker-arrow">▶</span>
         <span>${escHtml(p.name)}</span>

@@ -428,6 +428,27 @@ tr[data-sid]{cursor:pointer}
   .obs-kv>b{text-align:left}
 }
 
+/* ── 弹窗 / 表单通用组件（收敛自 data-css）──────────────────── */
+.modal-overlay{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center}
+.modal-card-sm{width:380px;max-width:90vw}
+.modal-card-md{width:480px;max-width:92vw}
+.modal-card-scroll{width:480px;max-height:90vh;overflow-y:auto}
+.modal-close{float:right;cursor:pointer;color:var(--gray-muted);font-size:18px;line-height:1}
+.icon-btn{margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px}
+.modal-actions{border-top:1px solid var(--gray-border);padding-top:12px;display:flex;justify-content:flex-end;gap:8px}
+.modal-form-actions{display:flex;gap:8px;margin-top:16px}
+.modal-ft{display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--gray-border)}
+label.cfg-event-label{display:inline-flex;align-items:center;gap:4px;font-size:12px}
+.badge-xs{font-size:10px}
+.about-body{font-size:13px}
+.about-loading{color:var(--gray-muted);text-align:center;padding:24px}
+.about-error{color:var(--danger);padding:12px}
+.about-tip{margin-top:12px;padding:8px 10px;background:var(--gray-bg);border-radius:6px;font-size:11px;color:var(--gray-muted)}
+.about-kv{width:100%;border-collapse:collapse}
+.about-kv td{padding:6px 8px}
+.about-kv .about-kv-k{color:var(--gray-muted);white-space:nowrap;vertical-align:top;width:100px}
+.about-kv .about-kv-v{font-family:monospace;font-size:12px;word-break:break-all}
+
 /* 原来写在内联 onmouseenter/onmouseleave 的 hover 效果（CSP 下内联事件已禁用） */
 .menu-item:hover{background:#334155}
 .hover-primary:hover{background:var(--primary)!important;color:#fff!important}

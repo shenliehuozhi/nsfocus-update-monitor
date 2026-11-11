@@ -322,12 +322,12 @@ async function settings(){
         <div class="cfg-row">
           <div class="form-group"><label>事件类型</label>
             <div data-css="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;white-space:nowrap">
-              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="push_summary" ${(cfg.event_types||[]).includes('push_summary')?'checked':''}> 推送汇总</label>
-              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
-              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
-              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
-              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="channel_error" ${(cfg.event_types||[]).includes('channel_error')?'checked':''}> 渠道体检失败</label>
-              <label data-css="display:inline-flex;align-items:center;gap:4px;font-size:12px"><input type="checkbox" class="cfg-event-type" value="delivery_error" ${(cfg.event_types||[]).includes('delivery_error')?'checked':''}> 投递终止</label>
+              <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="push_summary" ${(cfg.event_types||[]).includes('push_summary')?'checked':''}> 推送汇总</label>
+              <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="collection_summary" ${(cfg.event_types||[]).includes('collection_summary')?'checked':''}> 采集完成</label>
+              <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="log_error" ${(cfg.event_types||[]).includes('log_error')?'checked':''}> 日志异常</label>
+              <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="session_error" ${(cfg.event_types||[]).includes('session_error')?'checked':''}> Session异常</label>
+              <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="channel_error" ${(cfg.event_types||[]).includes('channel_error')?'checked':''}> 渠道体检失败</label>
+              <label class="cfg-event-label"><input type="checkbox" class="cfg-event-type" value="delivery_error" ${(cfg.event_types||[]).includes('delivery_error')?'checked':''}> 投递终止</label>
             </div>
             <p class="cfg-hint">推送汇总合并本 cycle 所有推送成功/失败详情(单条不再发);采集完成=cycle 末汇总;空=全部启用</p>
           </div>
@@ -729,7 +729,7 @@ function closeModal(id){
   if(b)b.remove();
 }
 function modalBody(id,h){const b=document.getElementById(id+'-box');if(b)b.innerHTML=h;}
-function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft" data-css="display:flex;gap:8px;padding:12px 16px;border-top:1px solid var(--gray-border)">${btns}</div>`);}}
+function modalFooter(id,btns){const b=document.getElementById(id+'-box');if(b){const existing=b.querySelector('.modal-ft');if(existing)existing.remove();b.insertAdjacentHTML('beforeend',`<div class="modal-ft">${btns}</div>`);}}
 
 function _hlthColor(s){return{'正常':'var(--success-text)','异常':'var(--danger)','未知':'var(--gray-muted)'}[s]||'var(--gray-muted)';}
 function _hlthLabel(s){return{'ok':'正常','error':'异常','unknown':'未知'}[s]||'未知';}

@@ -562,7 +562,7 @@ function editPkgType(id){
       </div>
       ${rulesWarning}
       ${pathTreeHtml}
-      <div data-css="display:flex;gap:8px;margin-top:16px">
+      <div class="modal-form-actions">
         <button class="btn btn-primary" data-on-click="confirmPkgTypeChange" data-args='${_dataArgs(id, 'apply')}'>✅ 采纳变化</button>
         <button class="btn" data-on-click="confirmPkgTypeChange" data-args='${_dataArgs(id, 'keep')}'>保留原样</button>
         <button class="btn" data-css="margin-left:auto" data-on-click="closeModal" data-args='${_dataArgs('pkgtype')}'>取消</button>
@@ -610,7 +610,7 @@ function editPkgType(id){
     <div data-css="border:1px solid var(--gray-border);border-radius:8px;max-height:320px;overflow-y:auto;padding:8px 4px">
       ${treeHtml}
     </div>
-    <div data-css="display:flex;gap:8px;margin-top:16px">
+    <div class="modal-form-actions">
       <button class="btn btn-primary" data-on-click="savePkgType" data-args='${_dataArgs(id)}'>💾 保存</button>
       <button class="btn" data-on-click="closeModal" data-args='${_dataArgs('pkgtype')}'>取消</button>
     </div>

@@ -151,7 +151,7 @@ function openAddSesModal(){
   m.id='addSesModal';
   m.innerHTML=`<div data-css="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center" data-on-click="_removeSelf" data-self>
     <div class="card" data-css="width:420px" >
-      <div class="card-hd">添加 Session <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div>
+      <div class="card-hd">添加 Session <button data-on-click="_removeClosestId" class="icon-btn">×</button></div>
       <div class="card-bd" data-css="padding:16px">
         <div data-css="margin-bottom:12px">
           <div data-css="font-size:11px;color:var(--muted);margin-bottom:4px">PHPSESSID <span data-css="color:#d97706">★ 必填</span></div>
@@ -448,7 +448,7 @@ function openChModal(id){
   modal.id='chModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" data-css="width:480px;max-height:90vh;overflow-y:auto" ><div class="card-hd">${title} <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px">${formHtml}<div data-css="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" data-css="flex:1" data-on-click="saveCh">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chModalWrap')}'>取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card modal-card-scroll"><div class="card-hd">${title} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd" data-css="padding:16px">${formHtml}<div class="modal-form-actions"><button class="btn btn-primary" data-css="flex:1" data-on-click="saveCh">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   // 初始化"当前选中"的 chip 显示(无 id 时默认 wecom,有 id 时由 if 分支处理)
   if(!id){selectChType('wecom',false);}
@@ -638,7 +638,7 @@ function openCModal(id,n,co,em,ph,pr,attMb){
   modal.id='cModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" data-css="width:480px;max-height:90vh;overflow-y:auto" ><div class="card-hd">${id?'编辑客户':'添加客户'} <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span data-css="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" data-on-click="addCProd">+ 添加产品</button></div><div data-css="display:flex;gap:8px;margin-top:16px"><button class="btn btn-primary" data-css="flex:1" data-on-click="saveC">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('cModalWrap')}'>取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card modal-card-scroll"><div class="card-hd">${id?'编辑客户':'添加客户'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd" data-css="padding:16px"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span data-css="font-weight:400;color:var(--muted);font-size:11px">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" data-on-click="addCProd">+ 添加产品</button></div><div class="modal-form-actions"><button class="btn btn-primary" data-css="flex:1" data-on-click="saveC">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('cModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   document.getElementById('cid').value=id||'';
   document.getElementById('cnm').value=n||'';
@@ -896,7 +896,7 @@ async function openChainSelectorModal(existingChains) {
   modal.innerHTML = `
   <div class="card" data-css="width:860px;max-height:90vh;display:flex;flex-direction:column" >
     <div class="card-hd">选择订阅路径 <span data-css="font-size:12px;color:var(--muted);font-weight:400;margin-left:8px">点击路径节点添加到右侧列表</span>
-      <button data-on-click="_removeClosest" data-args='${_dataArgs('#chainSelModal')}' data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button>
+      <button data-on-click="_removeClosest" data-args='${_dataArgs('#chainSelModal')}' class="icon-btn">×</button>
     </div>
     <div data-css="display:flex;flex:1;min-height:0;overflow:hidden;border-top:1px solid var(--border)">
       <div id="chainSelTree" data-css="flex:1;overflow-y:auto;padding:12px;border-right:1px solid var(--border);max-height:70vh">
@@ -1351,7 +1351,7 @@ function openChanSelModal(filterType){
   modal.id='chanSelModal';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" data-css="width:360px" ><div class="card-hd">${headerLabel} <button data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}' data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px"><div class="form-group"><label>渠道</label><select class="dd" id="newChanSel" data-css="width:100%">${opts}</select></div><div data-css="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" data-css="flex:1" data-on-click="_addSelectedChannel">添加</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}'>取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card" data-css="width:360px" ><div class="card-hd">${headerLabel} <button data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}' class="icon-btn">×</button></div><div class="card-bd" data-css="padding:16px"><div class="form-group"><label>渠道</label><select class="dd" id="newChanSel" data-css="width:100%">${opts}</select></div><div data-css="display:flex;gap:8px;margin-top:12px"><button class="btn btn-primary" data-css="flex:1" data-on-click="_addSelectedChannel">添加</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
 }
 
@@ -1391,7 +1391,7 @@ async function openRModal(id){
   modal.id='rModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card" data-css="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto" ><div class="card-hd">${id?'编辑规则':'创建规则'} <button data-on-click="_removeClosestId" data-css="margin-left:auto;background:none;border:none;font-size:18px;cursor:pointer;padding:0 4px">×</button></div><div class="card-bd" data-css="padding:16px"><input type="hidden" id="rid">
+  modal.innerHTML=`<div class="card" data-css="width:760px;max-width:96vw;max-height:92vh;overflow-y:auto" ><div class="card-hd">${id?'编辑规则':'创建规则'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd" data-css="padding:16px"><input type="hidden" id="rid">
     <div class="form-section"><div class="form-section-title">基本信息</div>
     <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
     <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" data-on-change="onCustChange" required><option value="">请选择客户</option>${custOpts}</select></div>

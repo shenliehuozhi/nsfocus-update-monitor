@@ -222,7 +222,7 @@ async function dashboard(range){
         ${h.rate_limits?.bans&&h.rate_limits.bans.length>0?`<div data-css="min-width:130px">
           <div data-css="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;margin-bottom:4px">限流</div>
           <div data-css="display:flex;flex-direction:column;gap:2px;max-height:60px;overflow-y:auto">
-            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err" data-css="font-size:10px">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
+            ${h.rate_limits.bans.slice(0,3).map(b=>`<span class="badge badge-err badge-xs">🔒 ${b.key} (${b.remaining_seconds}s)</span>`).join('')}
           </div>
         </div>`:''}
       </div>
@@ -588,7 +588,7 @@ function openEventsCenterModal(){
     m = document.createElement('div');
     m.id = 'eventsCenterModal';
     m.innerHTML = `
-      <div class="modal-overlay" data-css="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center" data-on-click="closeEventsCenterModal" data-self>
+      <div class="modal-overlay" data-on-click="closeEventsCenterModal" data-self>
         <div class="card" data-css="width:960px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column">
           <div class="card-hd" data-css="display:flex;align-items:center">
             <span data-css="color:var(--danger)">🔔 事件中心</span>
