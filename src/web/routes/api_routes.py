@@ -1206,6 +1206,17 @@ bp_latest = Blueprint('latest', __name__, url_prefix='/api/latest')
 _latest_snapshots_cache = DBStampCache()
 
 
+def _latest_json_response(body, stamp):
+    resp = current_app.response_class(body, content_type='application/json; charset=utf-8')
+    etag = DBStampCache.etag(stamp)
+    if etag:
+        resp.set_etag(etag)
+        # Store the body, but always revalidate: the stamp ETag changes on any
+        # write, so a 304 is only returned while the data is truly unchanged.
+        resp.headers['Cache-Control'] = 'private, no-cache'
+    return resp
+
+
 @bp_latest.route('/snapshots', methods=['GET'])
 @require_auth
 def get_latest_snapshots():
@@ -1221,9 +1232,15 @@ def get_latest_snapshots():
     from src.models.snapshot import list_sources
 
     stamp = DBStampCache.stamp(_db.DB_PATH)
+    etag = DBStampCache.etag(stamp)
+    if etag and request.if_none_match.contains(etag):
+        resp = current_app.response_class(status=304)
+        resp.set_etag(etag)
+        resp.headers['Cache-Control'] = 'private, no-cache'
+        return resp
     cached = _latest_snapshots_cache.get(stamp)
     if cached is not None:
-        return current_app.response_class(cached, content_type='application/json; charset=utf-8')
+        return _latest_json_response(cached, stamp)
 
     # 一次返回所有状态(active/superseded/withdrawn),前端按 status 给最新包/撤回/替代打 badge
     status_filter = "status IN ('active', 'superseded', 'withdrawn')"
@@ -1281,7 +1298,11 @@ def get_latest_snapshots():
         }
 
     if not source_map:
-        return jsonify({'code': 0, 'data': {}})
+        body = current_app.json.dumps(
+            {'code': 0, 'data': {}}, ensure_ascii=False, separators=(',', ':')
+        ) + '\n'
+        _latest_snapshots_cache.put(stamp, body)
+        return _latest_json_response(body, stamp)
 
     # Get all snapshots for active sources, with last delivery time
     source_ids = list(source_map.keys())
@@ -1338,7 +1359,7 @@ def get_latest_snapshots():
         {'code': 0, 'data': source_map}, ensure_ascii=False, separators=(',', ':')
     ) + '\n'
     _latest_snapshots_cache.put(stamp, body)
-    return current_app.response_class(body, content_type='application/json; charset=utf-8')
+    return _latest_json_response(body, stamp)
 
 
 # ── Snapshot Search (dedicated endpoint for full-text incl. description) ──

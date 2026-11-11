@@ -24,6 +24,13 @@ class DBStampCache:
             return None
         return (st.st_mtime_ns, st.st_size, st.st_ino)
 
+    @staticmethod
+    def etag(stamp) -> str | None:
+        """Strong validator for conditional GET; changes with every DB write."""
+        if stamp is None:
+            return None
+        return '%d-%d-%d' % stamp
+
     def get(self, stamp):
         if stamp is None:
             return None
