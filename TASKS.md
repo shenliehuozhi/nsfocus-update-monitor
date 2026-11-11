@@ -6,7 +6,8 @@
 
 ## 已完成（前端技术债收口）
 
-- [x] **前端拆分**：`index.html` 9899 → 63 行，CSS/JS 全部落到 `src/web/static/`，11 个经典脚本无构建加载
+- [x] **前端拆分**：`index.html` 9899 → 63 行，CSS/JS 全部落到 `src/web/static/`，12 个经典脚本无构建加载
+- [x] **data.js 拆分（2026-11-11）**：`data.js` 2697 行逼近 3000 行门禁，把推送弹窗整块（`manualPush` / `showPushModal` / 收件人选择 / `confirmPush` / 结果提示 / `showRichToast` / `startBanCountdown` / `resendTargeted`，377 行）移到新脚本 `data_push.js`，加载顺序 `core → dashboard → data → data_push → pages → …`；`data.js` 降至 2321 行，纯搬移无逻辑改动
 - [x] **事件委托替代内联处理器**：282 处 `on*="…"` 清零；`data-on-click/change/input/keydown` + `data-args`（`_dataArgs` 统一转义）；`data-stop/self/key/prevent` 语义保留
 - [x] **CSP 上线**（2026-11-11 两次重启后均已验证）：
   `script-src 'self'` / `style-src 'self'` / `object-src 'none'` / `base-uri 'self'` / `form-action 'self'` / `frame-ancestors 'none'` / `img-src 'self' data:` / `connect-src 'self'`
@@ -26,9 +27,10 @@
 
 ## 待排期
 
+- [ ] **服务 stderr 日志轮转**：systemd `StandardError=append:logs/service_error.log`（以及 `service.log`）没有轮转，console handler 把每条 INFO 都写一份，5 个月累积 390M。给 `logs/*.log` 加 logrotate（daily / 50M / rotate 7 / compress），或把生产环境 console handler 级别提到 WARNING
 - [ ] **语义化 CSS 重构**：把 1114 处 `data-css` 逐步收敛为组件/工具类（门禁会卡住增长），全部清空后删除 `_applyDataCss` 过渡层与 `data-css` 机制
 - [ ] **ESLint / Prettier + 浏览器 e2e**：目前只有 esprima/`node --check` 语法门禁，没有 lint 与真实浏览器回归
-- [ ] **data.js 拆分**：接近 3000 行门禁上限；顺带做静态资源版本化（缓存击穿）与 ESM 迁移
+- [ ] **静态资源版本化与 ESM 迁移**：给 `index.html` 的 css/js 加内容哈希或版本参数（当前 `no-cache` 靠每次回源，缓存击穿风险仍在）；后续再评估经典脚本 → ESM
 - [ ] **Prometheus 对接**：用户明确暂缓（`/api/metrics` 与静态令牌已就绪，缺抓取配置与告警规则）
 
 ## 环境 / 运维备注
@@ -38,6 +40,7 @@
   ```bash
   cd /root/nsfocus-monitor && TMPDIR=/tmp/pytest-of-root python3 -m pytest -q
   ```
-- 磁盘曾到 99%：已清理自己的 pytest 临时目录（279M）并把 journal 压到 500M；当前约 2G 可用，仍需关注
+- 磁盘 2026-11-11 再次告急（95%）：清理 `logs/service_error.log` 390M（5 月至今的 INFO，无轮转，保留末尾 2000 行到 `.recent`）、`journalctl --rotate && --vacuum-size=200M`（480M → 120M）、uv/pip 缓存约 1.1G；当前 2.9G 可用（93%）。`/root/files`（9.8G）与 `/root/.hermes`（6.1G）为其他用途，未动
+- **不要在生产机跑全量 pytest**：机器仅 1.6G 内存、无 swap，与 Qoder runtime（约 700M）并跑会触发整机卡死/重启；全量测试留给 CI 或空闲时段，日常只跑受影响的子集
 - 测试数据一律走 `MONITOR_DATA_DIR` / `MONITOR_LOG_DIR` 隔离，不碰生产 `data/nsfocus_monitor.db`
 - 重启生产服务、`git push` 均需用户明确同意

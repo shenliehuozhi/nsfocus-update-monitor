@@ -22,7 +22,7 @@ import pytest
 from tests.frontend_source import INDEX_HTML, WEB, js_source, script_paths
 
 EXPECTED_ORDER = [
-    'core.js', 'dashboard.js', 'data.js', 'pages.js', 'history.js',
+    'core.js', 'dashboard.js', 'data.js', 'data_push.js', 'pages.js', 'history.js',
     'products.js', 'collection.js', 'observability.js', 'account.js',
     'bootstrap.js', 'tools.js',
 ]
