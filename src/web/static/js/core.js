@@ -55,27 +55,14 @@ function escHtml(s){
   return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
-// 历史模板的内联样式统一改写为 data-css：CSP 的 style-src 不放行内联 style 属性，
-// 而 CSSOM（el.style）不受限制。节点插入后由 MutationObserver 应用，视觉与语义不变。
-// 新代码请直接写 CSS 类，不要再新增 data-css。
-function _applyDataCss(root){
-  if(!root||root.nodeType!==1&&root.nodeType!==9&&root.nodeType!==11)return;
-  const els=root.nodeType===1&&root.hasAttribute('data-css')?[root]:[];
-  if(root.querySelectorAll)root.querySelectorAll('[data-css]').forEach(el=>els.push(el));
-  els.forEach(el=>{
-    const css=el.getAttribute('data-css');
-    el.removeAttribute('data-css');
-    // data-css 在前、脚本已设置的样式在后，保持「脚本覆盖模板」的原有优先级
-    if(css)el.style.cssText=css+';'+el.style.cssText;
+// 动态进度条宽度: CSP 的 style-src 不放行内联 style 属性，CSSOM(el.style)不受限制。
+// 模板只写 data-pct="42"，渲染完成后调用本函数一次性写入宽度。
+function _applyPctBars(root){
+  if(!root||!root.querySelectorAll)return;
+  root.querySelectorAll('[data-pct]').forEach(el=>{
+    el.style.width=el.getAttribute('data-pct')+'%';
   });
 }
-(function(){
-  if(typeof MutationObserver==='undefined'){_applyDataCss(document);return;}
-  new MutationObserver(ms=>{
-    ms.forEach(m=>m.addedNodes.forEach(n=>_applyDataCss(n)));
-  }).observe(document.documentElement,{childList:true,subtree:true});
-  _applyDataCss(document);
-})();
 
 // data-args 的 JSON 必须走 HTML 属性转义（escHtml），不能用 escAttr：
 // escAttr 会给 ' 和 \\ 加反斜杠，破坏 JSON.parse。

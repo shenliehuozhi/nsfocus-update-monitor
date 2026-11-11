@@ -1,4 +1,4 @@
-"""CSP 响应头：脚本与样式都必须仅同源（内联处理器改 data-on-*，内联样式改 data-css）。"""
+"""CSP 响应头：脚本与样式都必须仅同源（内联处理器改 data-on-*，动态宽度走 CSSOM）。"""
 from flask import Flask
 
 from src.app import CSP_POLICY, apply_security_headers

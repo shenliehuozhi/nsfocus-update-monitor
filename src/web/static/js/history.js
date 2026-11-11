@@ -438,7 +438,7 @@ function _collectBannerHtml(state) {
         <span>${escHtml(phaseText)} (${state.products_done || 0}/${state.products_total || 0})</span>
       </div>
       <div class="banner-bar-3">
-        <div id="collect-banner-bar" class="banner-bar-fill-white" data-css="width:${pct}%"></div>
+        <div id="collect-banner-bar" class="banner-bar-fill-white" data-pct="${pct}"></div>
       </div>
     </div>
     <div class="banner-chip pointer" data-on-click="_openCollectLog" data-stop>📋 日志</div>
@@ -465,6 +465,7 @@ function _showCollectBanner(state) {
   // 根据 phase 切换背景色 (完成 → 绿色)
   banner.classList.toggle('done', state.phase === 'done');
   banner.innerHTML = _collectBannerHtml(state);
+  _applyPctBars(banner);
 }
 
 function _hideCollectBanner() {
@@ -500,7 +501,7 @@ function _showDiscBanner(state){
       <div class="fw600-mb4">🔍 自动发现任务进行中</div>
       <div class="opacity-90 fs12" id="disc-banner-phase">${formatDiscPhase(state)}</div>
       <div class="banner-bar-3-tight">
-        <div id="disc-banner-bar" class="banner-bar-fill-white" data-css="width:${pct}%"></div>
+        <div id="disc-banner-bar" class="banner-bar-fill-white" data-pct="${pct}"></div>
       </div>
     </div>
     <div class="banner-chip" data-on-click="_showDiscLogFloat" data-stop>📋 日志</div>
@@ -509,6 +510,7 @@ function _showDiscBanner(state){
     <div class="banner-close" data-on-click="_hideDiscBanner" data-stop title="关闭">×</div>`;
   banner.onclick=_reopenDiscModal;
   document.body.appendChild(banner);
+  _applyPctBars(banner);
 
   // ETA tracking — single timestamp shared with polling closure
   window._discStartTs = Date.now();

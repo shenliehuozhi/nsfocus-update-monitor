@@ -45,6 +45,7 @@ async function obsRefresh(manual){
     return;
   }
   root.innerHTML = _obsRender(r.data);
+  _applyPctBars(root);
   const meta = document.getElementById('obsMeta');
   if (meta) meta.textContent = '更新于 ' + _obsTime(r.data.generated_at) + ' · 30 秒自动刷新';
   if (manual) toast('观测数据已刷新');
@@ -267,7 +268,7 @@ function _obsRateCell(rate){
   if (rate === null || rate === undefined) return '<span class="obs-muted">—</span>';
   const pct = Math.max(0, Math.min(100, Math.round(Number(rate) * 100)));
   const cls = pct >= 95 ? '' : (pct >= 80 ? 'warn' : 'bad');
-  return `<div class="obs-rate"><span>${pct}%</span><div class="obs-bar ${cls}"><i data-css="width:${Math.max(2, pct)}%"></i></div></div>`;
+  return `<div class="obs-rate"><span>${pct}%</span><div class="obs-bar ${cls}"><i data-pct="${Math.max(2, pct)}"></i></div></div>`;
 }
 
 function _obsChannel(type){

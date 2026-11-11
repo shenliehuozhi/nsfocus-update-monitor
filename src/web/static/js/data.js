@@ -154,7 +154,7 @@ function _renderProdDistTable(data){
         <td class="data-stats-td">
           <div class="flex items-center gap6">
             <div class="progress-track">
-              <div class="pal-bar pal-${pi}" data-css="width:${pct}%"></div>
+              <div class="pal-bar pal-${pi}" data-pct="${pct}"></div>
             </div>
             <span class="gray-muted-11 min-w36 ta-right">${pct}%</span>
           </div>
@@ -162,6 +162,7 @@ function _renderProdDistTable(data){
       </tr>`;
     }).join('')+
     '</tbody></table>';
+  _applyPctBars(container);
 }
 
 // 最近更新按 snapshot 聚合: 同一包推给 N 个客户只占一行
@@ -235,7 +236,7 @@ function _renderCustPushTable(items, days){
             ? '<span class="disabled-11">无推送</span>'
             : `<div class="flex items-center gap6">
                 <div class="progress-track">
-                  <div class="pal-bar ${failed>0?'bar-danger':'bar-success'}" data-css="width:${failPct}%"></div>
+                  <div class="pal-bar ${failed>0?'bar-danger':'bar-success'}" data-pct="${failPct}"></div>
                 </div>
                 <span class="gray-muted-11 min-w36 ta-right">${failPct}%</span>
               </div>`}
@@ -243,6 +244,7 @@ function _renderCustPushTable(items, days){
       </tr>`;
     }).join('')+
     '</tbody></table>';
+  _applyPctBars(container);
   // 响应式列宽: 渲染后立刻算 card 实际 content 宽度, 按 35%/15%/50% 分配到 th/td
   // 任意视口下三列都等比例伸缩, th/td 严格对齐
   setTimeout(()=>{

@@ -196,11 +196,11 @@ def test_no_style_property_assignment():
 # 属性名后紧跟 = 与引号；排除 el.style=... 的 CSSOM 赋值（前面有 .）
 INLINE_STYLE = re.compile(r'''(?<![.\w-])style\s*=\s*["']''')
 DATA_CSS = re.compile(r'''\bdata-css\s*=\s*["']''')
-DATA_CSS_MAX = 7  # 只减不增：新代码必须写 CSS 类（剩余仅为动态进度条宽度）
+DATA_CSS_MAX = 0  # 机制已移除：动态宽度用 data-pct + _applyPctBars，新代码写 CSS 类
 
 
 def test_no_inline_style_attributes():
-    """CSP style-src 'self' 会拦截内联 style 属性；历史样式暂存 data-css，由 core.js 应用。"""
+    """CSP style-src 'self' 会拦截内联 style 属性；动态宽度走 CSSOM。"""
     hits = []
     for path in script_paths() + [INDEX_HTML]:
         text = path.read_text(encoding='utf-8')
@@ -218,11 +218,12 @@ def test_data_css_usage_only_shrinks():
     )
 
 
-def test_data_css_applier_present():
+def test_data_css_mechanism_removed():
     source = js_source()
-    assert 'function _applyDataCss(' in source, '缺少 data-css 应用函数'
-    assert "querySelectorAll('[data-css]')" in source
-    assert 'MutationObserver' in source, 'data-css 需要监听动态插入的节点'
+    assert 'data-css' not in source, 'data-css 机制已移除，动态宽度用 data-pct + _applyPctBars'
+    assert '_applyDataCss' not in source, 'data-css 应用器与监听器应已删除'
+    assert 'function _applyPctBars(' in source, '缺少动态宽度应用函数'
+    assert "querySelectorAll('[data-pct]')" in source
 
 
 def test_no_runtime_style_injection():

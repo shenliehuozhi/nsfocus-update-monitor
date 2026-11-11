@@ -58,11 +58,12 @@ function _renderSingleBanner(state){
       <div class="banner-close" id="single-banner-close" title="关闭">×</div>
     </div>
     <div class="banner-bar">
-      <div id="single-banner-bar" class="banner-bar-fill" data-css="width:${pct}%"></div>
+      <div id="single-banner-bar" class="banner-bar-fill" data-pct="${pct}"></div>
     </div>
     <div id="single-banner-latest-wrap" class="single-banner-latest${latestShort?' ':' hidden'}" title="${escHtml(latestClean)}">▶ ${escHtml(latestShort)}</div>
     <div id="single-banner-log" class="single-banner-log hidden"></div>
   `;
+  _applyPctBars(banner);
   // Toggle log viewer
   banner.querySelector('#single-banner-log-btn').onclick=(ev)=>{
     ev.stopPropagation();
@@ -381,7 +382,7 @@ function pollProgress(){
     let html='';
     if(p.phase==='collecting'){
       const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      html+=`<div class="mb12"><div class="progress-8"><div class="progress-8-fill" data-css="width:${pct}%"></div></div><div class="muted-11 mt4 ta-center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
+      html+=`<div class="mb12"><div class="progress-8"><div class="progress-8-fill" data-pct="${pct}"></div></div><div class="muted-11 mt4 ta-center">${p.products_done}/${p.products_total} 产品 (${pct}%)</div></div>`;
       html+=`<div class="fs13 ta-center mb4"><strong>📦 ${p.current_product||'...'}</strong></div>`;
       if(p.current_version)html+=`<div class="muted-11 ta-center">${p.current_version}</div>`;
       html+=`<div class="muted-10 ta-center mt4">已采集 ${p.items_collected||0} 项</div>`;
@@ -402,7 +403,7 @@ function pollProgress(){
       _collectRunning=false;
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
     }
-    if(html)body.innerHTML=html;
+    if(html){body.innerHTML=html;_applyPctBars(body);}
   }).catch(()=>{});
 }
 // ── 全局独立轮询 ──
