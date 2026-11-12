@@ -102,7 +102,8 @@ async function sessions(){
       hbInfo=`<span class="badge badge-${hbColor} pointer" data-on-click="showHbHistory" data-args='${_dataArgs(s.id)}' title="点击查看心跳历史">${s.heartbeat_status}</span>`;
     }
     let hbTime=s.last_heartbeat_at?fmtTZ(s.last_heartbeat_at,true):'—';
-    return `<tr><td>${s.id}</td><td>${sesBadge(s.purpose,s.collect_mode)}</td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td class="fs11">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" data-on-click="validateSes" data-args='${_dataArgs(s.id)}'>验证</button> <button class="btn btn-soft-danger btn-xs" data-on-click="delSes" data-args='${_dataArgs(s.id)}'>删除</button></td></tr>`;
+    const lastCollect=s.status==='active'&&s.purpose==='collect'&&pool.active_collect===1;
+    return `<tr><td>${s.id}</td><td><span class="pointer" data-on-click="editSesType" data-args='${_dataArgs(s.id,s.purpose,s.collect_mode,lastCollect)}' title="点击修改 Session 类型">${sesBadge(s.purpose,s.collect_mode)}</span></td><td><span class="badge badge-${s.status==='active'?'ok':s.status==='expired'?'err':'warn'}">${s.status==='active'?'活跃':s.status==='expired'?'失效':'未知'}</span></td><td>${hbInfo}</td><td>${hbTime}</td><td class="fs11">${s.heartbeat_count||0}次</td><td>${s.last_valid||'—'}</td><td>${s.expires_at||'—'}</td><td><button class="btn btn-xs btn-outline" data-on-click="validateSes" data-args='${_dataArgs(s.id)}'>验证</button> <button class="btn btn-soft-danger btn-xs" data-on-click="delSes" data-args='${_dataArgs(s.id,lastCollect)}'>删除</button></td></tr>`;
   }).join('');
   if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">🔑 Session <span class="muted-12 fw400">活跃 ${pool.active}/${pool.total}${pool.active_but_expired?` <span class="text-danger">⚠️${pool.active_but_expired}个已过期</span>`:''}</span><button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openAddSesModal">+ 添加 Session</button></div><div class="card-bd">
@@ -131,11 +132,19 @@ function _etPurposeChanged(el){
   m.disabled=el.value==='discover';
   if(el.value==='discover')m.value='standard';
 }
-async function _saveSessionEdit(id,mid,p,m){
+async function _saveSessionEdit(id,mid,p,m,lastCollect){
   const newP=document.getElementById('etP').value||p, newM=document.getElementById('etM').value||m;
   _removeById(mid);
-  const r=await api(`/sessions/${id}`,{method:'PATCH',body:JSON.stringify({protocol:newP,mode:newM})});
-  if(r.code===0){toast('已更新');sessions();}else toast(r.message||'失败','error');
+  const warn=()=>confirmAct('把最后一个采集 Session 改为「发现」？', ()=>save(true), '⚠️', '确认修改', true,
+    '<div class="confirm-desc">修改后将没有可用于采集的 Session，定时采集和手动采集都会失败，直到重新添加采集 Session。</div>');
+  const save=async(force)=>{
+    const r=await api(`/sessions/${id}`+(force?'?force=1':''),{method:'PATCH',body:JSON.stringify({purpose:newP,collect_mode:newM})});
+    if(r.code===0){toast('已更新');sessions();return;}
+    if(r.code===40901&&!force){warn();return;}
+    toast(r.message||'失败','error');
+  };
+  if(lastCollect&&newP!=='collect')warn();
+  else await save(false);
 }
 function openAddSesModal(){
   const existing=document.getElementById('addSesModal');
@@ -220,8 +229,18 @@ async function confirmAddSes(){
   }
 }
 async function validateSes(id){const r=await api('/sessions/'+id+'/validate',{method:'POST'});toast(r.code===0?r.message:r.message,r.code===0?'success':'error');sessions();}
-async function delSes(id){await confirmAct('删除此Session？', async ()=>{const r=await api('/sessions/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');sessions();}else toast(r.message,'error');}, '🗑️', '删除');}
-async function editSesType(id,curP,curM){
+async function delSes(id,last){
+  const warn=!!last;
+  const msg=warn?'删除最后一个可用的采集 Session？':'删除此Session？';
+  const body=warn?'<div class="confirm-desc">删除后将没有可用于采集的 Session，定时采集和手动采集都会失败，直到重新添加。确定继续？</div>':'';
+  await confirmAct(msg, async ()=>{
+    const r=await api('/sessions/'+id+(warn?'?force=1':''),{method:'DELETE'});
+    if(r.code===0){toast('已删除');sessions();return;}
+    if(r.code===40901&&!warn){delSes(id,true);return;}
+    toast(r.message||'删除失败','error');
+  }, '🗑️', '删除', warn, body);
+}
+async function editSesType(id,curP,curM,lastCollect){
   const p=curP==='discover'?'discover':'collect';
   const m=curM==='vm'?'vm':'standard';
   const mid='_sesTypeModal';
@@ -244,7 +263,7 @@ async function editSesType(id,curP,curM){
     </div>
     <div class="confirm-btns">
       <button class="confirm-btn-cancel" data-on-click="_removeById" data-args='${_dataArgs(mid)}'>取消</button>
-      <button class="confirm-btn-ok" data-on-click="_saveSessionEdit" data-args='${_dataArgs(id, mid, p, m)}'>确认</button>
+      <button class="confirm-btn-ok" data-on-click="_saveSessionEdit" data-args='${_dataArgs(id, mid, p, m, !!lastCollect)}'>确认</button>
     </div>
   </div>`;
   overlay.addEventListener('click',(e)=>{if(e.target===overlay)overlay.remove();});

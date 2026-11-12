@@ -1,10 +1,14 @@
 # 任务看板
 
-> 更新时间：2026-11-11　｜　全量测试：`547 passed, 8 skipped`（7 个 e2e 需显式环境变量）　｜　ESLint 0 error　｜　生产服务：`active`（127.0.0.1:9999）
+> 更新时间：2026-11-12　｜　全量测试：`547 passed, 8 skipped`（7 个 e2e 需显式环境变量）　｜　ESLint 0 error　｜　生产服务：`active`（127.0.0.1:9999）
 >
 > 规则：每完成/新增任务都更新本文件；命令、验证结果和改动文件写在这里，不依赖聊天记录。
 
 ## 已完成（前端技术债收口）
+
+- [x] **事件与告警并入「事件与日志」入口（2026-11-12）**：主导航「系统日志」改名「事件与日志」，页面内分「🔔 事件与告警」「📋 系统日志」两个标签页，默认事件页。`events_center.js` 抽出 `EVENTS_SCOPE_MODAL`（仪表盘弹窗）/ `EVENTS_SCOPE_PAGE`（页签）双挂载面，工具栏、`_loadEventsPanel`、分页、`eventsAckCurrent` 全部按 scope 复用；事件页支持严重度/时间范围/仅未确认筛选、单条已读、按当前筛选批量确认，仪表盘弹窗行为不变。`logs()` 改为渲染标签页壳，切到系统日志时才加载日志并停止自动刷新。测试：`test_events_center_table.py` 5 例（含菜单改名、双挂载面、筛选接线），前端静态门禁 19 passed 1 skipped，ESLint 0 error；纯静态改动读盘即生效
+- [x] **事件中心 · 批量确认按当前筛选生效（2026-11-12）**：原「一键已读」只按严重度批量标记，忽略时间范围，未选严重度时连带标记 INFO 与全部历史事件。现在按钮改为「批量确认」，`POST /api/system/events/ack-all` 新增 `since_hours`（0=全部时间），SQL 只更新当前严重度 + 时间范围内 `acked_at IS NULL` 的行；前端一次请求提交 `severity` / `since_hours`，确认框显示当前范围（如「近 7 天 · ERROR」）并说明已读与范围外事件不受影响，完成后回到第一页。新增 `tests/test_events_api_filter.py` 3 例（严重度+时间窗、无严重度时间窗、since_hours=0 全部时间）与 `tests/test_events_center_table.py` 静态门禁；受影响子集 48 passed、1 skipped，ESLint 0 error
+- [x] **Session 采集护栏（2026-11-12）**：删除最后一个 `active` + `purpose=collect` 的 Session，或把它改为 `discover` 时，前端弹出警告「删除/修改后将没有可用于采集的 Session，定时/手动采集都会失败」，确认后带 `?force=1` 提交；服务端同样兜底：未带 `force=1` 返回 `409 / code=40901`。`DELETE` / `PATCH` 均校验只能操作当前用户自己的 Session（否则 404）。`GET /api/sessions` 的 `pool_status` 新增 `active_collect`，列表据此标记最后一个采集 Session；点击类型标签即可修改 `purpose` / `collect_mode`，修复前端 PATCH 误传 `protocol/mode`（后端只认 `purpose` / `collect_mode`）导致类型修改从未生效的问题；同时移除列表接口中未使用的 `get_active_sessions()` 解密调用。新增 `tests/test_session_delete_guard.py` 11 例（删除/改类型拦截与强制提交、非最后一个直接操作、只改 collect_mode 放行、失效/discover 不拦截、列表计数、跨用户 404、前端接线静态门禁）
 
 - [x] **汇总模式支持邮箱渠道（2026-11-12）**：`_send_digest_split` 增加 email 分支，收件人按 `rule_channels.customer_emails` → `subscription_rules.customer_emails` → `customers.email` 解析（合并渠道 `to_list`），同收件人组的多邮箱渠道按绑定顺序主备，主渠道失败备用成功后不计入队列重试；汇总 markdown 渲染为 HTML（标题/加粗/链接/代码），邮箱正文通过 `NotificationMessage.description_html` 传给 SMTP 发送，`delivery_log.recipient` 记录收件人。此前邮箱渠道被 skipped（"邮件渠道不支持汇总消息"），只绑邮箱的规则重试耗尽后一封不发。新增邮箱汇总 3 例 + 系统通知 HTML 1 例，受影响子集 51 passed
 - [x] **订阅规则 · 通知对象重构（2026-11-12）**：第 4 步由「通知渠道」改为「通知对象」，机器人渠道与邮箱都通过 `+` 逐个添加作为对象：机器人从候选菜单添加后以「名称/类型 + 模板下拉 + ×」行展示；邮箱拆成「收件人 + 发件渠道」，收件人用 `+`（或 Enter）逐个添加，发件渠道也用 `+` 添加并按选择顺序主备；发件地址取渠道 `smtp_user`，nsfocus.com / nsfocus.net 渠道标记「优先」且新增时排在非 nsfocus 渠道之前；多个邮箱渠道共享收件人与附件大小，保存写入各自 `rule_channels` 行；新增保存校验与摘要「对象」项。`tests/test_rule_wizard_ui.py` 6 例，无头 Chromium 32 项检查全过

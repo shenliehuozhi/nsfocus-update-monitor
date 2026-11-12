@@ -1,10 +1,76 @@
 // 经典脚本，无构建；事件中心弹窗（仪表盘「查看全部」入口）
 // 数据源 /api/system/events,message 字段前端 JSON.parse 后渲染
 const _EVENTS_PER_PAGE = 50;
+// 事件列表有两个挂载面：仪表盘弹窗 + 「事件与日志」页签
+const EVENTS_SCOPE_MODAL = 'eventsCenterModal';
+const EVENTS_SCOPE_PAGE = 'eventsPage';
 
-function _ackEventAndReload(id){
+function _eventsState(scope){
+  const key = scope === EVENTS_SCOPE_PAGE ? 'eventsPageState' : 'eventsCenterState';
+  if(!window[key]) window[key] = { offset: 0, total: 0, loadedOnce: false };
+  return window[key];
+}
+
+function _evtEl(scope, suffix){
+  return document.getElementById(scope + suffix);
+}
+
+function _eventsToolbarHtml(scope){
+  return `<div class="evt-tools-bar">
+    <span class="text-muted">严重度</span>
+    <select id="${scope}Sev" class="sel-sm dd" data-on-change="eventsGoPage" data-args='${_dataArgs(scope, 0)}'>
+      <option value="">全部</option>
+      <option value="CRITICAL">🔴 CRITICAL</option>
+      <option value="ERROR">🟠 ERROR</option>
+      <option value="WARNING">⚠️ WARNING</option>
+      <option value="INFO">ℹ️ INFO</option>
+    </select>
+    <span class="text-muted">时间范围</span>
+    <select id="${scope}Hours" class="sel-sm dd" data-on-change="eventsGoPage" data-args='${_dataArgs(scope, 0)}'>
+      <option value="6">近 6 小时</option>
+      <option value="24">近 24 小时</option>
+      <option value="168" selected>近 7 天</option>
+      <option value="720">近 30 天</option>
+      <option value="2160">近 90 天</option>
+      <option value="0">全部时间</option>
+    </select>
+    <label class="flex items-center gap4 text-muted pointer">
+      <input type="checkbox" id="${scope}Unacked" data-on-change="eventsGoPage" data-args='${_dataArgs(scope, 0)}'>
+      仅未确认
+    </label>
+    <button class="btn btn-xs btn-outline ml-auto" data-on-click="eventsAckCurrent" data-args='${_dataArgs(scope)}' title="按当前严重度和时间范围，把未确认事件批量标记为已读">批量确认</button>
+    <button class="btn btn-xs btn-outline" data-on-click="eventsReload" data-args='${_dataArgs(scope)}'>🔄 刷新</button>
+  </div>`;
+}
+
+function _eventsFooterHtml(scope){
+  return `<div class="card-bd evt-foot">
+    <span class="text-muted" id="${scope}PagerInfo"></span>
+    <div class="ml-auto flex items-center gap6">
+      <button id="${scope}PrevBtn" class="btn btn-xs btn-outline" data-on-click="eventsPrevPage" data-args='${_dataArgs(scope)}'>← 上一页</button>
+      <span class="muted-11 min-w60 ta-center" id="${scope}PageInfo"></span>
+      <button id="${scope}NextBtn" class="btn btn-xs btn-outline" data-on-click="eventsNextPage" data-args='${_dataArgs(scope)}'>下一页 →</button>
+    </div>
+  </div>`;
+}
+
+function eventsPageHtml(){
+  return `<div class="card">
+    <div class="card-hd">🔔 事件与告警
+      <span class="ml8 muted-11-400" id="eventsPageCount"></span>
+      <span class="ml-auto muted-12 fw400">未读口径：CRITICAL / ERROR / WARNING</span>
+    </div>
+    ${_eventsToolbarHtml(EVENTS_SCOPE_PAGE)}
+    <div class="card-bd p0" id="eventsPageBody">
+      <div class="p40 ta-center muted-13">加载中…</div>
+    </div>
+    ${_eventsFooterHtml(EVENTS_SCOPE_PAGE)}
+  </div>`;
+}
+
+function _ackEventAndReload(id, scope){
   api('/system/events/' + id + '/ack', { method: 'POST' })
-    .then(() => loadEventsCenterModal())
+    .then(() => _loadEventsPanel(scope || EVENTS_SCOPE_MODAL))
     .catch(() => toast('标记失败', 'error'));
 }
 
@@ -55,42 +121,11 @@ function openEventsCenterModal(severity, hours, unacked){
             <span class="ml8 muted-11-400" id="eventsCenterModalCount"></span>
             <span class="ml-auto pointer text-gray-muted fs18 lh1 px4" data-on-click="closeEventsCenterModal">×</span>
           </div>
-          <div class="evt-tools-bar">
-            <span class="text-muted">严重度</span>
-            <select id="eventsCenterModalSev" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
-              <option value="">全部</option>
-              <option value="CRITICAL">🔴 CRITICAL</option>
-              <option value="ERROR">🟠 ERROR</option>
-              <option value="WARNING">⚠️ WARNING</option>
-              <option value="INFO">ℹ️ INFO</option>
-            </select>
-            <span class="text-muted">时间范围</span>
-            <select id="eventsCenterModalHours" class="sel-sm dd" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
-              <option value="6">近 6 小时</option>
-              <option value="24">近 24 小时</option>
-              <option value="168" selected>近 7 天</option>
-              <option value="720">近 30 天</option>
-              <option value="2160">近 90 天</option>
-              <option value="0">全部时间</option>
-            </select>
-            <label class="flex items-center gap4 text-muted pointer">
-              <input type="checkbox" id="eventsCenterModalUnacked" data-on-change="eventsCenterGoPage" data-args='${_dataArgs(0)}'>
-              仅未确认
-            </label>
-            <button class="btn btn-xs btn-outline ml-auto" data-on-click="eventsCenterAckCurrent" title="按当前过滤器批量标记为已读;无过滤时标全部 4 个 severity(含 INFO)">一键已读</button>
-            <button class="btn btn-xs btn-outline" data-on-click="loadEventsCenterModal">🔄 刷新</button>
-          </div>
+          ${_eventsToolbarHtml(EVENTS_SCOPE_MODAL)}
           <div class="card-bd flex-1 o-auto p0" id="eventsCenterModalBody">
             <div class="p40 ta-center muted-13">加载中…</div>
           </div>
-          <div class="card-bd evt-foot">
-            <span class="text-muted" id="eventsCenterModalPagerInfo"></span>
-            <div class="ml-auto flex items-center gap6">
-              <button id="eventsCenterModalPrevBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterPrevPage">← 上一页</button>
-              <span class="muted-11 min-w60 ta-center" id="eventsCenterModalPageInfo"></span>
-              <button id="eventsCenterModalNextBtn" class="btn btn-xs btn-outline" data-on-click="eventsCenterNextPage">下一页 →</button>
-            </div>
-          </div>
+          ${_eventsFooterHtml(EVENTS_SCOPE_MODAL)}
           <div class="card-bd evt-foot-end">
             <button class="btn btn-outline" data-on-click="closeEventsCenterModal">关闭</button>
           </div>
@@ -113,13 +148,10 @@ function openEventsCenterModal(severity, hours, unacked){
   }
   hoursEl.value = targetHours;
   unackedEl.checked = !!unacked;
-  eventsCenterState.offset = 0;
+  _eventsState(EVENTS_SCOPE_MODAL).offset = 0;
   loadEventsCenterModal();
   if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(()=>{ if(!document.getElementById('eventsCenterModal').classList.contains('hidden')) loadEventsCenterModal(); }, 30000);
 }
-
-// 分页状态(全局,避免每次重置)
-window.eventsCenterState = window.eventsCenterState || { offset: 0, total: 0, loadedOnce: false };
 
 function closeEventsCenterModal(){
   const m = document.getElementById('eventsCenterModal');
@@ -127,33 +159,44 @@ function closeEventsCenterModal(){
   if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer); window._eventsCenterModalTimer=null;}
 }
 
-function eventsCenterGoPage(offset){
-  eventsCenterState.offset = Math.max(0, offset);
-  loadEventsCenterModal();
+function eventsGoPage(scope, offset){
+  _eventsState(scope).offset = Math.max(0, Number(offset) || 0);
+  _loadEventsPanel(scope);
 }
 
-function eventsCenterPrevPage(){
-  eventsCenterGoPage(eventsCenterState.offset - _EVENTS_PER_PAGE);
+function eventsPrevPage(scope){
+  eventsGoPage(scope, _eventsState(scope).offset - _EVENTS_PER_PAGE);
 }
 
-function eventsCenterNextPage(){
-  if(eventsCenterState.offset + _EVENTS_PER_PAGE < eventsCenterState.total){
-    eventsCenterGoPage(eventsCenterState.offset + _EVENTS_PER_PAGE);
+function eventsNextPage(scope){
+  const st = _eventsState(scope);
+  if(st.offset + _EVENTS_PER_PAGE < st.total){
+    eventsGoPage(scope, st.offset + _EVENTS_PER_PAGE);
   }
 }
 
-async function loadEventsCenterModal(){
-  const body = document.getElementById('eventsCenterModalBody');
-  const countEl = document.getElementById('eventsCenterModalCount');
-  const pagerInfo = document.getElementById('eventsCenterModalPagerInfo');
-  const pageInfo = document.getElementById('eventsCenterModalPageInfo');
-  const prevBtn = document.getElementById('eventsCenterModalPrevBtn');
-  const nextBtn = document.getElementById('eventsCenterModalNextBtn');
+function eventsReload(scope){
+  _loadEventsPanel(scope);
+}
+
+function loadEventsCenterModal(){ return _loadEventsPanel(EVENTS_SCOPE_MODAL); }
+function loadEventsPage(){ return _loadEventsPanel(EVENTS_SCOPE_PAGE); }
+
+async function _loadEventsPanel(scope){
+  const state = _eventsState(scope);
+  const body = _evtEl(scope, 'Body');
+  const countEl = _evtEl(scope, 'Count');
+  const pagerInfo = _evtEl(scope, 'PagerInfo');
+  const pageInfo = _evtEl(scope, 'PageInfo');
+  const prevBtn = _evtEl(scope, 'PrevBtn');
+  const nextBtn = _evtEl(scope, 'NextBtn');
   if(!body) return;
-  const sev = document.getElementById('eventsCenterModalSev').value;
-  const hrs = document.getElementById('eventsCenterModalHours').value || '168';
-  const unackedEl = document.getElementById('eventsCenterModalUnacked');
-  const offset = eventsCenterState.offset || 0;
+  const sevEl = _evtEl(scope, 'Sev');
+  const hrsEl = _evtEl(scope, 'Hours');
+  const unackedEl = _evtEl(scope, 'Unacked');
+  const sev = sevEl ? sevEl.value : '';
+  const hrs = (hrsEl && hrsEl.value) || '168';
+  const offset = state.offset || 0;
   const params = new URLSearchParams({
     limit: String(_EVENTS_PER_PAGE),
     offset: String(offset),
@@ -162,12 +205,12 @@ async function loadEventsCenterModal(){
   if(sev) params.set('severity', sev);
   if(unackedEl && unackedEl.checked) params.set('unacked', '1');
   // 第一次加载才显示"加载中",后续刷新不闪
-  if(!eventsCenterState.loadedOnce){
+  if(!state.loadedOnce){
     body.innerHTML = '<div class="p40 ta-center muted-13">加载中…</div>';
   }
   const r = await api('/system/events?' + params.toString());
-  // DOM 守卫:modal 可能已关闭(避免写已卸载元素)
-  if(document.getElementById('eventsCenterModalBody') !== body) return;
+  // DOM 守卫:挂载面可能已切走(避免写已卸载元素)
+  if(_evtEl(scope, 'Body') !== body) return;
   if(r.code !== 0){
     body.innerHTML = '<div class="p40 ta-center danger-13">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
     return;
@@ -175,7 +218,7 @@ async function loadEventsCenterModal(){
   const data = r.data || {};
   const events = data.events || [];
   const total = data.total || 0;
-  eventsCenterState.total = total;
+  state.total = total;
   if(!events.length){
     body.innerHTML = '<div class="empty-success-lg">✅ 当前条件下无事件</div>';
     if(countEl) countEl.textContent = '(共 0 条)';
@@ -183,10 +226,10 @@ async function loadEventsCenterModal(){
     if(pageInfo) pageInfo.textContent = '0 / 0';
     if(prevBtn) prevBtn.disabled = true;
     if(nextBtn) nextBtn.disabled = true;
-    eventsCenterState.loadedOnce = true;
+    state.loadedOnce = true;
     return;
   }
-  body.innerHTML = renderEventsTable(events);
+  body.innerHTML = renderEventsTable(events, scope);
   const start = offset + 1;
   const end = Math.min(offset + events.length, total);
   if(countEl) countEl.textContent = '(共 ' + total + ' 条)';
@@ -196,11 +239,11 @@ async function loadEventsCenterModal(){
   if(pageInfo) pageInfo.textContent = curPage + ' / ' + totalPages;
   if(prevBtn) prevBtn.disabled = (offset <= 0);
   if(nextBtn) nextBtn.disabled = (offset + _EVENTS_PER_PAGE >= total);
-  eventsCenterState.loadedOnce = true;
+  state.loadedOnce = true;
 }
 
 // 表格渲染 — 字段作为表头
-function renderEventsTable(events){
+function renderEventsTable(events, scope){
   const head = `<table class="table-base table-fixed">
     <colgroup>
       <col class="w140">
@@ -223,11 +266,11 @@ function renderEventsTable(events){
       </tr>
     </thead>
     <tbody>`;
-  const rows = events.map(renderEventsTableRow).join('');
+  const rows = events.map(e => renderEventsTableRow(e, scope)).join('');
   return head + rows + '</tbody></table>';
 }
 
-function renderEventsTableRow(e){
+function renderEventsTableRow(e, scope){
   let m = {};
   if(typeof e.message === 'string'){
     try { m = JSON.parse(e.message); } catch(_) { m = {}; }
@@ -290,7 +333,7 @@ function renderEventsTableRow(e){
     <td class="p8 text-body fs11">${channelCell}</td>
     <td class="p8 ta-center">
       ${isUnread
-        ? `<button class="btn btn-xs btn-soft-success chip-xs" data-on-click="_ackEventAndReload" data-stop data-args='${_dataArgs(e.id)}'>已读</button>`
+        ? `<button class="btn btn-xs btn-soft-success chip-xs" data-on-click="_ackEventAndReload" data-stop data-args='${_dataArgs(e.id, scope)}'>已读</button>`
         : '<span class="tag-purple-xs">已读</span>'}</td>
   </tr>${detail}`;
 }
@@ -302,36 +345,36 @@ function toggleEventsTableRow(eventId){
   el.classList.toggle('hidden');
 }
 
-// 一键已读 — 按当前过滤器(severity)批量标,无过滤时标全部 4 个 severity
-async function eventsCenterAckCurrent(){
-  const sev = document.getElementById('eventsCenterModalSev').value;
-  const targets = sev ? [sev] : ['CRITICAL', 'ERROR', 'WARNING', 'INFO'];
-  const label = sev ? `当前过滤(${sev})` : '全部未读事件(含 INFO)';
+// 批量确认 — 严格按当前严重度 + 时间范围标记未确认事件（与列表筛选一致）
+async function eventsAckCurrent(scope){
+  const sevEl = _evtEl(scope, 'Sev');
+  const hrsEl = _evtEl(scope, 'Hours');
+  const sev = sevEl ? sevEl.value : '';
+  const hrs = (hrsEl && hrsEl.value) || '168';
+  const hrsText = (hrsEl && hrsEl.selectedIndex >= 0) ? hrsEl.options[hrsEl.selectedIndex].text : `近 ${hrs} 小时`;
+  const scopeText = `${hrsText} · ${sev || '全部严重度'}`;
+  const total = _eventsState(scope).total || 0;
   await confirmAct(
-    `标记${label}全部为已读?`,
+    `批量确认${scopeText}的未确认事件?`,
     async () => {
-      let ackCount = 0;
-      try{
-        for(const s of targets){
-          const r = await api('/system/events/ack-all', {method:'POST', body: JSON.stringify({severity: s})});
-          if(r.code !== 0){
-            toast('标记失败 (' + s + '): ' + (r.message || '未知错误'), 'error');
-            return;
-          }
-          ackCount++;
-        }
-        toast(`已标记 ${ackCount} 个 severity 类别为已读`, 'success');
-        loadEventsCenterModal();
-      }catch(e){
-        toast('网络错误', 'error');
+      const r = await api('/system/events/ack-all', {
+        method: 'POST',
+        body: JSON.stringify({severity: sev || null, since_hours: Number(hrs)})
+      });
+      if(r.code !== 0){
+        toast('标记失败: ' + (r.message || '未知错误'), 'error');
+        return;
       }
+      toast('已标记当前筛选条件下的未确认事件', 'success');
+      _eventsState(scope).offset = 0;
+      _loadEventsPanel(scope);
     },
-    ' ',
-    '标记为已读',
+    '✅',
+    '批量确认',
     false,
     `<div class="info-purple-wide">
        <span class="fs20 lh1">✓</span>
-       <span class="text-purple fs12 lh15">将标记当前过滤条件下 <b>${targets.length}</b> 个 severity 类别(${targets.join(' / ')})的全部未读事件</span>
+       <span class="text-purple fs12 lh15">当前筛选共 <b>${total}</b> 条事件，只会把其中<b>未确认</b>的事件标记为已读；已读事件和筛选范围外的事件不受影响。</span>
      </div>`
   );
 }

@@ -29,6 +29,7 @@ EXPR_RE = re.compile(
 SAFE_WRAPPERS = (
     'escHtml(', 'escAttr(', 'encodeURIComponent(', 'JSON.stringify(',
     '_opt(', 'esc(', 'fmtTZ(', 'typeCN(', 'chTypeChip(',
+    'getTplOptsForChannel(',  # 只输出静态 <option> 标记
     '_dataArgs(',  # escHtml(JSON.stringify(args))，用于 data-args 属性
 )
 SAFE_DERIVED = ('===', '!==', '.length')

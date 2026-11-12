@@ -36,12 +36,28 @@ def _token():
 
 def _event(severity, created_at, acked_at=None):
     from src.models.database import execute
-    execute(
+    return execute(
         """INSERT INTO system_event_log
            (event_type, severity, message, created_at, acked_at)
            VALUES ('test', ?, '{}', ?, ?)""",
         (severity, created_at, acked_at),
     )
+
+
+def _acked(event_id):
+    from src.models.database import query
+    rows = query("SELECT acked_at FROM system_event_log WHERE id = ?", (event_id,))
+    return rows[0]['acked_at'] if rows else None
+
+
+def _ack_all(client, payload):
+    resp = client.post(
+        '/api/system/events/ack-all',
+        json=payload,
+        headers={'Authorization': f'Bearer {_token()}'},
+    )
+    assert resp.status_code == 200, resp.data[:300]
+    return resp.get_json()
 
 
 def _get(client, query):
@@ -79,3 +95,45 @@ def test_invalid_since_hours_falls_back(client):
     now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
     _event('INFO', now)
     assert _get(client, '?since_hours=abc')['total'] == 1
+
+
+def test_ack_all_respects_severity_and_time_window(client):
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    old = (datetime.utcnow() - timedelta(days=10)).strftime('%Y-%m-%d %H:%M:%S')
+    recent_error = _event('ERROR', now)
+    old_error = _event('ERROR', old)
+    recent_warning = _event('WARNING', now)
+
+    body = _ack_all(client, {'severity': 'ERROR', 'since_hours': 24})
+    assert body['code'] == 0
+    assert body['data'] == {'message': 'all acked', 'severity': 'ERROR', 'since_hours': 24}
+
+    assert _acked(recent_error) is not None
+    assert _acked(old_error) is None, '时间窗口外的事件不能被标记'
+    assert _acked(recent_warning) is None, '其他严重度不能被标记'
+
+
+def test_ack_all_without_severity_stays_in_time_window(client):
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    old = (datetime.utcnow() - timedelta(days=10)).strftime('%Y-%m-%d %H:%M:%S')
+    recent_error = _event('ERROR', now)
+    recent_info = _event('INFO', now)
+    old_info = _event('INFO', old)
+
+    _ack_all(client, {'since_hours': 24})
+
+    assert _acked(recent_error) is not None
+    assert _acked(recent_info) is not None
+    assert _acked(old_info) is None, '窗口外的 INFO 不能被连带标记'
+
+
+def test_ack_all_zero_hours_marks_all_time_for_severity(client):
+    now = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+    old = (datetime.utcnow() - timedelta(days=10)).strftime('%Y-%m-%d %H:%M:%S')
+    old_error = _event('ERROR', old)
+    recent_warning = _event('WARNING', now)
+
+    _ack_all(client, {'severity': 'ERROR', 'since_hours': 0})
+
+    assert _acked(old_error) is not None
+    assert _acked(recent_warning) is None

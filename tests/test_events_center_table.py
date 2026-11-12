@@ -7,7 +7,7 @@
 """
 import pytest
 
-from tests.frontend_source import js_source
+from tests.frontend_source import INDEX_HTML, js_source
 
 
 def _head_template(func_name: str) -> str:
@@ -32,3 +32,37 @@ def test_head_template_has_all_columns(func_name):
     head = _head_template(func_name)
     for col in ('时间', '严重度', '类型', '标题', '产品 / URL', '渠道', '状态'):
         assert f'>{col}</th>' in head, f'缺少表头列: {col}'
+
+
+def test_batch_ack_uses_current_severity_and_time_filters():
+    source = js_source()
+    assert '批量确认' in source
+    assert '一键已读' not in source
+    assert 'function eventsAckCurrent(scope)' in source
+    assert "_evtEl(scope, 'Hours')" in source
+    assert "severity: sev || null" in source
+    assert 'since_hours: Number(hrs)' in source
+    assert 'for(const s of targets)' not in source
+    assert '筛选范围外的事件不受影响' in source
+
+
+def test_logs_menu_renamed_with_events_and_logs_tabs():
+    html = INDEX_HTML.read_text(encoding='utf-8')
+    assert 'data-page="logs">事件与日志<' in html
+    assert 'data-page="logs">系统日志<' not in html
+    source = js_source()
+    assert 'function eventsPageHtml()' in source
+    assert 'function logsSwitchTab(tab)' in source
+    assert 'id="logsPaneEvents"' in source
+    assert 'id="logsPaneSys"' in source
+    assert "loadEventsPage()" in source
+
+
+def test_events_page_and_dashboard_modal_share_filters():
+    source = js_source()
+    assert "EVENTS_SCOPE_MODAL = 'eventsCenterModal'" in source
+    assert "EVENTS_SCOPE_PAGE = 'eventsPage'" in source
+    assert 'function _loadEventsPanel(scope)' in source
+    assert 'data-on-change="eventsGoPage"' in source
+    assert 'data-on-click="eventsAckCurrent"' in source
+    assert 'renderEventsTable(events, scope)' in source

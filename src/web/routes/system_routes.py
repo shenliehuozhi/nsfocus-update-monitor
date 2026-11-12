@@ -545,23 +545,41 @@ def ack_event(event_id):
 @bp.route('/events/ack-all', methods=['POST'])
 @require_auth
 def ack_all_events():
-    """批量标记所有未确认事件(可选 severity 过滤)"""
+    """批量标记未确认事件，支持 severity + since_hours 过滤（与列表视图一致）。"""
     from src.models.database import execute
-    severity_filter = (request.json or {}).get('severity') if request.json else None
+    payload = request.get_json(silent=True) or {}
+    severity_filter = payload.get('severity') or ''
+    if not isinstance(severity_filter, str):
+        severity_filter = ''
+    severity_filter = severity_filter.strip()
+    try:
+        since_hours = int(payload.get('since_hours', 0))
+    except (TypeError, ValueError):
+        since_hours = 0
+    since_hours = max(since_hours, 0)
+
     if not _ensure_event_ack_column():
         return {'code': 500, 'message': '数据库迁移失败'}, 500
+
+    where = ['acked_at IS NULL']
+    params = []
     if severity_filter:
-        execute(
-            "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
-            "WHERE acked_at IS NULL AND severity = ?",
-            (severity_filter,)
-        )
-    else:
-        execute(
-            "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
-            "WHERE acked_at IS NULL"
-        )
-    return {'code': 0, 'data': {'message': 'all acked'}}
+        where.append('severity = ?')
+        params.append(severity_filter)
+    if since_hours > 0:
+        where.append("created_at >= datetime('now', ? || ' hours')")
+        params.append(f'-{since_hours}')
+
+    execute(
+        "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
+        "WHERE " + ' AND '.join(where),
+        tuple(params)
+    )
+    return {'code': 0, 'data': {
+        'message': 'all acked',
+        'severity': severity_filter or None,
+        'since_hours': since_hours,
+    }}
 
 
 def _ensure_event_ack_column() -> bool:

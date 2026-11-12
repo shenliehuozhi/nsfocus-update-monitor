@@ -16,12 +16,12 @@ bp = Blueprint('sessions', __name__, url_prefix='/api/sessions')
 @require_auth
 def list_sessions():
     my_sessions = user_session.get_by_user(g.user_id)
-    active = user_session.get_active_sessions()
     expired_count = user_session.get_expired_active_count()
 
     pool_status = {
         'total': user_session.count_by_status('active') + user_session.count_by_status('expired') + user_session.count_by_status('unknown'),
         'active': user_session.count_by_status('active'),
+        'active_collect': user_session.count_active_collect(),
         'expired': user_session.count_by_status('expired'),
         'active_but_expired': expired_count,
     }
@@ -107,6 +107,25 @@ def create_session():
 @bp.route('/<int:session_id>', methods=['DELETE'])
 @require_auth
 def delete_session(session_id: int):
+    sessions = user_session.get_by_user(g.user_id)
+    target = next((s for s in sessions if s['id'] == session_id), None)
+    if not target:
+        return jsonify({'code': 40400, 'message': 'Session 不存在'}), 404
+
+    # 最后一个 active 采集 Session 被删后，定时/手动采集都会失败。
+    # 前端确认后带 force=1 再次请求；直接删接口则必须显式确认。
+    is_last_collect = (
+        target.get('status') == 'active'
+        and target.get('purpose', 'collect') == 'collect'
+        and user_session.count_active_collect() <= 1
+    )
+    if is_last_collect and request.args.get('force') != '1':
+        return jsonify({
+            'code': 40901,
+            'message': '这是最后一个可用的采集 Session，删除后将无法采集数据，直到添加新的采集 Session',
+            'data': {'requires_confirmation': True},
+        }), 409
+
     user_session.delete(session_id)
     return jsonify({'code': 0, 'message': '已删除'})
 
@@ -135,6 +154,20 @@ def update_session(session_id: int):
 
     final_purpose = purpose if purpose else target.get('purpose', 'collect')
     final_mode = collect_mode if collect_mode else target.get('collect_mode', 'standard')
+
+    # 最后一个 active 采集 Session 改为 discover 后同样会导致无法采集
+    is_last_collect = (
+        target.get('status') == 'active'
+        and target.get('purpose', 'collect') == 'collect'
+        and final_purpose != 'collect'
+        and user_session.count_active_collect() <= 1
+    )
+    if is_last_collect and request.args.get('force') != '1':
+        return jsonify({
+            'code': 40901,
+            'message': '这是最后一个可用的采集 Session，改为发现后将无法采集数据，直到添加新的采集 Session',
+            'data': {'requires_confirmation': True},
+        }), 409
 
     user_session.update_purpose_mode(session_id, final_purpose, final_mode)
     return jsonify({'code': 0, 'message': '已更新', 'data': {'purpose': final_purpose, 'collect_mode': final_mode}})

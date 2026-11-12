@@ -453,11 +453,11 @@ async function toggleDebug(){
   if(r.code===0)toast(r.message,'success');else toast(r.message,'error');
 }
 
-// ── System Logs ──
+// ── 事件与日志（事件与告警 + 系统日志）──
 let _logTimer=null;
 async function logs(){
   const _seq=_navSeq;
-  if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
+  _stopLogTimer();
 
   // Get log files and current level
   const[fR,lR]=await Promise.all([
@@ -470,26 +470,52 @@ async function logs(){
   if(!fOpts)fOpts='<option value="app.log">app.log</option><option value="access.log">access.log</option>';
 
   if(navStale(_seq))return;
+  _eventsState('eventsPage').offset=0;
   document.getElementById('app').innerHTML=`
-    <div class="card"><div class="card-hd">📋 系统日志
-      <span class="ml-auto muted-12 fw400">
-        当前级别: <span class="badge badge-${curLevel==='DEBUG'?'warn':'ok'}">${curLevel}</span>
-        <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'}" data-on-click="toggleDebug">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
-      </span>
-    </div><div class="card-bd">
-      <div class="flex wrap items-end gap8 mb12">
-        <div class="form-group mb0 min-w180"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
-        <div class="form-group mb0 min-w120"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
-        <div class="form-group mb0 min-w80"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
-        <div class="form-group mb0"><label>&nbsp;</label><div class="flex gap6"><button class="btn btn-sm btn-primary" data-on-click="loadLogs">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button></div></div>
-      </div>
-      <div class="log-dark" id="logContent">
-        点击「查询」加载日志...
-      </div>
-    </div></div>`;
+    <div class="push-tabs">
+      <div class="push-tab-active" id="logsTabEvents" data-on-click="logsSwitchTab" data-args='${_dataArgs("events")}'>🔔 事件与告警</div>
+      <div class="push-tab" id="logsTabSys" data-on-click="logsSwitchTab" data-args='${_dataArgs("syslog")}'>📋 系统日志</div>
+    </div>
+    <div id="logsPaneEvents">${eventsPageHtml()}</div>
+    <div id="logsPaneSys" class="hidden">
+      <div class="card"><div class="card-hd">📋 系统日志
+        <span class="ml-auto muted-12 fw400">
+          当前级别: <span class="badge badge-${curLevel==='DEBUG'?'warn':'ok'}">${curLevel}</span>
+          <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'}" data-on-click="toggleDebug">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
+        </span>
+      </div><div class="card-bd">
+        <div class="flex wrap items-end gap8 mb12">
+          <div class="form-group mb0 min-w180"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
+          <div class="form-group mb0 min-w120"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
+          <div class="form-group mb0 min-w80"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
+          <div class="form-group mb0"><label>&nbsp;</label><div class="flex gap6"><button class="btn btn-sm btn-primary" data-on-click="loadLogs">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button></div></div>
+        </div>
+        <div class="log-dark" id="logContent">
+          点击「查询」加载日志...
+        </div>
+      </div></div>
+    </div>`;
 
-  // Load logs immediately
-  loadLogs();
+  loadEventsPage();
+}
+
+function logsSwitchTab(tab){
+  const evBtn=document.getElementById('logsTabEvents'),sysBtn=document.getElementById('logsTabSys');
+  const evPane=document.getElementById('logsPaneEvents'),sysPane=document.getElementById('logsPaneSys');
+  if(!evBtn||!sysBtn||!evPane||!sysPane)return;
+  const showEvents=tab!=='syslog';
+  evBtn.className=showEvents?'push-tab-active':'push-tab';
+  sysBtn.className=showEvents?'push-tab':'push-tab-active';
+  evPane.classList.toggle('hidden',!showEvents);
+  sysPane.classList.toggle('hidden',showEvents);
+  if(showEvents){_stopLogTimer();loadEventsPage();}
+  else loadLogs();
+}
+
+function _stopLogTimer(){
+  if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
+  const btn=document.getElementById('logAutoBtn');
+  if(btn){btn.textContent='自动刷新';btn.classList.remove('btn-success');btn.classList.add('btn-outline');}
 }
 
 async function loadLogs(){

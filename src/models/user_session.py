@@ -258,6 +258,16 @@ def count_by_status(status: str) -> int:
     return rows[0]['cnt'] if rows else 0
 
 
+def count_active_collect() -> int:
+    """Count sessions available to collection (active + collect purpose, all users)."""
+    from src.models.database import query
+    rows = query(
+        "SELECT COUNT(*) as cnt FROM user_sessions "
+        "WHERE status = 'active' AND purpose = 'collect'"
+    )
+    return rows[0]['cnt'] if rows else 0
+
+
 def get_expired_active_count() -> int:
     """Count sessions marked as active but last heartbeat was expired/failed."""
     from src.models.database import query

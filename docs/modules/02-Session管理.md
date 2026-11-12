@@ -85,6 +85,7 @@ unknown ──创建时───────────→ unknown
     "pool_status": {
       "total": 3,
       "active": 2,
+      "active_collect": 2,
       "expired": 1,
       "active_but_expired": 0
     }
@@ -137,9 +138,13 @@ unknown ──创建时───────────→ unknown
 }
 ```
 
+若目标是最后一个 `active` + `purpose=collect` 的 session，且请求把 `purpose` 改成 `discover`，直接修改会返回 `409`（`code=40901`、`data.requires_confirmation=true`）；确认后带 `?force=1` 才会生效。只改 `collect_mode`（standard ↔ vm）不受限制。
+
 ### DELETE /api/sessions/:id
 
 删除 session（同时删除心跳日志）。
+
+只允许删除当前用户自己的 session。若目标是最后一个 `active` 且 `purpose=collect` 的 session，直接删除会返回 `409`（`code=40901`、`data.requires_confirmation=true`），提示「删除后将无法采集数据」；确认后带 `?force=1` 再次请求才会真正删除。前端在列表中识别到该情况时直接弹出警告确认框，其余 session 走普通删除确认。点击列表中的类型标签可修改 `purpose` / `collect_mode`（同样是当前用户才能修改）。
 
 ### GET /api/sessions/:id/heartbeat
 
