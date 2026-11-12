@@ -192,7 +192,7 @@ class EmailNotifier(BaseNotifier):
         else:
             # 系统通知:纯文本正文,不渲染产品元数据/MD5 校验段
             import html as _html
-            html_body = (
+            html_body = message.description_html or (
                 '<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
                 'sans-serif;font-size:14px;color:#333;line-height:1.6">'
                 + _html.escape(message.description_full or '').replace('\n', '<br/>')

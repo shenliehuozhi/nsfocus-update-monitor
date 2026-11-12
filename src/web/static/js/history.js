@@ -4,7 +4,7 @@ async function history(){
   const _seq=_navSeq;
   const _q=new URLSearchParams(location.hash.split('?')[1]||'');
   let days=_q.get('days')||'30';
-  // feat/customer-push-card 2026-09-02: 支持 cust query 下钻 (来自 dashboard 客户推送卡片)
+  // feat/customer-push-card 2026-09-02: 支持 cust query 下钻 (来自仪表盘客户推送卡片)
   const cust=_q.get('cust')||'';
   const rule=_q.get('rule')||'';
   // 2026-11-09 P1: 后端每页固定 200 个包,原先没有 page → 第 2 页之后的数据永远看不到
@@ -109,32 +109,6 @@ async function confirmClearHistory(){
   await confirmAct(`⚠️ 确认清空${label}推送历史记录？此操作不可撤销。`, async ()=>{const r=await api('/history?days='+(days==='0'?'':days),{method:'DELETE'});toast(r.message||'已清空',r.code===0?'success':'error');if(r.code===0)history();}, '🗑️', '确认清空', true);
 }
 
-function _renderRecentDeliveries(deliveries,range){
-  if(!deliveries||!deliveries.length)return '';
-  const ranges={1:'1天',7:'7天',30:'1个月',365:'1年'};
-  let btns=Object.entries(ranges).map(([v,l])=>`<button class="btn btn-xs ${range===v?'btn-primary':'btn-outline'}" data-on-click="dashboard" data-args='${_dataArgs(v)}'>${l}</button>`).join('');
-  // Aggregate: group by customer+product+chain-specific type
-  // derived_package_type 来自后端 CASE: chain_json 末项 OR snapshots.package_type fallback
-  // 同一物理 snap + 不同 chain_json 会分成两行 (e.g. WAF V6.0.9规则升级包 vs 海光 V6.0.9规则升级)
-  let agg={};
-  deliveries.forEach(d=>{
-    // 2026-07-11: channel_name 可能含客户名, split 出原渠道名再聚合,避免渠道列变长
-    let _cn = d.channel_name || '';
-    const _idx = _cn.indexOf('|Nsf0cus|');
-    if (_idx >= 0) _cn = _cn.substring(0, _idx);
-    const pkgType = d.derived_package_type || d.package_type;
-    let key=`${d.customer_name||'—'}|${d.product_name}|${pkgType}`;
-    if(!agg[key])agg[key]={cust:d.customer_name||'—',prod:d.product_name,pkg:pkgType,channels:new Set(),count:0,last:d.sent_at,status:d.delivery_status};
-    agg[key].count++;
-    agg[key].channels.add(_cn||d.channel_type);
-    if(d.sent_at>agg[key].last)agg[key].last=d.sent_at;
-  });
-  let rows=Object.values(agg).sort((a,b)=>b.last.localeCompare(a.last)).slice(0,15).map(a=>{
-    return `<tr><td>${escHtml(a.cust)}</td><td>${escHtml(a.prod)}</td><td>${typeCN(a.pkg)}</td><td>${a.count}次</td><td>${escHtml([...a.channels].join(', '))}</td><td>${a.last?fmtTZ(a.last,true):''}</td></tr>`;
-  }).join('');
-  return `<div class="card mt14"><div class="card-hd">📨 最近推送明细 <span class="ml-auto fw400">${btns}</span></div><div class="card-bd pt0"><table><tr><th>客户</th><th>产品</th><th>类型</th><th>次数</th><th>渠道</th><th>最近</th></tr>${rows||'<tr><td colspan="6" class="empty">暂无</td></tr>'}</table></div></div>`;
-}
-
 // ── Settings ──
 function _toggleMaintenance(el){
   const v=el.checked?'1':'0';
@@ -172,11 +146,18 @@ async function settings(){
   try{const cr=JSON.parse(cfg.collection_running||'{}');isCollecting=cr.status==='1';}catch(e){}
 
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">⚙️ 系统配置</div><div class="card-bd">
-    ${isCollecting?'<div class="warning-banner">⚠️ 采集正在进行中，保存配置将同时停止采集</div>':''}
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd items-center">
+    <span>⚙️ 系统配置</span>
+    <span class="fw400 fs115 text-muted">${isCollecting?'采集进行中 · 保存将停止采集':'修改后点击右上角保存'}</span>
+    <span class="ml-auto flex items-center gap8">
+      <button class="btn btn-sm ${isCollecting?'btn-danger':'btn-primary'}" data-on-click="${isCollecting?'forceStopAndSave':'saveSettings'}">${isCollecting?'强制停止并保存':'保存配置'}</button>
+    </span>
+  </div><div class="card-bd">
+    ${isCollecting?'<div class="obs-alert danger">⚠️ 采集正在进行中，保存配置将同时停止采集</div>':''}
+    <div class="cfg-grid">
     <div class="cfg-section">
-      <div class="cfg-section-hd">🔶 开关选项</div>
-      <div class="cfg-row grid-3">
+      <div class="cfg-section-hd">🔶 开关选项 <span class="ml-auto fw400 fs115 text-muted">即时生效</span></div>
+      <div class="cfg-flags">
         <div class="cfg-flag banner-warn">
           <label class="cfg-toggle"><label class="toggle-switch"><input type="checkbox" id="cfg-maintenance" ${cfg.maintenance_mode==='1'?'checked':''} data-on-change="_toggleMaintenance" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label><span>🔧 维护模式</span></label>
           <span class="cfg-flag-desc">开启后所有推送静默（采集照常），调试时避免误发通知</span>
@@ -189,7 +170,7 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd">📡 采集设置</div>
+      <div class="cfg-section-hd">📡 采集设置 <span class="ml-auto fw400 fs115 text-muted">下一轮采集生效</span></div>
       <div class="cfg-row">
         <div class="cfg-toggle">
           <label class="toggle-switch"><input id="cfg-scheduler-enabled" type="checkbox" ${cfg.scheduler_enabled!=='0'?'checked':''} data-on-change="handleSchedulerToggle" data-args='${_dataArgs('$el')}'><span class="toggle-slider"></span></label>
@@ -219,7 +200,7 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd">💾 存储与保留</div>
+      <div class="cfg-section-hd">💾 存储与保留 <span class="ml-auto fw400 fs115 text-muted">保存后生效</span></div>
       <div class="cfg-row">
         <div class="form-group"><label>附件上限 <span class="cfg-unit">(MB)</span></label><input id="cfg-attach" type="number" value="${cfg.attachment_max_mb||10}" min="1" max="50"><p class="cfg-hint">邮件附件最大体积；超过则在正文显示下载地址</p></div>
       </div>
@@ -229,10 +210,12 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd flex-center-10">
+      <div class="cfg-section-hd">
         <span>🔇 静默时段</span>
-        <label class="toggle-switch"><input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('quiet-times', '$checked')}'><span class="toggle-slider"></span></label>
-        <span>启用</span>
+        <span class="ml-auto flex items-center gap6 fw400 fs115 text-muted">
+          <label class="toggle-switch"><input type="checkbox" id="cfg-quiet-enabled" ${cfg.quiet_hours_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('quiet-times', '$checked')}'><span class="toggle-slider"></span></label>
+          启用
+        </span>
       </div>
       <div id="quiet-times" class="${cfg.quiet_hours_enabled==='1'?'':'hidden'}">
         <div class="cfg-row cfg-row-inline">
@@ -245,7 +228,7 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd">⏰ 高级选项</div>
+      <div class="cfg-section-hd">⏰ 高级选项 <span class="ml-auto fw400 fs115 text-muted">保存后生效</span></div>
       <div class="cfg-row">
         <div class="form-group"><label>主动心跳</label>
           <label class="toggle-switch"><input type="checkbox" id="cfg-heartbeat-enabled" ${cfg.heartbeat_enabled==='1'?'checked':''} data-on-change="_setDisplay" data-args='${_dataArgs('heartbeat-interval-row', '$checked')}'><span class="toggle-slider"></span></label>
@@ -286,7 +269,7 @@ async function settings(){
     </div>
 
     <div class="cfg-section">
-      <div class="cfg-section-hd">📤 通知联系信息</div>
+      <div class="cfg-section-hd">📤 通知联系信息 <span class="ml-auto fw400 fs115 text-muted">三项全填才展示</span></div>
       <p class="cfg-section-sub">用于在邮件正文与底部显示运维联系方式。由于邮件通常通过第三方 SMTP 渠道(如阿里云/腾讯企业邮箱)而非公司域名发送,客户收到邮件时可能误判为钓鱼邮件。配置后,客户可看到明确的发件人姓名、邮箱和联系电话。</p>
       <p class="cfg-section-sub text-amber-dark">⚠️ 姓名、邮箱、电话<strong>三项必须全部填写</strong>才会显示;任一为空则邮件中不展示该信息(避免半填给客户造成更大困惑)。</p>
       <div class="cfg-row">
@@ -333,10 +316,8 @@ async function settings(){
       </div>
     </div>
 
-    ${isCollecting?
-      '<p class="cfg-hint text-red mb12">采集进行中，系统配置无法直接修改。点击"强制停止并保存"将中断采集。</p>':
-      ''}
-    <button class="btn btn-primary" data-on-click="${isCollecting?'forceStopAndSave':'saveSettings'}">${isCollecting?'强制停止并保存':'保存配置'}</button>
+    </div>
+    <p class="obs-foot mt12">维护模式与「API 仅限本机」为即时开关；其余配置点击右上角「保存配置」后生效，调度参数会自动重新调度。</p>
   </div></div>
 `;}
 
@@ -458,7 +439,7 @@ function _showCollectBanner(state) {
     // 点击 banner (空白处) 跳转到仪表盘
     banner.addEventListener('click', (e) => {
       if (e.target.closest('[data-on-click]')) return;
-      showPage('dashboard');
+      showPage('observability');
     });
   }
   // 根据 phase 切换背景色 (完成 → 绿色)

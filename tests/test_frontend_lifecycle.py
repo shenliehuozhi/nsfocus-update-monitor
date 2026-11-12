@@ -33,14 +33,13 @@ def test_logout_and_navigation_clear_timers():
     assert '_clearAllTimers();_currentPage=null;' in logout
 
     clear_all = CORE[CORE.index('function _clearAllTimers'):CORE.index('function logout()')]
-    for marker in ('window._eventsHeaderTimer', 'window._eventsCenterModalTimer',
+    for marker in ('window._eventsCenterModalTimer',
                    '_collectPollTimer', '_collectBannerPollTimer', '_singleCollTimer',
                    'window._discTimer', '_banTimer', 'stopProductsPolls', '_stopBgRotation'):
         assert marker in clear_all, f'登出未清理 {marker}'
 
     page_timers = CORE[CORE.index('function _clearPageTimers'):CORE.index('function _clearAllTimers')]
-    for marker in ('_uptimeTimer', 'window._eventsRefreshTimer',
-                   'window._dashPollTimer', '_logTimer', 'window._obsTimer'):
+    for marker in ('_logTimer', 'window._obsTimer'):
         assert marker in page_timers, f'切页未清理 {marker}'
 
     show = CORE[CORE.index('function showPage('):]
@@ -61,7 +60,6 @@ def test_products_polling_has_cancel_hook():
 
 def test_async_pages_check_navigation_generation():
     pages = {
-        'dashboard.js': ['async function dashboard'],
         'history.js': ['async function history', 'async function settings', 'async function products'],
         'data.js': ['async function dataPage'],
         'collection.js': ['async function logs'],

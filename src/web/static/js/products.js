@@ -131,7 +131,8 @@ function buildTreeHtml(pt, MAP) {
     const icon = isPkg ? '&#128196;' : (hasChildren ? '&#128193;' : '&#128196;');
     const label = MAP[name] || name;
     const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
-    html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}</span>`;
+    html += `<span class="tree-name" title="${escHtml(label)}">${icon} ${escHtml(label)}</span>`;
+    html += `<span class="tree-meta">${childCount}</span>`;
 
     if (isPkg && types.length > 0) {
       const badges = types.map(t => `<span class="pkg-type-tag">${MAP[t]||escHtml(t)}</span>`).join('');
@@ -326,6 +327,10 @@ function attach(node) {
   propagateHints(root);
 
   // Render the tree
+  // 子节点容器 id 用递增序号，不能用 name.replace(/\W/g,'_')：中文名会被压成
+  // 一串下划线，同层不同分支（如“系统升级包”/“规则升级包”）直接撞 id，
+  // 点箭头会展开到别的分支。
+  let childUid = 0;
   function renderNode(node, name, depth) {
     const children = node.__children ? Object.entries(node.__children) : [];
     const hasChildren = children.length > 0;
@@ -361,13 +366,14 @@ function attach(node) {
     const freshBadge = (node.__freshness === 'new') ? ` <span class="badge-xs-success">活跃</span>` : (node.__freshness === 'lowfreq' ? ` <span class="badge-xs-warn">低频</span>` : (node.__freshness === 'idle' ? ` <span class="badge-xs-disabled">沉寂</span>` : ''));
     // Arrow: toggle children visibility via data-action="treeToggle" (handled by event delegation)
     // Uses a generated children ID stored in data-target on the arrow
-    const childDivId = hasChildren ? ('tcd_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
+    const childDivId = hasChildren ? ('tcd_' + sid + '_' + (childUid++)) : null;
     const arrow = hasChildren || isPkg
       ? `<span class="tree-toggle" data-on-click="treeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}'>&#9658;</span>`
       : `<span class="tree-indent"></span>`;
     let html = `<div class="tree-node tree-row tree-row-click ti-${depth}" data-action="treeNode" data-sid="${sid}" data-chain="${chainJson}" data-url="${nodeUrl}" data-isleaf="${isLeaf}" data-snapids="${leafSnapIds}" data-verhint="${escHtml(verHint)}" data-pkghint="${escHtml(pkgHint)}" data-pathid="${escHtml(nodePathId)}">`;
     html += arrow;
-    html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}${snapCount}${freshBadge}</span>`;
+    html += `<span class="tree-name" title="${escHtml(label)}">${icon} ${escHtml(label)}</span>`;
+    html += `<span class="tree-meta">${childCount}${snapCount}${freshBadge}</span>`;
     html += `</div>`;
 
     if (hasChildren) {

@@ -360,7 +360,7 @@ function closeCollectModal(){
   document.body.classList.remove('warning-open');
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
 }
-function _closeCollectAndDashboard(){closeCollectModal();dashboard();}
+function _closeCollectAndObserve(){closeCollectModal();observability();}
 function pollProgress(){
   const body=document.getElementById('collectModalBody');
   if(!body)return; // Modal closed, stop polling
@@ -399,7 +399,7 @@ function pollProgress(){
       html+=`<div class="grid2 mt10"><div class="stat green"><div class="num">${p.total_new||0}</div><div class="label">新增</div></div><div class="stat red"><div class="num">${p.total_rollback||0}</div><div class="label">回退</div></div></div>`;
       html+=`<p class="muted-11 mt6 ta-center">耗时 ${p.duration_s||0}秒 · ${p.items_collected||0}项</p>`;
       if(p.errors&&p.errors.length)html+=`<div class="mt8 fs11 text-danger">${p.errors.map(e=>'⚠️ '+e).join('<br>')}</div>`;
-      html+=`<button class="btn btn-sm btn-primary w-full mt12" data-on-click="_closeCollectAndDashboard">刷新仪表盘</button>`;
+      html+=`<button class="btn btn-sm btn-primary w-full mt12" data-on-click="_closeCollectAndObserve">刷新仪表盘</button>`;
       _collectRunning=false;
       if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
     }
@@ -442,40 +442,6 @@ function startCollectBannerPoll(){
 function stopCollectBannerPoll(){
   if (_collectBannerPollTimer) { clearInterval(_collectBannerPollTimer); _collectBannerPollTimer = null; }
   _hideCollectBanner();
-}
-
-// ── Dashboard Progress Poll ──
-// 只更新 dashboard 自己的 dashProgress DOM 元素;banner 由 pollCollectBannerGlobal 维护
-async function pollDashProgress(){
-  try{
-    const pr=await api('/system/collect/progress');
-    if(!pr.data)return;
-    const p=pr.data.progress||{};
-    const el=document.getElementById('dashProgress');
-    const lc=document.getElementById('lastColText');
-    if(!el)return;
-    if(p.phase){_showCollectBanner(p);}
-    if(!p.active||p.phase==='done'){
-      el.classList.add('hidden');
-      if(p.phase==='done'){
-        if(lc)lc.textContent='已完成';
-        setTimeout(()=>_hideCollectBanner(), 8000);  // 2026-08-25: 延长到 8 秒让用户看清完成状态
-        if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
-      } else {
-        _hideCollectBanner();
-      }
-      return;
-    }
-    el.classList.remove('hidden');
-    if(p.phase==='collecting'){
-      const pct=p.products_total?Math.round(p.products_done/p.products_total*100):0;
-      el.innerHTML=`<span class="tag-primary">${pct}%</span> ${p.current_product||''} ${p.products_done}/${p.products_total}`;
-    }else if(p.phase==='detecting'){
-      el.innerHTML='<span class="tag-warn">检测中</span>';
-    }else if(p.phase==='notifying'){
-      el.innerHTML='<span class="tag-success">推送中</span>';
-    }
-  }catch(e){}
 }
 
 // ── Debug Toggle ──

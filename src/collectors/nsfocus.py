@@ -1247,7 +1247,36 @@ def parse_description(desc: str) -> dict:
     pre = re.search(r'前置版本[：:]\s*(.+)', desc)
     if pre and not result['min_sys_version']:
         result['min_sys_version'] = pre.group(1).strip()
+    _enrich_rule_changes(result, desc)
     return result
+
+
+def _enrich_rule_changes(result: dict, desc: str) -> None:
+    """用 src.diff 的规则解析器补规则号 + 名称。
+
+    旧逻辑只按中文数字分段 + 正则捞 8 位以上数字, IPS 的半角冒号块捞不到、
+    WAF 规则名也会丢。这里复用 diff 模块(已被真实 vendor 数据验证)并用
+    `rule_changes` 保存结构化列表,通知正文可直接展示示例规则名。
+    """
+    from src.diff import parse_rules, parse_rules_waf
+
+    ips = parse_rules(desc)
+    waf = parse_rules_waf(desc)
+    if waf['added'] or waf['updated'] or waf['deleted']:
+        added, updated, deleted = waf['added'], waf['updated'], waf['deleted']
+        result['deleted'] = [str(rid) for rid, _ in deleted]
+    elif ips['added'] or ips['updated']:
+        added, updated, deleted = ips['added'], ips['updated'], []
+    else:
+        return
+
+    result['added'] = [str(rid) for rid, _ in added]
+    result['modified'] = [str(rid) for rid, _ in updated]
+    result['rule_changes'] = {
+        'added': [{'id': rid, 'name': name} for rid, name in added],
+        'updated': [{'id': rid, 'name': name} for rid, name in updated],
+        'deleted': [{'id': rid, 'name': name} for rid, name in deleted],
+    }
 
 
 class SessionExpiredError(Exception):

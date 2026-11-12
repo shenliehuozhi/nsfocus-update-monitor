@@ -975,12 +975,66 @@ def _digest_channel_already_sent(rule_id: int, channel_id: int,
     return bool(rows) and (rows[0]['c'] or 0) >= len(snapshot_ids)
 
 
+def _digest_group_already_sent(rule_id: int, channel_ids, snapshot_ids: list) -> bool:
+    """True when every snapshot was delivered by any channel in the group.
+
+    Email failover groups share the same recipients: once one member delivered
+    the whole digest, the other members must not resend it.
+    """
+    channel_ids = sorted(set(channel_ids))
+    if not snapshot_ids or not channel_ids:
+        return False
+    from src.models.database import query
+    sid_ph = ','.join('?' * len(snapshot_ids))
+    cid_ph = ','.join('?' * len(channel_ids))
+    rows = query(
+        f"""SELECT COUNT(DISTINCT snapshot_id) AS c FROM delivery_log
+            WHERE rule_id = ? AND delivery_status = 'sent'
+              AND snapshot_id IN ({sid_ph}) AND channel_id IN ({cid_ph})""",
+        (rule_id, *snapshot_ids, *channel_ids))
+    return bool(rows) and (rows[0]['c'] or 0) >= len(snapshot_ids)
+
+
+def _digest_inline_html(text: str) -> str:
+    """Render one line of digest markdown (bold / link / code) as safe HTML."""
+    import html as _html
+    import re
+    s = _html.escape(text)
+    s = re.sub(r'\[([^\]]+)\]\(([^)]+)\)',
+               r'<a href="\2" style="color:#1e40af">\1</a>', s)
+    s = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', s)
+    s = re.sub(r'`([^`]+)`',
+               r'<code style="background:#f1f5f9;padding:1px 4px;border-radius:3px;font-family:monospace">\1</code>', s)
+    return s.replace('&lt;u&gt;', '<u>').replace('&lt;/u&gt;', '</u>')
+
+
+def _digest_email_html(digest_text: str) -> str:
+    """Convert the shared digest markdown text into a simple HTML email body."""
+    out = ['<div style="font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\','
+           'sans-serif;font-size:14px;color:#333;line-height:1.7">']
+    for raw in digest_text.splitlines():
+        line = raw.rstrip()
+        if not line:
+            out.append('<div style="height:6px"></div>')
+        elif line.startswith('## '):
+            out.append(f'<h2 style="margin:8px 0;font-size:18px">{_digest_inline_html(line[3:])}</h2>')
+        elif line.startswith('### '):
+            out.append(f'<h3 style="margin:12px 0 4px;font-size:15px">{_digest_inline_html(line[4:])}</h3>')
+        elif line.startswith('   '):
+            out.append(f'<div style="margin-left:22px;color:#555;font-size:13px">{_digest_inline_html(line.strip())}</div>')
+        else:
+            out.append(f'<div style="margin:2px 0">{_digest_inline_html(line)}</div>')
+    out.append('</div>')
+    return ''.join(out)
+
+
 def _send_digest_split(rule: dict, digest_text: str, snaps: list) -> dict:
     """Send a digest summary, splitting into multiple messages if too long.
 
     机器人渠道直发 webhook:必须自己看返回码,否则 4xx/errcode 也会被当成成功
-    记进 delivery_log。邮件渠道暂不支持汇总消息(历史 recipient 在渠道级已废弃),
-    跳过并留日志,不再静默。
+    记进 delivery_log。邮件渠道同样支持:收件人按 rule_channels.customer_emails
+    → subscription_rules.customer_emails → customers.email 解析,同收件人组的
+    多个邮箱渠道按绑定顺序主备(前一个成功即跳过后面的)。
 
     返回 {'sent': [渠道...], 'failed': [...], 'skipped': [...], 'already': [...]},
     调用方据此决定重试/消费队列。already 是"上次已成功、本次跳过"的渠道。
@@ -1002,11 +1056,44 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list) -> dict:
     total = len(parts)
     im_types = ('wecom', 'dingtalk', 'feishu')
 
-    for binding in bindings:
+    # 预解析邮箱收件人：同收件人组的渠道互为备用，成功一个就不再发后面的。
+    channel_cache: dict = {}
+    email_plan: dict = {}        # binding idx -> {rule_emails, recipients, target}
+    target_channels: dict = {}   # frozenset(收件人) -> {channel_id}
+    for idx, binding in enumerate(bindings):
         channel_id = binding.get('channel_id')
         if not channel_id:
             continue
-        channel = get_by_id(channel_id)
+        if channel_id not in channel_cache:
+            channel_cache[channel_id] = get_by_id(channel_id) or {}
+        channel = channel_cache[channel_id]
+        if not channel or not channel.get('is_active') or channel.get('type') != 'email':
+            continue
+        rc_emails, recips = _resolve_email_recipients(
+            binding, rule, channel.get('config') or {})
+        if not recips:
+            continue
+        target = frozenset(e.lower() for e in recips)
+        email_plan[idx] = {
+            'rule_emails': rc_emails,
+            'recipients': recips,
+            'target': target,
+        }
+        target_channels.setdefault(target, set()).add(channel_id)
+
+    subject = next((ln.strip().lstrip('#').strip() for ln in digest_text.splitlines()
+                    if ln.strip()), '') or '升级汇总'
+    email_msg = NotificationMessage(title=subject,
+                                    description_html=_digest_email_html(digest_text))
+
+    succeeded_targets: set = set()
+    target_failures: dict = {}   # target -> 失败标签，备用渠道补发成功后回标
+
+    for idx, binding in enumerate(bindings):
+        channel_id = binding.get('channel_id')
+        if not channel_id:
+            continue
+        channel = channel_cache.get(channel_id)
         if not channel:
             result['skipped'].append(f'渠道 {channel_id}: 不存在')
             continue
@@ -1018,55 +1105,109 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list) -> dict:
         # 部分失败重试时，已成功的渠道不再重复收到同一期汇总
         if _digest_channel_already_sent(rule['id'], channel_id, snapshot_ids):
             result['already'].append(label)
+            plan = email_plan.get(idx)
+            if plan:
+                succeeded_targets.add(plan['target'])
             logger.info(f'Digest 跳过已投递渠道 {channel_id}({channel.get("name", "")})')
             continue
 
-        payload_fn = {
-            'wecom': lambda t: {'msgtype': 'markdown', 'markdown': {'content': t}},
-            'dingtalk': lambda t: {'msgtype': 'markdown', 'markdown': {'title': '升级汇总', 'text': t}},
-            'feishu': lambda t: {'msg_type': 'post',
-                                 'content': {'post': {'zh_cn': _digest_feishu_post(t)}}},
-        }.get(channel['type'])
+        target = None
+        if channel['type'] == 'email':
+            plan = email_plan.get(idx)
+            if not plan:
+                result['skipped'].append(f'{label}: 未配置收件人')
+                logger.warning(f'Digest 跳过渠道 {channel_id}({channel.get("name", "")}): 未配置收件人')
+                continue
+            target = plan['target']
+            # 同一收件人组的备用渠道：本组已投递 → 跳过
+            if target in succeeded_targets:
+                result['already'].append(f'{label}: 已由同收件人渠道投递')
+                logger.info(f'Digest 跳过备用邮箱渠道 {channel_id}: 同收件人已投递')
+                continue
+            if _digest_group_already_sent(rule['id'], target_channels[target], snapshot_ids):
+                succeeded_targets.add(target)
+                result['already'].append(f'{label}: 已由同收件人渠道投递')
+                logger.info(f'Digest 跳过备用邮箱渠道 {channel_id}: 同收件人已投递(历史记录)')
+                continue
 
-        if not payload_fn:
-            reason = ('邮件渠道不支持汇总消息,请在该规则上改用企微/钉钉/飞书渠道'
-                      if channel['type'] == 'email'
-                      else f'不支持的渠道类型 {channel["type"]}')
-            result['skipped'].append(f'{label}: {reason}')
-            logger.warning(f'Digest 跳过渠道 {channel_id}({channel.get("name", "")}): {reason}')
-            continue
-
-        config = channel.get('config') or {}
-        if not config.get('webhook_url'):
-            result['skipped'].append(f'{label}: webhook_url 为空')
-            logger.warning(f'Digest 跳过渠道 {channel_id}: webhook_url 为空')
-            continue
-
-        url = _digest_signed_url(channel)
         send_error = ''
-        for i, part in enumerate(parts):
-            if channel['type'] in im_types:
-                _throttle_im(channel['type'])
+        if channel['type'] == 'email':
+            plan = email_plan[idx]
+            ch_config = dict(channel.get('config') or {})
+            if plan.get('rule_emails'):
+                ch_config['rule_emails'] = plan['rule_emails']
+            ch_config['_channel_id'] = channel_id
+            ch_config['_customer_id'] = binding.get('customer_id', 0)
+            ch_config['_email_hourly_limit'] = channel.get('email_hourly_limit', 0)
+            ch_config['_email_daily_limit'] = channel.get('email_daily_limit', 0)
+            limits = _get_email_rate_settings()
+            ch_config['_cust_hourly_limit'] = limits['cust_hourly']
+            ch_config['_cust_daily_limit'] = limits['cust_daily']
+            ch_config['_global_hourly_limit'] = limits['global_hourly']
+            ch_config['_global_daily_limit'] = limits['global_daily']
             try:
-                resp = requests.post(url, json=payload_fn(part), timeout=15)
-                body = resp.json() if resp.content else {}
-                errcode = body.get('errcode')
-                code = body.get('code')
-                if (resp.status_code != 200
-                        or (errcode is not None and errcode != 0)
-                        or (code is not None and code != 0)):
-                    send_error = f'part {i+1}/{total}: HTTP {resp.status_code} {body}'
-                    break
+                res = EmailNotifier().send(email_msg, ch_config)
+                if not res.success:
+                    send_error = res.error_message or 'email send failed'
             except Exception as e:
-                send_error = f'part {i+1}/{total}: {type(e).__name__}: {e}'
-                break
+                send_error = f'{type(e).__name__}: {e}'
+                logger.error(f'Digest email channel {channel_id} raised: {e}')
+        else:
+            payload_fn = {
+                'wecom': lambda t: {'msgtype': 'markdown', 'markdown': {'content': t}},
+                'dingtalk': lambda t: {'msgtype': 'markdown', 'markdown': {'title': '升级汇总', 'text': t}},
+                'feishu': lambda t: {'msg_type': 'post',
+                                     'content': {'post': {'zh_cn': _digest_feishu_post(t)}}},
+            }.get(channel['type'])
+
+            if not payload_fn:
+                reason = f'不支持的渠道类型 {channel["type"]}'
+                result['skipped'].append(f'{label}: {reason}')
+                logger.warning(f'Digest 跳过渠道 {channel_id}({channel.get("name", "")}): {reason}')
+                continue
+
+            config = channel.get('config') or {}
+            if not config.get('webhook_url'):
+                result['skipped'].append(f'{label}: webhook_url 为空')
+                logger.warning(f'Digest 跳过渠道 {channel_id}: webhook_url 为空')
+                continue
+
+            url = _digest_signed_url(channel)
+            for i, part in enumerate(parts):
+                if channel['type'] in im_types:
+                    _throttle_im(channel['type'])
+                try:
+                    resp = requests.post(url, json=payload_fn(part), timeout=15)
+                    body = resp.json() if resp.content else {}
+                    errcode = body.get('errcode')
+                    code = body.get('code')
+                    if (resp.status_code != 200
+                            or (errcode is not None and errcode != 0)
+                            or (code is not None and code != 0)):
+                        send_error = f'part {i+1}/{total}: HTTP {resp.status_code} {body}'
+                        break
+                except Exception as e:
+                    send_error = f'part {i+1}/{total}: {type(e).__name__}: {e}'
+                    break
 
         if send_error:
             logger.warning(f'Digest send failed for {channel["type"]} '
                            f'({channel.get("name", "")}): {send_error}')
             result['failed'].append(f'{label}: {send_error}')
+            if target is not None:
+                target_failures.setdefault(target, []).append(result['failed'][-1])
         else:
             result['sent'].append(label)
+            if target is not None:
+                succeeded_targets.add(target)
+                # 备用邮箱补发成功 → 主渠道的失败不再计入本轮回执
+                for prev in target_failures.pop(target, []):
+                    if prev in result['failed']:
+                        result['failed'].remove(prev)
+
+        recipient = ''
+        if channel['type'] == 'email' and idx in email_plan:
+            recipient = ', '.join(email_plan[idx]['recipients'])
 
         # Log each snapshot delivery
         for snap in snaps:
@@ -1085,8 +1226,8 @@ def _send_digest_split(rule: dict, digest_text: str, snaps: list) -> dict:
                 customer_id=rule.get('customer_id') or binding.get('customer_id'),
                 status='failed' if send_error else 'sent',
                 error=send_error,
-                # digest 是机器人渠道,recipient 留空,前端回退到 channel_name
-                recipient='',
+                # 机器人渠道留空,前端回退到 channel_name;邮箱记录实际收件人
+                recipient=recipient,
                 chain_json=chain_json_raw,
             )
 

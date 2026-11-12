@@ -363,6 +363,35 @@ def test_send_unknown_exception_returns_failure(email_notifier, base_msg, base_c
 
 
 # ============================================================================
+# System notification (digest) body
+# ============================================================================
+
+def test_send_system_notification_prefers_description_html(email_notifier, base_config, in_memory_db):
+    """汇总等系统通知使用预渲染 HTML 正文,主题取 message.title."""
+    msg = NotificationMessage(
+        title='📊 R — 每周升级汇总',
+        description_full='plain fallback',
+        description_html='<h2>汇总</h2><a href="https://x/a.bin">a.bin</a>',
+    )
+    server = _make_smtp_ssl_server()
+    with patch('src.notifiers.email.smtplib.SMTP_SSL', return_value=server), \
+         patch('src.notifiers.email.requests.get'):
+        result = email_notifier.send(msg, base_config)
+
+    assert result.success is True
+    from email import message_from_string
+    from email.header import decode_header, make_header
+    parsed = message_from_string(server.sendmail.call_args[0][2])
+    body = parsed.get_payload(0).get_payload(decode=True).decode('utf-8')
+    subject = str(make_header(decode_header(parsed['Subject'])))
+    assert '<h2>汇总</h2>' in body
+    assert 'a.bin' in body
+    assert 'plain fallback' not in body
+    assert '每周升级汇总' in subject
+    assert 'MD5' not in body
+
+
+# ============================================================================
 # Rule emails merge with to_list (dedup)
 # ============================================================================
 

@@ -450,9 +450,10 @@ def reset_rate_limit():
 @bp.route('/events', methods=['GET'])
 @require_auth
 def list_events():
-    """仪表盘事件中心 — 返回 system_event_log 最近事件列表
+    """事件中心 — 返回 system_event_log 事件列表
 
-    支持过滤:severity / event_type / since_hours / limit / offset
+    支持过滤:severity / event_type / since_hours / unacked / limit / offset
+    since_hours=0 表示不限时间；unacked=1 只看未确认事件
     2026-09-01: 加 offset + total 用于弹窗表格分页
     """
     from src.models.database import query
@@ -461,31 +462,41 @@ def list_events():
 
     severity = request.args.get('severity', '').strip()
     event_type = request.args.get('event_type', '').strip()
-    since_hours = int(request.args.get('since_hours', '24'))
+    try:
+        since_hours = int(request.args.get('since_hours', '24'))
+    except (TypeError, ValueError):
+        since_hours = 24
+    unacked_only = request.args.get('unacked', '').lower() in ('1', 'true', 'yes')
     limit = min(int(request.args.get('limit', '50')), 500)
     offset = max(int(request.args.get('offset', '0')), 0)
 
-    where = ["created_at >= datetime('now', ? || ' hours')"]
-    params = [f'-{since_hours}']
+    where = []
+    params = []
+    if since_hours > 0:
+        where.append("created_at >= datetime('now', ? || ' hours')")
+        params.append(f'-{since_hours}')
+    if unacked_only:
+        where.append('acked_at IS NULL')
     if severity:
         where.append('severity = ?')
         params.append(severity)
     if event_type:
         where.append('event_type = ?')
         params.append(event_type)
+    where_sql = ' AND '.join(where) or '1=1'
 
     sql = f"""SELECT id, event_type, severity, product_name, source_url,
                       rule_id, channel_id, channel_type, customer_id,
                       is_rollback, message, created_at, acked_at
                FROM system_event_log
-               WHERE {' AND '.join(where)}
+               WHERE {where_sql}
                ORDER BY id DESC
                LIMIT {limit} OFFSET {offset}"""
     rows = query(sql, tuple(params))
 
     # 2026-09-01: 当前过滤条件下的总数(分页用)
     count_sql = f"""SELECT COUNT(*) AS cnt FROM system_event_log
-                   WHERE {' AND '.join(where)}"""
+                   WHERE {where_sql}"""
     total_row = query(count_sql, tuple(params))
     total = total_row[0]['cnt'] if total_row else 0
 
@@ -623,7 +634,7 @@ def health_check():
     # last_run = 最近一次 cycle 完成时间(quick 优先,full 兜底)
     # 注意:不再从 content_sources.last_collected_at 取,那是"任意产品最近被采集时间",
     # 采集中会被当前产品刷新,会让用户误以为"刚刚跑完了一次 cycle"
-    # 采集中时(sch.is_running=true 且没完成)= None → 前端 dashboard() 显示"采集中…"
+    # 采集中时(sch.is_running=true 且没完成)= None → 前端仪表盘显示"采集中…"
 
     scheduler = {
         'enabled': sch.get('enabled', False),

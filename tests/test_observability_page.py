@@ -1,4 +1,4 @@
-"""可观测性页面上线门禁。
+"""仪表盘页面上线门禁。
 
 页面必须能从主导航进入、在 bootstrap 之前加载（bootstrap 立即调用 showPage），
 并从 /api/metrics 渲染投递、队列、采集、事件与调度等观测分区。
@@ -11,7 +11,8 @@ from tests.frontend_source import INDEX_HTML, WEB, js_source
 def test_nav_and_page_registered():
     html = INDEX_HTML.read_text(encoding='utf-8')
     assert 'data-page="observability"' in html
-    assert '>可观测</a>' in html
+    assert '>仪表盘</a>' in html
+    assert 'data-page="dashboard"' not in html
 
     source = js_source()
     assert re.search(r'async function observability\(\)', source)
@@ -27,8 +28,15 @@ def test_page_renders_observability_sections():
     source = (WEB / 'static/js/observability.js').read_text(encoding='utf-8')
     for marker in ('/metrics?hours=', '投递成功率', '队列积压', '采集健康',
                    '事件与告警', '存储与数据量', '调度任务',
-                   'scheduler_jobs', 'format=prometheus', 'MONITOR_METRICS_TOKEN'):
+                   'scheduler_jobs', 'format=prometheus', 'MONITOR_METRICS_TOKEN',
+                   'updates', 'customers', 'sessions', 'process',
+                   '已运行时间', '产品更新', '调度器', 'obs-alert', 'obsRestartService',
+                   '运行中', '已停止', '未启用',
+                   '站点可用性', 'nsfocus_site_check', '维护模式', 'maintenance',
+                   'site-spark', '延时曲线', 'history_summary', '_obsSiteChart',
+                   'openEventsCenterModal', '_obsWindowLabel'):
         assert marker in source, f'观测页缺少 {marker}'
+    assert '<th>状态</th>' not in source
     assert 'undated_failed' in source
     assert 'sources_stale' in source
     # 规则名/渠道名来自数据库，渲染时必须转义

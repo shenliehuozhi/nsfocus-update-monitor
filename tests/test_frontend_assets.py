@@ -22,9 +22,9 @@ import pytest
 from tests.frontend_source import INDEX_HTML, WEB, js_source, script_paths
 
 EXPECTED_ORDER = [
-    'core.js', 'dashboard.js', 'data.js', 'data_push.js', 'pages.js', 'history.js',
-    'products.js', 'collection.js', 'observability.js', 'account.js',
-    'bootstrap.js', 'tools.js',
+    'core.js', 'data.js', 'data_push.js', 'pages.js', 'history.js',
+    'products.js', 'collection.js', 'events_center.js', 'observability.js',
+    'account.js', 'bootstrap.js', 'tools.js',
 ]
 MAX_HTML_LINES = 80
 MAX_JS_LINES = 3000
@@ -269,6 +269,32 @@ def test_js_parses_with_esprima():
             esprima.parseScript(_es2017_compatible(path.read_text(encoding='utf-8')))
         except Exception as e:
             pytest.fail(f'{path.name} 语法错误: {e}')
+
+
+def test_tree_children_not_force_hidden_by_css():
+    """树展开时只移除 .hidden；CSS 里再写无条件 .tree-children{display:none} 会把它永久藏住。
+
+    2026-11-11 回归：data-css 重构把树节点从内联 style.display 改成 .hidden 后，
+    遗留的 .tree-children{display:none} 依然生效，订阅「添加路径」和采集产品树
+    都只能看到根节点。
+    """
+    css = (WEB / 'static/css/app.css').read_text(encoding='utf-8')
+    forced = re.findall(r'\.tree-children\s*\{[^}]*display\s*:\s*none', css)
+    assert not forced, (
+        '.tree-children 不能再有无条件 display:none；折叠统一交给 .hidden，'
+        '否则展开后节点仍然不可见'
+    )
+
+
+def test_tree_child_container_ids_use_unique_counter():
+    """容器 id 不能由节点名转义生成：中文名会被压成下划线，同层不同分支撞 id。"""
+    for name in ('products.js', 'pages.js'):
+        src = (WEB / 'static/js' / name).read_text(encoding='utf-8')
+        assert "name.replace(/\\W/g, '_')" not in src, \
+            f'{name} 仍在用节点名生成树容器 id，中文名会撞 id'
+        assert re.search(
+            r"childDivId\s*=\s*hasChildren\s*\?\s*\('(?:tcd|cst)_'\s*\+\s*sid\s*\+\s*'_'\s*\+\s*\(childUid\+\+\)",
+            src), f'{name} 的树容器 id 应使用递增序号保证唯一'
 
 
 def _node_binary():

@@ -243,22 +243,17 @@ function showLoginForm(){
 }
 async function doLogin(){
   const r=await api('/auth/login',{method:'POST',body:JSON.stringify({username:document.getElementById('lu').value,password:document.getElementById('lp').value})});
-  if(r.code===0){_authExpired=false;T=null;localStorage.removeItem('token');U=r.data.user;_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').classList.remove('hidden');showPage('dashboard');_refreshVersionBadge();}else toast(r.message,'error');
+  if(r.code===0){_authExpired=false;T=null;localStorage.removeItem('token');U=r.data.user;_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').classList.remove('hidden');showPage('observability');_refreshVersionBadge();}else toast(r.message,'error');
 }
 function _clearPageTimers(page){
-  if(page==='dashboard'){
-    if(_uptimeTimer){clearInterval(_uptimeTimer);_uptimeTimer=null;}
-    if(window._eventsRefreshTimer){clearInterval(window._eventsRefreshTimer);window._eventsRefreshTimer=null;}
-    if(window._dashPollTimer){clearInterval(window._dashPollTimer);window._dashPollTimer=null;}
-  }else if(page==='logs'){
+  if(page==='logs'){
     if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
   }else if(page==='observability'){
     if(window._obsTimer){clearInterval(window._obsTimer);window._obsTimer=null;}
   }
 }
 function _clearAllTimers(){
-  _clearPageTimers('dashboard');_clearPageTimers('logs');_clearPageTimers('observability');
-  if(window._eventsHeaderTimer){clearInterval(window._eventsHeaderTimer);window._eventsHeaderTimer=null;}
+  _clearPageTimers('logs');_clearPageTimers('observability');
   if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer);window._eventsCenterModalTimer=null;}
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
   if(_collectBannerPollTimer){clearInterval(_collectBannerPollTimer);_collectBannerPollTimer=null;}
@@ -293,6 +288,28 @@ document.addEventListener('click', (e) => {
   if(dd.classList.contains('hidden')) return;
   if(!menu.contains(e.target)) dd.classList.add('hidden');
 });
+
+// 全局浮窗 tooltip: 追加到 body, 避开祖先 overflow:hidden 裁切
+let _tipEl=null;
+function _showTip(target){
+  if(!_tipEl){_tipEl=document.createElement('div');_tipEl.style.cssText='position:fixed;background:#1a2332;color:#fff;padding:8px 12px;border-radius:6px;font-size:12px;white-space:pre-wrap;max-width:720px;min-width:240px;z-index:99999;box-shadow:0 4px 12px rgba(0,0,0,.25);line-height:1.6;pointer-events:none;opacity:0;transition:opacity .15s';document.body.appendChild(_tipEl);}
+  _tipEl.textContent=target.dataset.tip||'';
+  const r=target.getBoundingClientRect();
+  // 默认显示在行的下方 (top: r.bottom + 6), 如果下方空间不够则显示在上方
+  let top=r.bottom+6;
+  const tipH=80; // 估算浮窗高度
+  if(top+tipH>window.innerHeight)top=r.top-tipH-6;
+  let left=r.left;
+  const tipW=280;
+  if(left+tipW>window.innerWidth)left=window.innerWidth-tipW-8;
+  if(left<8)left=8;
+  _tipEl.style.top=top+'px';
+  _tipEl.style.left=left+'px';
+  _tipEl.style.opacity='1';
+}
+function _hideTip(){if(_tipEl)_tipEl.style.opacity='0';}
+document.addEventListener('mouseover',e=>{const t=e.target.closest('.pill-tip,.tp');if(t)_showTip(t)});
+document.addEventListener('mouseout',e=>{const t=e.target.closest('.pill-tip,.tp');if(t)_hideTip()});
 
 /* ── 自定义下拉浮层(渐进增强) ──────────────────────────────────────────
    原生 <select class="dd"> 的选项列表由系统绘制, 无法跟随全站圆角/主色。这里只替换
@@ -332,12 +349,14 @@ function ddOpen(sel){
   document.body.appendChild(pop);
   const r = sel.getBoundingClientRect();
   const w = Math.max(Math.round(r.width), 132);
+  pop.style.minWidth = w + 'px';
+  // 浮层按选项内容自适应宽度,定位要按实际宽度夹紧,否则长产品名会溢出屏幕
+  const pw = Math.max(pop.offsetWidth, w);
   const h = pop.offsetHeight;
   const below = r.bottom + 4;
   const above = r.top - h - 4;
-  pop.style.minWidth = w + 'px';
   pop.style.top = (below + h > innerHeight - 8 && above > 8 ? above : below) + 'px';
-  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - w - 8)) + 'px';
+  pop.style.left = Math.max(8, Math.min(r.left, innerWidth - pw - 8)) + 'px';
   _dd.sel = sel; _dd.pop = pop; _dd.idx = Math.max(cur, 0);
   _ddMark();
   const on = pop.querySelector('.dd-opt.on') || pop.firstChild;
@@ -402,7 +421,7 @@ function showPage(n){
   // 页面级轮询只在该页存活：切走即停，避免离开后仍每 N 秒请求并写已卸载的 DOM
   _clearPageTimers(_currentPage);
   _currentPage=n;_navSeq++;
-  const pages={dashboard,sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,observability,tools:toolsPage};
+  const pages={sessions,channels,subscriptions,customers,data:dataPage,history,settings,products,logs,observability,tools:toolsPage};
   if(pages[n]){
     try{
       const p=pages[n]();

@@ -158,10 +158,17 @@ DELETE /api/sessions/:id
 {
   "code": 0,
   "data": [
-    {"id": 1, "name": "客户A", "company": "xx公司", "owned_products": ["WAF:V6.0.9", "IPS:5.6.11"]}
+    {"id": 1, "name": "客户A", "company": "xx公司", "owned_products": [
+      {"product": "WEB应用防护系统(WAF)", "version": "V6.0.9"},
+      {"product": "网络入侵防护系统(IPS)", "version": "5.6.11"}
+    ]}
   ]
 }
 ```
+> 旧格式 `["WAF:V6.0.9"]` / `["WAF"]` 仍可写入，读取时会规整为 `{"product","version"}` 对象。
+
+### GET /api/customers/:id/service-report
+客户月度服务报告：当月推送明细。`month=YYYY-MM` 可选，默认当前月；月份边界按 UTC+8 计算（库里时间是 UTC）。返回 `summary`（推送总数 / 成功 / 失败 / 成功率）与 `deliveries`（最多 100 条，`truncated` 标记是否截断）。`month` 格式非法返回 `400`，客户不存在返回 `404`。
 
 ### POST /api/customers
 ### PUT /api/customers/:id
@@ -523,53 +530,9 @@ data: {"processed": 3, "errors": 0}
 
 ---
 
-## 8. 仪表盘
+## 8. 仪表盘（已下线）
 
-### GET /api/dashboard
-
-**参数**：`range` = `7` | `30` | `90`（默认30）
-
-```json
-{
-  "code": 0,
-  "data": {
-    "session_status": {"pool_active": 2, "pool_total": 3},
-    "last_collection": {"time": "2026-05-10T09:00:00", "duration_ms": 8200, "products_ok": 6, "products_fail": 0},
-    "stats_today": {"new_packages": 1, "rollbacks": 0, "notifications_sent": 2},
-    "stats_this_week": {"new_packages": 3, "rollbacks": 1, "notifications_sent": 6},
-    "products_summary": [
-      {"name": "WAF", "total_packages": 45, "latest_release": "2026-05-07T13:59:41"},
-      {"name": "IPS", "total_packages": 23, "latest_release": "2026-04-20T10:00:00"}
-    ],
-    "product_stats": [
-      {"name": "WAF", "count": 12},
-      {"name": "IPS", "count": 8}
-    ],
-    "timeline_stats": [
-      {"date": "2026-05-01", "counts": {"WAF": 2, "IPS": 1}},
-      {"date": "2026-05-02", "counts": {"WAF": 1, "IPS": 0}}
-    ]
-  }
-}
-```
-
-**字段说明**：
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `session_status.pool_active` | int | 当前活跃的 Cookie Session 数量 |
-| `session_status.pool_total` | int | Session 池总容量 |
-| `last_collection.time` | ISO8601 | 上次采集完成时间 |
-| `last_collection.duration_ms` | int | 上次采集耗时（毫秒） |
-| `last_collection.products_ok` | int | 上次采集成功的产品数 |
-| `last_collection.products_fail` | int | 上次采集失败的产品数 |
-| `stats_today` | object | 今日统计 |
-| `stats_this_week` | object | 本周统计 |
-| `products_summary` | array | 各产品包统计概览 |
-| `product_stats` | array | 近N天（range参数）各产品发布包数量分布，按数量降序 |
-| `timeline_stats` | array | 近N天每日各产品发布包数量趋势，按日期升序 |
-
-> **时区说明**：所有时间字段均为 UTC，前端通过 `fmtTZ()` 转换显示为本地时间（CST）。
+原仪表盘页面与 `GET /api/dashboard` 已移除，页面内容并入「仪表盘」页（`data-page="observability"`）；对应数据改由 `GET /api/metrics` 的 `today` / `customers` / `sessions` / `process` 字段提供，见 [13. 运行指标](#13-运行指标)。
 
 ---
 
@@ -680,7 +643,7 @@ data: {"processed": 3, "errors": 0}
 可用事件类型：`push_summary`、`digest_summary`、`collection_summary`、`cleanup_summary`、`log_error`、`session_error`、`session_expired`、`channel_error`、`delivery_error`、`login_bruteforce`。
 
 ### GET /api/system/events
-查询最近事件记录：
+查询最近事件记录。可选参数：`severity`（严重度）、`event_type`（事件类型）、`since_hours`（时间窗，默认 24，`0` = 全部时间）、`unacked=1`（只看未确认）、`limit`（默认 50，上限 500）、`offset`（分页）。
 
 ```json
 {
@@ -768,7 +731,7 @@ data: {"processed": 3, "errors": 0}
 
 | 参数 | 说明 |
 |------|------|
-| `hours` | 统计窗口小时数，默认 24，范围 1–720；非法值回退 24 |
+| `hours` | 统计窗口小时数，默认 24，范围 1–720；非法值回退 24；投递、产品更新与客户推送聚合同样使用该窗口 |
 | `format` | `prometheus` 时返回 `text/plain` 指标，否则返回 JSON |
 
 鉴权：`Authorization: Bearer <JWT>`；配置 `MONITOR_METRICS_TOKEN` 后也可用 `X-Metrics-Token: <token>` 或 `Authorization: Bearer <token>`（Prometheus 的 `authorization.credentials_file` 原生发送后者；JWT 24h 过期不适合长期抓取）。
@@ -787,6 +750,29 @@ data: {"processed": 3, "errors": 0}
          "pending": 0, "success_rate": 1.0}
       ]
     },
+    "today": {
+      "delivery": {"total": 12, "sent": 11, "failed": 1, "success_rate": 0.9167}
+    },
+    "updates": {
+      "window_hours": 24,
+      "total": 2,
+      "items": [
+        {"name": "WAF", "count": 2, "last_published_at": "2026-11-11T03:30:00"}
+      ]
+    },
+    "customers": {
+      "window_hours": 24,
+      "items": [
+        {"id": 1, "name": "客户A", "total": 10, "success": 9, "failed": 1,
+         "last_sent_at": "2026-11-11 09:31:00", "last_product": "WAF"}
+      ]
+    },
+    "sessions": {
+      "total": 5, "active": 3, "expired": 1, "unknown": 1,
+      "active_but_expired": 0, "collect_total": 4, "collect_active": 2,
+      "collect_polluted": 0, "discover_active": 1
+    },
+    "process": {"started_at": "2026-11-10T23:00:00+00:00", "uptime_seconds": 90000},
     "queues": {
       "delayed": {"pending": 0, "overdue": 0, "retrying": 0, "oldest_age_minutes": null},
       "digest": {"pending": 0, "retrying": 0, "by_rule": []}
@@ -809,7 +795,22 @@ data: {"processed": 3, "errors": 0}
       "snapshots_active": 725, "delivery_log_rows": 7596,
       "digest_queue_rows": 0, "system_event_log_rows": 412
     },
-    "scheduler_jobs": []
+    "maintenance": {"enabled": false},
+    "site": {
+      "url": "https://update.nsfocus.com/", "status": "up",
+      "http_status": 200, "latency_ms": 276,
+      "checked_at": "2026-11-11T09:40:22+00:00",
+      "error": "", "consecutive_failures": 0,
+      "last_ok_at": "2026-11-11T09:40:22+00:00", "last_fail_at": null
+    },
+    "scheduler_jobs": [
+      {"id": "nsfocus_collect", "next_run": "2026-11-11T05:00:00Z",
+       "seconds_until": 3600, "status": "running"},
+      {"id": "nsfocus_site_check", "next_run": "2026-11-11T05:05:00Z",
+       "seconds_until": 3900, "status": "running"},
+      {"id": "nsfocus_channel_health", "next_run": null,
+       "seconds_until": null, "status": "disabled"}
+    ]
   }
 }
 ```
@@ -822,5 +823,12 @@ data: {"processed": 3, "errors": 0}
 - `queues.*.retrying` 统计 `attempts > 0` 的 pending 行（发送失败、等待退避重试）；重试上限由 `MONITOR_DELIVERY_MAX_ATTEMPTS` / `MONITOR_DIGEST_MAX_ATTEMPTS` 控制（默认 6），耗尽后行状态转为 `cancelled`，原因见 `cancelled_reason`。
 - `collection.last_duration_s` / `avg_duration_s` 取最近 20 条 `collection_summary` 系统事件，不受 `hours` 限制。
 - `collection.sources_stale` 统计 24 小时内未成功采集的启用源。
-- `scheduler_jobs` 仅在调度器运行时非空。
-- 网页端「可观测」页面消费同一接口，提供窗口切换、30 秒自动刷新和 Prometheus 抓取地址；页面不读取或展示 `MONITOR_METRICS_TOKEN`。
+- `today` 固定按 CST 当天统计，不随 `hours` 变化，仅含 `delivery`（供 Prometheus 今日指标使用）。
+- `updates` 按 `snapshots.product_name`（产品大类）聚合窗口内更新包数，跟随 `hours`；`published_at` 入库时已转为 UTC ISO，窗口按 UTC 比较，页面展示时再转 CST。
+- `customers` 与 `delivery` 共用 `hours` 窗口聚合 `delivery_log`，`total` / `success` / `failed` 为窗口内计数，`last_product` 取最近一次推送的产品名；窗口内无推送的客户仍返回且计数为 0。
+- `sessions` 的 `collect_*` 只统计 `purpose='collect'`，`discover_active` 为可用发现 Session 数，`active_but_expired` 为已过期但仍标记活跃的行。
+- `process.uptime_seconds` 由进程启动时间派生，无法解析时为 `null`（Prometheus 输出为 `NaN`）。
+- `maintenance.enabled` 读取 `system_settings.maintenance_mode`；开启后所有订阅推送被抑制，采集照常。
+- `site` 为 `nsfocus_site_check` 每 5 分钟对 `https://update.nsfocus.com/` 的探测结果：HTTP `< 500` 视为 `up`，5xx/超时/连接错误为 `down`，从未探测为 `unknown`；`consecutive_failures` 连续失败次数，状态切换时写 `site_unavailable` / `site_recovered` 系统事件。`site.history` 为时间升序采样点 `{t, ms, s}`，`site.history_summary` 为 `{samples, failures, avg_ms, max_ms}`，`site.history_hours` 为窗口小时数；超过 180 个采样按时间桶平均，失败桶保留 `s=down` / `ms=null`。`format=prometheus` 时不返回历史，避免抓取响应体膨胀。
+- `scheduler_jobs` 始终返回已知任务（采集、心跳、汇总、投递队列、清理、渠道体检、站点可用性），`status` 为 `running` / `stopped` / `disabled`；任务未注册时 `next_run` / `seconds_until` 为 `null`。站点探测独立于采集调度器，采集关闭时仍可能为 `running`。
+- 网页端「仪表盘」页面消费同一接口，提供窗口切换、30 秒自动刷新和 Prometheus 抓取地址；页面不读取或展示 `MONITOR_METRICS_TOKEN`。

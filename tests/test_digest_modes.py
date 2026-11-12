@@ -354,6 +354,121 @@ def test_digest_skips_inactive_channel_with_reason(monkeypatch):
     assert any('已停用' in s for s in result['skipped'])
 
 
+# ── 邮箱汇总 ─────────────────────────────────────────────────
+
+
+def _email_channel(cid, name='ops-mail', smtp_user='ops@nsfocus.com'):
+    return {
+        'id': cid, 'type': 'email', 'name': name, 'is_active': 1,
+        'config': {
+            'smtp_host': 'smtp.example.com', 'smtp_port': 465,
+            'smtp_user': smtp_user, 'smtp_password': 'secret',
+            'smtp_encryption': 'ssl', 'from_name': '绿盟升级通知',
+            'to_list': [],
+        },
+    }
+
+
+def _patch_email_bindings(monkeypatch, bindings, channels, send_fn):
+    import src.notifiers.router as router
+    import src.models.subscription as sub
+
+    by_id = {c['id']: c for c in channels}
+    logged = []
+
+    monkeypatch.setattr(sub, 'get_rule_channels', lambda rid: bindings)
+    monkeypatch.setattr(router, 'get_by_id', lambda cid: by_id.get(cid))
+    monkeypatch.setattr(sub, 'log_delivery', lambda **kw: logged.append(kw))
+    monkeypatch.setattr(router, '_digest_channel_already_sent', lambda *a: False)
+    monkeypatch.setattr(router, '_digest_group_already_sent', lambda *a: False)
+    monkeypatch.setattr(router, '_get_email_rate_settings', lambda: {
+        'cust_hourly': 10, 'cust_daily': 50,
+        'global_hourly': 100, 'global_daily': 500,
+    })
+    monkeypatch.setattr(router.EmailNotifier, 'send', send_fn)
+    return logged
+
+
+def test_digest_sends_email_with_resolved_recipients(monkeypatch):
+    import src.notifiers.router as router
+    from src.notifiers.base import DeliveryResult
+
+    bindings = [{'channel_id': 20, 'customer_id': 1,
+                 'customer_emails': 'a@nsfocus.com, b@example.com'}]
+    calls = []
+
+    def fake_send(self, message, config):
+        calls.append((message, config))
+        return DeliveryResult(True, 'email', 'ops-mail', sender='ops@nsfocus.com')
+
+    logged = _patch_email_bindings(
+        monkeypatch, bindings, [_email_channel(20)], fake_send)
+
+    text = '## 📊 R — 每周升级汇总\n\n**产品**: WAF\n下载: [a.bin](https://x/a.bin)'
+    result = router._send_digest_split(
+        _rule(), text, [{'snapshot_id': 1, 'chain_json': '[]'}])
+
+    assert result['sent'] == ['ops-mail(email)']
+    assert result['failed'] == []
+    assert len(calls) == 1
+    message, config = calls[0]
+    assert message.title == '📊 R — 每周升级汇总'
+    assert '<strong>产品</strong>' in message.description_html
+    assert '<a href="https://x/a.bin"' in message.description_html
+    assert config['rule_emails'] == 'a@nsfocus.com, b@example.com'
+    assert config['_channel_id'] == 20
+    # 机器人渠道 recipient 为空,邮箱记录实际收件人
+    assert 'a@nsfocus.com' in logged[0]['recipient']
+    assert logged[0]['status'] == 'sent'
+
+
+def test_digest_email_failover_uses_backup_and_clears_failure(monkeypatch):
+    import src.notifiers.router as router
+    from src.notifiers.base import DeliveryResult
+
+    bindings = [
+        {'channel_id': 20, 'customer_id': 1, 'customer_emails': 'a@nsfocus.com'},
+        {'channel_id': 21, 'customer_id': 1, 'customer_emails': 'a@nsfocus.com'},
+    ]
+    attempts = []
+
+    def fake_send(self, message, config):
+        attempts.append(config['_channel_id'])
+        if config['_channel_id'] == 20:
+            return DeliveryResult(False, 'email', 'primary', 'smtp down')
+        return DeliveryResult(True, 'email', 'backup', sender='backup@nsfocus.com')
+
+    _patch_email_bindings(
+        monkeypatch, bindings,
+        [_email_channel(20, 'primary'), _email_channel(21, 'backup')], fake_send)
+
+    result = router._send_digest_split(
+        _rule(), '## 汇总\n正文', [{'snapshot_id': 1, 'chain_json': '[]'}])
+
+    assert attempts == [20, 21]
+    assert result['sent'] == ['backup(email)']
+    # 备用渠道补发成功 → 主渠道失败不计入本轮,避免队列无意义重试
+    assert result['failed'] == []
+
+
+def test_digest_email_without_recipients_is_skipped(monkeypatch):
+    import src.notifiers.router as router
+
+    bindings = [{'channel_id': 20, 'customer_id': 0, 'customer_emails': ''}]
+    calls = []
+    _patch_email_bindings(
+        monkeypatch, bindings, [_email_channel(20)],
+        lambda self, message, config: calls.append(config))
+
+    result = router._send_digest_split(
+        _rule(), '## 汇总', [{'snapshot_id': 1, 'chain_json': '[]'}])
+
+    assert calls == []
+    assert result['sent'] == []
+    assert any('未配置收件人' in s for s in result['skipped'])
+
+
+
 # ── 手动重推 ─────────────────────────────────────────────────
 
 

@@ -16,7 +16,7 @@ import os
 import secrets
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, Response, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from src.core.logger import get_logger
 from src.web.auth import decode_token, request_token
@@ -86,6 +86,156 @@ def _age_minutes(ts) -> float | None:
 def _rate(sent: int, failed: int) -> float | None:
     done = sent + failed
     return round(sent / done, 4) if done else None
+
+
+def _today() -> dict:
+    """当日（CST）推送统计；不随 hours 窗口变化。"""
+    from src.models.database import query
+
+    row = query(
+        """SELECT COUNT(*) AS total,
+                  SUM(CASE WHEN delivery_status='sent' THEN 1 ELSE 0 END) AS sent,
+                  SUM(CASE WHEN delivery_status='failed' THEN 1 ELSE 0 END) AS failed
+           FROM delivery_log
+           WHERE date(datetime(COALESCE(NULLIF(created_at, ''), sent_at)), '+8 hours')
+                 = date('now', '+8 hours')"""
+    )[0]
+    sent = row['sent'] or 0
+    failed = row['failed'] or 0
+    return {
+        'delivery': {
+            'total': row['total'] or 0,
+            'sent': sent,
+            'failed': failed,
+            'success_rate': _rate(sent, failed),
+        },
+    }
+
+
+def _updates(hours: int) -> dict:
+    """窗口内产品更新，按产品大类（snapshots.product_name）聚合。"""
+    from src.models.database import query
+
+    hours = max(1, min(hours, 24 * 3650))
+    # 采集器写库时已把站点 CST 时间转换为 UTC ISO，按 UTC 当前时间比较
+    rows = query(
+        """SELECT product_name, COUNT(*) AS count,
+                  MAX(published_at) AS last_published_at
+           FROM snapshots
+           WHERE product_name <> '' AND published_at <> ''
+             AND datetime(published_at) >= datetime('now', ?)
+           GROUP BY product_name
+           ORDER BY last_published_at DESC, product_name""",
+        (f'-{hours} hours',),
+    )
+    items = [{
+        'name': r['product_name'],
+        'count': r['count'] or 0,
+        'last_published_at': r['last_published_at'],
+    } for r in rows]
+    return {
+        'window_hours': hours,
+        'total': sum(item['count'] for item in items),
+        'items': items,
+    }
+
+
+def _sessions() -> dict:
+    from src.models.database import query
+    from src.models.user_session import count_by_status, get_expired_active_count
+
+    active = count_by_status('active')
+    expired = count_by_status('expired')
+    unknown = count_by_status('unknown')
+    row = query(
+        """SELECT SUM(CASE WHEN purpose='collect' THEN 1 ELSE 0 END) AS collect_total,
+                  SUM(CASE WHEN purpose='collect' AND status='active' THEN 1 ELSE 0 END) AS collect_active,
+                  SUM(CASE WHEN purpose='collect' AND heartbeat_status='污染' THEN 1 ELSE 0 END) AS collect_polluted,
+                  SUM(CASE WHEN purpose='discover' AND status='active' THEN 1 ELSE 0 END) AS discover_active
+           FROM user_sessions"""
+    )[0]
+    return {
+        'total': active + expired + unknown,
+        'active': active,
+        'expired': expired,
+        'unknown': unknown,
+        'active_but_expired': get_expired_active_count(),
+        'collect_total': row['collect_total'] or 0,
+        'collect_active': row['collect_active'] or 0,
+        'collect_polluted': row['collect_polluted'] or 0,
+        'discover_active': row['discover_active'] or 0,
+    }
+
+
+def _customers(hours: int) -> dict:
+    """客户维度推送聚合（跟随全局 hours 时间窗）。"""
+    from src.models.database import query
+
+    hours = max(0, min(hours, 24 * 3650))
+    window = (
+        ''
+        if hours <= 0
+        else f"AND datetime(COALESCE(NULLIF(dl.created_at, ''), dl.sent_at)) "
+             f">= datetime('now', '-{hours} hours')"
+    )
+    rows = query(
+        f"""SELECT c.id, c.name, COUNT(dl.id) AS total,
+                   SUM(CASE WHEN dl.delivery_status='sent' THEN 1 ELSE 0 END) AS sent,
+                   SUM(CASE WHEN dl.delivery_status='failed' THEN 1 ELSE 0 END) AS failed,
+                   MAX(dl.sent_at) AS last_sent_at
+            FROM customers c
+            LEFT JOIN delivery_log dl ON dl.customer_id = c.id {window}
+            GROUP BY c.id, c.name
+            ORDER BY total DESC, c.name"""
+    )
+    items = []
+    for r in rows:
+        item = {
+            'id': r['id'],
+            'name': r['name'],
+            'total': r['total'] or 0,
+            'success': r['sent'] or 0,
+            'failed': r['failed'] or 0,
+            'last_sent_at': r['last_sent_at'],
+            'last_product': '',
+        }
+        if item['last_sent_at']:
+            snap = query(
+                """SELECT s.product_name FROM delivery_log dl
+                   JOIN snapshots s ON dl.snapshot_id = s.id
+                   WHERE dl.customer_id = ? AND dl.sent_at IS NOT NULL
+                   ORDER BY dl.sent_at DESC LIMIT 1""",
+                (r['id'],),
+            )
+            if snap:
+                item['last_product'] = snap[0]['product_name'] or ''
+        items.append(item)
+    return {'window_hours': hours, 'items': items}
+
+
+def _process() -> dict:
+    """进程启动时间与已运行秒数。"""
+    started = None
+    try:
+        info = current_app.config.get('VERSION_INFO') or {}
+        started = info.get('process_start')
+    except RuntimeError:
+        pass
+    if not started:
+        try:
+            started = datetime.fromtimestamp(
+                os.stat('/proc/self').st_ctime, tz=timezone.utc
+            ).isoformat()
+        except OSError:
+            started = datetime.now(timezone.utc).isoformat()
+    try:
+        dt = datetime.fromisoformat(str(started).replace('Z', '+00:00'))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        uptime = max(0, int((datetime.now(timezone.utc) - dt).total_seconds()))
+    except ValueError:
+        uptime = None
+    return {'started_at': started, 'uptime_seconds': uptime}
 
 
 def _delivery(hours: int) -> dict:
@@ -279,6 +429,50 @@ def _rules() -> dict:
     }
 
 
+def _maintenance() -> dict:
+    """维护模式：开启后所有订阅推送被抑制，采集照常。"""
+    from src.models.database import query
+    enabled = False
+    try:
+        rows = query("SELECT value FROM system_settings WHERE key = 'maintenance_mode'")
+        enabled = bool(rows) and str(rows[0]['value']) == '1'
+    except Exception as e:
+        logger.debug(f'metrics: maintenance mode unavailable: {e}')
+    return {'enabled': enabled}
+
+
+def _site(hours: int = 24, include_history: bool = True) -> dict:
+    """update.nsfocus.com 最近一次可用性探测结果与延时历史。"""
+    try:
+        from src.core.site_monitor import get_status
+        site = get_status()
+    except Exception as e:
+        logger.debug(f'metrics: site status unavailable: {e}')
+        site = {
+            'url': 'https://update.nsfocus.com/',
+            'status': 'unknown',
+            'http_status': None,
+            'latency_ms': None,
+            'checked_at': None,
+            'error': '',
+            'consecutive_failures': 0,
+            'last_ok_at': None,
+            'last_fail_at': None,
+        }
+    if include_history:
+        points, summary = [], {'samples': 0, 'failures': 0, 'avg_ms': None,
+                               'max_ms': None}
+        try:
+            from src.models.site_probe import history
+            points, summary = history(hours)
+        except Exception as e:
+            logger.debug(f'metrics: site history unavailable: {e}')
+        site['history'] = points
+        site['history_summary'] = summary
+        site['history_hours'] = hours
+    return site
+
+
 def _events(hours: int) -> dict:
     from src.models.database import query
     rows = query(
@@ -325,26 +519,65 @@ def _storage() -> dict:
     }
 
 
-def _scheduler_jobs() -> list:
+_SCHEDULER_JOB_IDS = (
+    'nsfocus_collect',
+    'nsfocus_heartbeat',
+    'nsfocus_digest',
+    'nsfocus_delivery_queue',
+    'nsfocus_db_cleanup',
+    'nsfocus_channel_health',
+    'nsfocus_site_check',
+)
+
+
+def _scheduler_jobs(collection: dict | None = None) -> list:
+    """Known jobs always returned so the page can show running/stopped per job."""
     try:
         from src.core.scheduler import get_job_status
-        return get_job_status()
+        jobs = get_job_status()
     except Exception as e:
         logger.debug(f'metrics: scheduler jobs unavailable: {e}')
-        return []
+        jobs = []
+
+    by_id = {job['id']: job for job in jobs}
+    enabled = (collection or {}).get('enabled')
+    result = []
+    for job_id in _SCHEDULER_JOB_IDS:
+        job = by_id.get(job_id)
+        if job:
+            result.append({**job, 'status': 'running'})
+        else:
+            result.append({
+                'id': job_id,
+                'next_run': None,
+                'seconds_until': None,
+                'status': 'stopped' if enabled is False else 'disabled',
+            })
+    for job in jobs:
+        if job['id'] not in _SCHEDULER_JOB_IDS:
+            result.append({**job, 'status': 'running'})
+    return result
 
 
-def collect_metrics(hours: int) -> dict:
+def collect_metrics(hours: int, include_history: bool = True) -> dict:
+    collection = _collection()
     return {
         'generated_at': datetime.now().astimezone().isoformat(timespec='seconds'),
         'window_hours': hours,
         'delivery': _delivery(hours),
+        'today': _today(),
+        'updates': _updates(hours),
+        'customers': _customers(hours),
+        'sessions': _sessions(),
+        'process': _process(),
         'queues': _queues(),
-        'collection': _collection(),
+        'collection': collection,
         'rules': _rules(),
         'events': _events(hours),
         'storage': _storage(),
-        'scheduler_jobs': _scheduler_jobs(),
+        'maintenance': _maintenance(),
+        'site': _site(hours, include_history),
+        'scheduler_jobs': _scheduler_jobs(collection),
     }
 
 
@@ -390,6 +623,18 @@ def render_prometheus(data: dict) -> str:
         gauge('nsfocus_delivery_channel_sent', ch['sent'], tags)
         gauge('nsfocus_delivery_channel_failed', ch['failed'], tags)
 
+    today = data['today']
+    gauge('nsfocus_delivery_today_events', today['delivery']['total'])
+    gauge('nsfocus_delivery_today_sent', today['delivery']['sent'])
+    gauge('nsfocus_delivery_today_failed', today['delivery']['failed'])
+    gauge('nsfocus_products_updated', data['updates']['total'], {**window})
+
+    sessions = data['sessions']
+    gauge('nsfocus_sessions', sessions['active'], {'status': 'active'})
+    gauge('nsfocus_sessions', sessions['expired'], {'status': 'expired'})
+    gauge('nsfocus_sessions', sessions['active_but_expired'], {'status': 'active_but_expired'})
+    gauge('nsfocus_process_uptime_seconds', data['process']['uptime_seconds'])
+
     delayed = data['queues']['delayed']
     digest = data['queues']['digest']
     gauge('nsfocus_queue_pending', delayed['pending'], {'queue': 'delayed'})
@@ -420,6 +665,17 @@ def render_prometheus(data: dict) -> str:
     gauge('nsfocus_snapshots', storage['snapshots_total'], {'status': 'total'})
     gauge('nsfocus_delivery_log_rows', storage['delivery_log_rows'])
 
+    gauge('nsfocus_maintenance_mode', data['maintenance']['enabled'])
+
+    site = data['site']
+    site_up = None if site['status'] == 'unknown' else (1 if site['status'] == 'up' else 0)
+    site_tags = {'url': site['url']}
+    gauge('nsfocus_site_up', site_up, site_tags)
+    gauge('nsfocus_site_http_status', site['http_status'], site_tags)
+    gauge('nsfocus_site_latency_ms', site['latency_ms'], site_tags)
+    gauge('nsfocus_site_consecutive_failures', site['consecutive_failures'], site_tags)
+    gauge('nsfocus_site_last_check_age_minutes', _age_minutes(site['checked_at']), site_tags)
+
     for job in data['scheduler_jobs']:
         gauge('nsfocus_scheduler_job_seconds_until', job['seconds_until'], {'job': job['id']})
 
@@ -430,7 +686,8 @@ def render_prometheus(data: dict) -> str:
 @_auth
 def metrics():
     hours = _window_hours(request.args.get('hours'))
-    data = collect_metrics(hours)
-    if request.args.get('format') == 'prometheus':
+    prometheus = request.args.get('format') == 'prometheus'
+    data = collect_metrics(hours, include_history=not prometheus)
+    if prometheus:
         return Response(render_prometheus(data), mimetype='text/plain; version=0.0.4')
     return jsonify({'code': 0, 'data': data})

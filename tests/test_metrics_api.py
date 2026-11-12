@@ -277,6 +277,199 @@ def test_prometheus_is_well_formed(client):
     assert 'nsfocus_delivery_undated_failed' in types
 
 
+def test_today_updates_sessions_and_process(client):
+    from src.models.database import execute
+    execute("INSERT OR IGNORE INTO content_sources (id, name, source_type, is_active) "
+            "VALUES (1, 'WAF', 'nsfocus', 1)")
+    execute("UPDATE snapshots SET published_at = datetime('now') WHERE id = 1")
+    execute("""INSERT INTO snapshots (id, source_id, product_name, version_branch,
+               package_type, package_version, file_name, md5_hash, status, published_at)
+               VALUES (2, 1, 'IDS', 'V6.0', 'sys', 'V6.0.9', 'b.bin', 'md5-2', 'active',
+                       datetime('now', '-10 days'))""")
+    execute("""INSERT INTO delivery_log
+               (snapshot_id, rule_id, channel_id, channel_type, delivery_status, created_at)
+               VALUES (1, 3, 1, 'wecom', 'sent', datetime('now'))""")
+
+    data = _get(client)
+    today = data['today']
+    assert today['delivery']['total'] == 1
+    assert today['delivery']['sent'] == 1
+    assert today['delivery']['success_rate'] == 1.0
+
+    updates = data['updates']
+    assert updates['window_hours'] == 24
+    assert updates['total'] == 1
+    assert [(p['name'], p['count']) for p in updates['items']] == [('WAF', 1)]
+    assert updates['items'][0]['last_published_at']
+
+    week = _get(client, '?hours=168')['updates']
+    assert week['total'] == 1
+    assert [p['name'] for p in week['items']] == ['WAF']
+
+    month = _get(client, '?hours=720')['updates']
+    assert month['total'] == 2
+    assert {p['name']: p['count'] for p in month['items']} == {'IDS': 1, 'WAF': 1}
+
+    assert data['sessions'] == {
+        'total': 0, 'active': 0, 'expired': 0, 'unknown': 0,
+        'active_but_expired': 0, 'collect_total': 0, 'collect_active': 0,
+        'collect_polluted': 0, 'discover_active': 0,
+    }
+    assert data['process']['started_at']
+    assert data['process']['uptime_seconds'] >= 0
+
+
+def test_customers_follow_hours_window(client):
+    from src.models.database import execute
+    execute("INSERT INTO customers (id, name) VALUES (1, 'C')")
+    execute("INSERT INTO customers (id, name) VALUES (2, 'D')")
+    execute("""INSERT INTO delivery_log
+               (snapshot_id, customer_id, rule_id, channel_id, channel_type,
+                delivery_status, sent_at, created_at)
+               VALUES (1, 1, 3, 1, 'wecom', 'sent',
+                       datetime('now', '-1 hour'), datetime('now', '-1 hour'))""")
+    execute("""INSERT INTO delivery_log
+               (snapshot_id, customer_id, rule_id, channel_id, channel_type,
+                delivery_status, sent_at, created_at)
+               VALUES (1, 1, 3, 1, 'wecom', 'failed',
+                       datetime('now', '-10 days'), datetime('now', '-10 days'))""")
+
+    day = _get(client)['customers']
+    assert day['window_hours'] == 24
+    by_name = {c['name']: c for c in day['items']}
+    assert (by_name['C']['total'], by_name['C']['success'], by_name['C']['failed']) == (1, 1, 0)
+    assert by_name['D']['total'] == 0
+
+    week = _get(client, '?hours=168')['customers']
+    assert week['window_hours'] == 168
+    by_name = {c['name']: c for c in week['items']}
+    assert by_name['C']['total'] == 1
+
+    month = _get(client, '?hours=720')['customers']
+    assert month['window_hours'] == 720
+    by_name = {c['name']: c for c in month['items']}
+    assert (by_name['C']['total'], by_name['C']['failed']) == (2, 1)
+
+    assert _get(client, '?hours=abc')['customers']['window_hours'] == 24
+    assert _get(client, '?hours=999999')['customers']['window_hours'] == 24
+
+
+def test_scheduler_jobs_keep_known_jobs_when_stopped(monkeypatch):
+    import src.core.scheduler as sched
+    from src.web.routes.metrics_routes import _SCHEDULER_JOB_IDS, _scheduler_jobs
+
+    monkeypatch.setattr(sched, 'get_job_status', lambda: [])
+    jobs = _scheduler_jobs({'enabled': False})
+
+    assert [j['id'] for j in jobs] == list(_SCHEDULER_JOB_IDS)
+    assert {j['status'] for j in jobs} == {'stopped'}
+    assert all(j['next_run'] is None and j['seconds_until'] is None for j in jobs)
+
+
+def test_scheduler_jobs_status_running_and_disabled(monkeypatch):
+    import src.core.scheduler as sched
+    from src.web.routes.metrics_routes import _scheduler_jobs
+
+    monkeypatch.setattr(sched, 'get_job_status', lambda: [{
+        'id': 'nsfocus_collect',
+        'next_run': '2026-11-11T05:00:00Z',
+        'seconds_until': 100,
+    }])
+    by_id = {j['id']: j for j in _scheduler_jobs({'enabled': True})}
+
+    assert by_id['nsfocus_collect']['status'] == 'running'
+    assert by_id['nsfocus_collect']['seconds_until'] == 100
+    assert by_id['nsfocus_heartbeat']['status'] == 'disabled'
+
+
+def test_prometheus_includes_today_and_session_gauges(client):
+    _seed_deliveries()
+    resp = client.get('/api/metrics?format=prometheus',
+                      headers={'Authorization': f'Bearer {_token()}'})
+    body = resp.get_data(as_text=True)
+    assert 'nsfocus_delivery_today_events ' in body
+    assert 'nsfocus_products_updated{window_hours="24"} ' in body
+    assert 'nsfocus_sessions{status="active"} ' in body
+    assert 'nsfocus_process_uptime_seconds ' in body
+
+
+def test_maintenance_and_site_metrics(client, monkeypatch):
+    from src.models.database import execute
+    import src.core.site_monitor as sm
+
+    execute("INSERT OR REPLACE INTO system_settings (key, value) "
+            "VALUES ('maintenance_mode', '1')")
+    monkeypatch.setattr(sm, 'get_status', lambda: {
+        'url': 'https://update.nsfocus.com/',
+        'status': 'down',
+        'http_status': 503,
+        'latency_ms': 1234,
+        'checked_at': _ts(minutes=2),
+        'error': 'HTTP 503',
+        'consecutive_failures': 2,
+        'last_ok_at': _ts(hours=1),
+        'last_fail_at': _ts(minutes=2),
+    })
+
+    data = _get(client)
+    assert data['maintenance'] == {'enabled': True}
+    assert data['site']['status'] == 'down'
+    assert data['site']['consecutive_failures'] == 2
+
+    body = client.get('/api/metrics?format=prometheus',
+                      headers={'Authorization': f'Bearer {_token()}'}).get_data(as_text=True)
+    assert 'nsfocus_maintenance_mode 1' in body
+    assert 'nsfocus_site_up{url="https://update.nsfocus.com/"} 0' in body
+    assert 'nsfocus_site_http_status{url="https://update.nsfocus.com/"} 503' in body
+    assert 'nsfocus_site_latency_ms{url="https://update.nsfocus.com/"} 1234' in body
+
+
+def test_maintenance_defaults_off_and_site_unknown(client):
+    data = _get(client)
+    assert data['maintenance'] == {'enabled': False}
+    assert data['site']['status'] == 'unknown'
+    assert data['site']['url'] == 'https://update.nsfocus.com/'
+    assert data['site']['history'] == []
+    assert data['site']['history_summary']['samples'] == 0
+    assert data['site']['history_hours'] == 24
+
+
+def test_site_history_follows_hours_window(client):
+    from datetime import timezone
+    from src.models.site_probe import record
+
+    def iso(**delta):
+        return (datetime.now(timezone.utc) - timedelta(**delta)).isoformat(timespec='seconds')
+
+    record({'status': 'up', 'latency_ms': 100, 'http_status': 200,
+            'checked_at': iso(hours=1), 'error': ''})
+    record({'status': 'down', 'latency_ms': 500, 'http_status': 503,
+            'checked_at': iso(hours=2), 'error': 'HTTP 503'})
+    record({'status': 'up', 'latency_ms': 300, 'http_status': 200,
+            'checked_at': iso(days=10), 'error': ''})
+
+    site = _get(client)['site']
+    assert site['history_hours'] == 24
+    assert site['history_summary'] == {
+        'samples': 2, 'failures': 1, 'avg_ms': 100, 'max_ms': 100,
+    }
+    assert [p['s'] for p in site['history']] == ['down', 'up']
+
+    month = _get(client, '?hours=720')['site']
+    assert month['history_hours'] == 720
+    assert month['history_summary']['samples'] == 3
+    assert month['history_summary']['max_ms'] == 300
+
+
+def test_prometheus_omits_site_history(client):
+    from src.web.routes.metrics_routes import collect_metrics
+
+    assert 'history' not in collect_metrics(24, include_history=False)['site']
+    body = client.get('/api/metrics?format=prometheus',
+                      headers={'Authorization': f'Bearer {_token()}'}).get_data(as_text=True)
+    assert 'nsfocus_site_up{' in body
+
+
 def test_prometheus_escapes_label_values(client):
     from src.web.routes.metrics_routes import collect_metrics, render_prometheus
 

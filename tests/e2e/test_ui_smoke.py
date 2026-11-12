@@ -28,11 +28,11 @@ pytestmark = pytest.mark.skipif(
 )
 
 PAGES = [
-    ('dashboard', '仪表盘'),
+    ('observability', '仪表盘'),
     ('data', '采集数据'),
     ('history', '推送历史'),
+    ('customers', '客户'),
     ('products', '产品管理'),
-    ('observability', '可观测'),
     ('settings', '系统配置'),
 ]
 
@@ -69,6 +69,8 @@ def browser_session():
         )
 
         page.goto(BASE_URL + '/', wait_until='domcontentloaded')
+        page.wait_for_selector('button[data-on-click="showLoginForm"]', timeout=15000)
+        page.click('button[data-on-click="showLoginForm"]')
         page.wait_for_selector('#lu', timeout=15000)
         page.fill('#lu', USER)
         page.fill('#lp', PASSWORD)
@@ -106,7 +108,7 @@ def test_no_data_css_and_dynamic_widths_applied(browser_session):
     page, errors, failed = browser_session
     sampled = False
 
-    for route in ('dashboard', 'data', 'observability'):
+    for route in ('observability', 'data'):
         errors.clear()
         failed.clear()
         page.click(f'nav a[data-page="{route}"]')
@@ -141,4 +143,4 @@ def test_no_data_css_and_dynamic_widths_applied(browser_session):
         )
 
     if not sampled:
-        pytest.skip('no visible progress bars on dashboard/data/observability')
+        pytest.skip('no visible progress bars on observability/data')

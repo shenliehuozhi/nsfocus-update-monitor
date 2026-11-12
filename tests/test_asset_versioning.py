@@ -9,8 +9,8 @@ from tests.frontend_source import INDEX_HTML, WEB
 
 STATIC = WEB / 'static'
 EXPECTED_JS = [
-    'core.js', 'dashboard.js', 'data.js', 'data_push.js', 'pages.js',
-    'history.js', 'products.js', 'collection.js', 'observability.js',
+    'core.js', 'data.js', 'data_push.js', 'pages.js', 'history.js',
+    'products.js', 'collection.js', 'events_center.js', 'observability.js',
     'account.js', 'bootstrap.js', 'tools.js',
 ]
 

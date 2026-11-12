@@ -137,12 +137,6 @@ async function _saveSessionEdit(id,mid,p,m){
   const r=await api(`/sessions/${id}`,{method:'PATCH',body:JSON.stringify({protocol:newP,mode:newM})});
   if(r.code===0){toast('已更新');sessions();}else toast(r.message||'失败','error');
 }
-function _addSelectedChannel(){
-  const v=parseInt(document.getElementById('newChanSel').value);
-  if(v&&!(window._selChans||[]).includes(v)){window._selChans.push(v);renderChanTags();updateEmailFields();}
-  _removeById('chanSelModal');
-}
-
 function openAddSesModal(){
   const existing=document.getElementById('addSesModal');
   if(existing)existing.remove();
@@ -288,7 +282,7 @@ let rows=chList.map(c=>{let extra='';if(c.type==='email'&&c.config){extra=`<br><
   const testLogBtn=`<button class="btn btn-xs btn-outline" data-on-click="showTestLog" data-args='${_dataArgs(c.id, c.name)}'>📋 日志</button>`;
   return `<tr><td class="muted-12-w50">${c.id}</td><td>${escHtml(c.name)}${extra}</td><td>${chTypeChip(c.type)}</td><td><span class="badge badge-${c.is_active?'ok':'err'}">${c.is_active?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openChModal" data-args='${_dataArgs(c.id)}'>编辑</button> <button class="btn btn-xs btn-success" data-on-click="testCh" data-args='${_dataArgs(c.id, c.type)}'>测试</button> ${testLogBtn} <button class="btn btn-xs btn-outline" data-on-click="delCh" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openChModal">+ 添加渠道</button><table class="mt16"><tr><th class="w50">ID</th><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📡 通知渠道 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openChModal">+ 添加渠道</button></div><div class="card-bd"><table><tr><th class="w50">ID</th><th>名称</th><th>类型</th><th>状态</th><th>操作</th></tr>${rows||'<tr><td colspan="5" class="empty">暂无渠道</td></tr>'}</table></div></div>`;}
 function chTypeCh(){
   const t=document.getElementById('cht').value,d=document.getElementById('chcfg');
   d.innerHTML=t==='email'?`
@@ -582,52 +576,105 @@ async function showTestLog(id, name){
 }
 async function delCh(id){await confirmAct('删除此渠道？', async ()=>{const r=await api('/channels/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');channels();}else toast(r.message,'error');}, '🗑️', '删除');}
 // ── Customers ──
-let custProdOpts='';
 async function customers(){
   const _seq=_navSeq;
   const r=await api('/customers');const list=r.data||[];
-  // Pre-load product options
-  const oR=await api('/options/products').catch(()=>({data:['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)']}));
-  PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
-  custProdOpts=`<option value="">全部产品</option>`+PROD.map(p=>`<option>${p}</option>`).join('');
 
-  let rows=list.map(c=>`<tr><td class="muted-12-w50">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td class="fs11">${esc((c.owned_products||[]).join(', '))}</td><td>${c.attachment_max_mb?'<span class="muted-11">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" data-on-click="openCModal" data-args='${_dataArgs(c.id, c.name, c.company||'', c.email||'', c.phone||'', (c.owned_products||[]).join('|'), c.attachment_max_mb||0)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delC" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`).join('');
+  let rows=list.map(c=>`<tr><td class="muted-12-w50">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td class="fs11">${escHtml((c.owned_products||[]).map(_assetLabel).join(', '))}</td><td>${c.attachment_max_mb?'<span class="muted-11">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" data-on-click="openSvcReport" data-args='${_dataArgs(c.id, c.name)}'>报告</button> <button class="btn btn-xs btn-outline" data-on-click="openCModal" data-args='${_dataArgs(c.id, c.name, c.company||'', c.email||'', c.phone||'', c.owned_products||[], c.attachment_max_mb||0)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delC" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openCModal">+ 添加客户</button><table class="mt16"><tr><th class="w50">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openCModal">+ 添加客户</button><table class="mt16"><tr><th class="w50">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品 / 版本</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
 
-function removeCProd(btn){
-  btn.closest('div').remove();
+function _assetLabel(a){return a&&a.product?(a.version?`${a.product}@${a.version}`:a.product):'';}
+
+let _svcCid=null,_svcMonth='';
+function _cstMonth(){return new Date(Date.now()+8*3600*1000).toISOString().slice(0,7);}
+function _svcShift(delta){
+  if(!_svcMonth)return;
+  const [y,m]=_svcMonth.split('-').map(Number);
+  const d=new Date(Date.UTC(y,m-1+delta,1));
+  _svcMonth=`${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}`;
+  _svcLoad();
+}
+function openSvcReport(cid,name){
+  _svcCid=cid;_svcMonth=_cstMonth();
+  let modal=document.createElement('div');
+  modal.id='svcReportWrap';
+  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:999;display:flex;align-items:center;justify-content:center';
+  modal.onclick=function(e){if(e.target===this)this.remove();};
+  modal.innerHTML=`<div class="card modal-card-scroll"><div class="card-hd">📄 服务报告${name?' · '+escHtml(name):''} <button data-on-click="_removeById" data-args='${_dataArgs('svcReportWrap')}' class="icon-btn">×</button></div><div class="card-bd p16" id="svcBody"><div class="muted-11">加载中…</div></div></div>`;
+  document.body.appendChild(modal);
+  _svcLoad();
+}
+async function _svcLoad(){
+  const cid=_svcCid,month=_svcMonth;
+  const r=await api(`/customers/${cid}/service-report?month=${month}`).catch(e=>({code:-1,message:String(e&&e.message||e)}));
+  const box=document.getElementById('svcBody');
+  if(!box||cid!==_svcCid||month!==_svcMonth)return;
+  if(r.code!==0){box.innerHTML=`<div class="empty">加载失败：${escHtml(r.message||'未知错误')}</div>`;return;}
+  const d=r.data||{},s=d.summary||{};
+  const nextDisabled=month>=_cstMonth()?' disabled':'';
+  const rate=s.success_rate==null?'—':s.success_rate+'%';
+  const dlStatus={sent:['已发送','badge-ok'],failed:['失败','badge-err'],pending:['待发送','badge-warn']};
+  const dlRows=(d.deliveries||[]).map(x=>{
+    const [lb,cl]=dlStatus[x.status]||[x.status||'—','badge-grey'];
+    return `<tr><td class="nowrap-11">${fmtTZ(x.sent_at,true)||'—'}</td><td>${escHtml(x.product_name)||'—'}</td><td class="fs11">${escHtml(x.version)||'—'}</td><td class="fs11">${escHtml(x.package_type)||'—'}</td><td><span class="badge ${cl}">${lb}</span></td></tr>`;
+  }).join('');
+  box.innerHTML=`<div class="items-center mb12"><button class="btn btn-xs btn-outline" data-on-click="_svcShift" data-args='${_dataArgs(-1)}'>‹ 上月</button><span class="fw600 ml8 mr8">${escHtml(d.month_label||month)}</span><button class="btn btn-xs btn-outline" data-on-click="_svcShift" data-args='${_dataArgs(1)}'${nextDisabled}>下月 ›</button><span class="muted-11 ml-auto">${escHtml(d.customer&&d.customer.company||'')}</span></div>
+  <div class="mb12"><span class="badge badge-blue mr8">推送 ${s.total||0}</span><span class="badge badge-ok mr8">成功 ${s.success||0}</span><span class="badge badge-err mr8">失败 ${s.failed||0}</span><span class="badge badge-grey">成功率 ${rate}</span></div>
+  <div class="items-center mb12"><span class="fw600">📨 本月推送明细</span>${d.truncated?`<span class="muted-11 ml-auto">共 ${s.total||0} 条，仅显示最近 ${(d.deliveries||[]).length} 条</span>`:''}</div>
+  <table><tr><th>时间</th><th>产品</th><th>版本</th><th>类型</th><th>状态</th></tr>${dlRows||'<tr><td colspan="5" class="empty">本月无推送记录</td></tr>'}</table>`;
 }
 
-function onCProdChange(el){
-  if(el.value===''){
-    // 选"全部产品"：已有具体产品时拦截
-    const existingSpecific=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value&&s.value!==''&&s!==el);
-    if(existingSpecific){toast('已有具体产品，不能选"全部产品"','warn');el.value='';return;}
-    // 清空其他行
-    const rows=document.querySelectorAll('#cprods > div');
-    rows.forEach(r=>{const s=r.querySelector('.cp2');if(s&&s!==el)s.value='';});
-  }else{
-    // 选具体产品：清除其他行的"全部产品"
-    const rows=document.querySelectorAll('#cprods > div');
-    rows.forEach(r=>{const s=r.querySelector('.cp2');if(s&&s.value===''&&s!==el)s.value='';});
-  }
+let _cvarRows=[];
+
+// 客户资产：统一成 [{product,version}]，兼容旧 "产品" / "产品:版本" 字符串
+function _cvarNormalize(pr){
+  const out=[],seen=new Set();
+  (Array.isArray(pr)?pr:[pr]).forEach(a=>{
+    if(!a)return;
+    let p,v;
+    if(typeof a==='string'){const [pp,vv]=a.split(':');p=pp||'';v=vv||'';}
+    else{p=a.product||'';v=a.version||'';}
+    p=String(p).trim();v=String(v).trim();
+    if(!p||seen.has(p))return;
+    seen.add(p);out.push({product:p,version:v});
+  });
+  return out;
 }
 
-function addCProd(p){
-  // p 为空表示用户手动点"+添加产品"，此时校验互斥
-  if(p===undefined){
-    // 已有"全部产品"时，禁止再添加
-    const existingEmpty=[...document.querySelectorAll('#cprods .cp2')].some(s=>s.value==='');
-    if(existingEmpty){toast('已选"全部产品"，无需再添加','warn');return;}
-  }
-  let c=document.getElementById('cprods');
-  let d=document.createElement('div');d.style.cssText='display:flex;gap:6px;margin-bottom:4px';
-  d.innerHTML=`<select class="cp2 sel-sm dd flex1" data-on-change="onCProdChange" data-args='${_dataArgs('$el')}'>${custProdOpts}</select><button class="btn btn-danger btn-xs" data-on-click="removeCProd" data-args='${_dataArgs('$el')}'>×</button>`;
-  c.appendChild(d);
-  if(p){
-    setTimeout(()=>{d.querySelector('.cp2').value=p;},80);
-  }
+function renderCVars(){
+  const box=document.getElementById('cvars');
+  if(!box)return;
+  if(!_cvarRows.length){box.innerHTML='<span class="muted-12">未添加产品路径</span>';return;}
+  box.innerHTML=_cvarRows.map((a,i)=>{
+    const label=a.version?`${a.product}@${a.version}`:a.product;
+    const title=a.chain&&a.chain.length?a.chain.join(' › '):label;
+    return `<span class="cvar-chip" title="${escHtml(title)}"><span class="cvar-label">${escHtml(label)}</span><button type="button" class="btn-x-plain-14" data-on-click="removeCVar" data-args='${_dataArgs(i)}'>×</button></span>`;
+  }).join('');
+}
+
+function removeCVar(i){
+  _cvarRows.splice(i,1);
+  renderCVars();
+}
+
+// 与订阅规则同一套路径树：选中叶子即确定产品 + 当前版本
+function openCVarPicker(){
+  openChainSelectorModal([], {
+    title:'选择客户产品',
+    plain:true,
+    onConfirm:chains=>{
+      (chains||[]).forEach(c=>{
+        const chain=(c&&c.chain)||[];
+        const product=String(chain[0]||'').trim();
+        if(!product)return;
+        const row={product,version:cverVersionFromChain(chain),chain:chain.slice()};
+        const i=_cvarRows.findIndex(r=>r.product===product);
+        if(i>=0)_cvarRows[i]=row;else _cvarRows.push(row);
+      });
+      renderCVars();
+    }
+  });
 }
 
 function openCModal(id,n,co,em,ph,pr,attMb){
@@ -635,7 +682,7 @@ function openCModal(id,n,co,em,ph,pr,attMb){
   modal.id='cModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card modal-card-scroll"><div class="card-hd">${id?'编辑客户':'添加客户'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd p16"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span class="muted-11-400">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品</label><div id="cprods"></div><button class="btn btn-xs btn-outline mt8" data-on-click="addCProd">+ 添加产品</button></div><div class="modal-form-actions"><button class="btn btn-primary flex-1" data-on-click="saveC">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('cModalWrap')}'>取消</button></div></div></div>`;
+  modal.innerHTML=`<div class="card modal-card-760"><div class="card-hd">${id?'编辑客户':'添加客户'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd p16"><input type="hidden" id="cid"><div class="grid2"><div class="form-group"><label class="req">名称</label><input id="cnm" required></div><div class="form-group"><label class="req">公司</label><input id="ccm" required></div></div><div class="grid2"><div class="form-group"><label class="req">邮箱</label><input id="cem" required></div><div class="form-group"><label>电话</label><input id="cph"></div></div><div class="grid2"><div class="form-group"><label>附件大小限制 (MB) <span class="muted-11-400">0=使用全局设置</span></label><input id="camb" type="number" min="0" max="50" value="0"></div><div class="form-group"></div></div><div class="form-group"><label>持有产品 / 当前版本</label><div id="cvars" class="cvar-list"></div><button class="btn btn-xs btn-outline mt8" data-on-click="openCVarPicker">+ 添加产品</button></div><div class="modal-form-actions"><button class="btn btn-primary flex-1" data-on-click="saveC">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('cModalWrap')}'>取消</button></div></div></div>`;
   document.body.appendChild(modal);
   document.getElementById('cid').value=id||'';
   document.getElementById('cnm').value=n||'';
@@ -643,16 +690,8 @@ function openCModal(id,n,co,em,ph,pr,attMb){
   document.getElementById('cem').value=em||'';
   document.getElementById('cph').value=ph||'';
   document.getElementById('camb').value=attMb||0;
-  document.getElementById('cprods').innerHTML='';
-  if(pr){
-    const prods=(pr||'').split('|').filter(Boolean);
-    prods.forEach(x=>{
-      const[p]=x.split(':');
-      addCProd(p||'');
-    });
-  }
-  // 初始一行空选择提示
-  setTimeout(()=>{if(!document.querySelector('#cprods .cp2')||![...document.querySelectorAll('#cprods .cp2')].some(s=>s.value))addCProd('');},80);
+  _cvarRows=_cvarNormalize(pr);
+  renderCVars();
 }
 
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
@@ -669,13 +708,119 @@ async function saveC(){
   if(!cm)return toast('公司必填','error');
   if(!em)return toast('邮箱必填','error');
   if(!/^[^@]+@[^@]+$/.test(em))return toast('邮箱格式错误','error');
-  let prods=[];document.querySelectorAll('#cprods > div').forEach(r=>{let p=r.querySelector('.cp2')?.value;if(p)prods.push(esc(p));});
+  const prods=_cvarRows.map(r=>({product:r.product,version:r.version||''}));
   const amb=parseInt(document.getElementById('camb').value)||0;
   const d={name:esc(nm),company:esc(cm),email:esc(em),phone:esc(ph),owned_products:prods,attachment_max_mb:amb};
   const r=id?await api('/customers/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/customers',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('cModalWrap')?.remove();customers();}else toast(r.message,'error');
 }
 async function delC(id){await confirmAct('删除此客户？', async ()=>{const r=await api('/customers/'+id,{method:'DELETE'});if(r.code===0){toast('已删除');customers();}else toast(r.message,'error');}, '🗑️', '删除');}
+
+// ── 客户资产：从订阅路径树推导版本 ──
+// 选中的路径节点标签就是当前版本；升级包/列表只是路径容器，不作为版本
+// （WAF V6.0.9 / 网络入侵防护系统 5.6.11 / V2.0R00F01 …）
+function cverVersionFromChain(chain){
+  const segs=(chain||[]).slice(1).map(s=>String(s||'').trim()).filter(Boolean);
+  const isContainer=s=>/升级包|升级|列表$|包$/.test(s);
+  const re=/[Vv]?\d+(?:\.\d+)*(?:R\d+)?(?:F\d+)?/;
+  for(let i=segs.length-1;i>=0;i--){if(!isContainer(segs[i])&&re.test(segs[i]))return segs[i];}
+  for(let i=segs.length-1;i>=0;i--){if(!isContainer(segs[i]))return segs[i];}
+  return '';
+}
+
+// 客户档案里的产品+版本 → 订阅路径链：新建订阅规则时默认沿用客户持有产品
+async function customerAssetChains(c){
+  const rows=(c&&Array.isArray(c.owned_products))?c.owned_products:[];
+  if(!rows.length)return [];
+  try{ if(!Object.keys(_dataAll||{}).length)await loadDataAll(); }catch(e){ return []; }
+  const all=[];
+  Object.entries(_dataAll||{}).forEach(([sid,src])=>{
+    if(!src||!src.is_active)return;
+    (src.package_type&&src.package_type.paths||[]).forEach(p=>{
+      const chain=p.chain||[];
+      if(chain.length<2)return;
+      all.push(chain);
+      if(chain[0]&&!_nameToSid[chain[0]])_nameToSid[chain[0]]=String(sid);
+    });
+  });
+  const out=[];
+  rows.forEach(a=>{
+    let product='',version='';
+    if(typeof a==='string'){
+      const [p,v]=a.split(':');
+      product=(p||'').trim();version=(v||'').trim();
+    }else if(a){
+      product=String(a.product||'').trim();version=String(a.version||'').trim();
+    }
+    if(!product)return;
+    let paths=all.filter(chain=>chain[0]===product);
+    if(!paths.length){
+      // 旧客户档案可能存的是数据源名称而非路径根节点
+      Object.entries(_dataAll||{}).forEach(([sid,src])=>{
+        if(!src||!src.is_active)return;
+        const nm=src.display_name||src.name||String(sid);
+        if(nm!==product&&src.name!==product)return;
+        (src.package_type&&src.package_type.paths||[]).forEach(p=>{
+          const chain=p.chain||[];
+          if(chain.length>=2)paths.push(chain);
+        });
+      });
+    }
+    if(!paths.length)return;
+    let full=paths[0],chosen=full;
+    if(version){
+      chosen=null;
+      for(const chain of paths){
+        for(let i=chain.length-1;i>=1;i--){
+          if(String(chain[i]).trim()===version){full=chain;chosen=chain.slice(0,i+1);break;}
+        }
+        if(chosen)break;
+      }
+      if(!chosen){
+        for(const chain of paths){
+          if(cverVersionFromChain(chain)===version){full=chain;chosen=chain.slice(0,-1);break;}
+        }
+      }
+      if(!chosen){
+        for(const chain of paths){
+          for(let i=chain.length-1;i>=1;i--){
+            if(String(chain[i]).includes(version)||version.includes(String(chain[i]))){full=chain;chosen=chain.slice(0,i+1);break;}
+          }
+          if(chosen)break;
+        }
+      }
+      if(!chosen){full=paths[0];chosen=full;}
+    }
+    out.push({chain:chosen,match:chosen.length<full.length?'subtree':'leaf'});
+  });
+  return out;
+}
+
+// 仅在新建规则且用户尚未手动改过路径时自动填入；编辑规则保留已保存条件
+async function applyCustomerPaths(c){
+  if(!c||!window._custAutoFill)return;
+  const rall=document.getElementById('rall');
+  if(rall&&rall.checked)return;                       // 用户显式选择「全部产品」
+  const chains=window._condChains||[];
+  if(chains.length&&!window._condChainsAuto)return;    // 已手动选择，保留现状
+  const cid=String(c.id);
+  const derived=await customerAssetChains(c);
+  const sel=document.getElementById('rcust');
+  if(!sel||String(sel.value)!==cid)return;             // 期间切换客户或关闭弹窗
+  if(!derived.length){
+    if(window._condChainsAuto){
+      window._condChains=[];
+      window._condChainsAuto=false;
+      renderCondPills();
+    }
+    return;
+  }
+  window._condChains=derived;
+  window._condChainsAuto=true;
+  const wrap=document.getElementById('rcondsWrap');
+  if(wrap)wrap.classList.remove('hidden');
+  renderCondPills();
+}
 
 // ── Subscriptions ──
 const PKG=[['sys','系统'],['rule','规则'],['nti','威胁情报'],['av','病毒库'],['apprule','应用规则'],['url','URL分类'],['wcs','恶意站点'],['judge','研判规则'],['geo','地理库'],['interface','接口'],['special','特殊'],['other','其他'],['merge','合并'],['client','客户端'],['av_stream','流式病毒库']];
@@ -757,8 +902,8 @@ function attDefaultValue(){
 // 收件人邮箱 placeholder:跟附件大小对称,客户档案 email 自动带出
 function emailPlaceholder(){
   const c=window._currentCustomer;
-  if(c && (c.email||'').trim()) return `${c.email.trim()}(客户档案,留空即用)`;
-  return '收件人邮箱,逗号分隔';
+  if(c && (c.email||'').trim()) return `${c.email.trim()}（客户档案邮箱，留空即用）`;
+  return '输入邮箱后点 + 添加';
 }
 // 收件人邮箱也用 B 模式,value 永远空 → router per-customer fallback 生效
 function emailDefaultValue(){ return ''; }
@@ -787,7 +932,7 @@ async function subscriptions(){
 
 let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span class="match-badge-sm ${isLeaf?'match-leaf':'match-sub'}">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openRModal">+ 创建规则</button><table class="mt16 table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openRModal">+ 创建规则</button></div><div class="card-bd"><table class="table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
 
@@ -801,7 +946,12 @@ function onCustChange(){
     if(row)row.classList.add('hidden');
     if(attachRow)attachRow.classList.add('hidden');
     window._currentCustomer=null;
-    try{ renderChanTags(); }catch(e){}
+    if(window._condChainsAuto){
+      window._condChains=[];
+      window._condChainsAuto=false;
+      renderCondPills();
+    }
+    try{ renderNotifyTargets(); }catch(e){}
     return;
   }
   let c=window._custs.find(x=>x.id==cid);
@@ -825,7 +975,8 @@ function onCustChange(){
     attachRow.classList.remove('hidden');
   }
   // 已渲染的 email 渠道 tag 同步展示客户档案附件大小(仅展示,saveRule 仍写 0 让 router 自动 fallback)
-  try{ renderChanTags(); }catch(e){}
+  try{ renderNotifyTargets(); }catch(e){}
+  if(c)applyCustomerPaths(c);
 }
 
 function toggleAllMode(){
@@ -834,7 +985,11 @@ function toggleAllMode(){
   if(on){
     // 订阅全部模式：清空路径
     window._condChains=[];
+    window._condChainsAuto=true;
     renderCondPills();
+  }else if(!(window._condChains||[]).length&&window._currentCustomer){
+    // 取消「全部产品」时回到客户档案默认产品
+    applyCustomerPaths(window._currentCustomer);
   }
 }
 
@@ -862,11 +1017,23 @@ async function loadDataAll() {
   });
 }
 
+// 订阅「添加路径」：带上当前已选路径，取消时不影响已保存条件
+function openRuleChainSelector(){
+  const chains=(window._condChains||[]).map(c=>({chain:(c.chain||[]).slice(),match:c.match||'leaf'}));
+  openChainSelectorModal(chains);
+}
+
 // 链选择器弹窗（树形选择 + match 模式切换）
-async function openChainSelectorModal(existingChains) {
+// opts: { title, plain, onConfirm }
+//   plain=true 为客户端产品路径选择：不显示 leaf/sub 与失效提示，确定后回调 onConfirm
+async function openChainSelectorModal(existingChains, opts) {
+  const opt = opts || {};
+  window._chainSelConfirm = opt.onConfirm || null;
+  window._chainSelPlain = !!opt.plain;
   // existingChains: 编辑时传入已有条件，供回显选中态
-  window._condChains = existingChains || [];
-  const chains = window._condChains;
+  // 弹窗内用独立的 _chainSelChains 工作副本，取消时不影响订阅条件
+  window._chainSelChains = existingChains || [];
+  const chains = window._chainSelChains;
 
   // 确保 _dataAll 已加载（从 /latest/snapshots 拉取产品路径数据）
   if (Object.keys(_dataAll).length === 0) {
@@ -886,11 +1053,11 @@ async function openChainSelectorModal(existingChains) {
   // 右侧：已选路径列表
   const selectedHtml = chains.length === 0
     ? '<div id="chainSelList"><div class="muted-12 ta-center p20">未选择路径</div></div>'
-    : `<div id="chainSelList">${renderChainSelList(chains)}</div>`;
+    : `<div id="chainSelList">${renderChainSelList(chains, window._chainSelPlain)}</div>`;
 
   modal.innerHTML = `
   <div class="card modal-card-860-col" >
-    <div class="card-hd">选择订阅路径 <span class="muted-12 fw400 ml8">点击路径节点添加到右侧列表</span>
+    <div class="card-hd">${escHtml(opt.title || '选择订阅路径')} <span class="muted-12 fw400 ml8">${window._chainSelPlain ? '选中路径即确定产品与当前版本，同一产品只保留一条' : '点击路径节点添加到右侧列表'}</span>
       <button data-on-click="_removeClosest" data-args='${_dataArgs('#chainSelModal')}' class="icon-btn">×</button>
     </div>
     <div class="split-body">
@@ -944,8 +1111,36 @@ function csTreeNodeClick(nodeEl) {
   const match = isLeafNode ? 'leaf' : 'subtree';
   const chainKey = JSON.stringify(chain);
 
+  if (window._chainSelPlain) {
+    // 客户路径：同一产品只保留一条，点新的版本分支直接替换旧的
+    const idx = window._chainSelChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
+    if (idx >= 0) {
+      window._chainSelChains.splice(idx, 1);
+      nodeEl.setAttribute('data-sel', '0');
+      nodeEl.classList.remove('tree-node-selected');
+    } else {
+      const root = chain[0];
+      window._chainSelChains = window._chainSelChains.filter(c => c.chain[0] !== root);
+      window._chainSelChains.push({ chain, match });
+      document.querySelectorAll('#chainTreeBody .tree-node-selected').forEach(el => {
+        const c = JSON.parse(el.getAttribute('data-chain') || '[]');
+        if (c[0] === root && JSON.stringify(c) !== chainKey) {
+          el.setAttribute('data-sel', '0');
+          el.classList.remove('tree-node-selected');
+        }
+      });
+      nodeEl.setAttribute('data-sel', '1');
+      nodeEl.classList.add('tree-node-selected');
+    }
+    const rightDiv = document.getElementById('chainSelRight');
+    if (rightDiv) {
+      rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._chainSelChains.length}）</div>` + renderChainSelList(window._chainSelChains, true);
+    }
+    return;
+  }
+
   // 冲突检测：检查新 chain 与已选项是否有父子重叠
-  for (const existing of window._condChains) {
+  for (const existing of window._chainSelChains) {
     const existKey = JSON.stringify(existing.chain);
     if (existKey === chainKey) continue; // 取消选择不触发冲突
     // 新 chain 是否包含已选 chain（选了父，但子已存在）
@@ -964,19 +1159,19 @@ function csTreeNodeClick(nodeEl) {
     }
   }
 
-  const idx = window._condChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
+  const idx = window._chainSelChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
   if (idx >= 0) {
-    window._condChains.splice(idx, 1);
+    window._chainSelChains.splice(idx, 1);
     nodeEl.setAttribute('data-sel', '0');
     nodeEl.classList.remove('tree-node-selected');
   } else {
-    window._condChains.push({ chain, match });
+    window._chainSelChains.push({ chain, match });
     nodeEl.setAttribute('data-sel', '1');
     nodeEl.classList.add('tree-node-selected');
   }
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
-    rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
+    rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._chainSelChains.length}）</div>` + renderChainSelList(window._chainSelChains);
   }
 }
 
@@ -990,7 +1185,9 @@ function csTreeToggleById(childDivId, arrowEl) {
 }
 
 // 渲染链选择树（复用 buildDataTreeHtml 的树结构逻辑，节点点击 toggle 选中）
-function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, selectedSet) {
+// clickFn：节点点击动作，默认订阅的 csTreeNodeClick
+function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, selectedSet, clickFn) {
+  const nodeClick = clickFn || 'csTreeNodeClick';
   const paths = pt.paths || [];
   if (paths.length === 0) return '';
 
@@ -1017,6 +1214,8 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     });
   });
 
+  // 递增序号保证容器 id 唯一；用节点名转义会因中文压缩成下划线而撞 id
+  let childUid = 0;
   function renderNode(node, name, depth) {
     const children = node.__children ? Object.entries(node.__children) : [];
     const hasChildren = children.length > 0;
@@ -1030,16 +1229,17 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     const label = isPkg ? name : (MAP[name] || name);
     const childCount = hasChildren ? ` <span class="disabled-11">(${children.length})</span>` : '';
     const selClass = isSelected ? ' tree-node-selected' : '';
-    const childDivId = hasChildren ? ('cst_' + sid + '_' + depth + '_' + name.replace(/\W/g, '_')) : null;
+    const childDivId = hasChildren ? ('cst_' + sid + '_' + (childUid++)) : null;
     const arrow = hasChildren
       ? `<span class="tree-toggle" data-on-click="csTreeToggleById" data-stop data-args='${_dataArgs(childDivId, '$el')}'>&#9658;</span>`
       : `<span class="tree-indent"></span>`;
 
     const isLeafNode = !hasChildren;
     const leafAttr = ' data-is-leaf="' + (isLeafNode ? '1' : '0') + '"';
-    let html = `<div class="tree-node tree-row tree-row-gap4 tree-row-click ti-${depth}"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" data-on-click="csTreeNodeClick" data-stop data-args='${_dataArgs('$el')}'${selClass}>`;
+    let html = `<div class="tree-node tree-row tree-row-gap4 tree-row-click ti-${depth}"${leafAttr} data-chain="${chainJson}" data-url="${nodeUrl}" data-on-click="${nodeClick}" data-stop data-args='${_dataArgs('$el')}'${selClass}>`;
     html += arrow;
-    html += `<span class="gray-muted-13-shrink">${icon} ${escHtml(label)}${childCount}</span>`;
+    html += `<span class="tree-name" title="${escHtml(label)}">${icon} ${escHtml(label)}</span>`;
+    html += `<span class="tree-meta">${childCount}</span>`;
     html += `</div>`;
 
     if (hasChildren) {
@@ -1057,9 +1257,8 @@ function buildChainSelectTree(pt, snapshotsMap, MAP, verTypeMap, alias, sid, sel
     return a.localeCompare(b, 'zh');
   }) : [];
   // 产品名作为可折叠分组头
-  const prodLabel = `<div class="tree-sec-hd">${escHtml(alias || String(sid))}</div>`;
+  html += `<div class="tree-sec-hd">${escHtml(alias || String(sid))}</div>`;
   // 始终从真实根节点开始渲染，保持完整的链层级深度
-  html += prodLabel;
   rootChildren.forEach(([name, node]) => { html += renderNode(node, name, 0); });
   return html;
 }
@@ -1098,21 +1297,36 @@ document.addEventListener('click', function(e) {
   }
 });
 
-// 确认链选择：将选中节点转为条件条目
+// 确认链选择：将选中节点转为条件条目；客户路径模式交给回调
 function confirmChainSelection() {
-  // 直接使用 csTreeNodeClick 中已填充的 _condChains
-  window._condChains = window._condChains || [];
-  renderCondPills();
-  document.getElementById('chainSelModal').remove();
+  const chains = window._chainSelChains || [];
+  window._chainSelChains = null;
+  const cb = window._chainSelConfirm;
+  window._chainSelConfirm = null;
+  const modal = document.getElementById('chainSelModal');
+  if (cb) cb(chains);
+  else {
+    window._condChains = chains;
+    window._condChainsAuto = false;   // 用户确认过路径，不再跟随客户档案
+    renderCondPills();
+  }
+  if (modal) modal.remove();
 }
 
 // 渲染已选路径列表（在链选择器右侧面板）
-function renderChainSelList(chains) {
+// plain=true：客户路径只展示路径本身，不标 leaf/sub，也不做失效检测
+function renderChainSelList(chains, plain) {
   if (!chains || chains.length === 0) {
     return '<div class="muted-12 ta-center p20">未选择路径</div>';
   }
   return chains.map((c, i) => {
     const pathStr = c.chain.join(' › ');
+    if (plain) {
+      return `<div class="tree-row">
+        <span class="flex-1 min-w0 text-gray-muted break-all">${escHtml(pathStr)}</span>
+        <button class="btn-x-danger" data-on-click="removeChainCond" data-args='${_dataArgs(i)}'>×</button>
+      </div>`;
+    }
     const isLeaf = c.match !== 'subtree';
     const staleBadge = isChainStale(c.chain, c.match) ? chainWarnBadge(c.chain, c.match) : '';
     const matchHtml = isLeaf
@@ -1126,24 +1340,23 @@ function renderChainSelList(chains) {
   }).join('');
 }
 
-// 移除单个路径条件
+// 移除弹窗工作副本中的单个路径（确认后才写入订阅条件）
 function removeChainCond(idx) {
-  const removed = window._condChains.splice(idx, 1);
+  const chains = window._chainSelChains || [];
+  const removed = chains.splice(idx, 1);
   if (removed.length) {
-    const chain = removed[0].chain;
-    const chainKey = JSON.stringify(chain);
+    const chainKey = JSON.stringify(removed[0].chain);
     // C2-1: 同步清理 _csSelectedSet，避免树节点状态残留
-    window._csSelectedSet.delete(chainKey);
+    if (window._csSelectedSet) window._csSelectedSet.delete(chainKey);
     // 取消树的该节点高亮
     const safeChainKey = chainKey.replace(/"/g, '&quot;');
     const node = document.querySelector('.tree-node[data-chain="' + safeChainKey + '"]');
     if (node) { node.setAttribute('data-sel', '0'); node.classList.remove('tree-node-selected'); }
   }
-  renderCondPills();
   // 同时更新右侧面板
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
-    rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._condChains.length}）</div>` + renderChainSelList(window._condChains);
+    rightDiv.innerHTML = `<div class="subtitle">已选路径（${chains.length}）</div>` + renderChainSelList(chains, window._chainSelPlain);
   }
 }
 
@@ -1178,6 +1391,7 @@ function renderCondPills() {
 // 移除主表单中的路径标签
 function removeCondPill(idx) {
   window._condChains.splice(idx, 1);
+  window._condChainsAuto = false;
   renderCondPills();
 }
 
@@ -1196,57 +1410,240 @@ function addCond(p,v,t){
   else{setTimeout(()=>loadCV(d.querySelector('.cp')),50);}
 }
 
-function renderChanTags(){
+// ── 通知对象：机器人渠道与邮箱收件人/发件渠道都用 + 添加 ───────────────────
+const NS_EMAIL_DOMAINS=['nsfocus.com','nsfocus.net'];
+
+function _isNsEmail(addr){
+  const d=String(addr||'').split('@')[1]||'';
+  return NS_EMAIL_DOMAINS.some(x=>d===x||d.endsWith('.'+x));
+}
+function _parseEmails(s){
+  return [...new Set(String(s||'').split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x&&x.includes('@')))];
+}
+function _customerEmail(){
+  const c=window._currentCustomer;
+  return c&&(c.email||'').trim()||'';
+}
+function _channelSenderEmail(ch){
+  return String(ch&&ch.config&&ch.config.smtp_user||'').trim();
+}
+function _selectedEmailSenders(){
+  const sel=window._selChans||[];
+  return sel.map(getChannelById).filter(c=>c&&c.type==='email');
+}
+function _sortedEmailChannels(emails){
+  return emails.slice().sort((a,b)=>{
+    const p=(_isNsEmail(_channelSenderEmail(a))?0:1)-(_isNsEmail(_channelSenderEmail(b))?0:1);
+    return p||String(a.name||'').localeCompare(String(b.name||''),'zh-Hans-CN');
+  });
+}
+
+function _syncNotifyInputs(){
+  const e=document.getElementById('remails');
+  if(e)e.placeholder=emailPlaceholder();
+  const a=document.getElementById('remailAttach');
+  if(a){a.value=window._emailAttach||'';a.placeholder=attPlaceholder();}
+}
+
+function renderNotifyTargets(){
   const chData=window._chData||[];
   const sel=window._selChans||[];
   const robotEl=document.getElementById('rchansRobotTags');
-  const emailEl=document.getElementById('rchansEmailTags');
-  if(!robotEl||!emailEl)return;
+  if(!robotEl)return;
 
-  // 按渠道类型分流:robot(企微/钉钉/飞书/apprise) → 上方,email → 下方
-  const robotChans=sel.map(cid=>chData.find(x=>x.id===cid)).filter(c=>c&&c.type!=='email');
-  const emailChans=sel.map(cid=>chData.find(x=>x.id===cid)).filter(c=>c&&c.type==='email');
-
-  // 计数提示
-  const rc=document.getElementById('robotCount');if(rc)rc.textContent=robotChans.length?`(已选 ${robotChans.length} 个)`:'';
-  const ec=document.getElementById('emailCount');if(ec)ec.textContent=emailChans.length?`(已选 ${emailChans.length} 个)`:'';
+  const robots=chData.filter(c=>c.type!=='email');
+  const emails=_sortedEmailChannels(chData.filter(c=>c.type==='email'));
+  const selEmails=_selectedEmailSenders();
 
   sel.forEach(cid=>ensureFeishuDefaultTemplate(cid));
 
-  const tagHtml=(c)=>{
-    const isEmail=c.type==='email';
-    const opts=getTplOptsForChannel(c.type);
-    // email 行: 4 列 (渠道名 | 收件人 | 附件大小 | ×),无模板列
-    // feishu 行: 4 列 (渠道名 | 模板 | ×),select 只 1 个 D 选项 (feishu.py 走 _build_post,4 模板不生效,固定 D)
-    // 其他机器人 (wecom/dingtalk/apprise) 行: 4 列 (渠道名 | 模板 | ×),正常 3 模板
-    if (isEmail) {
-      // 2026-07-11: per-channel 客户邮箱 + 附件大小 (rule_channels 表新字段)
-      // email 渠道走 _format_html_body 全量 HTML,不走 A/B/C/D 模板 → 不显示「模板」列
-      return `<div class="chan-tag-email">
-        <span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span>
-        <input class="chan-field" data-cid="${c.id}" data-field="customer_emails" placeholder="${escHtml(emailPlaceholder())}" value="${emailDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'customer_emails', '$value')}'>
-        <input class="chan-field chan-field-full" data-cid="${c.id}" data-field="attachment_max_mb" type="number" min="0" placeholder="${attPlaceholder()}" value="${attDefaultValue()}" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'attachment_max_mb', '$value')}'>
-        <button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button>
-      </div>`;
-    }
-    return `<div class="chan-tag-robot"><span class="ellipsis min-w0" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="opacity-60">(${escHtml(c.type)})</span> <span class="opacity-50 font-mono">#${c.id}</span></span><span class="chan-tpl-label">模板</span><select class="sel-sm dd chan-tpl-select" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}'>${opts}</select><button class="icon-plain" data-on-click="removeChanTag" data-args='${_dataArgs(c.id)}' title="移除渠道">×</button></div>`;
-  };
+  const selRobots=robots.filter(c=>sel.includes(c.id));
+  robotEl.innerHTML=selRobots.length?selRobots.map(c=>`<div class="obj-row obj-row-on">
+      <span class="obj-name" title="${escHtml(c.name)} #${c.id}">${escHtml(c.name)} <span class="obj-meta">(${escHtml(c.type)}) #${c.id}</span></span>
+      <select class="sel-sm dd obj-tpl" data-cid="${c.id}" data-field="template" data-on-change="onChanFieldChange" data-args='${_dataArgs(c.id, 'template', '$value')}' title="机器人模板">${getTplOptsForChannel(c.type)}</select>
+      <button type="button" class="email-chip-x" data-on-click="removeRobotChan" data-args='${_dataArgs(c.id)}' title="移除">×</button>
+    </div>`).join(''):(robots.length?'<span class="muted-11">尚未添加机器人渠道</span>':'<div class="muted-12">还没有机器人渠道，请先在「通知渠道」页创建</div>');
 
-  robotEl.innerHTML=robotChans.length?robotChans.map(tagHtml).join(''):'<span class="muted-12">未添加机器人渠道</span>';
-  emailEl.innerHTML=emailChans.length?emailChans.map(tagHtml).join(''):'<span class="muted-12">未添加邮箱渠道</span>';
-
-  // 回显每个渠道当前选中的模板(渲染后单独设 selected,避免 inline template 内 escaped)
+  // 回显每个机器人渠道的模板
   const tpls=window._chanTpls||{};
-  document.querySelectorAll('select[data-cid][data-field="template"]').forEach(sel=>{
-    const cid=parseInt(sel.dataset.cid);
+  document.querySelectorAll('#rchansRobotTags select[data-cid][data-field="template"]').forEach(s=>{
+    const cid=parseInt(s.dataset.cid);
     const ch=getChannelById(cid);
     let cur=tpls[cid]||getChanField(cid,'template')||'';
     if(ch&&ch.type==='feishu'&&cur!=='feishu_full'){
       ensureFeishuDefaultTemplate(cid);
       cur='feishu_full';
     }
-    sel.value=cur;
+    s.value=cur;
   });
+
+  const robotMenu=document.getElementById('rchansRobotMenu');
+  if(robotMenu){
+    const picked=new Set(sel);
+    const avail=robots.filter(c=>!picked.has(c.id));
+    robotMenu.innerHTML=avail.length?avail.map(c=>`<button type="button" class="pick-item" data-on-click="addRobotChan" data-args='${_dataArgs(c.id)}'><span class="ellipsis">${escHtml(c.name)} <span class="obj-meta">(${escHtml(c.type)}) #${c.id}</span></span></button>`).join('')
+      :`<div class="muted-11 p8">${robots.length?'机器人渠道已全部添加':'还没有机器人渠道，请先在「通知渠道」页创建'}</div>`;
+  }
+
+  const rc=document.getElementById('robotCount');
+  if(rc)rc.textContent=sel.filter(id=>{const c=getChannelById(id);return c&&c.type!=='email';}).length
+    ? `已选 ${sel.filter(id=>{const c=getChannelById(id);return c&&c.type!=='email';}).length} 个` : '';
+
+  // 发件渠道 chip：按选择顺序主备，nsfocus 发件地址排前
+  const chips=document.getElementById('remailSenderChips');
+  if(chips){
+    chips.innerHTML=selEmails.length?selEmails.map((c,i)=>{
+      const addr=_channelSenderEmail(c);
+      const ns=_isNsEmail(addr);
+      return `<span class="sender-chip" title="${escHtml(c.name)}${addr?' · '+escHtml(addr):''}"><span class="sender-order">${i+1}</span><span class="ellipsis">${escHtml(c.name)}</span>${addr?`<span class="sender-addr${ns?' sender-addr-ns':''}">${escHtml(addr)}</span>`:''}<button type="button" class="email-chip-x" data-on-click="removeEmailSender" data-args='${_dataArgs(c.id)}'>×</button></span>`;
+    }).join(''):'<span class="muted-11">尚未添加发件渠道</span>';
+  }
+
+  const menu=document.getElementById('remailSenderMenu');
+  if(menu){
+    const picked=new Set(selEmails.map(c=>c.id));
+    const avail=emails.filter(c=>!picked.has(c.id));
+    menu.innerHTML=avail.length?avail.map(c=>{
+      const addr=_channelSenderEmail(c);
+      const ns=_isNsEmail(addr);
+      return `<button type="button" class="pick-item" data-on-click="addEmailSender" data-args='${_dataArgs(c.id)}'><span class="ellipsis">${escHtml(c.name)} <span class="obj-meta">#${c.id}</span></span>${addr?`<span class="pick-addr${ns?' pick-addr-ns':''}">${escHtml(addr)}</span>`:''}${ns?'<span class="pick-badge">优先</span>':''}</button>`;
+    }).join(''):`<div class="muted-11 p8">${emails.length?'邮箱渠道已全部添加':'还没有邮箱渠道，请先在「通知渠道」页创建'}</div>`;
+  }
+  const sh=document.getElementById('remailSenderHint');
+  if(sh){
+    if(selEmails.length){
+      const hasNs=selEmails.some(c=>_isNsEmail(_channelSenderEmail(c)));
+      sh.innerHTML=`发送顺序：<b>${selEmails.map(c=>escHtml(c.name)).join('</b> → <b>')}</b>${selEmails.length>1?'（前一个失败自动用下一个）':''}`
+        +(hasNs?'<div class="mt2">优先使用 nsfocus 邮箱渠道发送</div>':'<div class="text-amber-700 mt2">建议优先添加 @nsfocus.com / @nsfocus.net 发件渠道</div>');
+    }else sh.innerHTML='';
+  }
+
+  // 建议邮箱：客户档案优先，nsfocus 域名排前
+  const dl=document.getElementById('remailSuggest');
+  if(dl){
+    const all=[...new Set((window._custs||[]).map(c=>(c.email||'').trim()).filter(Boolean))];
+    all.sort((a,b)=>(_isNsEmail(b)?1:0)-(_isNsEmail(a)?1:0));
+    dl.innerHTML=all.map(e=>`<option value="${escHtml(e)}"></option>`).join('');
+  }
+  _syncNotifyInputs();
+  renderEmailPreview();
+}
+
+function renderEmailPreview(){
+  const el=document.getElementById('remailChips');
+  if(!el)return;
+  const list=_parseEmails(window._emailRecipients);
+  const cust=_customerEmail();
+  el.innerHTML=list.length?list.map(a=>{
+    const ns=_isNsEmail(a);
+    return `<span class="email-chip ${ns?'email-chip-ns':'email-chip-ext'}" title="${escHtml(a)}"><span class="ellipsis">${escHtml(a)}</span><button type="button" class="email-chip-x" data-on-click="removeEmailRecipient" data-args='${_dataArgs(a)}'>×</button></span>`;
+  }).join(''):`<span class="muted-11">${cust?`未单独填写，将使用客户档案邮箱 ${escHtml(cust)}`:'未填写收件邮箱'}</span>`;
+  const ext=list.filter(a=>!_isNsEmail(a)).length;
+  const hint=document.getElementById('remailDomainHint');
+  if(hint){
+    hint.classList.toggle('hidden',!ext);
+    hint.textContent=ext?`⚠️ ${ext} 个非 nsfocus 域名邮箱，仍会发送`:'';
+  }
+  const ec=document.getElementById('emailCount');
+  if(ec)ec.textContent=list.length?`${list.length} 个收件邮箱`:(cust?'使用客户邮箱':'');
+}
+
+function toggleRobotPicker(){
+  const p=document.getElementById('rchansRobotPicker');
+  if(!p)return;
+  if(p.classList.contains('hidden')){renderNotifyTargets();p.classList.remove('hidden');}
+  else p.classList.add('hidden');
+  document.getElementById('rrobotAdd')?.blur();
+}
+function addRobotChan(cid){
+  window._selChans=window._selChans||[];
+  if(!window._selChans.some(x=>String(x)===String(cid)))window._selChans.push(cid);
+  document.getElementById('rchansRobotPicker')?.classList.add('hidden');
+  renderNotifyTargets();
+  _ruleRefreshSummary();
+}
+function removeRobotChan(cid){
+  window._selChans=(window._selChans||[]).filter(x=>String(x)!==String(cid));
+  renderNotifyTargets();
+  _ruleRefreshSummary();
+}
+function toggleSenderPicker(){
+  const p=document.getElementById('remailSenderPicker');
+  if(!p)return;
+  if(p.classList.contains('hidden')){renderNotifyTargets();p.classList.remove('hidden');}
+  else p.classList.add('hidden');
+}
+function addEmailSender(cid){
+  window._selChans=window._selChans||[];
+  if(!window._selChans.some(x=>String(x)===String(cid))){
+    const ns=_isNsEmail(_channelSenderEmail(getChannelById(cid)));
+    let idx=-1;
+    if(ns){
+      idx=window._selChans.findIndex(x=>{
+        const c=getChannelById(x);
+        return c&&c.type==='email'&&!_isNsEmail(_channelSenderEmail(c));
+      });
+    }
+    if(idx>=0)window._selChans.splice(idx,0,cid);else window._selChans.push(cid);
+  }
+  document.getElementById('remailSenderPicker')?.classList.add('hidden');
+  renderNotifyTargets();
+  _ruleRefreshSummary();
+}
+function removeEmailSender(cid){
+  window._selChans=(window._selChans||[]).filter(x=>String(x)!==String(cid));
+  renderNotifyTargets();
+  _ruleRefreshSummary();
+}
+function addEmailRecipient(){
+  const el=document.getElementById('remails');
+  const raw=(el&&el.value||'').trim();
+  if(!raw){toast('请输入邮箱地址','warn');return false;}
+  const add=_parseEmails(raw);
+  if(!add.length){toast('邮箱格式不正确','error');return false;}
+  const list=_parseEmails(window._emailRecipients);
+  add.forEach(a=>{if(!list.includes(a))list.push(a);});
+  window._emailRecipients=list.join(', ');
+  if(el)el.value='';
+  renderEmailPreview();
+  _ruleRefreshSummary();
+  return true;
+}
+function onEmailDraftKeydown(el,ev){
+  if(ev&&ev.key==='Enter'){ev.preventDefault();addEmailRecipient();}
+}
+function _commitEmailDraft(){
+  const el=document.getElementById('remails');
+  if(!el||!el.value.trim())return true;
+  return addEmailRecipient();
+}
+function onEmailAttachChange(el){
+  window._emailAttach=el.value;
+}
+function removeEmailRecipient(addr){
+  const list=_parseEmails(window._emailRecipients).filter(x=>x!==addr);
+  window._emailRecipients=list.join(', ');
+  renderEmailPreview();
+  _ruleRefreshSummary();
+}
+function useCustomerEmail(){
+  const e=_customerEmail();
+  if(!e){toast('客户档案未配置邮箱','warn');return;}
+  const list=_parseEmails(window._emailRecipients);
+  if(list.includes(e)){toast('客户邮箱已在收件人中');return;}
+  list.unshift(e);
+  window._emailRecipients=list.join(', ');
+  renderEmailPreview();
+  _ruleRefreshSummary();
+}
+function validateNotifyTargets(){
+  const sel=window._selChans||[];
+  const emailSenders=_selectedEmailSenders();
+  const recips=_parseEmails(window._emailRecipients);
+  if(!sel.length)return '请至少选择一个机器人渠道或邮箱渠道';
+  if(recips.length&&!emailSenders.length)return '已填写收件邮箱，请选择至少一个邮箱发件渠道';
+  if(!recips.length&&emailSenders.length&&!_customerEmail())return '请填写收件邮箱（客户档案未配置邮箱）';
+  return '';
 }
 
 // 2026-07-11: per-channel 字段读写 (rule_channels 新增 4 列)
@@ -1301,44 +1698,6 @@ function onChanTplChange(cid,val){
   else{window._chanTpls[cid]=val;}
 }
 
-function removeChanTag(cid){
-  window._selChans=(window._selChans||[]).filter(x=>x!==cid);
-  renderChanTags();
-  updateEmailFields();
-}
-
-function updateEmailFields(){
-  // 2026-07-11: 邮件相关字段已下放到每个 email 渠道 tag 行内 (per-channel input),
-  // modal 底部的 emailFields 块已删除,本函数保留为 noop 兼容旧调用
-  return;
-}
-
-function openChanSelModal(filterType){
-  // 2026-07-12 filterType: null=全量, 'email'=只邮箱, 'non_email'=只机器人(wecom/dingtalk/feishu/apprise)
-  // 由「+ 添加机器人渠道」/「+ 添加邮箱渠道」两个独立按钮触发,弹窗只显示对应类型
-  const chData=window._chData||[];
-  const sel=window._selChans||[];
-  let avail=chData.filter(c=>!sel.includes(c.id));
-  let headerLabel='选择通知渠道';
-  let emptyLabel='已添加所有渠道';
-  if(filterType==='email'){
-    avail=avail.filter(c=>c.type==='email');
-    headerLabel='选择邮箱渠道';
-    emptyLabel='没有可添加的邮箱渠道(请先在「通知渠道」页创建)';
-  }else if(filterType==='non_email'){
-    avail=avail.filter(c=>c.type!=='email');
-    headerLabel='选择机器人渠道';
-    emptyLabel='没有可添加的机器人渠道(请先在「通知渠道」页创建)';
-  }
-  if(!avail.length){toast(emptyLabel,'warn');return;}
-  const opts=avail.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
-  const modal=document.createElement('div');
-  modal.id='chanSelModal';
-  modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;display:flex;align-items:center;justify-content:center';
-  modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card w360" ><div class="card-hd">${headerLabel} <button data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}' class="icon-btn">×</button></div><div class="card-bd p16"><div class="form-group"><label>渠道</label><select class="dd w-full" id="newChanSel">${opts}</select></div><div class="flex gap8 mt12"><button class="btn btn-primary flex-1" data-on-click="_addSelectedChannel">添加</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('chanSelModal')}'>取消</button></div></div></div>`;
-  document.body.appendChild(modal);
-}
 
 function addChan(cid){
   let c=document.getElementById('rchans');
@@ -1360,6 +1719,8 @@ async function loadCV(s,loadType){
 }
 
 async function openRModal(id){
+  // 新建规则时订阅条件默认跟随客户档案产品；编辑时保留已保存条件
+  window._custAutoFill=!id;
   // Ensure we have channels and customers loaded
   let chOpts=window._chOpts;
   let custOpts=window._custs?window._custs.map(c=>`<option value="${c.id}" title="#${c.id}">${escHtml(c.name)} <span class="text-gray-muted">#${c.id}</span>${c.email?' ('+escHtml(c.email)+')':''}</option>`).join(''):'';
@@ -1376,21 +1737,33 @@ async function openRModal(id){
   modal.id='rModalWrap';
   modal.style.cssText='position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:998;display:flex;align-items:center;justify-content:center';
   modal.onclick=function(e){if(e.target===this)this.remove();};
-  modal.innerHTML=`<div class="card modal-card-760" ><div class="card-hd">${id?'编辑规则':'创建规则'} <button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd p16"><input type="hidden" id="rid">
-    <div class="form-section"><div class="form-section-title">基本信息</div>
-    <div class="form-group"><label class="req">规则名称</label><input id="rnm" required></div>
+  modal.innerHTML=`<div class="card modal-card-760" ><div class="card-hd">${id?'编辑规则':'创建规则'} <span class="wizard-hint" id="rStepHint"></span><button data-on-click="_removeClosestId" class="icon-btn">×</button></div><div class="card-bd p16"><input type="hidden" id="rid">
+    <div class="wizard-steps" id="rWizardSteps">
+      <button type="button" class="wizard-step" data-step="1" data-on-click="goRuleStep" data-args='${_dataArgs(1)}'><span class="wizard-dot">1</span><span>基本信息</span></button>
+      <span class="wizard-line"></span>
+      <button type="button" class="wizard-step" data-step="2" data-on-click="goRuleStep" data-args='${_dataArgs(2)}'><span class="wizard-dot">2</span><span>订阅条件</span></button>
+      <span class="wizard-line"></span>
+      <button type="button" class="wizard-step" data-step="3" data-on-click="goRuleStep" data-args='${_dataArgs(3)}'><span class="wizard-dot">3</span><span>推送策略</span></button>
+      <span class="wizard-line"></span>
+      <button type="button" class="wizard-step" data-step="4" data-on-click="goRuleStep" data-args='${_dataArgs(4)}'><span class="wizard-dot">4</span><span>通知对象</span></button>
+    </div>
+    <div class="wizard-summary hidden" id="rSummary"></div>
+
+    <div class="rstep" data-step="1"><div class="form-section">
+    <div class="form-group"><label class="req">规则名称</label><input id="rnm" placeholder="例如：客户A · WAF 规则包订阅" required></div>
     <div class="form-group"><label class="req">关联客户</label><select class="dd" id="rcust" data-on-change="onCustChange" required><option value="">请选择客户</option>${custOpts}</select></div>
     <div id="custInfoRow" class="form-group cust-note hidden">📧 客户邮箱：<span id="custEmailDisplay"></span></div>
     <div id="custAttachRow" class="form-group cust-note hidden">📎 客户档案附件大小：<span id="custAttachDisplay"></span></div>
-    <div class="form-group"><label>有效期至</label><input class="min-w140" id="rvu" type="date" data-on-click="_showPicker" placeholder="不限制"></div>
-    </div>
+    <div class="form-group"><label>有效期至</label><input class="min-w140" id="rvu" type="date" data-on-click="_showPicker" placeholder="不限制"><span class="muted-11 ml8">留空表示长期有效</span></div>
+    </div></div>
 
-    <div class="form-section"><div class="form-section-title">订阅条件</div>
+    <div class="rstep hidden" data-step="2"><div class="form-section">
     <label class="check-row"><input class="m0" type="checkbox" id="rall" data-on-change="toggleAllMode"> 📡 订阅全部产品与类型，不设筛选条件</label>
-    <div id="rcondsWrap"><div class="min-h32" id="rconds"><div class="muted-12 mb6" id="rcondsEmpty">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openChainSelectorModal">+ 添加路径</button></div>
-    </div>
+    <div id="rcondsWrap"><div class="min-h32" id="rconds"><div class="muted-12 mb6" id="rcondsEmpty">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openRuleChainSelector">+ 添加路径</button></div>
+    <div class="muted-11 mt10">选择客户后会默认带出客户档案中的产品与版本，可继续手动增删。</div>
+    </div></div>
 
-    <div class="form-section"><div class="form-section-title">推送配置</div>
+    <div class="rstep hidden" data-step="3"><div class="form-section">
     <div class="form-group"><label>推送模式 <span class="help-icon ml4" id="rmodeTip" title=""></span></label><select class="dd" id="rdm" data-on-change="onDigestModeChange"><option value="">即时推送</option><option value="weekly">每周汇总</option><option value="monthly">每月汇总</option><option value="quarterly">每季汇总</option></select></div>
     <div id="dcfg" class="hidden info-soft-box"></div>
     <div id="delayWrap"><div class="form-group"><label>延迟(d) <span class="help-icon" title="检测到新版本后，观察 N 天确认无问题再推送（仅即时推送模式）">ℹ️</span></label><input class="w80" id="rdl" type="number" value="0" min="0"></div></div>
@@ -1399,33 +1772,72 @@ async function openRModal(id){
       <div class="mb8" id="winDaysRow"><label class="mr8">周几：</label><label class="mr10"><input type="checkbox" class="win-day" value="1">周一</label><label class="mr10"><input type="checkbox" class="win-day" value="2">周二</label><label class="mr10"><input type="checkbox" class="win-day" value="3">周三</label><label class="mr10"><input type="checkbox" class="win-day" value="4">周四</label><label class="mr10"><input type="checkbox" class="win-day" value="5">周五</label><label class="mr10"><input type="checkbox" class="win-day" value="6">周六</label><label><input type="checkbox" class="win-day" value="0">周日</label></div>
       <div><label class="mr8">时间段：</label><input class="w100" id="winStart" type="time" value="00:00"> ～ <input class="w100" id="winEnd" type="time" value="23:59"></div>
     </div>
-    </div>
+    <div class="mt10 pt8 border-top"><label class="chip-click nowrap"><input class="m0" type="checkbox" id="rnr"> 📢 包回退通知</label><div class="muted-11 mt2">升级包被撤回时也发送通知</div></div>
+    </div></div>
 
-    <div class="form-section"><div class="form-section-title">通知渠道</div>
+    <div class="rstep hidden" data-step="4"><div class="form-section">
     <!-- 2026-07-11: 4 模板说明 (A=完整 / B=智能裁剪 / C=极简 / D=飞书全量) -->
     <!-- 仅钉钉/企微/飞书 走模板机制;邮箱是 HTML 全量单封,不走这 4 档 -->
-    <div class="info-note">
-      <div class="info-note-title">📝 模板说明 (仅机器人渠道生效,邮箱 HTML 全量单封无 4KB 切段)</div>
+    <details class="tpl-help">
+      <summary>📝 模板说明（仅机器人渠道生效，邮箱为 HTML 全量单封）</summary>
       <div class="grid-kv2">
         <div><b>A · 完整</b> (默认)</div><div>完整标题+元信息+描述,超 4KB 自动切多段;钉钉/企微默认</div>
         <div><b>B · 智能裁剪</b></div><div>优先完整描述 → 超长自动剥英文段 → 仍超则只保留 attention 关键行 → 兜底只 head+链接</div>
         <div><b>C · 极简</b></div><div>只 head + 链接,描述完全省略,适合「通知到人即可,详情自己点」的内部群</div>
         <div><b>D · 飞书全量</b></div><div>飞书专属单段展示,放宽到 30KB;飞书默认</div>
       </div>
-    </div>
-    <div class="mb8">
-      <div class="sec-title">🤖 机器人渠道 <span class="muted-11-400" id="robotCount"></span><button class="btn btn-sm btn-primary ml-auto" data-on-click="openChanSelModal" data-args='${_dataArgs('non_email')}'>📥 添加机器人渠道</button></div>
-      <div class="col gap6 min-h28 mb8" id="rchansRobotTags"></div>
-    </div>
-    <div class="mb8">
-      <div class="sec-title">📧 邮箱渠道 <span class="muted-11-400" id="emailCount"></span><button class="btn btn-sm btn-primary ml-auto" data-on-click="openChanSelModal" data-args='${_dataArgs('email')}'>📥 添加邮箱渠道</button></div>
-      <div class="col gap6 min-h28 mb8" id="rchansEmailTags"></div>
-    </div>
+    </details>
+
+    <div class="notify-sec">
+      <div class="notify-sec-hd">🤖 机器人渠道 <span class="muted-11" id="robotCount"></span><span class="muted-11 fw400 ml-auto">添加后直接作为通知对象</span></div>
+      <div class="email-input-row">
+        <input id="rrobotAdd" class="pick-field" readonly placeholder="点 + 添加机器人渠道" data-on-click="toggleRobotPicker">
+        <button type="button" class="btn btn-xs btn-primary shrink0" data-on-click="toggleRobotPicker" title="添加机器人渠道">+</button>
+      </div>
+      <div class="pick-menu hidden" id="rchansRobotPicker">
+        <div id="rchansRobotMenu"></div>
+      </div>
+      <div class="col gap6 min-h28 mt8" id="rchansRobotTags"></div>
     </div>
 
-    <div class="form-section"><label class="chip-click nowrap"><input class="m0" type="checkbox" id="rnr"> 📢 包回退通知</label></div>
-    <div class="drawer-foot"><button class="btn btn-soft-primary flex-1" data-on-click="saveRule">保存</button><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rModalWrap')}'>取消</button></div></div></div>`;
+    <div class="notify-sec">
+      <div class="notify-sec-hd">📧 邮箱通知 <span class="muted-11 ml-auto" id="emailCount"></span></div>
+      <div class="form-group">
+        <label>收件邮箱 <span class="muted-11">逐个添加，支持多个</span></label>
+        <div class="email-input-row">
+          <input id="remails" list="remailSuggest" placeholder="输入邮箱后点 + 添加" data-on-keydown="onEmailDraftKeydown" data-args='${_dataArgs('$el', '$event')}'>
+          <datalist id="remailSuggest"></datalist>
+          <button type="button" class="btn btn-xs btn-primary shrink0" data-on-click="addEmailRecipient" title="添加收件邮箱">+</button>
+          <button type="button" class="btn btn-xs btn-outline shrink0" data-on-click="useCustomerEmail">使用客户邮箱</button>
+        </div>
+        <div class="email-hint">留空则使用客户档案邮箱；收件人越多，建议优先选择 <span class="email-hint-ns">@nsfocus.com</span> / <span class="email-hint-ns">@nsfocus.net</span> 发件渠道</div>
+        <div class="email-chips" id="remailChips"></div>
+        <div class="email-hint email-warn hidden" id="remailDomainHint"></div>
+      </div>
+      <div class="grid2">
+        <div class="form-group">
+          <label>发件渠道 <span class="muted-11">逐个添加，按顺序主备</span></label>
+          <div class="email-chips" id="remailSenderChips"></div>
+          <div class="pick-add-wrap">
+            <button type="button" class="btn btn-xs btn-outline mt6" data-on-click="toggleSenderPicker">+ 添加发件渠道</button>
+            <div class="pick-menu hidden" id="remailSenderPicker">
+              <div id="remailSenderMenu"></div>
+            </div>
+          </div>
+          <div class="muted-11 mt4" id="remailSenderHint"></div>
+        </div>
+        <div class="form-group">
+          <label>附件大小 (MB)</label>
+          <input id="remailAttach" type="number" min="0" max="50" placeholder="" data-on-change="onEmailAttachChange" data-args='${_dataArgs('$el')}'>
+          <div class="muted-11 mt4">留空或 0 = 使用客户档案 / 全局默认</div>
+        </div>
+      </div>
+    </div>
+    </div></div>
+
+    <div class="drawer-foot wizard-foot"><button class="btn btn-outline" data-on-click="_removeById" data-args='${_dataArgs('rModalWrap')}'>取消</button><div class="ml-auto flex gap8"><button class="btn btn-outline hidden" id="rPrevBtn" data-on-click="rulePrevStep">上一步</button><button class="btn btn-primary" id="rNextBtn" data-on-click="ruleNextStep">下一步</button><button class="btn btn-soft-primary hidden" id="rSaveBtn" data-on-click="saveRule">保存规则</button></div></div></div></div>`;
   document.body.appendChild(modal);
+  _ruleShowStep(1);
   // 推送模式 tooltip
   const modeTips={'':'检测到版本变化立即推送','weekly':'每周汇总推送一次','monthly':'每月汇总推送一次','quarterly':'每季汇总推送一次'};
   document.getElementById('rdm').addEventListener('mouseenter',function(){const v=this.value;document.getElementById('rmodeTip').textContent='ℹ️';document.getElementById('rmodeTip').title=modeTips[v]||'';});
@@ -1451,6 +1863,16 @@ async function openRModal(id){
       };
       if(ch.template)window._chanTpls[cid]=ch.template;
     });
+    // 邮箱收件人与附件大小：多邮箱渠道共用同一组收件人（后端按顺序主备发送）
+    window._emailRecipients='';
+    window._emailAttach='';
+    (r.channels||[]).forEach(ch=>{
+      if(typeof ch!=='object'||!ch)return;
+      const info=getChannelById(ch.channel_id);
+      if(!info||info.type!=='email')return;
+      if(!window._emailRecipients&&(ch.customer_emails||'').trim())window._emailRecipients=ch.customer_emails;
+      if(!window._emailAttach&&Number(ch.attachment_max_mb)>0)window._emailAttach=String(ch.attachment_max_mb);
+    });
     // 兼容老数据 (subscription_rules.template 是 dict 或 str)
     const saved=(typeof r.template==='object'&&r.template)?r.template:null;
     if(saved){
@@ -1465,8 +1887,9 @@ async function openRModal(id){
         }
       });
     }
-    renderChanTags();
+    _syncNotifyInputs();
     document.getElementById('rcust').value=r.customer_id||'';
+    window._condChainsAuto=false;
     onCustChange();
     // NOTE: subscription_rules.attachment_max_mb is deprecated. The customer's
     // value drives everything (onCustChange() above writes it to rattDisplay)
@@ -1487,7 +1910,6 @@ async function openRModal(id){
       window._condChains=[];
       renderCondPills();
     }
-    updateEmailFields();
     document.getElementById('rdl').value=r.delay_days||r.delay_hours||0;document.getElementById('rvu').value=r.valid_until||'';document.getElementById('rdm').value=r.digest_mode||'';
     document.getElementById('rnr').checked=r.notify_rollback===1;
     onDigestModeChange();
@@ -1503,8 +1925,90 @@ async function openRModal(id){
     onWinToggle();
   }else{
     // Reset form for new rule
-    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').classList.remove('hidden');document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._selChans=[];window._chanTpls={};window._chanCfg={};renderCondPills();renderChanTags();onDigestModeChange();onCustChange();
+    document.getElementById('rid').value='';document.getElementById('rnm').value='';document.getElementById('rcust').value='';document.getElementById('rdl').value='0';document.getElementById('rvu').value='';document.getElementById('rdm').value='';document.getElementById('rnr').checked=false;document.getElementById('rall').checked=false;document.getElementById('rcondsWrap').classList.remove('hidden');document.getElementById('dcfg').classList.add('hidden');document.getElementById('dcfg').innerHTML='';document.getElementById('rwin').checked=false;document.getElementById('winCfg').classList.add('hidden');document.querySelectorAll('.win-day').forEach(c=>c.checked=false);document.getElementById('winStart').value='00:00';document.getElementById('winEnd').value='23:59';window._condChains=[];window._condChainsAuto=true;window._selChans=[];window._chanTpls={};window._chanCfg={};window._emailRecipients='';window._emailAttach='';renderCondPills();renderNotifyTargets();onDigestModeChange();onCustChange();
   }
+}
+
+// ── 订阅规则向导 ───────────────────────────────────────────────────────────
+const RULE_STEPS=['基本信息','订阅条件','推送策略','通知对象'];
+window._ruleStep=1;
+
+function _ruleShowStep(n){
+  n=Math.max(1,Math.min(RULE_STEPS.length,parseInt(n)||1));
+  window._ruleStep=n;
+  document.querySelectorAll('#rModalWrap .rstep').forEach(el=>{
+    el.classList.toggle('hidden',parseInt(el.dataset.step)!==n);
+  });
+  document.querySelectorAll('#rWizardSteps .wizard-step').forEach(el=>{
+    const s=parseInt(el.dataset.step);
+    el.classList.toggle('active',s===n);
+    el.classList.toggle('done',s<n);
+    const dot=el.querySelector('.wizard-dot');
+    if(dot)dot.textContent=s<n?'✓':String(s);
+  });
+  const hint=document.getElementById('rStepHint');
+  if(hint)hint.textContent=`第 ${n} / ${RULE_STEPS.length} 步 · ${RULE_STEPS[n-1]}`;
+  const prev=document.getElementById('rPrevBtn'),next=document.getElementById('rNextBtn'),save=document.getElementById('rSaveBtn');
+  if(prev)prev.classList.toggle('hidden',n===1);
+  if(next)next.classList.toggle('hidden',n===RULE_STEPS.length);
+  if(save)save.classList.toggle('hidden',n!==RULE_STEPS.length);
+  const sum=document.getElementById('rSummary');
+  if(sum){
+    sum.classList.toggle('hidden',n!==RULE_STEPS.length);
+    if(n===RULE_STEPS.length)sum.innerHTML=_ruleSummaryHtml();
+  }
+}
+
+function _ruleValidateStep(n){
+  if(n===1){
+    if(!document.getElementById('rnm')?.value.trim())return '请输入规则名称';
+    if(!document.getElementById('rcust').value)return '请选择关联客户';
+  }else if(n===2){
+    if(!document.getElementById('rall').checked&&!(window._condChains||[]).length)
+      return '请选择订阅路径，或勾选「订阅全部产品」';
+  }else if(n===3){
+    const vc=validateRuleConf();
+    if(vc.type==='block')return vc.message;
+  }
+  return '';
+}
+
+function goRuleStep(n){
+  n=parseInt(n)||1;
+  const cur=window._ruleStep||1;
+  if(n>cur){
+    for(let s=cur;s<n;s++){
+      const err=_ruleValidateStep(s);
+      if(err){toast(err,'error');_ruleShowStep(s);return;}
+    }
+  }
+  _ruleShowStep(n);
+}
+function ruleNextStep(){goRuleStep((window._ruleStep||1)+1);}
+function rulePrevStep(){_ruleShowStep((window._ruleStep||1)-1);}
+
+function _ruleRefreshSummary(){
+  const sum=document.getElementById('rSummary');
+  if(sum&&!sum.classList.contains('hidden'))sum.innerHTML=_ruleSummaryHtml();
+}
+
+function _ruleSummaryHtml(){
+  const cid=document.getElementById('rcust').value;
+  const c=(window._custs||[]).find(x=>String(x.id)===String(cid));
+  const all=document.getElementById('rall').checked;
+  const cond=all?'全部产品':((window._condChains||[]).length?`${window._condChains.length} 条路径`:'未选择');
+  const sel=window._selChans||[];
+  const robots=sel.filter(id=>{const ch=getChannelById(id);return ch&&ch.type!=='email';}).length;
+  const senders=_selectedEmailSenders().length;
+  const recips=_parseEmails(window._emailRecipients);
+  const mailTargets=recips.length||(senders&&_customerEmail()?1:0);
+  const obj=[];
+  if(robots)obj.push(`${robots} 机器人`);
+  if(mailTargets)obj.push(`${mailTargets} 邮箱`);
+  else if(senders)obj.push('邮箱');
+  const dm=document.getElementById('rdm').value;
+  const push={'':'即时推送',weekly:'每周汇总',monthly:'每月汇总',quarterly:'每季汇总'}[dm]||'即时推送';
+  return `<span class="wz-sum-label">确认信息</span><span class="wz-sum-item"><span class="wz-sum-k">客户</span><b>${c?escHtml(c.name):'—'}</b></span><span class="wz-sum-item"><span class="wz-sum-k">订阅</span><b>${cond}</b></span><span class="wz-sum-item"><span class="wz-sum-k">对象</span><b>${obj.length?obj.join(' + '):'未选择'}</b></span><span class="wz-sum-item"><span class="wz-sum-k">推送</span><b>${push}</b></span>`;
 }
 
 function onDigestModeChange(){
@@ -1552,30 +2056,43 @@ function validateRuleConf(){
   return {valid:true};
 }async function saveRule(){
   let id=document.getElementById('rid').value;
+  const name=document.getElementById('rnm').value.trim();
+  if(!name){toast('请输入规则名称','error');_ruleShowStep(1);return;}
   const vc=validateRuleConf();
-  if(vc.type==='block'){toast(vc.message,'error');return;}
+  if(vc.type==='block'){toast(vc.message,'error');_ruleShowStep(3);return;}
   let chs=window._selChans||[];
   let cid=parseInt(document.getElementById('rcust').value)||0;
-  if(!cid)return toast('请选择关联客户','error');
+  if(!cid){toast('请选择关联客户','error');_ruleShowStep(1);return;}
   const isAll=document.getElementById('rall').checked;
+  if(!isAll&&!(window._condChains||[]).length){
+    toast('请选择订阅路径，或勾选「订阅全部产品」','error');_ruleShowStep(2);return;
+  }
   const fc=isAll?{}:{chains:window._condChains||[]};
   const nrr=document.getElementById('rnr')?.checked?1:0;
+  if(!_commitEmailDraft())return;
+  const vt=validateNotifyTargets();
+  if(vt){toast(vt,'error');_ruleShowStep(4);return;}
+  const emailRecips=_parseEmails(window._emailRecipients).join(',');
+  const emailAttach=parseInt(window._emailAttach)||0;
   // 2026-07-11: channels 改成对象 list,per-channel 字段走 rule_channels 新列
   //   兼容老数字 list:自动转成 {channel_id: ch}
+  // 邮箱收件人/附件大小是规则级共享值,写入每个已选邮箱渠道(多邮箱渠道即主备)
   const chanCfg=window._chanCfg||{};
   const channels=chs.map(ch=>{
     const channelId=typeof ch==='object'&&ch?ch.channel_id:ch;
+    const info=getChannelById(channelId);
+    const isEmail=!!info&&info.type==='email';
     const cfg=chanCfg[channelId]||{};
     return {
       channel_id: channelId,
       customer_id: cid,
-      customer_emails: cfg.customer_emails||'',
-      attachment_max_mb: parseInt(cfg.attachment_max_mb)||0,
+      customer_emails: isEmail?emailRecips:'',
+      attachment_max_mb: isEmail?emailAttach:0,
       template: cfg.template||(window._chanTpls||{})[channelId]||feishuDefaultTplForChannelId(channelId),
       extras: cfg.extras||'{}'
     };
   });
-  let d={name:document.getElementById('rnm').value,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:channels,notify_rollback:nrr,template:window._chanTpls||{}};
+  let d={name:name,filter_conditions:fc,delay_days:parseInt(document.getElementById('rdl').value)||0,digest_mode:document.getElementById('rdm').value,valid_until:document.getElementById('rvu').value,customer_id:cid,channels:channels,notify_rollback:nrr,template:window._chanTpls||{}};
   const dm=d.digest_mode;
   if(dm){
     let dc={};

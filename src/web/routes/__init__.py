@@ -9,7 +9,6 @@ from flask import Flask, request, send_from_directory
 def register_routes(app: Flask):
     """Register all route blueprints."""
     from src.web.routes.auth_routes import bp as auth_bp
-    from src.web.routes.dashboard import bp as dashboard_bp
     from src.web.routes.session_routes import bp as session_bp
     from src.web.routes.api_routes import (
         bp_sources, bp_channels, bp_customers,
@@ -21,7 +20,6 @@ def register_routes(app: Flask):
     from src.web.routes.metrics_routes import bp as bp_metrics
 
     app.register_blueprint(auth_bp)
-    app.register_blueprint(dashboard_bp)
     app.register_blueprint(session_bp)
     app.register_blueprint(bp_sources)
     app.register_blueprint(bp_channels)

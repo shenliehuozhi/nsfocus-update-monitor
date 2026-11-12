@@ -32,6 +32,9 @@ def init_all_tables():
     from src.models import event_log
     event_log.create_tables(db)
 
+    from src.models import site_probe
+    site_probe.create_tables(db)
+
     # system_settings: key-value config store (used by app.py, scheduler.py, router.py, etc.)
     db.execute("""
         CREATE TABLE IF NOT EXISTS system_settings (

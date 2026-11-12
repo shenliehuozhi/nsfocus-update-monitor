@@ -28,11 +28,55 @@ def create_tables(db):
     _migrate_customer_attachment(db)
 
 
+def normalize_assets(raw) -> list:
+    """把 owned_products 统一成 [{'product': str, 'version': str}, ...]。
+
+    兼容历史数据:
+      - JSON 字符串 / list
+      - 旧格式字符串 "WEB应用防护系统(WAF)" 或 "WAF:V6.0.9"
+      - 新格式 dict {'product': ..., 'version': ...}
+    空产品名丢弃;同一产品重复出现时保留第一条非空版本。
+    """
+    import json
+    if raw is None or raw == '':
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            raw = [raw]
+    if not isinstance(raw, list):
+        return []
+    out, seen = [], {}
+    for item in raw:
+        if isinstance(item, dict):
+            product = str(item.get('product') or '').strip()
+            version = str(item.get('version') or '').strip()
+        else:
+            text = str(item or '').strip()
+            product, _, version = text.partition(':')
+            product, version = product.strip(), version.strip()
+        if not product:
+            continue
+        if product in seen:
+            if not seen[product].get('version') and version:
+                seen[product]['version'] = version
+            continue
+        entry = {'product': product, 'version': version}
+        seen[product] = entry
+        out.append(entry)
+    return out
+
+
+def _dump_assets(raw) -> str:
+    import json
+    return json.dumps(normalize_assets(raw), ensure_ascii=False)
+
+
 def create(created_by: int, **kwargs) -> int:
     from src.models.database import execute
-    import json
-    if 'owned_products' in kwargs and not isinstance(kwargs['owned_products'], str):
-        kwargs['owned_products'] = json.dumps(kwargs['owned_products'], ensure_ascii=False)
+    if 'owned_products' in kwargs:
+        kwargs['owned_products'] = _dump_assets(kwargs['owned_products'])
     # Ensure created_by is in kwargs for the field lookup
     kwargs['created_by'] = created_by
     fields = ['name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes',
@@ -45,14 +89,13 @@ def create(created_by: int, **kwargs) -> int:
 
 def update(customer_id: int, **kwargs) -> None:
     from src.models.database import execute
-    import json
     # Whitelist: only allow actual columns to be updated
     _ALLOWED = {'name', 'company', 'contact', 'email', 'phone', 'owned_products', 'notes', 'attachment_max_mb'}
     kwargs = {k: v for k, v in kwargs.items() if k in _ALLOWED}
     if not kwargs:
         return
-    if 'owned_products' in kwargs and not isinstance(kwargs['owned_products'], str):
-        kwargs['owned_products'] = json.dumps(kwargs['owned_products'], ensure_ascii=False)
+    if 'owned_products' in kwargs:
+        kwargs['owned_products'] = _dump_assets(kwargs['owned_products'])
     sets = ', '.join(f'{k} = ?' for k in kwargs)
     execute(f"UPDATE customers SET {sets} WHERE id = ?", tuple(kwargs.values()) + (customer_id,))
 
@@ -93,10 +136,5 @@ def delete(customer_id: int) -> None:
 
 
 def _parse_row(row: dict) -> dict:
-    import json
-    if row.get('owned_products'):
-        try:
-            row['owned_products'] = json.loads(row['owned_products'])
-        except (json.JSONDecodeError, TypeError):
-            row['owned_products'] = []
+    row['owned_products'] = normalize_assets(row.get('owned_products'))
     return row

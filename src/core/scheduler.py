@@ -1640,6 +1640,19 @@ def refresh_scheduler_jobs():
             if job:
                 _scheduler.remove_job(job_id)
                 logger.info(f'Job removed: {job_id}')
+    # 站点可用性独立于采集调度器：采集/自动投递关闭时仍然继续探测
+    try:
+        site_interval = max(1, int(_get_setting('site_check_interval', '5')))
+    except (TypeError, ValueError):
+        site_interval = 5
+    if not _scheduler.get_job('nsfocus_site_check'):
+        _scheduler.add_job(_site_availability_check, 'interval', minutes=site_interval,
+                           id='nsfocus_site_check', name='Site Availability Check',
+                           next_run_time=datetime.now() + timedelta(seconds=15))
+        logger.info(f'Site availability job added: every {site_interval}m')
+    else:
+        _scheduler.reschedule_job('nsfocus_site_check', trigger='interval',
+                                  minutes=site_interval)
     logger.info(f'Scheduler jobs refreshed (enabled={enabled})')
 
 
@@ -2004,6 +2017,22 @@ def _channel_health_check():
             logger.info(f'[CHANNEL-HEALTH] All {len(channels)} email channel(s) authenticated OK')
     except Exception as e:
         logger.error(f'[CHANNEL-HEALTH] check failed: {e}')
+
+
+# ── Site availability check ───────────────────────────────────────────────────
+
+def _site_availability_check():
+    """探测 update.nsfocus.com 可用性；异常只记日志，不打断调度线程。"""
+    try:
+        from src.core.site_monitor import run_check
+        state = run_check()
+        if state['status'] == 'up':
+            logger.debug('[SITE-CHECK] %s OK (%sms)', state['url'], state['latency_ms'])
+        else:
+            logger.warning('[SITE-CHECK] %s DOWN: %s (consecutive=%s)',
+                           state['url'], state['error'], state['consecutive_failures'])
+    except Exception as e:
+        logger.error(f'[SITE-CHECK] check failed: {e}')
 
 
 # ── Database cleanup ──────────────────────────────────────────────────────────

@@ -303,7 +303,7 @@ def list_customers():
 @bp_customers.route('/push-summary', methods=['GET'])
 @require_auth
 def push_summary():
-    """按客户聚合推送统计 — 给 history 页顶部摘要 + dashboard 中间卡片用。
+    """按客户聚合推送统计 — 给 history 页顶部摘要 + 仪表盘客户推送卡片用。
 
     Query: ?days=N (默认 30, 0 = 全部)
     返回: {days, items: [{id, name, total, success, failed, last_sent_at, last_product}]}
@@ -338,6 +338,81 @@ def push_summary():
             d['last_product'] = ''
         out.append(d)
     return jsonify({'code': 0, 'data': {'days': days, 'items': out}})
+
+@bp_customers.route('/<int:customer_id>/service-report', methods=['GET'])
+@require_auth
+def customer_service_report(customer_id):
+    """客户月度服务报告：当月推送明细。
+
+    Query: ?month=YYYY-MM（默认当前月，按 UTC+8 划分月份边界）
+    """
+    import re
+    from datetime import datetime, timedelta, timezone
+
+    from src.models.customer import get_by_id
+    from src.models.database import query
+
+    customer = get_by_id(customer_id)
+    if not customer:
+        return jsonify({'code': 40400, 'message': '客户不存在'}), 404
+
+    cst = timezone(timedelta(hours=8))
+    month = (request.args.get('month') or '').strip()
+    if month:
+        if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', month):
+            return jsonify({'code': 40000, 'message': 'month 格式应为 YYYY-MM'}), 400
+        year, mon = int(month[:4]), int(month[5:7])
+    else:
+        now = datetime.now(cst)
+        year, mon = now.year, now.month
+        month = f'{year:04d}-{mon:02d}'
+
+    start = datetime(year, mon, 1, tzinfo=cst).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    nxt = datetime(year + (mon == 12), 1 if mon == 12 else mon + 1, 1, tzinfo=cst)
+    end = nxt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+
+    rows = query(
+        """SELECT dl.delivery_status, dl.sent_at,
+                  COALESCE(NULLIF(dl.created_at, ''), dl.sent_at) AS happened_at,
+                  s.product_name, s.version_branch, s.package_version, s.package_type
+           FROM delivery_log dl
+           LEFT JOIN snapshots s ON dl.snapshot_id = s.id
+           WHERE dl.customer_id = ?
+             AND datetime(COALESCE(NULLIF(dl.created_at, ''), dl.sent_at)) >= ?
+             AND datetime(COALESCE(NULLIF(dl.created_at, ''), dl.sent_at)) < ?
+           ORDER BY datetime(COALESCE(NULLIF(dl.created_at, ''), dl.sent_at)) DESC""",
+        (customer_id, start, end),
+    )
+
+    total = len(rows)
+    success = sum(1 for r in rows if r['delivery_status'] == 'sent')
+    failed = sum(1 for r in rows if r['delivery_status'] == 'failed')
+    deliveries = [{
+        'sent_at': r['happened_at'] or '',
+        'product_name': r['product_name'] or '',
+        'version': r['package_version'] or r['version_branch'] or '',
+        'package_type': r['package_type'] or '',
+        'status': r['delivery_status'] or '',
+    } for r in rows[:100]]
+
+    return jsonify({'code': 0, 'data': {
+        'customer': {
+            'id': customer_id,
+            'name': customer.get('name') or '',
+            'company': customer.get('company') or '',
+        },
+        'month': month,
+        'month_label': f'{year}年{mon}月',
+        'summary': {
+            'total': total,
+            'success': success,
+            'failed': failed,
+            'success_rate': round(success * 100.0 / total, 1) if total else None,
+        },
+        'deliveries': deliveries,
+        'truncated': total > len(deliveries),
+    }})
+
 
 @bp_customers.route('', methods=['POST'])
 @require_auth
@@ -1197,7 +1272,7 @@ def get_package_types():
     return jsonify({'code': 0, 'data': types})
 
 
-# ── Latest Snapshots (dashboard display) ──────────────────────
+# ── Latest Snapshots (data page display) ─────────────────────
 
 bp_latest = Blueprint('latest', __name__, url_prefix='/api/latest')
 

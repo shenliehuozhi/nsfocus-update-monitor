@@ -192,15 +192,16 @@ function _recentPackageGroups(list){
 // 2026-11-09: 全量显示所有客户; 近N天 0 推送的客户置灰沉底显示"无推送", 不再隐藏
 //              (此前过滤掉 0 推送行导致 5 个客户只看到 3 个 —— "客户显示不全")
 // 跟产品发布分布保持一致的布局骨架: 色点+名称 / 数字右对齐 / 进度条+百分比
-// 状态列 = 失败率 (failed/total*100%), 0% 时全绿, >0% 红色
+// 状态列 = 成功率 (success/total*100%): >=95% 绿, >=80% 橙, 其余红
 function _hashIdx(s){let h=0;for(let i=0;i<s.length;i++){h=((h<<5)-h+s.charCodeAt(i))|0;}return Math.abs(h);}
-function _renderCustPushTable(items, days){
+function _renderCustPushTable(items, days, windowLabel){
   const container = document.getElementById('custPushTable');
   if(!container) return;
   if(!items || items.length===0){
     container.innerHTML='<div class="p16 ta-center disabled-12">暂无客户</div>';
     return;
   }
+  const emptyLabel = windowLabel || ('近'+days+'天');
   // 2026-11-09 修复"客户显示不全": 0 推送客户不再隐藏, 全量渲染(后端已按 total DESC 排序, 0 推送自然沉底)
 // 2026-09-04: 客户推送表 — 响应式: 渲染后用 JS 算 card 实际宽度按比例分配三列, 任意视口都对齐
   // 列宽比例 35%/15%/50% (跟用户截图的视觉比例一致), padding 让 td 内容左/右对齐
@@ -209,17 +210,20 @@ function _renderCustPushTable(items, days){
 '<thead><tr class="data-stats-thead">'+
       '<th class="data-th" data-col="0">客户</th>'+
       '<th class="data-th" data-col="1">推送</th>'+
-      '<th class="data-th-num w160 ta-left" data-col="2">状态</th>'+
+      '<th class="data-th-num w160 ta-left" data-col="2">成功率</th>'+
     '</tr></thead><tbody>'+
     items.map((c,i)=>{
-      const total = c.total||0, failed = c.failed||0;
-      const isZero = total === 0 && failed === 0;
-      const failPct = total>0 ? (failed/total*100).toFixed(1) : '0';
+      const total = c.total||0, success = c.success||0, failed = c.failed||0;
+      const isZero = total === 0;
+      const successPct = total > 0 ? success/total*100 : 0;
+      const successText = successPct.toFixed(1);
+      const barCls = isZero ? 'bar-success'
+        : (successPct >= 95 ? 'bar-success' : (successPct >= 80 ? 'bar-warn' : 'bar-danger'));
       const tipLines = [
         `客户: ${c.name}`,
         `总数/成功/失败: ${total} / ${(c.success||0)} / ${failed}`,
         c.last_product ? `最近推送: ${c.last_product}` : '',
-        c.last_sent_at ? `时间: ${fmtTZ(c.last_sent_at, true)}` : `近${days}天无推送`,
+        c.last_sent_at ? `时间: ${fmtTZ(c.last_sent_at, true)}` : `${emptyLabel}无推送`,
         '点击查看该客户推送历史',
       ].filter(Boolean).join('\n');
       const pi = _hashIdx(String(c.id||c.name))%PIE_COLORS.length;
@@ -236,9 +240,9 @@ function _renderCustPushTable(items, days){
             ? '<span class="disabled-11">无推送</span>'
             : `<div class="flex items-center gap6">
                 <div class="progress-track">
-                  <div class="pal-bar ${failed>0?'bar-danger':'bar-success'}" data-pct="${failPct}"></div>
+                  <div class="pal-bar ${barCls}" data-pct="${successText}"></div>
                 </div>
-                <span class="gray-muted-11 min-w36 ta-right">${failPct}%</span>
+                <span class="gray-muted-11 min-w36 ta-right ${successPct >= 95 ? 'text-success-text' : (successPct >= 80 ? 'text-warn' : 'text-danger')}">${successText}%</span>
               </div>`}
         </td>
       </tr>`;
@@ -1193,9 +1197,10 @@ function dataRenderLeft() {
     const freshBadge = freshness === 'new' ? ' <span class="badge badge-ok badge-xs">活跃</span>' : (freshness === 'lowfreq' ? ' <span class="badge badge-warn badge-xs">低频</span>' : (freshness === 'idle' ? ' <span class="badge badge-grey badge-xs">沉寂</span>' : ''));
     const cardId = 'dpc_' + sid;
     const treeBodyId = cardId + '_body';
+    const prodName = src.display_name || src.name || String(sid);
     html += `<div class="card mb10" id="${cardId}">
       <div class="card-hd pointer" data-action="cardToggle" data-body-id="${treeBodyId}">
-        <span>${escHtml(src.display_name || src.name || sid)}</span>
+        <span class="flex-1 min-w0 ellipsis" title="${escHtml(prodName)}">${escHtml(prodName)}</span>
         ${freshBadge && `<span class="ml-auto">${freshBadge}</span>`}
         <button class="hover-primary pager-btn" data-on-click="dataCollectProduct" data-stop data-args='${_dataArgs(sid, src.name || sid)}' title="立即采集此产品">采</button>
       </div>
@@ -1233,7 +1238,7 @@ function treeToggleById(childrenId, arrowEl) {
   const children = treeNode.nextElementSibling;
   if (!children || !children.classList.contains('tree-children')) return;
   // Find the arrow inside this tree-node to update its glyph
-  const arrow = treeNode.querySelector('span[data-toggle-arrow], .tree-arrow');
+  const arrow = treeNode.querySelector('span[data-toggle-arrow], .tree-arrow, .tree-toggle');
   const isHidden = children.classList.contains('hidden');
   children.classList.toggle('hidden', !isHidden);
   if (arrow) arrow.innerHTML = isHidden ? '&#9660;' : '&#9658;';
