@@ -604,9 +604,12 @@ async function dataPage() {
   _dataSelectedUrl = null;
   _dataSelectedNode = null;
 
-  const [r, cfgR] = await Promise.all([
+  // 首屏四个请求互不依赖，一次并发发出，避免第二批再等一个往返
+  const [r, cfgR, sR, prR] = await Promise.all([
     api('/latest/snapshots').catch(() => ({ data: {} })),
     api('/settings/config').catch(() => ({})),
+    api('/settings/scheduler').catch(() => ({})),
+    api('/system/collect/progress').catch(() => ({})),
   ]);
   _dataAll = r.data || {};
   _feedPkgLimit = Math.max(1, parseInt(cfgR.data?.snapshots_per_group) || 5);
@@ -640,11 +643,6 @@ async function dataPage() {
     _srcUrlPathIdMap[sid] = pathIdMap;
   });
 
-  // Fetch scheduler + detailed progress in parallel
-  const [sR, prR] = await Promise.all([
-    api('/settings/scheduler').catch(() => ({})),
-    api('/system/collect/progress').catch(() => ({})),
-  ]);
   console.log('[debug scheduler]', JSON.stringify(sR));
   const sch = sR.data || {};
   _lastScheduler = sch; // cache for poll updates

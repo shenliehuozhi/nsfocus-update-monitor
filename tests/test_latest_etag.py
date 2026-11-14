@@ -90,6 +90,19 @@ def test_etag_changes_after_write(client):
     assert 'b.bin' in names
 
 
+def test_list_payload_strips_detail_only_fields(client):
+    """列表接口只带列表/筛选字段，详情字段走 /api/snapshot/<id>，避免首屏载荷膨胀。"""
+    snap = _get(client).get_json()['data']['1']['snapshots'][0]
+    for field in ('description_raw', 'description_parsed', 'md5_hash', 'page_hash',
+                  'file_size', 'min_sys_version', 'restart_required',
+                  'prev_page_hash', 'rollback_confirmed_at', 'rollback_cycles',
+                  'product_name', 'source_id'):
+        assert field not in snap, field
+    for field in ('id', 'file_name', 'published_at', 'path_id', 'status',
+                  'urgency', 'last_delivered_at', 'source_url'):
+        assert field in snap, field
+
+
 def test_etag_empty_source_map(client):
     from src.models.database import execute
     execute("UPDATE content_sources SET is_active = 0")

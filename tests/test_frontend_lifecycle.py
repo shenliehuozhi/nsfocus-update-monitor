@@ -50,6 +50,17 @@ def test_logout_and_navigation_clear_timers():
     assert '_pageRenderError(n,' in show
 
 
+def test_data_page_bootstraps_requests_in_one_parallel_batch():
+    """首屏 4 个独立请求必须同一批并发发出，不能再串行等一个往返。"""
+    data = (WEB / 'static/js/data.js').read_text(encoding='utf-8')
+    start = data.index('async function dataPage')
+    boot = data[start:data.index('const t0 = performance.now()', start)]
+    assert boot.count('await Promise.all') == 1
+    for endpoint in ("'/latest/snapshots'", "'/settings/config'",
+                     "'/settings/scheduler'", "'/system/collect/progress'"):
+        assert endpoint in boot, endpoint
+
+
 def test_products_polling_has_cancel_hook():
     products = (WEB / 'static/js/products.js').read_text(encoding='utf-8')
     assert 'function stopProductsPolls' in products
