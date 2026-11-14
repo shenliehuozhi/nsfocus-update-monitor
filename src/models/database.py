@@ -1,68 +1,69 @@
-"""Database connection and schema management.
-
-Single SQLite file at MONITOR_DATA_DIR/nsfocus_monitor.db.
-Thread-safe via check_same_thread=False (Flask dev server).
-Production should use a proper WSGI server with connection pooling.
-"""
+"""SQLite connections, bounded write contention and schema management."""
 
 import os
 import sqlite3
 import threading
-from contextlib import contextmanager
+import time
+from collections import Counter, deque
+from contextlib import closing
+from math import ceil
 
 from src.core.logger import get_logger
 
 logger = get_logger('database')
 
-# Thread-local connections
 _local = threading.local()
 DB_PATH: str = ''
-
-# Global write lock — serializes all DB writes across all threads.
-# Uses RLock (re-entrant) so the same thread can re-acquire it safely,
-# preventing deadlocks when collector code paths call each other.
-# With DELETE mode + isolation_level=None, write contention is minimal;
-# the lock provides an additional safety margin for multi-threaded access.
 _write_lock = threading.RLock()
-_WRITE_LOCK_TIMEOUT = 30  # seconds — allow longer for bulk inserts and network-dependent ops
+_WRITE_LOCK_TIMEOUT = 10.0
+_stats_lock = threading.Lock()
+_write_samples = deque(maxlen=1024)
+_write_totals = Counter()
 
 
-def _monitor_lock():
-    """Background thread to diagnose lock holder if lock is held > 5s."""
-    import traceback as _tb
-    _logger = __import__('logging').getLogger('monitor.database')
-    while True:
-        __import__('time').sleep(5)
-        # Try to acquire non-blocking — if we get it immediately, lock is free
-        acquired = _write_lock.acquire(timeout=0.1)
-        if acquired:
-            _write_lock.release()
-            _logger.warning('[LOCK DIAG] _write_lock is FREE (as expected)')
-        else:
-            # Lock is held — dump stacks of all threads once, then try to re-acquire
-            import sys as _sys, threading as _threading
-            _logger.error('[LOCK DIAG] _write_lock is HELD by another thread! Stacks:')
-            for t in _threading.enumerate():
-                tid = getattr(t, 'ident', None)
-                if tid:
-                    try:
-                        frame = _sys._current_frames().get(tid)
-                        if frame:
-                            _logger.error(f'Thread {t.name} (id={tid}):\n{chr(10).join(_tb.format_stack(frame))}')
-                    except Exception:
-                        pass
+def write_stats() -> dict:
+    """Process counters and nearest-rank percentiles over the last 1024 writes."""
+    with _stats_lock:
+        samples = list(_write_samples)
+        totals = dict(_write_totals)
+    result = {
+        'operations': totals.get('operations', 0),
+        'errors': totals.get('errors', 0),
+        'timeouts': totals.get('timeouts', 0),
+        'python_lock_timeouts': totals.get('python_lock_timeouts', 0),
+        'sqlite_busy_errors': totals.get('sqlite_busy_errors', 0),
+        'sample_count': len(samples),
+        'sample_limit': _write_samples.maxlen,
+        'wait_budget_seconds': _WRITE_LOCK_TIMEOUT,
+        'timeout_rate': totals.get('timeouts', 0) / totals['operations']
+        if totals.get('operations') else 0.0,
+    }
+    for name in ('lock_wait_ms', 'sqlite_ms', 'total_ms'):
+        values = sorted(sample[name] for sample in samples)
+        result[name] = {
+            f'p{p}': round(values[ceil(len(values) * p / 100) - 1], 3)
+            if values else None
+            for p in (50, 95, 99)
+        }
+    return result
 
 
-_monitor_started = False
-
-
-def _start_lock_monitor():
-    global _monitor_started
-    if _monitor_started:
-        return
-    _monitor_started = True
-    t = threading.Thread(target=_monitor_lock, daemon=True, name='lock-monitor')
-    t.start()
+def _record_write(lock_wait: float, sqlite_time: float, total: float, outcome: str):
+    sample = {'lock_wait_ms': lock_wait * 1000,
+              'sqlite_ms': sqlite_time * 1000, 'total_ms': total * 1000}
+    with _stats_lock:
+        _write_samples.append(sample)
+        _write_totals['operations'] += 1
+        if outcome != 'ok':
+            _write_totals['errors'] += 1
+        if outcome in ('python_lock_timeout', 'sqlite_busy'):
+            _write_totals['timeouts'] += 1
+            _write_totals['python_lock_timeouts' if outcome == 'python_lock_timeout'
+                          else 'sqlite_busy_errors'] += 1
+    if outcome != 'ok' or total >= 1:
+        logger.warning(
+            'db_write outcome=%s lock_wait_ms=%.1f sqlite_ms=%.1f total_ms=%.1f',
+            outcome, sample['lock_wait_ms'], sample['sqlite_ms'], sample['total_ms'])
 
 
 def init_db(data_dir: str = None) -> str:
@@ -103,69 +104,119 @@ def init_db(data_dir: str = None) -> str:
 
 
 def get_db() -> sqlite3.Connection:
-    """Get thread-local database connection."""
-    if not hasattr(_local, 'conn') or _local.conn is None:
+    """Get a connection owned by the current thread without changing journal mode."""
+    if getattr(_local, 'conn', None) is None:
         if not DB_PATH:
             init_db()
-        _local.conn = sqlite3.connect(DB_PATH, check_same_thread=False, isolation_level=None)
-        _local.conn.row_factory = sqlite3.Row
-        _local.conn.execute("PRAGMA journal_mode=DELETE")  # WAL causes write-lock contention; DELETE mode is safe for single-writer
-        _local.conn.execute("PRAGMA busy_timeout=10000")  # 10s, sufficient "database is locked"
-        _local.conn.execute("PRAGMA foreign_keys=ON")
+        conn = sqlite3.connect(DB_PATH, timeout=_WRITE_LOCK_TIMEOUT, isolation_level=None)
+        try:
+            conn.row_factory = sqlite3.Row
+            conn.execute('PRAGMA foreign_keys=ON').close()
+        except Exception:
+            conn.close()
+            raise
+        _local.conn = conn
     return _local.conn
+
+
+def close_db(error=None) -> None:
+    conn = getattr(_local, 'conn', None)
+    if conn is not None:
+        _local.conn = None
+        conn.close()
 
 
 def query(sql: str, params: tuple = ()) -> list:
     """Execute a SELECT query, return list of dicts."""
-    db = get_db()
-    rows = db.execute(sql, params).fetchall()
-    return [dict(r) for r in rows]
+    with closing(get_db().execute(sql, params)) as cursor:
+        return [dict(row) for row in cursor.fetchall()]
+
+
+def _run_write(sql, params, *, many=False, foreign_keys=False):
+    started = time.monotonic()
+    acquired = False
+    lock_wait = sqlite_time = 0.0
+    outcome = 'error'
+    try:
+        if not DB_PATH:
+            init_db()
+        acquired = _write_lock.acquire(timeout=max(0, _WRITE_LOCK_TIMEOUT -
+                                                   (time.monotonic() - started)))
+        lock_wait = time.monotonic() - started
+        if not acquired:
+            outcome = 'python_lock_timeout'
+            raise sqlite3.OperationalError('database is locked: local write queue timed out')
+        with closing(sqlite3.connect(DB_PATH, timeout=0, isolation_level=None)) as conn:
+            if foreign_keys:
+                conn.execute('PRAGMA foreign_keys=ON').close()
+            with closing(conn.cursor()) as cursor:
+                sqlite_started = time.monotonic()
+                try:
+                    # SQLite busy waits share the queue budget; SQL execution itself is not interrupted.
+                    for values in params if many else (params,):
+                        remaining = max(0, _WRITE_LOCK_TIMEOUT - (time.monotonic() - started))
+                        conn.execute(f'PRAGMA busy_timeout={int(remaining * 1000)}').close()
+                        cursor.execute(sql, values)
+                    result = (cursor.lastrowid, cursor.rowcount)
+                finally:
+                    sqlite_time = time.monotonic() - sqlite_started
+        outcome = 'ok'
+        return result
+    except sqlite3.OperationalError as exc:
+        code = getattr(exc, 'sqlite_errorcode', 0) & 0xff
+        if outcome != 'python_lock_timeout' and (
+            code in (5, 6)
+            or 'locked' in str(exc).lower() or 'busy' in str(exc).lower()
+        ):
+            outcome = 'sqlite_busy'
+        raise
+    finally:
+        if acquired:
+            _write_lock.release()
+        _record_write(lock_wait, sqlite_time, time.monotonic() - started, outcome)
 
 
 def execute(sql: str, params: tuple = ()) -> int | None:
-    """Execute an INSERT/UPDATE/DELETE, return lastrowid.
+    """Execute one autocommit write and return lastrowid."""
+    # Preserve the existing write FK policy; enabling constraints requires a separate data audit.
+    return _run_write(sql, params)[0]
 
-    Thread-safe: acquires _write_lock so all writes across all threads
-    are serialized.  With DELETE mode + isolation_level=None, lock
-    contention is minimal; the lock provides safety margin for
-    multi-threaded access.
 
-    Retries on "database is locked" (up to 30 attempts, 2s/4s/6s... sleep between).
-    10s busy_timeout gives SQLite time to acquire the lock without hogging resources.
-    Combined with isolation_level=None, lock contention is extremely rare.
-    """
-    import time as _time
-    import logging as _log
-    import traceback as _tb
-    _dbg = _log.getLogger('monitor.database')
-
-    for attempt in range(30):
-        try:
-            with _write_lock:
-                # Use a fresh connection instead of get_db() to avoid thread-local issues
-                import sqlite3 as _sqlite3
-                db = _sqlite3.connect(DB_PATH, timeout=60, isolation_level=None)
-                db.execute('PRAGMA busy_timeout=10000')
-                db.row_factory = _sqlite3.Row
-                _t0 = _time.time()
-                cur = db.execute(sql, params)
-                dur = _time.time() - _t0
-                # No explicit commit() needed with isolation_level=None (autocommit mode)
-                if dur > 1.0:
-                    _dbg.warning(f'execute slow ({dur:.3f}s attempt {attempt+1}): {sql[:80]}')
-                return cur.lastrowid
-        except sqlite3.OperationalError as e:
-            if attempt < 29 and 'database is locked' in str(e):
-                _time.sleep(2 * (attempt + 1))  # 2s, 4s, 6s ... up to 60s total
-                continue
-            raise
+def execute_rowcount(sql: str, params: tuple = ()) -> int:
+    """Execute a constraint-checked autocommit write and return affected rows."""
+    return _run_write(sql, params, foreign_keys=True)[1]
 
 
 def executemany(sql: str, params_list: list) -> None:
-    """Execute multiple INSERT statements. Uses autocommit mode (isolation_level=None)."""
-    with _write_lock:
-        db = get_db()
-        db.executemany(sql, params_list)
+    """Autocommit each row without replaying a partially successful batch."""
+    _run_write(sql, params_list, many=True, foreign_keys=True)
+
+
+def probe_write_lock(timeout: float) -> dict:
+    """Try to start a write transaction under the shared write queue.
+
+    Queue wait and SQLite lock wait use independent ``timeout`` budgets, so a
+    busy local queue is reported as not attempted instead of as a SQLite lock
+    failure. Probe traffic is excluded from ``write_stats()``.
+    """
+    result = {'attempted': False, 'ok': False, 'error': ''}
+    if not DB_PATH:
+        init_db()
+    acquired = _write_lock.acquire(timeout=max(0.0, timeout))
+    if not acquired:
+        return result
+    try:
+        result['attempted'] = True
+        with closing(sqlite3.connect(DB_PATH, timeout=0, isolation_level=None)) as conn:
+            conn.execute(f'PRAGMA busy_timeout={int(max(0.0, timeout) * 1000)}').close()
+            conn.execute('BEGIN IMMEDIATE')
+            conn.execute('ROLLBACK')
+        result['ok'] = True
+    except Exception as exc:
+        result['error'] = str(exc)[:200] or exc.__class__.__name__
+    finally:
+        _write_lock.release()
+    return result
 
 
 def sync_table_columns(db, table: str, expected: list[tuple[str, str, str]]) -> None:

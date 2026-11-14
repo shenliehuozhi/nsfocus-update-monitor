@@ -339,22 +339,43 @@ _collect_thread = None
 @bp.route('/restart', methods=['POST'])
 @require_auth
 def restart_service():
-    """Restart the monitor service. Uses SIGTERM for clean shutdown (no DB lock).
-    
-    Locked DB risk: previously used SIGKILL (-9) which left WAL in inconsistent state.
-    SIGTERM lets Flask shutdown gracefully: close DB connections, release locks.
-    systemd service already configured with Restart=on-failure — will restart automatically.
-    """
-    import os, signal, time as _time, logging
-    pid = os.getpid()
-    logging.getLogger('system_routes').info(f'Restart requested, sending SIGTERM to {pid}')
-    def _delayed_exit():
+    """Request a systemd restart only when the fixed unit owns this process."""
+    import logging
+    import subprocess
+    import time as _time
+
+    unit = 'nsfocus-monitor.service'
+    logger = logging.getLogger('system_routes')
+    try:
+        result = subprocess.run(
+            ['systemctl', 'show', '--property=MainPID', '--value', unit],
+            capture_output=True, text=True, check=True, timeout=5, shell=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        logger.warning('Unable to verify systemd service ownership')
+        return {'code': 503, 'message': '无法确认 systemd 服务状态，未提交重启请求'}, 503
+
+    if result.stdout.strip() != str(os.getpid()):
+        return {'code': 409, 'message': '当前进程不由目标 systemd 服务管理，无法重启'}, 409
+
+    def _delayed_restart():
         _time.sleep(0.5)
-        os.kill(pid, signal.SIGTERM)
-    import threading
-    t = threading.Thread(target=_delayed_exit, daemon=True)
-    t.start()
-    return {'code': 0, 'message': '服务正在重启…'}
+        try:
+            subprocess.run(
+                ['systemctl', '--no-block', 'restart', unit],
+                capture_output=True, text=True, check=True, timeout=10, shell=False,
+            )
+        except (OSError, subprocess.SubprocessError):
+            # Never expose subprocess output or exception text in logs/responses.
+            logger.error('Failed to submit systemd service restart request')
+
+    try:
+        t = threading.Thread(target=_delayed_restart, daemon=True)
+        t.start()
+    except RuntimeError:
+        logger.error('Unable to schedule systemd service restart request')
+        return {'code': 503, 'message': '无法安排服务重启，请稍后重试'}, 503
+    return {'code': 0, 'message': '重启请求已接受，服务将尝试重启…'}
 
 
 @bp.route('/collect', methods=['POST'])
@@ -452,16 +473,21 @@ def reset_rate_limit():
 def list_events():
     """事件中心 — 返回 system_event_log 事件列表
 
-    支持过滤:severity / event_type / since_hours / unacked / limit / offset
-    since_hours=0 表示不限时间；unacked=1 只看未确认事件
+    支持过滤:severity / event_type / since_hours / unacked / state / limit / offset
+    since_hours=0 表示不限时间；unacked=1 只看未确认(未读且未解决)事件
+    state: open / acked / resolved（缺省返回全部）
     2026-09-01: 加 offset + total 用于弹窗表格分页
     """
     from src.models.database import query
-    # 2026-08-25: 先确保 acked_at 列存在(migration),否则后续 SQL 查询会失败
-    _ensure_event_ack_column()
+    from src.models.event_log import EVENT_STATE_SQL
+    # 先确保生命周期列存在(migration),否则后续 SQL 查询会失败
+    _ensure_event_lifecycle_columns()
 
     severity = request.args.get('severity', '').strip()
     event_type = request.args.get('event_type', '').strip()
+    state = request.args.get('state', '').strip().lower()
+    if state not in ('open', 'acked', 'resolved'):
+        state = ''
     try:
         since_hours = int(request.args.get('since_hours', '24'))
     except (TypeError, ValueError):
@@ -473,10 +499,16 @@ def list_events():
     where = []
     params = []
     if since_hours > 0:
-        where.append("created_at >= datetime('now', ? || ' hours')")
+        where.append("datetime(created_at) >= datetime('now', ? || ' hours')")
         params.append(f'-{since_hours}')
     if unacked_only:
-        where.append('acked_at IS NULL')
+        where.append('acked_at IS NULL AND resolved_at IS NULL')
+    if state == 'open':
+        where.append('acked_at IS NULL AND resolved_at IS NULL')
+    elif state == 'acked':
+        where.append('acked_at IS NOT NULL AND resolved_at IS NULL')
+    elif state == 'resolved':
+        where.append('resolved_at IS NOT NULL')
     if severity:
         where.append('severity = ?')
         params.append(severity)
@@ -487,7 +519,9 @@ def list_events():
 
     sql = f"""SELECT id, event_type, severity, product_name, source_url,
                       rule_id, channel_id, channel_type, customer_id,
-                      is_rollback, message, created_at, acked_at
+                      is_rollback, message, created_at, acked_at,
+                      resolved_at, resolved_by,
+                      {EVENT_STATE_SQL} AS state
                FROM system_event_log
                WHERE {where_sql}
                ORDER BY id DESC
@@ -502,9 +536,10 @@ def list_events():
 
     counts_sql = """SELECT severity, COUNT(*) as cnt
                     FROM system_event_log
-                    WHERE created_at >= datetime('now', '-24 hours')
+                    WHERE datetime(created_at) >= datetime('now', '-24 hours')
                       AND severity IN ('CRITICAL', 'ERROR', 'WARNING')
                       AND acked_at IS NULL
+                      AND resolved_at IS NULL
                     GROUP BY severity"""
     counts_rows = query(counts_sql)
     counts = {'CRITICAL': 0, 'ERROR': 0, 'WARNING': 0, 'unread_total': 0}
@@ -530,16 +565,28 @@ def list_events():
 @bp.route('/events/<int:event_id>/ack', methods=['POST'])
 @require_auth
 def ack_event(event_id):
-    """标记单个事件已确认"""
+    """标记单个事件已确认（已读不等于已解决）"""
     from src.models.database import execute
-    if not _ensure_event_ack_column():
+    if not _ensure_event_lifecycle_columns():
         return {'code': 500, 'message': '数据库迁移失败'}, 500
     execute(
         "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
-        "WHERE id = ? AND acked_at IS NULL",
+        "WHERE id = ? AND acked_at IS NULL AND resolved_at IS NULL",
         (event_id,)
     )
     return {'code': 0, 'data': {'acked_id': event_id}}
+
+
+@bp.route('/events/<int:event_id>/resolve', methods=['POST'])
+@require_auth
+def resolve_event_route(event_id):
+    """标记单个事件已解决（已解决同时视为已读）"""
+    from src.models.event_log import resolve_event
+    if not _ensure_event_lifecycle_columns():
+        return {'code': 500, 'message': '数据库迁移失败'}, 500
+    resolved = resolve_event(event_id, resolved_by=f'user:{g.user_id}')
+    _audit('event_resolve', {'event_id': event_id, 'resolved': resolved})
+    return {'code': 0, 'data': {'resolved_id': event_id, 'resolved': resolved}}
 
 
 @bp.route('/events/ack-all', methods=['POST'])
@@ -558,16 +605,16 @@ def ack_all_events():
         since_hours = 0
     since_hours = max(since_hours, 0)
 
-    if not _ensure_event_ack_column():
+    if not _ensure_event_lifecycle_columns():
         return {'code': 500, 'message': '数据库迁移失败'}, 500
 
-    where = ['acked_at IS NULL']
+    where = ['acked_at IS NULL', 'resolved_at IS NULL']
     params = []
     if severity_filter:
         where.append('severity = ?')
         params.append(severity_filter)
     if since_hours > 0:
-        where.append("created_at >= datetime('now', ? || ' hours')")
+        where.append("datetime(created_at) >= datetime('now', ? || ' hours')")
         params.append(f'-{since_hours}')
 
     execute(
@@ -582,26 +629,81 @@ def ack_all_events():
     }}
 
 
-def _ensure_event_ack_column() -> bool:
-    """确保 system_event_log 有 acked_at 列(轻量 migration)"""
+@bp.route('/events/resolve-all', methods=['POST'])
+@require_auth
+def resolve_all_events():
+    """批量标记已解决，支持 severity / event_type / since_hours 过滤。"""
+    from src.models.event_log import resolve_events
+    payload = request.get_json(silent=True) or {}
+    severity_filter = payload.get('severity') or ''
+    if not isinstance(severity_filter, str):
+        severity_filter = ''
+    severity_filter = severity_filter.strip()
+    event_type_filter = payload.get('event_type') or ''
+    if not isinstance(event_type_filter, str):
+        event_type_filter = ''
+    event_type_filter = event_type_filter.strip()
+    try:
+        since_hours = int(payload.get('since_hours', 0))
+    except (TypeError, ValueError):
+        since_hours = 0
+    since_hours = max(since_hours, 0)
+
+    if not _ensure_event_lifecycle_columns():
+        return {'code': 500, 'message': '数据库迁移失败'}, 500
+
+    resolved = resolve_events(
+        event_type=event_type_filter or None,
+        severity=severity_filter or None,
+        since_hours=since_hours or None,
+        resolved_by=f'user:{g.user_id}',
+    )
+    _audit('event_resolve_all', {
+        'severity': severity_filter or None,
+        'event_type': event_type_filter or None,
+        'since_hours': since_hours,
+        'resolved': resolved,
+    })
+    return {'code': 0, 'data': {
+        'message': 'all resolved',
+        'resolved': resolved,
+        'severity': severity_filter or None,
+        'event_type': event_type_filter or None,
+        'since_hours': since_hours,
+    }}
+
+
+_LIFECYCLE_COLUMNS = ('acked_at', 'resolved_at', 'resolved_by')
+
+
+def _ensure_event_lifecycle_columns() -> bool:
+    """确保 system_event_log 有 acked_at / resolved_at / resolved_by 列(轻量 migration)"""
     try:
         from src.models.database import query, execute
-        cols = query("PRAGMA table_info(system_event_log)")
-        # 2026-08-26: query() 返回 [dict(row)] 格式,字段名 'name' (不是 tuple 索引 1)
-        if any(c.get('name') == 'acked_at' for c in cols):
-            return True
-        execute("ALTER TABLE system_event_log ADD COLUMN acked_at TEXT")
-        # 验证加成功
-        cols2 = query("PRAGMA table_info(system_event_log)")
-        if any(c.get('name') == 'acked_at' for c in cols2):
-            return True
-        import logging
-        logging.getLogger('api.events').warning(f'acked_at column not visible after ALTER')
-        return False
+        for col in _LIFECYCLE_COLUMNS:
+            cols = query("PRAGMA table_info(system_event_log)")
+            # 2026-08-26: query() 返回 [dict(row)] 格式,字段名 'name' (不是 tuple 索引 1)
+            if any(c.get('name') == col for c in cols):
+                continue
+            execute(f"ALTER TABLE system_event_log ADD COLUMN {col} TEXT")
+        cols = {c.get('name') for c in query("PRAGMA table_info(system_event_log)")}
+        missing = [c for c in _LIFECYCLE_COLUMNS if c not in cols]
+        if missing:
+            import logging
+            logging.getLogger('api.events').warning(
+                f'event lifecycle columns not visible after ALTER: {missing}')
+            return False
+        return True
     except Exception as e:
         import logging
-        logging.getLogger('api.events').warning(f'add acked_at column failed: {e}', exc_info=True)
+        logging.getLogger('api.events').warning(
+            f'add event lifecycle columns failed: {e}', exc_info=True)
         return False
+
+
+def _ensure_event_ack_column() -> bool:
+    """向后兼容旧调用方：确保生命周期列存在。"""
+    return _ensure_event_lifecycle_columns()
 
 
 @bp.route('/version', methods=['GET'])
@@ -671,11 +773,10 @@ def health_check():
     )
     queue_pending = queue_rows[0]['cnt'] if queue_rows else 0
 
-    # push_after 是 compute_push_time() 写入的本地时间，必须用本地时间比较，
-    # 否则 CST 服务器会把到期项误判为未到期（晚 8 小时）。
+    # push_after 一律存 UTC（compute_push_time() 用 utc_now()），与 datetime('now') 比较。
     queue_overdue = query(
         "SELECT COUNT(*) as cnt FROM delayed_queue "
-        "WHERE status = 'pending' AND push_after < datetime('now', 'localtime')"
+        "WHERE status = 'pending' AND datetime(push_after) < datetime('now')"
     )
     queue_overdue_count = queue_overdue[0]['cnt'] if queue_overdue else 0
 
@@ -2042,7 +2143,8 @@ def ingest_log_alert():
             return jsonify({'code': 0, 'message': 'deduped', 'skipped': True}), 200
         _log_alert_dedup[key] = now
 
-    cst_now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    from src.core.timeutil import cst_now as _cst_now
+    cst_now = _cst_now().strftime('%Y-%m-%d %H:%M:%S')
 
     # 2026-08-26: log_scanner 的事件也要进 system_event_log 事件面板
     # 之前只发通知不写 DB,用户看不到。severity 跟 ERROR_PATTERNS 字典对齐

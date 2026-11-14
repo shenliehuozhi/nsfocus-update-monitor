@@ -53,12 +53,13 @@
 <script src="/static/js/events_center.js"></script>
 <script src="/static/js/observability.js"></script>
 <script src="/static/js/account.js"></script>
-<script src="/static/js/bootstrap.js"></script>
 
 <!-- ─────────────────────────────────────────────────────────────
   其他工具 (tools page) — 卡片列表 + 规则库 Diff 子页
   ───────────────────────────────────────────────────────────── -->
 <div id="rdToast" class="rd-toast hidden"></div>
 <script src="/static/js/tools.js"></script>
+<!-- bootstrap 必须最后加载：它立即请求 /auth/me，响应可能在后续 script 执行前就回来 -->
+<script src="/static/js/bootstrap.js"></script>
 </body>
 </html>

@@ -643,7 +643,19 @@ data: {"processed": 3, "errors": 0}
 可用事件类型：`push_summary`、`digest_summary`、`collection_summary`、`cleanup_summary`、`log_error`、`session_error`、`session_expired`、`channel_error`、`delivery_error`、`login_bruteforce`。
 
 ### GET /api/system/events
-查询最近事件记录。可选参数：`severity`（严重度）、`event_type`（事件类型）、`since_hours`（时间窗，默认 24，`0` = 全部时间）、`unacked=1`（只看未确认）、`limit`（默认 50，上限 500）、`offset`（分页）。
+查询最近事件记录。可选参数：`severity`（严重度）、`event_type`（事件类型）、`since_hours`（时间窗，默认 24，`0` = 全部时间）、`unacked=1`（只看未读且未解决）、`state`（`open` / `acked` / `resolved`）、`limit`（默认 50，上限 500）、`offset`（分页）。返回项额外包含 `acked_at`、`resolved_at`、`resolved_by` 与派生状态 `state`。
+
+### POST /api/system/events/&lt;id&gt;/ack
+标记单个事件已读（`acked_at`），不改变解决状态。
+
+### POST /api/system/events/&lt;id&gt;/resolve
+标记单个事件已解决（`resolved_at` + `resolved_by`），同时补写 `acked_at`；已解决事件不重复处理。
+
+### POST /api/system/events/ack-all
+批量标记已读。Body：`{"severity": "ERROR"|null, "since_hours": 24}`；只更新当前时间窗与严重度范围内 `acked_at IS NULL AND resolved_at IS NULL` 的行。
+
+### POST /api/system/events/resolve-all
+批量标记已解决。Body：`{"severity": "ERROR"|null, "event_type": "site_unavailable"|null, "since_hours": 24}`；只更新范围内 `resolved_at IS NULL` 的行，返回实际解决条数。
 
 ```json
 {
@@ -751,7 +763,11 @@ data: {"processed": 3, "errors": 0}
       ]
     },
     "today": {
-      "delivery": {"total": 12, "sent": 11, "failed": 1, "success_rate": 0.9167}
+      "date": "2026-11-11",
+      "delivery": {"total": 12, "sent": 11, "failed": 1, "success_rate": 0.9167},
+      "products": [{"name": "WAF", "count": 2, "last_published_at": "2026-11-10 16:30:00"}],
+      "product_count": 1,
+      "package_count": 2
     },
     "updates": {
       "window_hours": 24,
@@ -795,6 +811,15 @@ data: {"processed": 3, "errors": 0}
       "snapshots_active": 725, "delivery_log_rows": 7596,
       "digest_queue_rows": 0, "system_event_log_rows": 412
     },
+    "database": {
+      "operations": 1284, "errors": 0, "timeouts": 0,
+      "python_lock_timeouts": 0, "sqlite_busy_errors": 0,
+      "sample_count": 1024, "sample_limit": 1024,
+      "wait_budget_seconds": 10.0, "timeout_rate": 0.0,
+      "lock_wait_ms": {"p50": 0.1, "p95": 12.4, "p99": 30.2},
+      "sqlite_ms": {"p50": 3.8, "p95": 6.1, "p99": 9.4},
+      "total_ms": {"p50": 4.0, "p95": 18.3, "p99": 39.7}
+    },
     "maintenance": {"enabled": false},
     "site": {
       "url": "https://update.nsfocus.com/", "status": "up",
@@ -823,12 +848,14 @@ data: {"processed": 3, "errors": 0}
 - `queues.*.retrying` 统计 `attempts > 0` 的 pending 行（发送失败、等待退避重试）；重试上限由 `MONITOR_DELIVERY_MAX_ATTEMPTS` / `MONITOR_DIGEST_MAX_ATTEMPTS` 控制（默认 6），耗尽后行状态转为 `cancelled`，原因见 `cancelled_reason`。
 - `collection.last_duration_s` / `avg_duration_s` 取最近 20 条 `collection_summary` 系统事件，不受 `hours` 限制。
 - `collection.sources_stale` 统计 24 小时内未成功采集的启用源。
-- `today` 固定按 CST 当天统计，不随 `hours` 变化，仅含 `delivery`（供 Prometheus 今日指标使用）。
+- `today` 固定统计 CST 当天 00:00 至当前时刻，不随 `hours` 变化，保留给 Prometheus 今日指标使用，网页不再展示独立「今日概览」。`date` 为 CST 日期，`delivery` 包含推送/成功/失败/成功率，按 `COALESCE(NULLIF(created_at, ''), sent_at)` 归属日期；`products` 按 `published_at` 统计当天发布的产品大类与包数，`product_count` / `package_count` 分别为产品数和包数，不是当天入库量。未来时间、空时间与不可解析时间不计入。
 - `updates` 按 `snapshots.product_name`（产品大类）聚合窗口内更新包数，跟随 `hours`；`published_at` 入库时已转为 UTC ISO，窗口按 UTC 比较，页面展示时再转 CST。
 - `customers` 与 `delivery` 共用 `hours` 窗口聚合 `delivery_log`，`total` / `success` / `failed` 为窗口内计数，`last_product` 取最近一次推送的产品名；窗口内无推送的客户仍返回且计数为 0。
-- `sessions` 的 `collect_*` 只统计 `purpose='collect'`，`discover_active` 为可用发现 Session 数，`active_but_expired` 为已过期但仍标记活跃的行。
+- `sessions.total` 包含污染等所有状态；`collect_active` / `discover_active` 按 `purpose` + `status='active'` 统计，与池选择规则一致，不保证远端即时有效。`collect_polluted` 包含状态或心跳标记污染的采集 Session；`active_but_expired` 表示心跳为过期/污染/错误但仍标记 active，页面显示为「心跳异常但仍标记活跃」，不代表按 `expires_at` 判定。
 - `process.uptime_seconds` 由进程启动时间派生，无法解析时为 `null`（Prometheus 输出为 `NaN`）。
+- `database` 是进程内 SQLite 写路径统计，不随 `hours` 变化：`operations` / `errors` / `timeouts` 自本次进程启动累计，重启清零；`timeouts` = `python_lock_timeouts`（进程内写队列等待超预算）+ `sqlite_busy_errors`（SQLite 报 locked/busy），`timeout_rate` = `timeouts / operations`，无写操作时为 `0.0`。`lock_wait_ms` / `sqlite_ms` / `total_ms` 分别是排队等待、SQL 执行、两者合计的毫秒分位数（最近 `sample_limit`=1024 次写的最近秩 p50/p95/p99），无样本时为 `null`（Prometheus 输出 `NaN`）。写队列与 SQLite `busy_timeout` 共用 `wait_budget_seconds`（默认 10 秒）预算，超时即失败返回，不再无限重试。Prometheus 对应 `nsfocus_db_write_operations`、`nsfocus_db_write_errors`、`nsfocus_db_write_timeouts{reason="python_lock"|"sqlite_busy"}`、`nsfocus_db_write_timeout_rate`、`nsfocus_db_write_wait_budget_seconds`、`nsfocus_db_write_samples{scope="count"|"limit"}`、`nsfocus_db_write_{lock_wait,sqlite,total}_ms{quantile="p50"|"p95"|"p99"}`。
 - `maintenance.enabled` 读取 `system_settings.maintenance_mode`；开启后所有订阅推送被抑制，采集照常。
 - `site` 为 `nsfocus_site_check` 每 5 分钟对 `https://update.nsfocus.com/` 的探测结果：HTTP `< 500` 视为 `up`，5xx/超时/连接错误为 `down`，从未探测为 `unknown`；`consecutive_failures` 连续失败次数，状态切换时写 `site_unavailable` / `site_recovered` 系统事件。`site.history` 为时间升序采样点 `{t, ms, s}`，`site.history_summary` 为 `{samples, failures, avg_ms, max_ms}`，`site.history_hours` 为窗口小时数；超过 180 个采样按时间桶平均，失败桶保留 `s=down` / `ms=null`。`format=prometheus` 时不返回历史，避免抓取响应体膨胀。
 - `scheduler_jobs` 始终返回已知任务（采集、心跳、汇总、投递队列、清理、渠道体检、站点可用性），`status` 为 `running` / `stopped` / `disabled`；任务未注册时 `next_run` / `seconds_until` 为 `null`。站点探测独立于采集调度器，采集关闭时仍可能为 `running`。
 - 网页端「仪表盘」页面消费同一接口，提供窗口切换、30 秒自动刷新和 Prometheus 抓取地址；页面不读取或展示 `MONITOR_METRICS_TOKEN`。
+- 「重启服务」调用 `POST /api/system/restart`（登录鉴权，Cookie 请求需 CSRF）。固定检查 `nsfocus-monitor.service` 的 MainPID 是否等于当前进程，非受管实例返回 HTTP 409 / code 409；systemd 查询或线程安排失败返回 HTTP 503 / code 503；成功返回 code 0，仅表示已安排延迟重启请求。使用 systemd restart 而非 SIGTERM，后者在 `Restart=on-failure` 下不会自动重启。

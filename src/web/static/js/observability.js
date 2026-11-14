@@ -1,5 +1,6 @@
 // 经典脚本，无构建；仪表盘页面（/api/metrics 的可视化层）
 let _obsHours = 24;
+let _obsRequestSeq = 0;
 
 async function observability(){
   document.getElementById('app').innerHTML = `
@@ -7,7 +8,7 @@ async function observability(){
       <div class="card-hd items-center">
         <span>📈 仪表盘</span>
         <span class="fw400 fs115 text-muted" id="obsMeta"></span>
-        <span class="ml-auto flex items-center gap8">
+        <span class="ml-auto flex items-center gap8 wrap">
           <select id="obsWindow" class="dd sel-sm" data-on-change="obsSetWindow" data-args='${_dataArgs('$value')}'>
             <option value="6">最近 6 小时</option>
             <option value="24">最近 24 小时</option>
@@ -39,19 +40,22 @@ function _obsWindowDays(hours){
 }
 
 async function obsRestartService(){
-  await confirmAct('⚠️ 确认重启服务？服务将短暂中断后自动恢复。', async () => {
+  await confirmAct('确认重启服务？服务将短暂中断，仅支持由 systemd 管理的实例。', async () => {
     const r = await api('/system/restart', { method: 'POST' });
-    toast(r.code === 0 ? '服务正在重启…' : '重启失败: ' + (r.message || '未知错误'), r.code === 0 ? 'success' : 'error');
+    toast(r.code === 0 ? (r.message || '重启请求已接受') : '重启失败: ' + (r.message || '未知错误'), r.code === 0 ? 'success' : 'error');
   }, '🔄', '确认重启', true);
 }
 
 async function obsRefresh(manual){
+  const root = document.getElementById('obs-root');
+  if (!root) return;
+  const seq = ++_obsRequestSeq;
+  const navSeq = _navSeq;
   const btn = document.getElementById('obsRefreshBtn');
   if (btn) { btn.disabled = true; btn.textContent = '刷新中…'; }
   const r = await api('/metrics?hours=' + _obsHours);
+  if (seq !== _obsRequestSeq || navStale(navSeq) || root !== document.getElementById('obs-root')) return;
   if (btn) { btn.disabled = false; btn.textContent = '↻ 刷新'; }
-  const root = document.getElementById('obs-root');
-  if (!root) return;
   if (r.code !== 0 || !r.data) {
     root.innerHTML = `<div class="empty">加载失败：${escHtml(r.message || '未知错误')}</div>`;
     return;
@@ -137,7 +141,10 @@ function _obsRender(d){
       ${_obsEventsCard(ev)}
       ${_obsStorageCard(st)}
     </div>
-    ${_obsPromCard()}`;
+    <div class="obs-grid2">
+      ${_obsDatabaseCard(d.database || {})}
+      ${_obsPromCard()}
+    </div>`;
 }
 
 function _obsKpi(label, value, sub, tint){
@@ -178,7 +185,7 @@ function _obsSessionCard(sess){
         <span>可用采集 Session</span><b class="${sess.collect_active ? 'text-success-text' : 'text-danger'}">${sess.collect_active || 0} / ${sess.collect_total || 0}</b>
         <span>可用发现 Session</span><b>${sess.discover_active || 0}</b>
         <span>采集 Session 污染</span><b class="${sess.collect_polluted ? 'text-warn' : ''}">${sess.collect_polluted || 0}</b>
-        <span>已过期仍标记活跃</span><b class="${sess.active_but_expired ? 'text-danger' : ''}">${sess.active_but_expired || 0}</b>
+        <span>心跳异常但仍标记活跃</span><b class="${sess.active_but_expired ? 'text-danger' : ''}">${sess.active_but_expired || 0}</b>
         <span>过期 / 未知</span><b>${sess.expired || 0} / ${sess.unknown || 0}</b>
       </div>
       ${sess.collect_active ? '' : '<div class="obs-foot text-danger">⚠️ 没有可用的采集 Session，请到「Session」页处理。</div>'}
@@ -251,13 +258,16 @@ function _obsQueueCard(dq, dg){
 function _obsCollectionCard(col, rules, proc, maintenanceOn){
   const stale = col.sources_stale || 0;
   return `<div class="card">
-    <div class="card-hd">🔄 采集健康</div>
+    <div class="card-hd">🔄 采集健康
+      <button class="btn btn-outline btn-xs ml-auto" data-on-click="triggerCollect" ${col.is_running ? 'disabled' : ''}>${col.is_running ? '采集中' : '立即采集'}</button>
+    </div>
     <div class="card-bd">
       <div class="obs-kv">
         <span>调度器</span><b class="${col.enabled === false ? 'text-danger' : (col.enabled ? 'text-success-text' : '')}">${col.enabled === null || col.enabled === undefined ? '—' : (col.enabled ? '已启用' : '已关闭')}</b>
         <span>维护模式</span><b class="${maintenanceOn ? 'text-warn' : ''}">${maintenanceOn ? '已开启（推送静默）' : '已关闭'}</b>
         <span>当前状态</span><b>${col.is_running ? '采集中' : (col.current && col.current.phase ? escHtml(col.current.phase) : '空闲')}</b>
-        <span>已运行时间</span><b>${_obsUptime((proc || {}).uptime_seconds)}</b>
+        <span>服务已运行时间</span><b>${_obsUptime((proc || {}).uptime_seconds)}</b>
+        ${col.is_running && col.current ? `<span>本轮已运行时间</span><b>${_obsDur(col.current.duration_s)}</b>` : ''}
         <span>进程启动</span><b>${_obsTime((proc || {}).started_at)}</b>
         <span>上次采集</span><b>${_obsTime(col.last_run)}</b>
         <span>下次采集</span><b>${_obsTime(col.next_run)}</b>
@@ -318,6 +328,48 @@ function _obsStorageCard(st){
         <span>汇总队列</span><b>${st.digest_queue_rows || 0} 行</b>
         <span>系统事件</span><b>${st.system_event_log_rows || 0} 行</b>
       </div>
+    </div>
+  </div>`;
+}
+
+function _obsDatabaseCard(db){
+  const errors = db.errors || 0;
+  const queueTimeouts = db.python_lock_timeouts || 0;
+  const busyTimeouts = db.sqlite_busy_errors || 0;
+  const rate = db.timeout_rate;
+  const rateText = (rate === null || rate === undefined) ? '—'
+    : (rate > 0 && rate < 0.01 ? '&lt;1%' : Math.round(rate * 100) + '%');
+  const budget = (db.wait_budget_seconds === null || db.wait_budget_seconds === undefined)
+    ? '—' : db.wait_budget_seconds + ' 秒';
+  const rows = [['lock_wait', 'Python 队列'], ['sqlite', 'SQLite 执行'], ['total', '合计']]
+    .map(([key, label]) => {
+      const p = db[key + '_ms'] || {};
+      // 与后端 db_write 告警同口径：单次写超过 1 秒即视为慢写
+      const slow = key === 'total' && Number(p.p95) >= 1000;
+      return `<tr>
+      <td>${label}</td>
+      <td>${_obsMs(p.p50)}</td>
+      <td class="${slow ? 'text-danger fw600' : ''}">${_obsMs(p.p95)}</td>
+      <td>${_obsMs(p.p99)}</td>
+    </tr>`;
+    }).join('');
+  return `<div class="card">
+    <div class="card-hd">🗄️ 数据库写
+      <span class="obs-muted ml-auto fs115 fw400">预算 ${budget} · 超时率 <b class="${rate ? 'text-danger' : ''}">${rateText}</b></span>
+    </div>
+    <div class="card-bd">
+      <div class="obs-mini">
+        <div><b>${db.operations || 0}</b><span>写操作</span></div>
+        <div><b class="${errors ? 'text-danger' : 'text-body'}">${errors}</b><span>失败</span></div>
+        <div><b class="${queueTimeouts ? 'text-danger' : 'text-body'}">${queueTimeouts}</b><span>队列超时</span></div>
+        <div><b class="${busyTimeouts ? 'text-danger' : 'text-body'}">${busyTimeouts}</b><span>SQLite 超时</span></div>
+      </div>
+      <div class="obs-section-title mt14">写入耗时 · 最近 ${db.sample_count || 0} 次（上限 ${db.sample_limit || 0}）</div>
+      <div class="obs-scroll"><table>
+        <thead><tr><th>阶段</th><th>p50</th><th>p95</th><th>p99</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>
+      <div class="obs-foot">队列与 SQLite 共用同一等待预算；计数自本次启动累计，分位数只覆盖最近样本。</div>
     </div>
   </div>`;
 }
@@ -465,7 +517,7 @@ function _obsPromCard(){
     <div class="card-bd">
       <div class="obs-code">
         <code id="obsPromUrl">${escHtml(obsPrometheusUrl())}</code>
-        <button class="btn btn-outline btn-xs" data-on-click="obsCopyProm">复制地址</button>
+        <button class="btn btn-outline btn-xs shrink0" data-on-click="obsCopyProm">复制地址</button>
       </div>
       <div class="obs-foot">抓取鉴权：设置 <code>MONITOR_METRICS_TOKEN</code> 后使用 <code>X-Metrics-Token</code> 或 <code>Authorization: Bearer &lt;token&gt;</code>。</div>
     </div>
@@ -507,6 +559,8 @@ function _obsJobLabel(id){
     nsfocus_db_cleanup: '数据清理',
     nsfocus_channel_health: '渠道体检',
     nsfocus_site_check: '站点可用性',
+    nsfocus_db_backup: '数据库备份',
+    nsfocus_db_health: '数据库健康',
   };
   return map[id] || id || '未命名任务';
 }
@@ -567,6 +621,13 @@ function _obsUptime(seconds){
   if (d > 0) return d + ' 天 ' + h + ' 小时 ' + m + ' 分';
   if (h > 0) return h + ' 小时 ' + m + ' 分';
   return m + ' 分';
+}
+
+function _obsMs(value){
+  if (value === null || value === undefined || isNaN(Number(value))) return '—';
+  const v = Math.max(0, Number(value));
+  if (v >= 1000) return (v / 1000).toFixed(v < 10000 ? 2 : 1) + ' 秒';
+  return (v < 10 ? v.toFixed(1) : String(Math.round(v))) + ' ms';
 }
 
 function _obsSize(bytes){

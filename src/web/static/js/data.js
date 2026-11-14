@@ -10,27 +10,32 @@
 // ═══════════════════════════════════════════════════════════════
 // 2026-08-31: 服务端时间(CST/UTC+8),避开浏览器时区差异
 // 直接对 UTC 字符串加 8 小时,不依赖浏览器 getHours()
+// 解析规则：带 Z / ±HH:MM 的按自身时区；无时区后缀视为 UTC（DB 存储约定）。
+function _parseServerMs(t){
+  if(!t) return null;
+  const s = String(t).trim().replace(/\.\d+/, '');
+  const naive = /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?$/.test(s);
+  const ms = Date.parse(naive ? s.replace(' ', 'T') + 'Z' : s.replace(' ', 'T'));
+  return isNaN(ms) ? null : ms;
+}
+function _fmtCST(ms, full){
+  const cst = new Date(ms + 8 * 3600 * 1000);
+  const p = n => String(n).padStart(2, '0');
+  const y = cst.getUTCFullYear(), m = p(cst.getUTCMonth()+1), d = p(cst.getUTCDate());
+  return full ? `${y}-${m}-${d} ${p(cst.getUTCHours())}:${p(cst.getUTCMinutes())}` : `${y}-${m}-${d}`;
+}
 function serverTime(t, full){
-  if(!t) return '';
-  try{
-    let s = String(t).replace('T', ' ').replace('Z', '').replace(/\..*$/, '');
-    const dt = new Date(s + 'Z');  // 当作 UTC 解析
-    if (isNaN(dt.getTime())) return full ? String(t).substring(0,16) : String(t).substring(0,10);
-    // 加 8 小时转 CST
-    const cst = new Date(dt.getTime() + 8 * 3600 * 1000);
-    const y = cst.getUTCFullYear();
-    const m = String(cst.getUTCMonth()+1).padStart(2, '0');
-    const d = String(cst.getUTCDate()).padStart(2, '0');
-    const hh = String(cst.getUTCHours()).padStart(2, '0');
-    const mm = String(cst.getUTCMinutes()).padStart(2, '0');
-    return full ? `${y}-${m}-${d} ${hh}:${mm}` : `${y}-${m}-${d}`;
-  }catch(e){
-    return full ? String(t).substring(0,16) : String(t).substring(0,10);
-  }
+  const ms = _parseServerMs(t);
+  if(ms === null) return !t ? '' : (full ? String(t).substring(0,16) : String(t).substring(0,10));
+  return _fmtCST(ms, full);
 }
 
 // 2026-09-02: 与 serverTime 对齐 — 强制 +8h 输出 CST,不依赖浏览器时区
-function fmtTZ(t,full){if(!t)return'';try{let s=String(t).replace('T',' ').replace('Z','').replace(/\..*$/,'');const dt=new Date(s+'Z');if(isNaN(dt.getTime()))return full?String(t).substring(0,16):String(t).substring(0,10);const cst=new Date(dt.getTime()+8*3600*1000);const y=cst.getUTCFullYear(),m=String(cst.getUTCMonth()+1).padStart(2,'0'),day=String(cst.getUTCDate()).padStart(2,'0'),h=String(cst.getUTCHours()).padStart(2,'0'),min=String(cst.getUTCMinutes()).padStart(2,'0');return full?`${y}-${m}-${day} ${h}:${min}`:`${y}-${m}-${day}`;}catch(e){return full?(t||'').substring(0,16):(t||'').substring(0,10);}}
+function fmtTZ(t,full){
+  const ms = _parseServerMs(t);
+  if(ms === null) return !t ? '' : (full ? String(t).substring(0,16) : String(t).substring(0,10));
+  return _fmtCST(ms, full);
+}
 
 // 渠道类型 chip:每种类型独立品牌色 + emoji,通知渠道表 / 订阅规则通知对象列共用
 // 配色:浅背景 + 深文字 + 1px 同色淡边框,跟现有 .badge-ok/.badge-blue 同款风格

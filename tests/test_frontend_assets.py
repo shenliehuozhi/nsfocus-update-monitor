@@ -24,7 +24,7 @@ from tests.frontend_source import INDEX_HTML, WEB, js_source, script_paths
 EXPECTED_ORDER = [
     'core.js', 'data.js', 'data_push.js', 'pages.js', 'history.js',
     'products.js', 'collection.js', 'events_center.js', 'observability.js',
-    'account.js', 'bootstrap.js', 'tools.js',
+    'account.js', 'tools.js', 'bootstrap.js',
 ]
 MAX_HTML_LINES = 80
 MAX_JS_LINES = 3000
@@ -100,9 +100,9 @@ def test_no_duplicate_top_level_functions():
     assert not dup, f'重复的顶层函数声明: {dup}'
 
 
-def _defined_names() -> set[str]:
+def _defined_names(paths=None) -> set[str]:
     names = set()
-    for path in script_paths():
+    for path in script_paths() if paths is None else paths:
         src = path.read_text(encoding='utf-8')
         names |= set(re.findall(
             r'(?<![\w$.])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', src))
@@ -239,21 +239,28 @@ def test_no_runtime_style_injection():
 def test_bootstrap_dependencies_defined_before_it_runs():
     """bootstrap.js 里的 init 会立即执行，调用的函数必须在更早的文件里。"""
     paths = script_paths()
-    # tools.js 是页面底部独立块，只被点击后调用；bootstrap 之前必须全部就绪
-    assert paths[-2].name == 'bootstrap.js'
-    idx = paths.index(paths[-2])
-    earlier = set()
-    for path in paths[:idx]:
-        src = path.read_text(encoding='utf-8')
-        earlier |= set(re.findall(
-            r'(?<![\w$.])(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(', src))
-        earlier |= set(re.findall(
-            r'(?<![\w$.])(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=', src))
+    # bootstrap 立即请求 /auth/me，响应可能在下一个 script 执行前就回来，所以它必须最后加载
+    assert paths[-1].name == 'bootstrap.js'
+    earlier = _defined_names(paths[:-1])
     calls = set(re.findall(r'(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(',
-                           paths[idx].read_text(encoding='utf-8')))
+                           paths[-1].read_text(encoding='utf-8')))
     missing = sorted(c for c in calls
                      if c not in earlier and c not in JS_KEYWORDS | BROWSER_GLOBALS)
     assert not missing, f'bootstrap 立即调用了未加载的函数: {missing}'
+
+
+def test_show_page_table_resolves_before_bootstrap_runs():
+    """showPage 的页面表是裸标识符字面量，缺一个就 ReferenceError，整页白屏。
+
+    2026-11-13 回归：tools.js 曾排在 bootstrap.js 之后，/auth/me 立即返回时
+    showPage('observability') 读到了尚未定义的 toolsPage。
+    """
+    core = (WEB / 'static/js/core.js').read_text(encoding='utf-8')
+    table = re.search(r'const pages=\{([^}]+)\}', core)
+    assert table, 'core.js 的 showPage 页面表不见了'
+    names = {part.split(':')[-1].strip() for part in table.group(1).split(',')}
+    missing = sorted(n for n in names if n not in _defined_names(script_paths()[:-1]))
+    assert not missing, f'页面表引用了 bootstrap 之前未定义的函数: {missing}'
 
 
 def _es2017_compatible(src: str) -> str:

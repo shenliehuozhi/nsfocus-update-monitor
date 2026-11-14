@@ -66,3 +66,18 @@ def test_events_page_and_dashboard_modal_share_filters():
     assert 'data-on-change="eventsGoPage"' in source
     assert 'data-on-click="eventsAckCurrent"' in source
     assert 'renderEventsTable(events, scope)' in source
+
+
+def test_state_filter_and_resolve_actions():
+    source = js_source()
+    assert 'id="${scope}State"' in source
+    assert '<option value="open">未读</option>' in source
+    assert '<option value="acked">已读未解决</option>' in source
+    assert '<option value="resolved">已解决</option>' in source
+    assert 'stateFilter' in source
+    assert 'function eventsResolveCurrent(scope)' in source
+    assert '/system/events/resolve-all' in source
+    assert 'function _resolveEventAndReload(id, scope)' in source
+    assert '/resolve' in source
+    assert '已读不等于已解决' in source or '已读 ≠ 已解决' in source
+    assert '已解决' in source

@@ -1653,6 +1653,23 @@ def refresh_scheduler_jobs():
     else:
         _scheduler.reschedule_job('nsfocus_site_check', trigger='interval',
                                   minutes=site_interval)
+    # 数据库写锁探针同样独立于采集调度器：DB 锁恢复后自动关闭历史告警
+    if not _scheduler.get_job('nsfocus_db_health'):
+        _scheduler.add_job(_run_db_health, 'interval', minutes=10,
+                           id='nsfocus_db_health', name='Database Health Probe',
+                           next_run_time=datetime.now() + timedelta(seconds=30))
+        logger.info('Database health probe job added: every 10m')
+    else:
+        _scheduler.reschedule_job('nsfocus_db_health', trigger='interval', minutes=10)
+    # 数据库备份同样独立于采集调度器：每天 03:30 检查一次是否到期，
+    # 注册后先跑一次以便重启/改短间隔后及时补备份（未到期会自动跳过）
+    if not _scheduler.get_job('nsfocus_db_backup'):
+        _scheduler.add_job(_run_db_backup, 'cron', hour=3, minute=30,
+                           id='nsfocus_db_backup', name='Database Backup',
+                           next_run_time=datetime.now() + timedelta(seconds=45))
+        logger.info('Database backup job added: daily 03:30 check')
+    else:
+        _scheduler.reschedule_job('nsfocus_db_backup', trigger='cron', hour=3, minute=30)
     logger.info(f'Scheduler jobs refreshed (enabled={enabled})')
 
 
@@ -2035,6 +2052,32 @@ def _site_availability_check():
         logger.error(f'[SITE-CHECK] check failed: {e}')
 
 
+# ── Database backup ──────────────────────────────────────────────────────────
+
+def _run_db_health():
+    """数据库写锁健康探针；恢复后自动 resolve 历史 DB 锁告警。"""
+    try:
+        from src.core.db_health import check
+        result = check()
+        if result.get('skipped'):
+            logger.debug('[DB-HEALTH] skipped: %s', result['error'])
+        elif not result['ok']:
+            logger.warning('[DB-HEALTH] probe failed: %s', result['error'])
+    except Exception as e:
+        logger.error(f'[DB-HEALTH] check failed: {e}')
+
+
+def _run_db_backup():
+    """按设置的间隔生成数据库备份；未到期直接跳过。"""
+    try:
+        from src.core.db_backup import run_if_due
+        info = run_if_due()
+        if info:
+            logger.info('[DB-BACKUP] created %s (%.1f KB)', info['name'], info['size'] / 1024)
+    except Exception as e:
+        logger.error(f'[DB-BACKUP] run failed: {e}')
+
+
 # ── Database cleanup ──────────────────────────────────────────────────────────
 
 def _next_cleanup_run():
@@ -2049,12 +2092,13 @@ def _run_db_cleanup():
     """清理过期数据：
       - heartbeat_log: 已废弃，全量清空
       - audit_log: 保留 30 天
-      - delivery_log: 保留 90 天
+      - delivery_log: 保留 90 天（失败记录 180 天）
+      - system_event_log: 已解决/INFO 180 天，未解决告警 365 天
     仅清理，不抛异常，由 scheduler 启动和定时任务调用。
 
     每次执行结束（或异常）后通过 emit_cleanup_summary 发送一条系统事件，
     在 system_event_log 留痕 + 按系统事件配置通知渠道。"""
-    from src.models.database import execute, query, get_db
+    from src.models.database import execute, query, execute_rowcount
     from src.models.audit import cleanup_old
     from src.models.subscription import clear_history
     logger = get_logger('cleanup')
@@ -2146,7 +2190,26 @@ def _run_db_cleanup():
         _record_step('digest_queue', False, str(e))
 
     try:
-        # 5. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
+        # 5. system_event_log 保留：已解决 / INFO 180 天，未解决告警 365 天。
+        #    未解决告警给足处理窗口，避免老事件无限增长或静默丢失。
+        from src.models.event_log import cleanup_old_events
+        before = query("SELECT COUNT(*) as c FROM system_event_log")[0]['c']
+        removed = cleanup_old_events(resolved_days=180, info_days=180,
+                                     unresolved_days=365)
+        after = query("SELECT COUNT(*) as c FROM system_event_log")[0]['c']
+        logger.info('system_event_log 清理完成: 清理前 %d 条，删除 %d 条'
+                    '（已解决/INFO 180天，未解决 365天）', before, removed)
+        _record_step('event_log', True,
+                     f'清理前 {before} 条，删除 {removed} 条'
+                     '（已解决/INFO 180天，未解决 365天）',
+                     before=before, after=after, deleted=removed)
+    except Exception as e:
+        logger.warning('system_event_log 清理失败: %s', e)
+        summary['errors'].append(f'event_log: {e}')
+        _record_step('event_log', False, str(e))
+
+    try:
+        # 6. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
         #    每组保留 N 条最新快照。
         #    关键：必须把 path_id 加进 group 维度。
         #    NSFocus 多 chain (海光/飞腾/鲲鹏/标准版/...) 共享同一升级文件，
@@ -2163,17 +2226,14 @@ def _run_db_cleanup():
 
         deleted = 0
         # 对每个 source 分别处理（跨 source 的同组合并不合并）
-        db = get_db()
-        cur = db.cursor()
         # 找出所有需要清理的组（组内记录数 > per_group 且有非 rollback 记录）
-        cur.execute("""
+        groups = db_query("""
             SELECT source_id, path_id, version_branch, package_type, COUNT(*) as cnt
             FROM snapshots
             WHERE path_id != ''
             GROUP BY source_id, path_id, version_branch, package_type
             HAVING COUNT(*) > ?
         """, (per_group,))
-        groups = cur.fetchall()
 
         for g in groups:
             src_id, pid, ver, pkgtype, cnt = g['source_id'], g['path_id'], g['version_branch'], g['package_type'], g['cnt']
@@ -2182,7 +2242,7 @@ def _run_db_cleanup():
             # 避免 FK constraint failed (delivery_log.snapshot_id → snapshots.id)。
             # 被引用的老 snap 保留: 它的 delivery_log 行 (>90 天) 由第 3 步先清,
             # 下次 cleanup 时这里就不再被引用,自然能删。
-            cur.execute("""
+            deleted += execute_rowcount("""
                 DELETE FROM snapshots
                 WHERE source_id = ?
                   AND path_id = ?
@@ -2204,22 +2264,20 @@ def _run_db_cleanup():
                       LIMIT ?
                   )
             """, (src_id, pid, ver, pkgtype, src_id, pid, ver, pkgtype, per_group))
-            deleted += cur.rowcount
 
         # Cleanup fallback: 仍按旧的 (source_id, version_branch, package_type) 分组，
         # 但只处理 path_id 为空的 snap（legacy rows，pre-path_id migration）。
         # path_id 非空行已经在上面按 path_id 处理过了。
-        cur.execute("""
+        legacy_groups = db_query("""
             SELECT source_id, version_branch, package_type, COUNT(*) as cnt
             FROM snapshots
             WHERE path_id = ''
             GROUP BY source_id, version_branch, package_type
             HAVING COUNT(*) > ?
         """, (per_group,))
-        legacy_groups = cur.fetchall()
         for g in legacy_groups:
             src_id, ver, pkgtype, cnt = g['source_id'], g['version_branch'], g['package_type'], g['cnt']
-            cur.execute("""
+            deleted += execute_rowcount("""
                 DELETE FROM snapshots
                 WHERE source_id = ?
                   AND version_branch = ?
@@ -2241,7 +2299,6 @@ def _run_db_cleanup():
                       LIMIT ?
                   )
             """, (src_id, ver, pkgtype, src_id, ver, pkgtype, per_group))
-            deleted += cur.rowcount
 
         after = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
         logger.info('snapshots 清理完成: 清理前 %d 条，删除 %d 条，保留 %d 条，每组上限 %d',

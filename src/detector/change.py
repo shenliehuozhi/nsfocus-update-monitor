@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from src.core.logger import get_logger
+from src.core.timeutil import CST, DB_FMT, cst_now, to_utc
 from src.models import snapshot as snap_db
 from src.collectors.base import UnifiedContentItem
 
@@ -322,22 +323,28 @@ def get_new_for_subscription(rule: dict, new_items: list) -> list:
     return []
 
 
+def _cst_to_utc_str(target: datetime) -> str:
+    """业务边界按 UTC+8 计算，写回 DB 一律转 UTC。"""
+    return to_utc(target).replace(tzinfo=None).strftime(DB_FMT)
+
+
 def compute_push_time(delay_days: int) -> str:
     """Compute the push_after timestamp for a delayed push (unit: days)."""
+    from src.core.timeutil import utc_now
     if delay_days <= 0:
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    target = datetime.now() + timedelta(days=delay_days)
-    return target.strftime('%Y-%m-%d %H:%M:%S')
+        return utc_now().strftime(DB_FMT)
+    target = utc_now() + timedelta(days=delay_days)
+    return target.strftime(DB_FMT)
 
 
 def is_quiet_time(rule: dict) -> bool:
-    """Check if current time falls within the rule's quiet period."""
+    """Check if current time falls within the rule's quiet period (UTC+8 wall clock)."""
     quiet_start = rule.get('quiet_start', '')
     quiet_end = rule.get('quiet_end', '')
     if not quiet_start or not quiet_end:
         return False
 
-    now = datetime.now().strftime('%H:%M')
+    now = cst_now().strftime('%H:%M')
     if quiet_start <= quiet_end:
         return quiet_start <= now <= quiet_end
     else:
@@ -346,7 +353,7 @@ def is_quiet_time(rule: dict) -> bool:
 
 
 def is_window_time(rule: dict) -> bool:
-    """Check if current time falls within the rule's push window.
+    """Check if current time falls within the rule's push window (UTC+8 wall clock).
 
     window_config: {days: [0-6], start: "HH:MM", end: "HH:MM"}
     Returns True if inside window, False if outside.
@@ -362,7 +369,7 @@ def is_window_time(rule: dict) -> bool:
     if not start or not end:
         return True  # No window configured = always OK
 
-    now = datetime.now()
+    now = cst_now()
     current_time = now.strftime('%H:%M')
 
     # Time-of-day check (always applies)
@@ -390,6 +397,7 @@ def compute_next_window_push_time(rule: dict) -> str:
     use default window (Mon-Fri 09:00-18:00).
 
     For digest mode (days=[]): finds next time window opens today/tomorrow, ignoring day.
+    Window is interpreted as UTC+8; the returned push time is UTC (DB convention).
     """
     wc = rule.get('window_config') or {}
     # Backward compat: delay_strategy='window' without window_config gets default window
@@ -398,9 +406,10 @@ def compute_next_window_push_time(rule: dict) -> str:
     days = wc.get('days', [])
     start = wc.get('start', '')
     if not start:
-        return datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        from src.core.timeutil import utc_now
+        return utc_now().strftime(DB_FMT)
 
-    now = datetime.now()
+    now = cst_now()
     current_time = now.strftime('%H:%M')
 
     if not days:
@@ -411,7 +420,7 @@ def compute_next_window_push_time(rule: dict) -> str:
         else:
             # Window already passed today, open tomorrow at start
             target = now.replace(hour=int(start.split(':')[0]), minute=int(start.split(':')[1]), second=0, microsecond=0) + timedelta(days=1)
-        return target.strftime('%Y-%m-%d %H:%M:%S')
+        return _cst_to_utc_str(target)
 
     days_sorted = sorted(days)
     today_weekday = now.weekday()
@@ -434,7 +443,7 @@ def compute_next_window_push_time(rule: dict) -> str:
     target = now + timedelta(days=days_ahead)
     h, m = map(int, start.split(':'))
     target = target.replace(hour=h, minute=m, second=0, microsecond=0)
-    return target.strftime('%Y-%m-%d %H:%M:%S')
+    return _cst_to_utc_str(target)
 
 
 def check_min_interval(rule: dict, product_name: str) -> bool:
@@ -446,9 +455,10 @@ def check_min_interval(rule: dict, product_name: str) -> bool:
     if min_hours <= 0:
         return True
 
+    from src.core.timeutil import utc_now
     from src.models.database import query
 
-    cutoff = (datetime.now() - timedelta(hours=min_hours)).strftime('%Y-%m-%d %H:%M:%S')
+    cutoff = (utc_now() - timedelta(hours=min_hours)).strftime(DB_FMT)
     rows = query(
         """SELECT COUNT(*) as cnt FROM delivery_log dl
            JOIN snapshots s ON dl.snapshot_id = s.id

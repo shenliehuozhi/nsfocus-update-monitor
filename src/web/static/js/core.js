@@ -246,6 +246,7 @@ async function doLogin(){
   if(r.code===0){_authExpired=false;T=null;localStorage.removeItem('token');U=r.data.user;_stopBgRotation();document.body.className='';document.body.style.backgroundImage='';document.getElementById('unameText').textContent=U.username;document.getElementById('header').classList.remove('hidden');showPage('observability');_refreshVersionBadge();}else toast(r.message,'error');
 }
 function _clearPageTimers(page){
+  if(typeof closeEventsCenterModal==='function')closeEventsCenterModal();
   if(page==='logs'){
     if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
   }else if(page==='observability'){

@@ -7,11 +7,11 @@
 
 import json
 import time
-from datetime import datetime, timezone
 
 import requests
 
 from src.core.logger import get_logger
+from src.core.timeutil import utc_iso
 
 logger = get_logger('site_monitor')
 
@@ -33,7 +33,8 @@ _UNKNOWN = {
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec='seconds')
+    # DB 约定：naive UTC ISO（前端按 UTC 解析后再显示 CST）
+    return utc_iso()
 
 
 def get_status() -> dict:
@@ -148,4 +149,14 @@ def run_check(url: str = SITE_URL) -> dict:
         _emit_transition(previous_status, state)
     elif state['status'] == 'up' and previous_status == 'down':
         _emit_transition(previous_status, state)
+    if state['status'] == 'up':
+        # 站点恢复后自动关闭历史告警；每轮都跑一次，顺带修复升级前遗留的未解决事件
+        try:
+            from src.models.event_log import resolve_events
+            resolved = resolve_events(
+                event_type='site_unavailable', source_url=url, resolved_by='auto')
+            if resolved:
+                logger.info(f'auto-resolved {resolved} site_unavailable event(s)')
+        except Exception as e:
+            logger.warning(f'auto-resolve site events failed: {e}')
     return state

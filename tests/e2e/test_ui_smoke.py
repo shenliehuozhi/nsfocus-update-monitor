@@ -12,6 +12,7 @@ restart, push, save or delete actions. It is skipped when the environment
 variables or Playwright are absent, so the normal `pytest` gate is unaffected.
 """
 
+import json
 import os
 
 import pytest
@@ -104,6 +105,32 @@ def test_page_renders_without_errors(browser_session, route, label):
     assert page.locator('#header').is_visible(), f'{label}: header disappeared'
 
 
+def test_instant_auth_response_still_renders(browser_session):
+    """/auth/me 立即返回时，bootstrap 的 showPage 不能读到尚未加载的页面函数。"""
+    page, errors, failed = browser_session
+    errors.clear()
+    failed.clear()
+    me = page.evaluate("fetch('/api/auth/me').then(r => r.json())")
+    assert me['code'] == 0
+
+    def instant(route):
+        route.fulfill(status=200, content_type='application/json', body=json.dumps(me))
+
+    page.route('**/api/auth/me', instant)
+    try:
+        page.reload(wait_until='domcontentloaded')
+        page.wait_for_selector('#header:not(.hidden)', timeout=15000)
+        page.wait_for_function(
+            "document.querySelector('#app') && document.querySelector('#app').children.length > 0",
+            timeout=15000,
+        )
+        page.wait_for_timeout(1000)
+        _assert_clean(errors, failed)
+        assert page.locator('#obs-root').count() == 1
+    finally:
+        page.unroute('**/api/auth/me', instant)
+
+
 def test_no_data_css_and_dynamic_widths_applied(browser_session):
     page, errors, failed = browser_session
     sampled = False
@@ -132,7 +159,8 @@ def test_no_data_css_and_dynamic_widths_applied(browser_session):
         assert result['applyFn'] == 'function', f'{route}: _applyPctBars is missing'
 
         for bar in result['bars']:
-            assert bar['inline'] == f"{bar['pct']}%", f'{route}: width not applied for {bar}'
+            assert bar['inline'].endswith('%'), f'{route}: width not applied for {bar}'
+            assert float(bar['inline'][:-1]) == pytest.approx(bar['pct']), bar
 
         visible = [bar for bar in result['bars'] if bar['visible']]
         if not visible:
@@ -144,3 +172,97 @@ def test_no_data_css_and_dynamic_widths_applied(browser_session):
 
     if not sampled:
         pytest.skip('no visible progress bars on observability/data')
+
+
+def test_window_updates_without_daily_overview(browser_session):
+    page, errors, failed = browser_session
+    errors.clear()
+    failed.clear()
+    page.click('nav a[data-page="observability"]')
+    page.wait_for_selector('#obs-root .obs-kpis')
+    for hours in ('6', '720'):
+        with page.expect_response(lambda r: '/api/metrics?hours=' + hours in r.url):
+            page.select_option('#obsWindow', hours)
+        page.wait_for_function("!document.querySelector('#obsRefreshBtn').disabled")
+        assert page.locator('#obsToday').count() == 0
+        assert '今日概览' not in page.locator('#obs-root').inner_text()
+        assert page.locator('#custPushTable').count() == 1
+    assert page.locator('[data-on-click="triggerCollect"]').count() == 1
+    _assert_clean(errors, failed)
+
+
+def test_events_modal_closes_when_leaving_page(browser_session):
+    """切页必须关闭事件弹窗并停掉它的 30 秒刷新，旧弹窗不能继续请求。"""
+    page, errors, failed = browser_session
+    errors.clear()
+    failed.clear()
+    page.click('nav a[data-page="observability"]')
+    page.wait_for_selector('#obs-root .obs-kpis')
+    page.locator('#obs-root [data-on-click="openEventsCenterModal"]').first.click()
+    page.wait_for_selector('#eventsCenterModal:not(.hidden)')
+    page.wait_for_function("window._eventsCenterModalTimer")
+    page.evaluate("showPage('settings')")
+    page.wait_for_function(
+        "document.getElementById('eventsCenterModal').classList.contains('hidden')",
+        timeout=5000,
+    )
+    assert page.evaluate("window._eventsCenterModalTimer") is None
+    page.wait_for_selector('#app .card')
+    _assert_clean(errors, failed)
+
+
+@pytest.mark.parametrize('width', [1440, 820, 390])
+def test_observability_layout_stays_within_viewport(browser_session, width):
+    page, errors, failed = browser_session
+    errors.clear()
+    failed.clear()
+    page.click('nav a[data-page="observability"]')
+    page.wait_for_selector('#obs-root .obs-kpis')
+    db_card = page.locator('#obs-root .card', has_text='数据库写')
+    assert db_card.count() == 1
+    assert db_card.locator('thead th').all_inner_texts() == ['阶段', 'p50', 'p95', 'p99']
+    try:
+        page.set_viewport_size({'width': width, 'height': 900})
+        dimensions = page.evaluate("""() => ({
+            viewport: document.documentElement.clientWidth,
+            scroll: document.documentElement.scrollWidth,
+            grids: [...document.querySelectorAll('.obs-grid2')].map(grid => ({
+                right: grid.getBoundingClientRect().right,
+                cards: [...grid.children].map(card => card.getBoundingClientRect().right),
+            })),
+        })""")
+        assert dimensions['viewport'] <= width
+        assert dimensions['scroll'] <= dimensions['viewport'] + 1, dimensions
+        assert dimensions['grids']
+        for grid in dimensions['grids']:
+            assert all(right <= grid['right'] + 1 for right in grid['cards']), grid
+        _assert_clean(errors, failed)
+    finally:
+        page.set_viewport_size({'width': 1440, 'height': 900})
+
+
+def test_restart_cancel_and_mocked_confirmation(browser_session):
+    page, errors, failed = browser_session
+    errors.clear()
+    failed.clear()
+    page.click('nav a[data-page="observability"]')
+    page.wait_for_selector('#obs-root .obs-kpis')
+    intercepted = []
+
+    def fake_restart(route):
+        intercepted.append(route.request.method)
+        route.fulfill(status=200, content_type='application/json',
+                      body='{"code":0,"message":"mock restart accepted"}')
+
+    page.route('**/api/system/restart', fake_restart)
+    try:
+        page.click('[data-on-click="obsRestartService"]')
+        page.click('#_confirmBox .confirm-btn-cancel')
+        assert intercepted == []
+        page.click('[data-on-click="obsRestartService"]')
+        page.click('#_confirmBox .confirm-btn-ok')
+        page.wait_for_selector('.toast:has-text("mock restart accepted")')
+        assert intercepted == ['POST']
+        _assert_clean(errors, failed)
+    finally:
+        page.unroute('**/api/system/restart', fake_restart)

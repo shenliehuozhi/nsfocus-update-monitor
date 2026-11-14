@@ -1,10 +1,9 @@
-"""规则库变更解析 + 通知正文摘要测试。"""
+"""规则库变更解析 + 通知正文不展示规则变更摘要（暂不接入推送）。"""
 from src.collectors.nsfocus import parse_description
 from src.notifiers.base import (
     NotificationMessage,
     _format_html_body,
     _format_markdown_body,
-    _rule_change_summary_lines,
 )
 
 
@@ -61,21 +60,8 @@ def test_parse_description_without_rules_unchanged():
     assert 'rule_changes' not in parsed
 
 
-def test_rule_summary_lines_include_counts_and_names():
-    parsed = parse_description(IPS_DESC)
-    lines = _rule_change_summary_lines(parsed)
-    assert lines[0] == '📦 规则变更: 新增2条 · 修改1条'
-    assert '泛微' in lines[1]
-    assert 'whatweb' in lines[1]
-
-
-def test_rule_summary_lines_legacy_id_lists_fallback():
-    lines = _rule_change_summary_lines({'added': ['1', '2'], 'modified': ['3']})
-    assert lines == ['📦 规则变更: 新增2条 · 修改1条']
-
-
-def test_notification_markdown_and_html_include_rule_changes():
-    snap = {
+def _waf_snap():
+    return {
         'product_name': 'WAF',
         'file_name': 'pkg.zip',
         'package_version': 'V6.0.9',
@@ -85,33 +71,25 @@ def test_notification_markdown_and_html_include_rule_changes():
         'published_at': '2026-11-10T03:22:19',
         'source_url': 'https://update.nsfocus.com/update/list',
     }
-    msg = NotificationMessage.from_snapshot(snap, user_chain=['WAF', 'V6.0.9', 'sys'])
+
+
+def test_notification_templates_exclude_rule_change_summary():
+    """规则库变更暂不接入推送：正文不出现额外摘要行，保留原模板。"""
+    msg = NotificationMessage.from_snapshot(_waf_snap(), user_chain=['WAF', 'V6.0.9', 'sys'])
     markdown = _format_markdown_body(msg)
-    assert '规则变更: 新增2条 · 修改1条 · 删除1条' in markdown
-    assert '防护NINE_AND_ON相关漏洞' in markdown
+    assert '📦 规则变更' not in markdown
+    assert '规则变更:' not in markdown
 
     html = _format_html_body(msg)
-    assert '规则变更: 新增2条 · 修改1条 · 删除1条' in html
-    assert '防护NINE_AND_ON相关漏洞' in html
+    assert '📦 规则变更' not in html
+    assert '规则变更:' not in html
 
 
-def test_from_snapshot_summary_includes_rule_names_for_im():
-    snap = {
-        'product_name': 'WAF',
-        'file_name': 'pkg.zip',
-        'package_version': 'V6.0.9',
-        'description_raw': WAF_DESC,
-        'description_parsed': parse_description(WAF_DESC),
-    }
-    msg = NotificationMessage.from_snapshot(snap, user_chain=['WAF', 'V6.0.9', 'sys'])
+def test_from_snapshot_summary_keeps_counts_without_names():
+    """IM 摘要保持原模板：只有条数，不带规则名。"""
+    msg = NotificationMessage.from_snapshot(_waf_snap(), user_chain=['WAF', 'V6.0.9', 'sys'])
     assert '新增2条规则' in msg.description_summary
-    assert 'nine_and_on_pichy_sqli' in msg.description_summary
+    assert '修改1条规则' in msg.description_summary
     assert '删除1条规则' in msg.description_summary
-
-
-def test_rule_summary_escapes_html_names():
-    parsed = {'rule_changes': {'added': [{'id': 1, 'name': '<script>x</script>'}]}}
-    msg = NotificationMessage(description_parsed=parsed)
-    html = _format_html_body(msg)
-    assert '<script>' not in html
-    assert '&lt;script&gt;' in html
+    assert 'nine_and_on_pichy_sqli' not in msg.description_summary
+    assert '（' not in msg.description_summary

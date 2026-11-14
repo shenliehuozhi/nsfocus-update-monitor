@@ -418,6 +418,7 @@ def emit_cleanup_summary(summary: dict):
         'audit_log': 'audit_log (30天)',
         'delivery_log': 'delivery_log (90天)',
         'delivery_failed': 'delivery_log 失败行 (180天)',
+        'event_log': 'system_event_log (已解决/INFO 180天, 未解决 365天)',
         'snapshots': 'snapshots (按 path_id 分组)',
     }
     for step in steps:

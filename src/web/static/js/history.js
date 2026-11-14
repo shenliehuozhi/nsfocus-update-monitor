@@ -144,6 +144,8 @@ async function settings(){
   // 检查采集状态
   let isCollecting=false;
   try{const cr=JSON.parse(cfg.collection_running||'{}');isCollecting=cr.status==='1';}catch(e){}
+  const bkTotal=Number(cfg.backup_total_size)||0;
+  const bkTotalText=(bkTotal/1048576).toFixed(1)+' MB';
 
   if(navStale(_seq))return;
   document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd items-center">
@@ -207,6 +209,11 @@ async function settings(){
       <div class="cfg-row">
         <div class="form-group"><label>历史保留条数 <span class="muted-10">(每版本+包类型组合)</span></label><input id="cfg-snapshots-per-group" type="number" value="${cfg.snapshots_per_group||5}" min="1" max="10"><p class="cfg-hint">每个(版本+包类型)组合保留几条历史快照。后端磁盘存储与前端采集数据页显示共用此值;超出自动删旧。</p></div>
       </div>
+      <div class="cfg-row">
+        <div class="form-group"><label>自动备份间隔 <span class="cfg-unit">(天)</span></label><input id="cfg-backup-days" type="number" value="${cfg.backup_interval_days||30}" min="1" max="365"><p class="cfg-hint">每天 03:30 检查一次，距上次备份超过 N 天才生成新备份</p></div>
+        <div class="form-group"><label>保留份数</label><input id="cfg-backup-keep" type="number" value="${cfg.backup_keep_count||6}" min="1" max="24"><p class="cfg-hint">超出后自动删最旧；调小并保存会立即清理多余备份（不可恢复）</p></div>
+      </div>
+      <p class="cfg-hint">上次备份：${cfg.backup_last_at?fmtTZ(cfg.backup_last_at,true):'暂无'} · 当前备份占用：${bkTotalText}（data/backups/，gzip）</p>
     </div>
 
     <div class="cfg-section">

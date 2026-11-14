@@ -49,8 +49,8 @@ _recent_sends: dict[str, list] = {}
 
 # ── Delivery retry policy ──────────────────────────────────────
 # 一次发送失败后队列项不再直接标 pushed，而是按退避重试；达到上限后终止并
-# 留下 last_error。delayed_queue 的时间戳是服务器本地时间，digest_queue 的是
-# UTC（与 created_at 一致），由 utc 参数区分。
+# 留下 last_error。delayed_queue 与 digest_queue 的时间戳统一为 UTC（DB 约定），
+# 不再区分本地/UTC。
 _DELIVERY_MAX_ATTEMPTS = max(1, int(os.getenv('MONITOR_DELIVERY_MAX_ATTEMPTS', '6')))
 _DELIVERY_BACKOFF_SECONDS = (60, 300, 900, 3600, 3600)
 _DIGEST_MAX_ATTEMPTS = max(1, int(os.getenv('MONITOR_DIGEST_MAX_ATTEMPTS', '6')))
@@ -58,13 +58,13 @@ _DIGEST_BACKOFF_SECONDS = (300, 900, 1800, 3600, 7200)
 _QUEUE_PROCESS_LOCK = threading.Lock()
 
 
-def _next_attempt_at(attempts: int, schedule: tuple, utc: bool = False) -> str:
+def _next_attempt_at(attempts: int, schedule: tuple, utc: bool = True) -> str:
     delay = schedule[min(max(attempts - 1, 0), len(schedule) - 1)]
     base = datetime.utcnow() if utc else datetime.now()
     return (base + timedelta(seconds=delay)).strftime('%Y-%m-%d %H:%M:%S')
 
 
-def _now_str(utc: bool = False) -> str:
+def _now_str(utc: bool = True) -> str:
     return (datetime.utcnow() if utc else datetime.now()).strftime('%Y-%m-%d %H:%M:%S')
 
 

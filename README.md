@@ -116,7 +116,7 @@ systemctl restart nsfocus-monitor
 ## 技术栈
 
 - 后端: Python 3 + Flask + APScheduler
-- 数据库: SQLite (WAL 模式)
+- 数据库: SQLite（DELETE journal 模式，代码不主动改写；写路径为进程内有界排队 + `busy_timeout` 共用预算）
 - 前端: 原生 HTML/CSS/JS（零依赖）
 - 部署: systemd + 单机运行
 - 端口: 9999

@@ -3,7 +3,6 @@
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from html import escape as _html_escape
 from typing import Optional
 
 
@@ -51,57 +50,6 @@ def _pkg_type_label(pkg_type: str) -> str:
     """Return Chinese+English label for a package type, e.g. '规则包 (rule)'."""
     cn = _PKG_TYPE_CN.get(pkg_type, pkg_type)
     return f'{cn} ({pkg_type})' if pkg_type and pkg_type != cn else cn
-
-
-def _short_rule_name(name: str, limit: int = 24) -> str:
-    text = str(name or '').strip()
-    return text if len(text) <= limit else text[:limit - 1] + '…'
-
-
-def _rule_change_summary_lines(parsed: dict, max_names: int = 3) -> list[str]:
-    """规则变更摘要:条数 + 少量规则名,供 IM / 邮件正文使用。
-
-    优先读取 collector 写入的 rule_changes(含 ID+名称);旧快照只有
-    added/modified/deleted ID 列表时退回纯计数。
-    """
-    if not isinstance(parsed, dict):
-        return []
-    changes = parsed.get('rule_changes')
-    changes = changes if isinstance(changes, dict) else {}
-
-    def _entries(kind: str, legacy_key: str) -> list:
-        raw = changes.get(kind)
-        if raw is None:
-            raw = parsed.get(legacy_key) or []
-        return list(raw) if isinstance(raw, (list, tuple)) else []
-
-    counters, samples = [], []
-    for kind, legacy_key, label in (
-        ('added', 'added', '新增'),
-        ('updated', 'modified', '修改'),
-        ('deleted', 'deleted', '删除'),
-    ):
-        entries = _entries(kind, legacy_key)
-        if not entries:
-            continue
-        counters.append(f'{label}{len(entries)}条')
-        names = []
-        for entry in entries:
-            if isinstance(entry, dict):
-                name = _short_rule_name(entry.get('name', ''))
-                if name:
-                    names.append(name)
-            if len(names) >= max_names:
-                break
-        if names:
-            more = ' 等' if len(entries) > len(names) else ''
-            samples.append(f'{label}: ' + '、'.join(names) + more)
-
-    if not counters:
-        return []
-    lines = [f'📦 规则变更: {" · ".join(counters)}']
-    lines.extend(f'   {s}' for s in samples[:2])
-    return lines
 
 
 def _rollback_prefix(msg) -> str:
@@ -297,29 +245,14 @@ class NotificationMessage:
         added = parsed.get('added', [])
         modified = parsed.get('modified', [])
         deleted = parsed.get('deleted', [])
-        rule_changes = parsed.get('rule_changes')
-        rule_changes = rule_changes if isinstance(rule_changes, dict) else {}
-
-        def _summary_names(kind: str) -> str:
-            entries = rule_changes.get(kind)
-            if not isinstance(entries, (list, tuple)):
-                return ''
-            names = []
-            for entry in entries:
-                name = _short_rule_name(entry.get('name', '')) if isinstance(entry, dict) else ''
-                if name:
-                    names.append(name)
-                if len(names) >= 3:
-                    break
-            return f"（{'、'.join(names)}）" if names else ''
 
         summary_parts = []
         if added:
-            summary_parts.append(f'新增{len(added)}条规则{_summary_names("added")}')
+            summary_parts.append(f'新增{len(added)}条规则')
         if modified:
-            summary_parts.append(f'修改{len(modified)}条规则{_summary_names("updated")}')
+            summary_parts.append(f'修改{len(modified)}条规则')
         if deleted:
-            summary_parts.append(f'删除{len(deleted)}条规则{_summary_names("deleted")}')
+            summary_parts.append(f'删除{len(deleted)}条规则')
 
         dl_url = f'{download_base}{snap.get("download_id", "")}' if snap.get('download_id') else ''
 
@@ -448,8 +381,6 @@ def _format_markdown_body(msg: NotificationMessage, for_rollback: bool = False,
 
     if msg.restart_required:
         lines.append('🔄 升级后需重启')
-
-    lines.extend(_rule_change_summary_lines(msg.description_parsed))
 
     if msg.description_full:
         lines.append('')
@@ -680,8 +611,6 @@ def _build_markdown_head_lines(msg: NotificationMessage, for_rollback: bool = Fa
         header_lines.append(f'⚠️ 依赖: 系统版本 ≥ {msg.min_sys_version}')
     if msg.restart_required:
         header_lines.append('🔄 升级后需重启')
-
-    header_lines.extend(_rule_change_summary_lines(msg.description_parsed))
 
     return header_lines
 
@@ -1076,15 +1005,6 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
     if msg.restart_required:
         dep_html += '<tr><td style="padding:4px 0;width:80px;color:#666">重启</td><td>升级后需重启</td></tr>'
 
-    rule_html = ''
-    rule_lines = _rule_change_summary_lines(msg.description_parsed)
-    if rule_lines:
-        rule_body = '<br>'.join(_html_escape(line) for line in rule_lines)
-        rule_html = f'''
-        <tr><td colspan="2" style="padding:8px 0;border-top:1px solid #e0e0e0;word-break:break-word">
-            <div style="color:#333;margin-top:4px;line-height:1.8;font-size:15px">{rule_body}</div>
-        </td></tr>'''
-
     # 发布页面 row — 与 markdown 渠道对齐:label 改"发布页面",显示文本=URL
     if msg.chain_url:
         type_cell = f'<a href="{msg.chain_url}" style="color:{color};text-decoration:none;word-break:break-all">{msg.chain_url}</a>'
@@ -1154,7 +1074,6 @@ def _format_html_body(msg: NotificationMessage, for_rollback: bool = False,
         <tr><td style="padding:4px 0;color:#666">MD5 </td><td>{msg.md5_hash or ''}</td></tr>
         <tr><td style="padding:4px 0;color:#666">发布时间</td><td>{_utc_to_cst_display(msg.published_at)}</td></tr>
         {dep_html}
-        {rule_html}
         {desc_html}
     </table>
 </td></tr>

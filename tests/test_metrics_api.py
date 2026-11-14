@@ -1,5 +1,5 @@
 """GET /api/metrics 回归：鉴权、时间窗、队列积压、采集耗时、存储与 Prometheus 输出。"""
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from flask import Flask
@@ -81,8 +81,8 @@ def _seed_queue():
                VALUES (3, 1, '2026-W45', 'pending', ?)""", (dig_old,))
     execute("""INSERT INTO digest_queue (rule_id, snapshot_id, period_key, status, created_at)
                VALUES (3, 1, '2026-W44', 'sent', ?)""", (_ts(days=7),))
-    future = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
-    past = (datetime.now() - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
+    future = (datetime.now(timezone.utc) + timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+    past = (datetime.now(timezone.utc) - timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:%S')
     execute("""INSERT INTO delayed_queue (snapshot_id, rule_id, push_after, status)
                VALUES (1, 3, ?, 'pending')""", (future,))
     execute("""INSERT INTO delayed_queue (snapshot_id, rule_id, push_after, status)
@@ -319,6 +319,102 @@ def test_today_updates_sessions_and_process(client):
     assert data['process']['uptime_seconds'] >= 0
 
 
+def test_today_uses_cst_midnight_and_timestamp_fallback(client, monkeypatch):
+    from datetime import timezone
+    from src.web.routes import metrics_routes as metrics
+
+    now = datetime(2026, 11, 12, 4, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(metrics, 'utc_now', lambda: now)
+    _delivery('sent', 'wecom', '2026-11-11T16:00:00', '2026-11-11T16:00:00')
+    _delivery('failed', 'email', '2026-11-12 03:59:59')
+    _delivery('sent', 'wecom', '', '2026-11-12T08:00:00+08:00')
+    _delivery('sent', 'wecom', None, '2026-11-12T04:00:00Z')
+    _delivery('failed', 'email', '2026-11-11 15:59:59')
+    _delivery('failed', 'email', '')
+    _delivery('failed', 'email', '2026-11-12 04:00:01')
+    _delivery('failed', 'email', '2026-11-12 16:00:00')
+
+    today = _get(client, '?hours=6')['today']
+    assert today == _get(client, '?hours=720')['today']
+    assert today['date'] == '2026-11-12'
+    assert today['delivery'] == {'total': 4, 'sent': 3, 'failed': 1, 'success_rate': 0.75}
+
+
+def test_today_products_use_publication_time_and_normalize_latest(client, monkeypatch):
+    from datetime import timezone
+    from src.models.database import execute
+    from src.web.routes import metrics_routes as metrics
+
+    monkeypatch.setattr(metrics, 'utc_now', lambda: datetime(2026, 11, 12, 4, tzinfo=timezone.utc))
+    execute("UPDATE snapshots SET published_at='2026-11-11T16:00:00' WHERE id=1")
+    rows = [
+        ('WAF', '2026-11-12T00:00:00'),
+        ('WAF', '2026-11-12 03:00:00'),
+        ('IDS', '2026-11-12T11:59:59+08:00'),
+        ('Yesterday', '2026-11-11T15:59:59'),
+        ('Future', '2026-11-12 04:00:01'),
+        ('Invalid', 'not-a-date'),
+        ('Undated', ''),
+    ]
+    for i, (name, ts) in enumerate(rows, start=2):
+        execute("""INSERT INTO snapshots
+                   (id, source_id, product_name, version_branch, package_type,
+                    package_version, file_name, md5_hash, status, published_at)
+                   VALUES (?, 1, ?, 'V6', 'sys', 'v1', ?, ?, 'active', ?)""",
+                (i, name, f'{i}.bin', str(i), ts))
+    today = metrics._today()
+    assert (today['product_count'], today['package_count']) == (2, 4)
+    assert today['products'] == [
+        {'name': 'IDS', 'count': 1, 'last_published_at': '2026-11-12 03:59:59'},
+        {'name': 'WAF', 'count': 3, 'last_published_at': '2026-11-12 03:00:00'},
+    ]
+
+
+def test_today_empty_is_not_a_zero_percent_failure(client):
+    today = _get(client)['today']
+    assert today['delivery'] == {'total': 0, 'sent': 0, 'failed': 0, 'success_rate': None}
+    assert today['products'] == []
+    assert today['product_count'] == today['package_count'] == 0
+
+
+def test_session_counts_include_pollution_and_match_pool_eligibility(client):
+    from src.models.database import execute
+
+    for purpose, status, heartbeat in [
+        ('collect', 'active', '正常'), ('collect', 'active', '错误'),
+        ('collect', '污染', ''), ('collect', 'expired', '污染'),
+        ('collect', 'unknown', ''), ('discover', 'active', '正常'),
+    ]:
+        execute("""INSERT INTO user_sessions
+                   (user_id, cookie_value, purpose, status, heartbeat_status, expires_at)
+                   VALUES (1, 'test-secret-not-for-metrics', ?, ?, ?, '2020-01-01')""",
+                (purpose, status, heartbeat))
+    data = _get(client)['sessions']
+    assert data == {
+        'total': 6, 'active': 3, 'expired': 1, 'unknown': 1,
+        'active_but_expired': 1, 'collect_total': 5, 'collect_active': 2,
+        'collect_polluted': 2, 'discover_active': 1,
+    }
+    assert 'test-secret-not-for-metrics' not in str(data)
+
+
+def test_process_uses_configured_start_and_stable_fallback(client, monkeypatch):
+    from datetime import timezone
+    from unittest.mock import Mock
+    from src.web.routes import metrics_routes as metrics
+
+    start = (datetime.now(timezone.utc) - timedelta(hours=2)).isoformat()
+    client.application.config['VERSION_INFO'] = {'process_start': start}
+    process = _get(client)['process']
+    assert process['started_at'] == start
+    assert process['uptime_seconds'] == pytest.approx(7200, abs=2)
+    with monkeypatch.context() as patch:
+        patch.setattr(metrics.os, 'stat', Mock(side_effect=OSError))
+        assert metrics._process()['started_at'] == metrics._process()['started_at']
+    client.application.config['VERSION_INFO']['process_start'] = 'invalid'
+    assert _get(client)['process']['uptime_seconds'] is None
+
+
 def test_customers_follow_hours_window(client):
     from src.models.database import execute
     execute("INSERT INTO customers (id, name) VALUES (1, 'C')")
@@ -391,6 +487,61 @@ def test_prometheus_includes_today_and_session_gauges(client):
     assert 'nsfocus_products_updated{window_hours="24"} ' in body
     assert 'nsfocus_sessions{status="active"} ' in body
     assert 'nsfocus_process_uptime_seconds ' in body
+
+
+def test_prometheus_includes_db_write_gauges(client, monkeypatch):
+    import src.models.database as db_mod
+
+    stats = {
+        'operations': 120, 'errors': 3, 'timeouts': 2,
+        'python_lock_timeouts': 1, 'sqlite_busy_errors': 1,
+        'sample_count': 120, 'sample_limit': 1024,
+        'wait_budget_seconds': 10.0, 'timeout_rate': 2 / 120,
+        'lock_wait_ms': {'p50': 1.5, 'p95': 12.0, 'p99': 30.0},
+        'sqlite_ms': {'p50': 2.5, 'p95': 6.0, 'p99': None},
+        'total_ms': {'p50': 4.0, 'p95': 18.0, 'p99': 40.0},
+    }
+    monkeypatch.setattr(db_mod, 'write_stats', lambda: stats)
+
+    assert _get(client)['database'] == stats
+    body = client.get('/api/metrics?format=prometheus',
+                      headers={'Authorization': f'Bearer {_token()}'}).get_data(as_text=True)
+    assert 'nsfocus_db_write_operations 120' in body
+    assert 'nsfocus_db_write_errors 3' in body
+    assert 'nsfocus_db_write_timeouts{reason="python_lock"} 1' in body
+    assert 'nsfocus_db_write_timeouts{reason="sqlite_busy"} 1' in body
+    assert f'nsfocus_db_write_timeout_rate {2 / 120}' in body
+    assert 'nsfocus_db_write_wait_budget_seconds 10.0' in body
+    assert 'nsfocus_db_write_samples{scope="count"} 120' in body
+    assert 'nsfocus_db_write_samples{scope="limit"} 1024' in body
+    assert 'nsfocus_db_write_lock_wait_ms{quantile="p50"} 1.5' in body
+    assert 'nsfocus_db_write_lock_wait_ms{quantile="p99"} 30.0' in body
+    assert 'nsfocus_db_write_sqlite_ms{quantile="p95"} 6.0' in body
+    assert 'nsfocus_db_write_sqlite_ms{quantile="p99"} NaN' in body
+    assert 'nsfocus_db_write_total_ms{quantile="p95"} 18.0' in body
+
+
+def test_prometheus_db_write_gauges_before_first_write(client, monkeypatch):
+    import src.models.database as db_mod
+
+    empty = {
+        'operations': 0, 'errors': 0, 'timeouts': 0,
+        'python_lock_timeouts': 0, 'sqlite_busy_errors': 0,
+        'sample_count': 0, 'sample_limit': 1024,
+        'wait_budget_seconds': 10.0, 'timeout_rate': 0.0,
+        'lock_wait_ms': {'p50': None, 'p95': None, 'p99': None},
+        'sqlite_ms': {'p50': None, 'p95': None, 'p99': None},
+        'total_ms': {'p50': None, 'p95': None, 'p99': None},
+    }
+    monkeypatch.setattr(db_mod, 'write_stats', lambda: empty)
+
+    body = client.get('/api/metrics?format=prometheus',
+                      headers={'Authorization': f'Bearer {_token()}'}).get_data(as_text=True)
+    assert 'nsfocus_db_write_operations 0' in body
+    assert 'nsfocus_db_write_timeout_rate 0.0' in body
+    for stage in ('lock_wait', 'sqlite', 'total'):
+        for quantile in ('p50', 'p95', 'p99'):
+            assert f'nsfocus_db_write_{stage}_ms{{quantile="{quantile}"}} NaN' in body
 
 
 def test_maintenance_and_site_metrics(client, monkeypatch):

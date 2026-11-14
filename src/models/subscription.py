@@ -593,17 +593,14 @@ def clear_history(older_than_days: int = None) -> int:
     失败行 sent_at 为 NULL，旧 SQL 用 `OR sent_at IS NULL` 把它们每次清理都删光，
     导致推送失败在历史里查不到。现在只按 sent_at 判断，失败行保留。
     """
-    from src.models.database import get_db
-    db = get_db()
+    from src.models.database import execute_rowcount
     if older_than_days:
-        db.execute(
+        return execute_rowcount(
             "DELETE FROM delivery_log WHERE sent_at IS NOT NULL "
             "AND sent_at < datetime('now', ?)",
             (f'-{older_than_days} days',)
         )
-    else:
-        db.execute("DELETE FROM delivery_log")
-    return db.total_changes
+    return execute_rowcount("DELETE FROM delivery_log")
 
 
 def cleanup_failed_delivery_log(older_than_days: int = 180) -> int:
@@ -612,16 +609,13 @@ def cleanup_failed_delivery_log(older_than_days: int = 180) -> int:
     clear_history 只删已发送行，失败行会永久累积。created_at 是后补的列，
     没有时间戳的历史失败行无法判断年龄，保持不动（宁可留旧数据也不误删）。
     """
-    from src.models.database import get_db
-    db = get_db()
-    before = db.total_changes
-    db.execute(
+    from src.models.database import execute_rowcount
+    return execute_rowcount(
         "DELETE FROM delivery_log WHERE delivery_status = 'failed' "
         "AND created_at IS NOT NULL "
         "AND datetime(created_at) < datetime('now', ?)",
         (f'-{older_than_days} days',)
     )
-    return db.total_changes - before
 
 
 # ── Delayed Queue ────────────────────────────────────────────
@@ -694,59 +688,58 @@ def cancel_for_snapshot(snapshot_id: int, reason: str = ''):
 def get_due_items(limit: int = 200) -> list:
     """Return pending delayed items whose timer and retry backoff have elapsed.
 
-    push_after / next_attempt_at 均为服务器本地时间（compute_push_time 用
-    datetime.now()），历史上这里用 datetime('now')（UTC）比较，CST 服务器上
-    会把所有延迟推送硬生生拖后 8 小时。
+    push_after / next_attempt_at 一律存 UTC（compute_push_time 用 utc_now()），
+    这里与 `datetime('now')`（UTC）比较；用 `datetime(...)` 归一化历史遗留的
+    'T' 分隔格式。旧版本写本地时间的队列由 timeutil 的一次性迁移转换。
     """
     from src.models.database import query
-    from datetime import datetime
-    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     return query(
         """SELECT * FROM delayed_queue
-           WHERE status = 'pending' AND push_after <= ?
-             AND (next_attempt_at IS NULL OR next_attempt_at = '' OR next_attempt_at <= ?)
+           WHERE status = 'pending' AND datetime(push_after) <= datetime('now')
+             AND (next_attempt_at IS NULL OR next_attempt_at = ''
+                  OR datetime(next_attempt_at) <= datetime('now'))
            ORDER BY push_after, id
            LIMIT ?""",
-        (now_local, now_local, limit)
+        (limit,)
     )
 
 
 def mark_pushed(queue_id: int):
+    from src.core.timeutil import utc_now_str
     from src.models.database import execute
-    from datetime import datetime
-    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now_utc = utc_now_str()
     execute(
         "UPDATE delayed_queue SET status = 'pushed', pushed_at = ?, last_attempt_at = ? "
         "WHERE id = ?",
-        (now_local, now_local, queue_id)
+        (now_utc, now_utc, queue_id)
     )
 
 
 def mark_delivery_retry(queue_id: int, attempts: int, next_attempt_at: str,
                         error: str = ''):
     """Keep the item pending and schedule the next attempt after a backoff."""
+    from src.core.timeutil import utc_now_str
     from src.models.database import execute
-    from datetime import datetime
-    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now_utc = utc_now_str()
     execute(
         """UPDATE delayed_queue
            SET attempts = ?, next_attempt_at = ?, last_attempt_at = ?, last_error = ?
            WHERE id = ? AND status = 'pending'""",
-        (attempts, next_attempt_at, now_local, (error or '')[:1000], queue_id)
+        (attempts, next_attempt_at, now_utc, (error or '')[:1000], queue_id)
     )
 
 
 def mark_delivery_terminal(queue_id: int, reason: str, error: str = ''):
     """Stop retrying an item that cannot be delivered (config error / exhausted)."""
+    from src.core.timeutil import utc_now_str
     from src.models.database import execute
-    from datetime import datetime
-    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now_utc = utc_now_str()
     execute(
         """UPDATE delayed_queue
            SET status = 'cancelled', cancelled_reason = ?, last_error = ?,
                last_attempt_at = ?
            WHERE id = ? AND status = 'pending'""",
-        (reason[:200], (error or '')[:1000], now_local, queue_id)
+        (reason[:200], (error or '')[:1000], now_utc, queue_id)
     )
 
 
@@ -757,8 +750,8 @@ def reset_delivery_for_retry(queue_id: int) -> dict | None:
     快照撤回等取消是业务选择，不是投递故障，不应被一键复活。
     返回更新后的行；不存在或不可重试返回 None。
     """
+    from src.core.timeutil import utc_now_str
     from src.models.database import execute, query
-    from datetime import datetime
 
     rows = query("SELECT * FROM delayed_queue WHERE id = ?", (queue_id,))
     if not rows:
@@ -770,14 +763,14 @@ def reset_delivery_for_retry(queue_id: int) -> dict | None:
     if not (reason.startswith('retry_exhausted') or reason == 'no_active_channel'):
         return None
 
-    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    now_utc = utc_now_str()
     execute(
         """UPDATE delayed_queue
            SET status = 'pending', attempts = 0, next_attempt_at = '',
                cancelled_reason = '', pushed_at = NULL, last_error = '',
                last_attempt_at = '', push_after = ?
            WHERE id = ? AND status = 'cancelled'""",
-        (now_local, queue_id)
+        (now_utc, queue_id)
     )
     return query("SELECT * FROM delayed_queue WHERE id = ?", (queue_id,))[0]
 
@@ -882,15 +875,12 @@ def cleanup_digest_queue(older_than_days: int = 90) -> int:
 
     pending 行永不删除 —— 它们是未投递包的 outbox,清理掉就等于静默丢包。
     """
-    from src.models.database import get_db
-    db = get_db()
-    before = db.total_changes
-    db.execute(
+    from src.models.database import execute_rowcount
+    return execute_rowcount(
         "DELETE FROM digest_queue WHERE status IN ('sent', 'cancelled') "
         "AND created_at < datetime('now', ?)",
         (f'-{older_than_days} days',)
     )
-    return db.total_changes - before
 
 
 def enqueue_digest(
@@ -916,14 +906,17 @@ def enqueue_digest(
 
 
 def digest_period_key(mode: str, when=None) -> str:
-    """当前周期的 key。weekly 用 ISO 年,不是日历年。
+    """当前周期的 key（按 UTC+8 业务边界）。weekly 用 ISO 年,不是日历年。
 
     12/31 与次年第一个周日同属一个 ISO 周,但 datetime.year 会给出
     2026 / 2027 两个不同的 key(实测 2026-12-31 → 2026-W53、
     2027-01-03 → 2027-W53),入队和发送对不上,那一周的包永远 pending。
     """
-    from datetime import datetime as _dt
-    dt = when or _dt.now()
+    from src.core.timeutil import CST, cst_now
+    dt = when or cst_now()
+    if dt.tzinfo is not None:
+        # aware 时间统一换算到 UTC+8；naive 视为已是 UTC+8 墙钟
+        dt = dt.astimezone(CST)
     if mode == 'weekly':
         iso = dt.isocalendar()
         return f'{iso[0]}-W{iso[1]:02d}'
@@ -1012,10 +1005,10 @@ def get_rules_due_for_digest(now=None) -> list:
 
     幂等由 digest_last_sent 保证:同一 period_key 只发一次。
     """
+    from src.core.timeutil import cst_now
     from src.models.database import query
-    from datetime import datetime
 
-    now = now or datetime.now()
+    now = now or cst_now()
     today = now.date()
 
     rules = query(

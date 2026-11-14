@@ -3,10 +3,11 @@
 背景（2026-11-11）：
 1. process_delayed_queue 无论发送成功失败都 mark_pushed → 失败静默丢包；
 2. 队列只在采集结束时处理，延迟项最坏要等 4h；
-3. push_after 是本地时间，却与 SQLite datetime('now')（UTC）比较 → CST 晚 8h；
+3. push_after/next_attempt_at 一律存 UTC，与 SQLite datetime('now')（UTC）比较；
+   旧版本写本地时间，由 timeutil 一次性迁移转换；
 4. 汇总部分渠道失败时直接消费队列，失败渠道永远收不到。
 """
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -53,8 +54,8 @@ class _Notifier:
         return DeliveryResult(self.ok, 'wecom', 'W', '' if self.ok else self.error)
 
 
-def _past_local(minutes=5):
-    return (datetime.now() - timedelta(minutes=minutes)).strftime('%Y-%m-%d %H:%M:%S')
+def _past_utc(minutes=5):
+    return (datetime.now(timezone.utc) - timedelta(minutes=minutes)).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _cancel_row(reason, attempts=0, error=''):
@@ -74,7 +75,7 @@ def _seed_queue(attempts=0, push_after=None):
     execute(
         """INSERT INTO delayed_queue (snapshot_id, rule_id, push_after, chain_json, attempts)
            VALUES (1, 3, ?, '[]', ?)""",
-        (push_after or _past_local(), attempts))
+        (push_after or _past_utc(), attempts))
 
 
 def _queue_row():
@@ -106,7 +107,7 @@ def test_failed_delivery_schedules_backoff_retry(fresh_db, monkeypatch):
     row = _queue_row()
     assert row['status'] == 'pending'
     assert row['attempts'] == 1
-    assert row['next_attempt_at'] > _past_local(0)
+    assert row['next_attempt_at'] > _past_utc(0)
     assert 'HTTP 500' in row['last_error']
     failures = query(
         "SELECT * FROM delivery_log WHERE snapshot_id=1 AND delivery_status='failed'")
@@ -294,7 +295,7 @@ def test_manual_retry_requeues_exhausted_item(fresh_db):
     assert row['next_attempt_at'] == ''
     assert row['cancelled_reason'] == ''
     assert row['last_error'] == ''
-    assert row['push_after'] <= _past_local(0), '重试项应立即可被队列取走'
+    assert row['push_after'] <= _past_utc(0), '重试项应立即可被队列取走'
 
 
 def test_manual_retry_accepts_no_active_channel(fresh_db):
@@ -391,8 +392,8 @@ def test_queue_processing_is_not_reentrant(fresh_db, monkeypatch):
     assert called == [], '并发进入时应直接跳过，不读取队列'
 
 
-def test_get_due_items_uses_local_time(fresh_db, monkeypatch):
-    """CST 服务器上 push_after(本地) 不能被 SQLite datetime('now')(UTC) 误判。"""
+def test_get_due_items_uses_utc(fresh_db, monkeypatch):
+    """push_after 存 UTC，不受服务器 TZ 影响，过期项应立即可取。"""
     import os
     import time as _time
 
@@ -405,7 +406,7 @@ def test_get_due_items_uses_local_time(fresh_db, monkeypatch):
     try:
         execute("""INSERT INTO delayed_queue
                    (snapshot_id, rule_id, push_after, chain_json, attempts)
-                   VALUES (1, 3, ?, '[]', 0)""", (_past_local(1),))
+                   VALUES (1, 3, ?, '[]', 0)""", (_past_utc(1),))
         due = get_due_items()
         assert [r['id'] for r in due]
     finally:

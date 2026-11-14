@@ -34,11 +34,15 @@ function _eventsToolbarHtml(scope){
       <option value="2160">近 90 天</option>
       <option value="0">全部时间</option>
     </select>
-    <label class="flex items-center gap4 text-muted pointer">
-      <input type="checkbox" id="${scope}Unacked" data-on-change="eventsGoPage" data-args='${_dataArgs(scope, 0)}'>
-      仅未确认
-    </label>
-    <button class="btn btn-xs btn-outline ml-auto" data-on-click="eventsAckCurrent" data-args='${_dataArgs(scope)}' title="按当前严重度和时间范围，把未确认事件批量标记为已读">批量确认</button>
+    <span class="text-muted">状态</span>
+    <select id="${scope}State" class="sel-sm dd" data-on-change="eventsGoPage" data-args='${_dataArgs(scope, 0)}'>
+      <option value="">全部</option>
+      <option value="open">未读</option>
+      <option value="acked">已读未解决</option>
+      <option value="resolved">已解决</option>
+    </select>
+    <button class="btn btn-xs btn-outline ml-auto" data-on-click="eventsAckCurrent" data-args='${_dataArgs(scope)}' title="按当前严重度和时间范围，把未确认事件批量标记为已读（不代表问题已解决）">批量确认</button>
+    <button class="btn btn-xs btn-soft-primary" data-on-click="eventsResolveCurrent" data-args='${_dataArgs(scope)}' title="按当前严重度和时间范围，把未解决事件标记为已解决">批量解决</button>
     <button class="btn btn-xs btn-outline" data-on-click="eventsReload" data-args='${_dataArgs(scope)}'>🔄 刷新</button>
   </div>`;
 }
@@ -68,10 +72,21 @@ function eventsPageHtml(){
   </div>`;
 }
 
-function _ackEventAndReload(id, scope){
-  api('/system/events/' + id + '/ack', { method: 'POST' })
-    .then(() => _loadEventsPanel(scope || EVENTS_SCOPE_MODAL))
-    .catch(() => toast('标记失败', 'error'));
+async function _ackEventAndReload(id, scope){
+  const r = await api('/system/events/' + id + '/ack', { method: 'POST' });
+  if(r.code !== 0){toast(r.message || '标记失败', 'error');return;}
+  _loadEventsPanel(scope || EVENTS_SCOPE_MODAL);
+  if(document.getElementById('obs-root')) obsRefresh(false);
+}
+
+async function _resolveEventAndReload(id, scope){
+  const r = await api('/system/events/' + id + '/resolve', { method: 'POST' });
+  if(r.code===0){
+    toast('已标记为已解决');
+    _loadEventsPanel(scope || EVENTS_SCOPE_MODAL);
+  }else{
+    toast(r.message||'操作失败','error');
+  }
 }
 
 function _deliveryErrorItemsHtml(m){
@@ -137,7 +152,7 @@ function openEventsCenterModal(severity, hours, unacked){
   m.classList.remove('hidden');
   const sevEl = document.getElementById('eventsCenterModalSev');
   const hoursEl = document.getElementById('eventsCenterModalHours');
-  const unackedEl = document.getElementById('eventsCenterModalUnacked');
+  const stateEl = document.getElementById('eventsCenterModalState');
   const targetHours = (hours === undefined || hours === null) ? String(_obsDefaultHours()) : String(hours);
   sevEl.value = severity || '';
   if(!Array.from(hoursEl.options).some(opt => opt.value === targetHours)){
@@ -147,13 +162,15 @@ function openEventsCenterModal(severity, hours, unacked){
     hoursEl.appendChild(opt);
   }
   hoursEl.value = targetHours;
-  unackedEl.checked = !!unacked;
+  stateEl.value = unacked ? 'open' : '';
   _eventsState(EVENTS_SCOPE_MODAL).offset = 0;
   loadEventsCenterModal();
   if(!window._eventsCenterModalTimer) window._eventsCenterModalTimer = setInterval(()=>{ if(!document.getElementById('eventsCenterModal').classList.contains('hidden')) loadEventsCenterModal(); }, 30000);
 }
 
 function closeEventsCenterModal(){
+  const state = _eventsState(EVENTS_SCOPE_MODAL);
+  state.requestSeq = (state.requestSeq || 0) + 1;
   const m = document.getElementById('eventsCenterModal');
   if(m) m.classList.add('hidden');
   if(window._eventsCenterModalTimer){clearInterval(window._eventsCenterModalTimer); window._eventsCenterModalTimer=null;}
@@ -191,11 +208,16 @@ async function _loadEventsPanel(scope){
   const prevBtn = _evtEl(scope, 'PrevBtn');
   const nextBtn = _evtEl(scope, 'NextBtn');
   if(!body) return;
+  const modal = document.getElementById(EVENTS_SCOPE_MODAL);
+  if(scope === EVENTS_SCOPE_MODAL && (!modal || modal.classList.contains('hidden'))) return;
+  const seq = state.requestSeq = (state.requestSeq || 0) + 1;
+  const navSeq = _navSeq;
   const sevEl = _evtEl(scope, 'Sev');
   const hrsEl = _evtEl(scope, 'Hours');
-  const unackedEl = _evtEl(scope, 'Unacked');
+  const stateEl = _evtEl(scope, 'State');
   const sev = sevEl ? sevEl.value : '';
   const hrs = (hrsEl && hrsEl.value) || '168';
+  const stateFilter = stateEl ? stateEl.value : '';
   const offset = state.offset || 0;
   const params = new URLSearchParams({
     limit: String(_EVENTS_PER_PAGE),
@@ -203,14 +225,13 @@ async function _loadEventsPanel(scope){
     since_hours: hrs
   });
   if(sev) params.set('severity', sev);
-  if(unackedEl && unackedEl.checked) params.set('unacked', '1');
+  if(stateFilter) params.set('state', stateFilter);
   // 第一次加载才显示"加载中",后续刷新不闪
   if(!state.loadedOnce){
     body.innerHTML = '<div class="p40 ta-center muted-13">加载中…</div>';
   }
   const r = await api('/system/events?' + params.toString());
-  // DOM 守卫:挂载面可能已切走(避免写已卸载元素)
-  if(_evtEl(scope, 'Body') !== body) return;
+  if(state.requestSeq !== seq || navStale(navSeq) || _evtEl(scope, 'Body') !== body) return;
   if(r.code !== 0){
     body.innerHTML = '<div class="p40 ta-center danger-13">加载失败: '+escHtml(r.message||'未知错误')+'</div>';
     return;
@@ -252,7 +273,7 @@ function renderEventsTable(events, scope){
       <col>
       <col class="w140">
       <col class="w110">
-      <col class="w70">
+      <col class="w130">
     </colgroup>
     <thead class="evt-thead">
       <tr class="evt-head-row">
@@ -294,7 +315,9 @@ function renderEventsTableRow(e, scope){
   else if(t === 'site_recovered') title = '站点已恢复: '+(m.url||'update.nsfocus.com');
   else if(typeof e.message === 'string') title = e.message.split('\n')[0].slice(0, 100);
   else title = JSON.stringify(m).slice(0, 80);
-  const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !e.acked_at;
+  const isResolved = !!e.resolved_at;
+  const isAcked = !!e.acked_at;
+  const isUnread = (e.severity==='CRITICAL'||e.severity==='ERROR'||e.severity==='WARNING') && !isAcked && !isResolved;
   const productCell = e.product_name
     ? `<div>${escHtml(e.product_name)}</div>`
     + (e.source_url ? `<div class="muted-10 mt2 ellipsis" title="${escHtml(e.source_url)}">${escHtml(e.source_url)}</div>` : '')
@@ -317,6 +340,8 @@ function renderEventsTableRow(e, scope){
       ${m.source?`<span><b>来源:</b> ${escHtml(m.source)}</span>`:''}
       ${m.ip?`<span><b>IP:</b> ${escHtml(m.ip)}</span>`:''}
       ${m.count?`<span><b>失败次数:</b> ${m.count}</span>`:''}
+      ${e.acked_at?`<span><b>已读:</b> ${escHtml(serverTime(e.acked_at, true))}</span>`:''}
+      ${e.resolved_at?`<span><b>已解决:</b> ${escHtml(serverTime(e.resolved_at, true))}${e.resolved_by?' · '+escHtml(e.resolved_by):''}</span>`:''}
     </div>
     ${t==='delivery_error'?_deliveryErrorItemsHtml(m):''}
     <details>
@@ -324,6 +349,16 @@ function renderEventsTableRow(e, scope){
       <pre class="log-panel-tall">${detailJson}</pre>
     </details>
   </td></tr>`;
+  let statusCell;
+  if(isResolved){
+    statusCell = `<span class="tag-purple-xs" title="已解决 ${escHtml(serverTime(e.resolved_at, true))}${e.resolved_by?' · '+escHtml(e.resolved_by):''}">已解决</span>`;
+  }else{
+    const ackPart = isUnread
+      ? `<button class="btn btn-xs btn-soft-success chip-xs" data-on-click="_ackEventAndReload" data-stop data-args='${_dataArgs(e.id, scope)}'>已读</button>`
+      : '<span class="tag-purple-xs">已读</span>';
+    statusCell = ackPart
+      + `<button class="btn btn-xs btn-soft-primary chip-xs ml4" data-on-click="_resolveEventAndReload" data-stop data-args='${_dataArgs(e.id, scope)}' title="标记为已解决（不等于删除）">解决</button>`;
+  }
   return `<tr class="evt-row${isUnread?' evt-row-'+sevTone:''}" data-on-click="toggleEventsTableRow" data-args='${_dataArgs(e.id)}' title="点击展开详情">
     <td class="log-ts-lg">${escHtml(serverTime(e.created_at, true))}</td>
     <td class="p8"><span class="sev-pill sev-${sevTone}">${sevIcon} ${escHtml(e.severity)}</span></td>
@@ -331,10 +366,7 @@ function renderEventsTableRow(e, scope){
     <td class="p8 text-body txt-clip">${escHtml(title)}</td>
     <td class="p8 text-body fs11">${productCell}</td>
     <td class="p8 text-body fs11">${channelCell}</td>
-    <td class="p8 ta-center">
-      ${isUnread
-        ? `<button class="btn btn-xs btn-soft-success chip-xs" data-on-click="_ackEventAndReload" data-stop data-args='${_dataArgs(e.id, scope)}'>已读</button>`
-        : '<span class="tag-purple-xs">已读</span>'}</td>
+    <td class="p8 ta-center">${statusCell}</td>
   </tr>${detail}`;
 }
 
@@ -375,6 +407,40 @@ async function eventsAckCurrent(scope){
     `<div class="info-purple-wide">
        <span class="fs20 lh1">✓</span>
        <span class="text-purple fs12 lh15">当前筛选共 <b>${total}</b> 条事件，只会把其中<b>未确认</b>的事件标记为已读；已读事件和筛选范围外的事件不受影响。</span>
+     </div>`
+  );
+}
+
+// 批量解决 — 严格按当前严重度 + 时间范围标记未解决事件（已读 ≠ 已解决）
+async function eventsResolveCurrent(scope){
+  const sevEl = _evtEl(scope, 'Sev');
+  const hrsEl = _evtEl(scope, 'Hours');
+  const sev = sevEl ? sevEl.value : '';
+  const hrs = (hrsEl && hrsEl.value) || '168';
+  const hrsText = (hrsEl && hrsEl.selectedIndex >= 0) ? hrsEl.options[hrsEl.selectedIndex].text : `近 ${hrs} 小时`;
+  const scopeText = `${hrsText} · ${sev || '全部严重度'}`;
+  const total = _eventsState(scope).total || 0;
+  await confirmAct(
+    `批量解决${scopeText}的未解决事件?`,
+    async () => {
+      const r = await api('/system/events/resolve-all', {
+        method: 'POST',
+        body: JSON.stringify({severity: sev || null, since_hours: Number(hrs)})
+      });
+      if(r.code !== 0){
+        toast('标记失败: ' + (r.message || '未知错误'), 'error');
+        return;
+      }
+      toast(`已解决 ${(r.data && r.data.resolved) || 0} 条事件`, 'success');
+      _eventsState(scope).offset = 0;
+      _loadEventsPanel(scope);
+    },
+    '🛠️',
+    '批量解决',
+    false,
+    `<div class="info-purple-wide">
+       <span class="fs20 lh1">✓</span>
+       <span class="text-purple fs12 lh15">当前筛选共 <b>${total}</b> 条事件，只会把其中<b>未解决</b>的事件标记为已解决（同时视为已读）；已解决事件和筛选范围外的事件不受影响。已解决事件保留 180 天后自动清理。</span>
      </div>`
   );
 }

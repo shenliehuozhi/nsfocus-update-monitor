@@ -347,8 +347,8 @@ def customer_service_report(customer_id):
     Query: ?month=YYYY-MM（默认当前月，按 UTC+8 划分月份边界）
     """
     import re
-    from datetime import datetime, timedelta, timezone
 
+    from src.core.timeutil import cst_month_bounds, cst_now
     from src.models.customer import get_by_id
     from src.models.database import query
 
@@ -356,20 +356,18 @@ def customer_service_report(customer_id):
     if not customer:
         return jsonify({'code': 40400, 'message': '客户不存在'}), 404
 
-    cst = timezone(timedelta(hours=8))
     month = (request.args.get('month') or '').strip()
     if month:
         if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', month):
             return jsonify({'code': 40000, 'message': 'month 格式应为 YYYY-MM'}), 400
         year, mon = int(month[:4]), int(month[5:7])
     else:
-        now = datetime.now(cst)
+        now = cst_now()
         year, mon = now.year, now.month
         month = f'{year:04d}-{mon:02d}'
 
-    start = datetime(year, mon, 1, tzinfo=cst).astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
-    nxt = datetime(year + (mon == 12), 1 if mon == 12 else mon + 1, 1, tzinfo=cst)
-    end = nxt.astimezone(timezone.utc).strftime('%Y-%m-%d %H:%M:%S')
+    # 月份边界按 UTC+8 划分，DB 内仍是 UTC
+    start, end = cst_month_bounds(year, mon)
 
     rows = query(
         """SELECT dl.delivery_status, dl.sent_at,
@@ -1617,6 +1615,14 @@ def get_config():
     from src.models.database import query
     rows = query("SELECT key, value FROM system_settings ORDER BY key")
     config = {r['key']: r['value'] for r in rows}
+    # 备份参数走钳制后的有效值，未设置时也能展示默认值；总占用按磁盘实时统计
+    try:
+        from src.core import db_backup
+        config['backup_interval_days'] = str(db_backup.get_interval_days())
+        config['backup_keep_count'] = str(db_backup.get_keep_count())
+        config['backup_total_size'] = str(db_backup.total_size())
+    except Exception:
+        pass
     return jsonify({'code': 0, 'data': config})
 
 
@@ -1645,6 +1651,10 @@ def force_stop_and_save():
 
     _audit('force_stop_settings', {'keys': list(data.keys())})
 
+    if 'backup_keep_count' in data:
+        from src.core.db_backup import sync_retention
+        sync_retention()
+
     # Step 3: 重新调度（如果用户开了调度器）
     if data.get('scheduler_enabled') == '1':
         from src.core.scheduler import refresh_scheduler_jobs
@@ -1670,6 +1680,9 @@ def update_config():
         execute("INSERT OR REPLACE INTO system_settings (key, value, updated_at) VALUES (?, ?, datetime('now'))",
                 (key, str(value)))
     _audit('settings_update', {'keys': list(data.keys())})
+    if 'backup_keep_count' in data:
+        from src.core.db_backup import sync_retention
+        sync_retention()
     # Reschedule collector if interval changed
     if 'collect_interval' in data:
         from src.core.scheduler import reschedule_collect

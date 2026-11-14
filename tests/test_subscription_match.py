@@ -386,21 +386,20 @@ def test_is_window_time_inside_simple_range():
 
 
 def test_compute_push_time_zero_delay_returns_nowish():
-    """delay_days <= 0 → timestamp ≈ now."""
-    from datetime import datetime
+    """delay_days <= 0 → UTC timestamp ≈ now."""
+    from datetime import datetime, timezone
     result = compute_push_time(0)
-    result_dt = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
-    delta = abs((datetime.now() - result_dt).total_seconds())
+    result_dt = datetime.strptime(result, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    delta = abs((datetime.now(timezone.utc) - result_dt).total_seconds())
     # Within 5 seconds
     assert delta < 5
 
 
 def test_compute_push_time_positive_delay_returns_future():
-    """delay_days > 0 → future timestamp."""
-    from datetime import datetime, timedelta
+    """delay_days > 0 → future UTC timestamp."""
+    from datetime import datetime, timedelta, timezone
     result = compute_push_time(1)
-    result_dt = datetime.strptime(result, '%Y-%m-%d %H:%M:%S')
-    # 1 day from now
-    expected = datetime.now() + timedelta(days=1)
+    result_dt = datetime.strptime(result, '%Y-%m-%d %H:%M:%S').replace(tzinfo=timezone.utc)
+    expected = datetime.now(timezone.utc) + timedelta(days=1)
     delta = abs((expected - result_dt).total_seconds())
     assert delta < 5

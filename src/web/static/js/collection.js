@@ -238,6 +238,8 @@ async function forceStopAndSave(){
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
     pkg_track_limit:document.getElementById('cfg-pkg-track').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
+    backup_interval_days:document.getElementById('cfg-backup-days').value,
+    backup_keep_count:document.getElementById('cfg-backup-keep').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
@@ -299,6 +301,8 @@ async function saveSettings(){
   const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
     pkg_track_limit:document.getElementById('cfg-pkg-track').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
+    backup_interval_days:document.getElementById('cfg-backup-days').value,
+    backup_keep_count:document.getElementById('cfg-backup-keep').value,
     email_global_hourly_limit:document.getElementById('cfg-email-global-h').value,
     email_global_daily_limit:document.getElementById('cfg-email-global-d').value,
     email_customer_hourly_limit:document.getElementById('cfg-email-cust-h').value,
@@ -356,11 +360,10 @@ function showCollectProgress(){
 }
 function closeCollectModal(){
   const m=document.getElementById('collectModal');if(m)m.remove();
-  const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.classList.add('hidden');
   document.body.classList.remove('warning-open');
   if(_collectPollTimer){clearInterval(_collectPollTimer);_collectPollTimer=null;}
 }
-function _closeCollectAndObserve(){closeCollectModal();observability();}
+function _closeCollectAndObserve(){closeCollectModal();showPage('observability');}
 function pollProgress(){
   const body=document.getElementById('collectModalBody');
   if(!body)return; // Modal closed, stop polling
@@ -392,7 +395,6 @@ function pollProgress(){
     }else if(p.phase==='notifying'){
       html+=`<div class="empty-icon">📨</div><p class="empty-text">正在推送通知...</p>`;
     }else if(p.phase==='done'){
-      const runBar=document.getElementById('dashRunningBar');if(runBar)runBar.classList.add('hidden');
       const ok=p.errors&&p.errors.length>0?'warn':'ok';
       html+=`<div class="empty-icon">${ok==='ok'?'✅':'⚠️'}</div>`;
       html+=`<p class="ta-center fs14 fw600">采集完成</p>`;

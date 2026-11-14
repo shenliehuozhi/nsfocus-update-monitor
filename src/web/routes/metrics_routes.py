@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from src.core.logger import get_logger
+from src.core.timeutil import CST, DB_FMT, utc_now
 from src.web.auth import decode_token, request_token
 
 bp = Blueprint('metrics', __name__, url_prefix='/api/metrics')
@@ -27,6 +28,7 @@ logger = get_logger('metrics')
 _DEFAULT_WINDOW_HOURS = 24
 _MAX_WINDOW_HOURS = 24 * 30
 _STALE_SOURCE_HOURS = 24
+_PROCESS_STARTED_AT = datetime.now(timezone.utc).isoformat()
 
 
 def _auth(f):
@@ -92,23 +94,41 @@ def _today() -> dict:
     """当日（CST）推送统计；不随 hours 窗口变化。"""
     from src.models.database import query
 
+    now = utc_now()
+    start = now.astimezone(CST).replace(hour=0, minute=0, second=0, microsecond=0)
+    bounds = (start.astimezone(timezone.utc).strftime(DB_FMT), now.strftime(DB_FMT))
     row = query(
         """SELECT COUNT(*) AS total,
                   SUM(CASE WHEN delivery_status='sent' THEN 1 ELSE 0 END) AS sent,
                   SUM(CASE WHEN delivery_status='failed' THEN 1 ELSE 0 END) AS failed
            FROM delivery_log
-           WHERE date(datetime(COALESCE(NULLIF(created_at, ''), sent_at)), '+8 hours')
-                 = date('now', '+8 hours')"""
+           WHERE datetime(COALESCE(NULLIF(created_at, ''), sent_at))
+                 BETWEEN datetime(?) AND datetime(?)""",
+        bounds,
     )[0]
+    products = query(
+        """SELECT product_name AS name, COUNT(*) AS count,
+                  MAX(datetime(published_at)) AS last_published_at
+           FROM snapshots
+           WHERE product_name <> ''
+             AND datetime(published_at) BETWEEN datetime(?) AND datetime(?)
+           GROUP BY product_name
+           ORDER BY last_published_at DESC, product_name""",
+        bounds,
+    )
     sent = row['sent'] or 0
     failed = row['failed'] or 0
     return {
+        'date': start.date().isoformat(),
         'delivery': {
             'total': row['total'] or 0,
             'sent': sent,
             'failed': failed,
             'success_rate': _rate(sent, failed),
         },
+        'products': products,
+        'product_count': len(products),
+        'package_count': sum(p['count'] for p in products),
     }
 
 
@@ -120,10 +140,10 @@ def _updates(hours: int) -> dict:
     # 采集器写库时已把站点 CST 时间转换为 UTC ISO，按 UTC 当前时间比较
     rows = query(
         """SELECT product_name, COUNT(*) AS count,
-                  MAX(published_at) AS last_published_at
+                  MAX(datetime(published_at)) AS last_published_at
            FROM snapshots
            WHERE product_name <> '' AND published_at <> ''
-             AND datetime(published_at) >= datetime('now', ?)
+             AND datetime(published_at) BETWEEN datetime('now', ?) AND datetime('now')
            GROUP BY product_name
            ORDER BY last_published_at DESC, product_name""",
         (f'-{hours} hours',),
@@ -142,29 +162,21 @@ def _updates(hours: int) -> dict:
 
 def _sessions() -> dict:
     from src.models.database import query
-    from src.models.user_session import count_by_status, get_expired_active_count
 
-    active = count_by_status('active')
-    expired = count_by_status('expired')
-    unknown = count_by_status('unknown')
-    row = query(
-        """SELECT SUM(CASE WHEN purpose='collect' THEN 1 ELSE 0 END) AS collect_total,
-                  SUM(CASE WHEN purpose='collect' AND status='active' THEN 1 ELSE 0 END) AS collect_active,
-                  SUM(CASE WHEN purpose='collect' AND heartbeat_status='污染' THEN 1 ELSE 0 END) AS collect_polluted,
-                  SUM(CASE WHEN purpose='discover' AND status='active' THEN 1 ELSE 0 END) AS discover_active
+    return query(
+        """SELECT COUNT(*) AS total,
+                  COUNT(CASE WHEN status='active' THEN 1 END) AS active,
+                  COUNT(CASE WHEN status='expired' THEN 1 END) AS expired,
+                  COUNT(CASE WHEN status='unknown' THEN 1 END) AS unknown,
+                  COUNT(CASE WHEN status='active'
+                    AND heartbeat_status IN ('过期', '污染', '错误') THEN 1 END) AS active_but_expired,
+                  COUNT(CASE WHEN purpose='collect' THEN 1 END) AS collect_total,
+                  COUNT(CASE WHEN purpose='collect' AND status='active' THEN 1 END) AS collect_active,
+                  COUNT(CASE WHEN purpose='collect'
+                    AND (status='污染' OR heartbeat_status='污染') THEN 1 END) AS collect_polluted,
+                  COUNT(CASE WHEN purpose='discover' AND status='active' THEN 1 END) AS discover_active
            FROM user_sessions"""
     )[0]
-    return {
-        'total': active + expired + unknown,
-        'active': active,
-        'expired': expired,
-        'unknown': unknown,
-        'active_but_expired': get_expired_active_count(),
-        'collect_total': row['collect_total'] or 0,
-        'collect_active': row['collect_active'] or 0,
-        'collect_polluted': row['collect_polluted'] or 0,
-        'discover_active': row['discover_active'] or 0,
-    }
 
 
 def _customers(hours: int) -> dict:
@@ -227,7 +239,7 @@ def _process() -> dict:
                 os.stat('/proc/self').st_ctime, tz=timezone.utc
             ).isoformat()
         except OSError:
-            started = datetime.now(timezone.utc).isoformat()
+            started = _PROCESS_STARTED_AT
     try:
         dt = datetime.fromisoformat(str(started).replace('Z', '+00:00'))
         if dt.tzinfo is None:
@@ -287,15 +299,13 @@ def _delivery(hours: int) -> dict:
 
 def _queues() -> dict:
     from src.models.database import query
-    # push_after 由 datetime.now() 生成本地时间，不能用 datetime('now') (UTC) 比较
-    now_local = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # push_after 一律存 UTC；datetime(...) 归一化历史 'T' 分隔格式。
     delayed = query(
         """SELECT COUNT(*) AS pending,
-                  SUM(CASE WHEN push_after < ? THEN 1 ELSE 0 END) AS overdue,
+                  SUM(CASE WHEN datetime(push_after) < datetime('now') THEN 1 ELSE 0 END) AS overdue,
                   SUM(CASE WHEN COALESCE(attempts, 0) > 0 THEN 1 ELSE 0 END) AS retrying,
                   MIN(created_at) AS oldest
-           FROM delayed_queue WHERE status='pending'""",
-        (now_local,),
+           FROM delayed_queue WHERE status='pending'"""
     )[0]
 
     digest_rows = query(
@@ -482,18 +492,28 @@ def _events(hours: int) -> dict:
         (_utc_cutoff(hours),),
     )
     by_severity = {r['severity']: r['c'] for r in rows}
-    # acked_at 由 system_routes._ensure_acked_at 懒迁移，老库/测试库里可能还没有
+    # 生命周期列由启动时的 sync/路由懒迁移补齐，老库/测试库里可能还没有
     cols = {r['name'] for r in query("PRAGMA table_info(system_event_log)")}
     acked_filter = 'acked_at IS NULL AND ' if 'acked_at' in cols else ''
+    resolved_filter = 'resolved_at IS NULL AND ' if 'resolved_at' in cols else ''
     unacked = query(
         f"""SELECT severity, COUNT(*) AS c FROM system_event_log
-            WHERE {acked_filter}severity IN ('ERROR', 'CRITICAL', 'WARNING')
+            WHERE {resolved_filter}{acked_filter}severity IN ('ERROR', 'CRITICAL', 'WARNING')
             GROUP BY severity"""
     )
+    resolved_total = 0
+    if 'resolved_at' in cols:
+        resolved_total = query(
+            """SELECT COUNT(*) AS c FROM system_event_log
+               WHERE resolved_at IS NOT NULL
+                 AND datetime(created_at) >= datetime(?)""",
+            (_utc_cutoff(hours),),
+        )[0]['c'] or 0
     return {
         'window_total': sum(by_severity.values()),
         'by_severity': by_severity,
         'unacked': {r['severity']: r['c'] for r in unacked},
+        'resolved': resolved_total,
     }
 
 
@@ -527,6 +547,8 @@ _SCHEDULER_JOB_IDS = (
     'nsfocus_db_cleanup',
     'nsfocus_channel_health',
     'nsfocus_site_check',
+    'nsfocus_db_backup',
+    'nsfocus_db_health',
 )
 
 
@@ -560,6 +582,7 @@ def _scheduler_jobs(collection: dict | None = None) -> list:
 
 
 def collect_metrics(hours: int, include_history: bool = True) -> dict:
+    from src.models.database import write_stats
     collection = _collection()
     return {
         'generated_at': datetime.now().astimezone().isoformat(timespec='seconds'),
@@ -575,6 +598,7 @@ def collect_metrics(hours: int, include_history: bool = True) -> dict:
         'rules': _rules(),
         'events': _events(hours),
         'storage': _storage(),
+        'database': write_stats(),
         'maintenance': _maintenance(),
         'site': _site(hours, include_history),
         'scheduler_jobs': _scheduler_jobs(collection),
@@ -664,6 +688,20 @@ def render_prometheus(data: dict) -> str:
     gauge('nsfocus_snapshots', storage['snapshots_active'], {'status': 'active'})
     gauge('nsfocus_snapshots', storage['snapshots_total'], {'status': 'total'})
     gauge('nsfocus_delivery_log_rows', storage['delivery_log_rows'])
+
+    # 进程内写路径统计：计数是进程生命周期累计，分位数只覆盖最近 sample_limit 次写
+    db = data['database']
+    gauge('nsfocus_db_write_operations', db['operations'])
+    gauge('nsfocus_db_write_errors', db['errors'])
+    gauge('nsfocus_db_write_timeouts', db['python_lock_timeouts'], {'reason': 'python_lock'})
+    gauge('nsfocus_db_write_timeouts', db['sqlite_busy_errors'], {'reason': 'sqlite_busy'})
+    gauge('nsfocus_db_write_timeout_rate', db['timeout_rate'])
+    gauge('nsfocus_db_write_wait_budget_seconds', db['wait_budget_seconds'])
+    gauge('nsfocus_db_write_samples', db['sample_count'], {'scope': 'count'})
+    gauge('nsfocus_db_write_samples', db['sample_limit'], {'scope': 'limit'})
+    for stage in ('lock_wait', 'sqlite', 'total'):
+        for quantile, value in db[f'{stage}_ms'].items():
+            gauge(f'nsfocus_db_write_{stage}_ms', value, {'quantile': quantile})
 
     gauge('nsfocus_maintenance_mode', data['maintenance']['enabled'])
 

@@ -131,6 +131,24 @@ def test_transition_writes_system_event(monkeypatch, db):
     assert 'HTTP 503' in rows[0]['message']
 
 
+def test_recovery_auto_resolves_site_unavailable(monkeypatch, db):
+    import src.core.site_monitor as sm
+    from src.models.database import query
+
+    _mock_get(monkeypatch, _Response(503))
+    sm.run_check()
+    row = query("SELECT resolved_at FROM system_event_log "
+                "WHERE event_type='site_unavailable'")[0]
+    assert row['resolved_at'] is None
+
+    _mock_get(monkeypatch, _Response(200))
+    sm.run_check()
+    row = query("SELECT resolved_at, resolved_by FROM system_event_log "
+                "WHERE event_type='site_unavailable'")[0]
+    assert row['resolved_at'] is not None
+    assert row['resolved_by'] == 'auto'
+
+
 def test_get_status_defaults_when_never_checked(db):
     import src.core.site_monitor as sm
 

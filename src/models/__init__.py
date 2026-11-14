@@ -67,6 +67,10 @@ def init_all_tables():
     # Initialize nsfocus product data from bundled JSON (first deployment convenience)
     _init_content_sources(db)
 
+    # One-time: unify delayed_queue timestamps to UTC (local-time legacy rows)
+    from src.core.timeutil import migrate_delayed_queue_to_utc
+    migrate_delayed_queue_to_utc()
+
 
 def _init_content_sources(db):
     """Bootstrap nsfocus content sources from bundled initial_sources.json.

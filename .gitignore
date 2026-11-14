@@ -16,6 +16,7 @@ data/discover.log
 data/discover_pending.json
 # Backups
 *.bak
+data/backups/
 
 # Logs
 logs/
