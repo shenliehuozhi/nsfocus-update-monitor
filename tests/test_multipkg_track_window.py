@@ -18,6 +18,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+import requests
 
 from src.collectors import nsfocus as ns
 from src.collectors.nsfocus import NsfocusCollector, _select_track_window
@@ -204,3 +205,39 @@ def test_three_new_packages_all_detected_as_new(fresh_db, monkeypatch):
             snap['first_seen_at'] == snap['last_seen_at'])
 
     assert new_flags == {N1: True, N2: True, N3: True, OLD: False}
+
+
+def test_quick_counts_url_failures(fresh_db, monkeypatch):
+    """单 URL 超时继续采集，但失败数要进 stats 供调度层聚合。"""
+    from src.models.database import execute
+
+    bad_paths = ['/update/listWafV67Detail/v/missing1',
+                 '/update/listWafV67Detail/v/missing2']
+    execute(
+        "UPDATE content_sources SET package_type_discovered=? WHERE id=1",
+        (json.dumps({'paths': [
+            {'chain': ['WAF', 'V6.0.7', '规则库'], 'types': ['规则库'], 'url': PAGE_PATH},
+            {'chain': ['WAF', 'V6.0.7', '规则库'], 'types': ['规则库'], 'url': bad_paths[0]},
+            {'chain': ['WAF', 'V6.0.7', '规则库'], 'types': ['规则库'], 'url': bad_paths[1]},
+        ]}, ensure_ascii=False),))
+
+    html = FIXTURE.read_text(encoding='utf-8')
+
+    def fake_get(url, **kw):
+        if 'missing' in url:
+            raise requests.Timeout('Read timed out.')
+        return _FakeResp(html, url)
+
+    collector = NsfocusCollector()
+    monkeypatch.setattr(collector.session, 'get', fake_get)
+    monkeypatch.setattr(ns, 'REQUEST_DELAY_MIN', 0)
+    monkeypatch.setattr(ns, 'REQUEST_DELAY_MAX', 0)
+    monkeypatch.setattr(ns, '_get_track_limit', lambda: '5')
+
+    stats = {}
+    items, _ = collector._collect_quick(1, 'WAF', shared_stats=stats)
+
+    assert len(items) == 4
+    assert stats['urls_total'] == 3
+    assert stats['url_failures'] == 2
+    assert stats['fetches'] == 1

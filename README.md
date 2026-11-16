@@ -143,6 +143,9 @@ systemctl restart nsfocus-monitor
 | `MONITOR_SECRET_KEY` | ⚠️ 硬编码默认值 | AES 加密密钥，**生产必须修改** |
 | `MONITOR_RATE_LIMIT_SEC` | 3 | IM 渠道冷却间隔 |
 | `MONITOR_ATTACHMENT_MAX_SIZE` | 10485760 | 邮件附件上限(字节) |
+| `MONITOR_NVD_API_KEY` | 空 | NVD API 2.0 密钥；留空时按公开限速 5 次/30 秒同步 CVE 评分（有 key 为 50 次/30 秒） |
+| `MONITOR_CVE_LOOKUP` | auto | 设为 `off` / `0` / `false` / `no` 时关闭 NVD 评分同步，只保留本地 CVE 提取 |
+| `MONITOR_CNVD_DIR` | `data/cnvd` | CNVD/CNNVD 官方导出文件目录（XML/JSON/CSV，可 `.gz`）；`nsfocus_cnvd_import` 每 60 分钟增量导入中文名称与 CNVD 编号，不抓取 CNVD 网页 |
 
 ## 安全加固建议
 

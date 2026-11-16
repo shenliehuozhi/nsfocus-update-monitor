@@ -2,7 +2,54 @@
 
 ## [Unreleased]
 
+### 更新摘要（2026-11-11 ~ 2026-11-16）
+
+> 面向使用者的近期改动汇总；逐条技术细节见下方 Unreleased 条目。
+
+**CVE 情报（新增）**
+- 仪表盘新增 CVE 情报卡片：窗口内严重度分布、评分覆盖、每日趋势与 Top CVE；点击可查看关联产品、升级包、版本、证据与来源，支持严重度/产品/包类型筛选及 CVE/CNVD/名称/文件/版本搜索。
+- NVD 评分自动补齐（CVSS v4.0 → v3.1 → v3.0 → v2），带限速与退避；失败不清空已有评分，API key 不写日志、不落库。
+- 漏洞名称优先显示中文，并附 CNVD 编号外链；CVE 编号始终为主标识，无中文时回退 NVD 英文名称。
+- 新增 CNVD 导入任务（每 60 分钟）：读取管理员放入 `MONITOR_CNVD_DIR`（默认 `data/cnvd/`）的官方导出文件（CNVD/CNNVD XML、JSON、CSV，支持 `.gz`），按文件增量导入，不抓取 CNVD 网页、不绕过反爬，也不覆盖 NVD 评分。
+
+**可观测性与仪表盘**
+- 仪表盘并入「可观测」页，登录直达；统计窗口统一跟随右上角 6h / 24h / 7d / 30d。
+- 新增站点可用性（每 5 分钟探测 `update.nsfocus.com`，保留 30 天延时曲线）、数据库写卡片（写操作/失败/超时、等待预算、p50/p95/p99）、队列积压、维护模式提示、进程运行时间与重启服务入口。
+- 调度任务卡片显示 13 个任务的下次运行与倒计时；页面布局调整为：调度任务｜站点可用性、CVE 情报｜产品更新、Session 状态｜采集健康、客户推送通栏。
+- 新增 Prometheus 抓取支持（静态令牌），可长期采集推送、站点、数据库写等指标。
+
+**事件与告警**
+- 事件生命周期升级为 open → acked → resolved，支持状态筛选、单条/批量解决；已读与已解决分开，详情显示时间与解决人。
+- 自愈：站点恢复、数据库锁恢复时自动解决对应事件；删除 Session 自动解决其过期事件。保留期：已解决/INFO 180 天，未解决告警 365 天。
+- 告警降噪：同一错误跨日志文件只生成一条；NVD 临时故障改为 15 分钟短退避，不再产生大量重复事件；修复事件时间偏早 8 小时的问题，并清理历史噪音事件。
+
+**订阅、推送与客户**
+- 规则向导第 4 步改为「通知对象」：机器人渠道逐个添加，邮箱按「收件人 + 发件渠道」维护；nsfocus 邮箱优先，多渠道自动主备。汇总模式支持邮箱渠道。
+- 新建订阅规则可跟随客户持有产品生成路径；客户产品改为路径树选择「产品 @ 版本」。
+- 客户资产台账统一为产品 + 当前版本；新增客户月度服务报告（当月推送明细与成功率，可切换月份）。
+- Session 采集护栏：删除或改类型导致没有可用采集 Session 时，前端二次确认，服务端 409 兜底。
+- 「系统日志」导航合并为「事件与日志」，页面内分「事件与告警」「系统日志」两个标签。
+
+**数据与运维**
+- 数据库自动备份：每天 03:30 检查，按配置间隔生成一致性快照并 gzip 压缩（0600），保留份数可配，系统配置页显示上次备份与占用。
+- 时间口径统一：数据库一律存 UTC，前端统一显示 CST；延迟队列历史时间一次性迁移。
+- 修复快照保留清理外键失败：`snapshot_cve` / `cve_scan_state` 先于快照删除，保留策略恢复；生产启动清理 3653 → 保留 3640，无外键报错、无孤儿行。
+
+**性能与前端工程**
+- 静态资源按内容哈希版本化并长缓存，首页与数据接口支持 ETag/304；采集数据接口重复进入 183ms → 6ms。
+- 列表接口精简载荷（2.38MB → 2.03MB），详情字段拆到单独接口；采集数据页首屏 4 个请求并发。
+- 前端内联样式收敛为组件类（1114 → 0 处 `data-css`），新增 ESLint / Prettier 门禁与 Playwright 浏览器冒烟。
+
+### 修复
+- **快照保留清理外键修复（2026-11-16）**：`snapshot_cve` / `cve_scan_state` 外键指向 `snapshots` 但没有级联删除，原清理 SQL 只排除 `delivery_log` / `digest_queue`，导致启动/每日清理报 `FOREIGN KEY constraint failed`，自 2026-11-14 起快照保留策略完全失效。新增 `cleanup_snapshots()`：窗口函数按 `(source_id, path_id, version_branch, package_type)` 取每组超出上限的候选 id，保留被 `delivery_log` / `digest_queue` / `delayed_queue` 引用的快照，分批先删 `snapshot_cve` / `cve_scan_state` 再删快照，并统一覆盖 legacy `path_id=''` 分组。新增 `tests/test_cleanup_snapshots.py` 3 例（子表先删+引用保护、legacy 空 path_id、分组独立与幂等）。受影响子集 82 passed，`py_compile` / `git diff --check` 通过。生产已重启（PID 52944）：清理成功「3653 → 删除 13 → 3640」，无外键报错，孤儿行 0。
+- **事件中心剩余 log_error 清理与告警降噪（2026-11-15）**：解决 18 条陈旧 `log_error`（3 条已删除 Session 的「过期」事件 + 15 条采集 `Read timeout`），全部标记 `resolved_by=auto`；其中 7 条超时在 `app.log` 与 `service_error.log` 各出现一次，属于重复。根因与修复：① 采集器逐 URL 异常只写 WARNING，本轮汇总仍是 INFO/0 错误——`_collect_quick` / `_collect_full` 现在按产品累计 `urls_total` / `url_failures`，失败数 ≥ 成功页面数（或成功为 0）时写入 `collection_summary.errors` 并将本轮升为 WARNING，`_progress.errors` 也会并入汇总；② 日志扫描去重键原本包含日志文件名，同一行跨文件生成两条事件——改为 `error_type + keyword + 上下文哈希`（无上下文才回退文件名）；③ 删除 Session 时自动 resolve 该 `sid` 的「过期」`log_error`。新增 `tests/test_collection_failure_aggregation.py`、`tests/test_log_alert_dedup.py`，并补充采集 URL 失败计数与 Session 删除自愈断言；受影响子集 34 passed。
+- **CVE 同步噪音与事件时间修复（2026-11-15）**：`log_scanner` 忽略 `monitor.cve_meta` 的单条 `fetch failed` / `NVD rate limited`，NVD 超时/连接错误/5xx/无效 JSON 改为 15 分钟短退避并结束本轮，不再按单条 CVE 升级到 24 小时；真正的 `[CVE-META] sync failed` 仍会生成事件。事件已读/解决时间改用 Python UTC（预置 `utc_now_str()`），修复 CST 主机上 SQLite `datetime('now','utc')` 再减 8 小时、解决时间早于创建时间的问题；同时清理并解决生产事件中心 74 条历史 NVD 噪音事件（`resolved_by=auto`），重置 4 条被 5xx 误判到 24 小时的 CVE 退避。新增 `tests/test_log_scanner_filter.py` 与 CVE 临时故障、事件时间断言；受影响子集 98 passed。
+
 ### 新增
+- **仪表盘 · 调度任务改半宽与排布回填（2026-11-16）**：`_obsSchedulerCard` 移除 `obs-span2`，由通栏改回两列网格的单列宽度，「站点可用性」移到其右侧；「Session 状态」与「采集健康」同排，「客户推送」改为通栏，消除半格空白。纯静态 JS/CSS，内容哈希即时生效，无需重启。`tests/test_observability_page.py` 17 passed，前端生命周期与 CVE 路由子集 21 passed，ESLint/Prettier/`node --check` 通过。
+- **CVE 情报 · 中文名称与 CNVD 编号（2026-11-16）**：`cve_meta` 新增 `name_zh` / `description_zh` / `cnvd_id` / `cnvd_url` / `cnvd_updated_at`（启动期自动补列），`/api/cve/summary` 的 `top_cves` 与 `/api/cve/list` 的 `items` 返回中文字段，`totals` 新增 `cnvd_cves`，`q` 同时匹配 CVE / CNVD 编号与中英文名称。卡片和明细弹窗优先显示中文漏洞名称并附 CNVD 外链，无中文时回退 NVD 英文名称，CVE 编号始终为主标识。新增 `nsfocus_cnvd_import` 任务（每 60 分钟）与 `src/core/cnvd_import.py`：只读取管理员放入 `MONITOR_CNVD_DIR`（默认 `data/cnvd/`）的 CNVD 共享数据 XML、CNNVD XML 或 JSON/CSV（支持 `.gz`），按文件大小+修改时间增量导入，字段名兼容中英文及国标分组结构，同一 CVE 保留 CNVD 编号更新、名称更完整的一条，不覆盖 NVD 评分。CNVD 公开站点对非浏览器请求返回 HTTP 521 挑战、批量数据仅向注册用户开放、全量接口仅对技术组成员/厂商开放，因此系统不抓取网页也不绕过反爬，未导入时继续显示英文名称或「名称待同步」；CNVD 与 CVE 并非一一对应。新增 `tests/test_cnvd_import.py` 7 例与 API/前端断言，受影响子集 135 passed，ESLint/Prettier/`node --check` 通过。
+- **CVE 情报 · 漏洞名称与卡片排布（2026-11-15）**：`/api/cve/summary` 的 `top_cves` 与 `/api/cve/list` 的 `items` 新增 `description`（NVD 英文漏洞描述），卡片 Top CVE 与明细弹窗在 CVE 编号下显示名称，未同步评分前显示「名称待 NVD 同步」；搜索框同时匹配 CVE 编号、漏洞名称、文件名与版本。仪表盘排布调整：「CVE 情报」与「产品更新」同排，严重度/评分覆盖下方的每日趋势折线改为独占一整行；「调度任务」改为通栏，「站点可用性」与「Session 状态」同排。新增接口与渲染断言，受影响子集 169 passed，ESLint/Prettier 通过；`/tmp` 无头 Chromium 三档宽度复核无横向溢出。
+- **CVE 情报 · 仪表盘聚合与 NVD 评分同步（2026-11-14）**：采集描述中的「关联 CVE」进入仪表盘卡片与聚合弹窗，只统计活跃快照、按 CVE 去重，展示窗口内严重度分布、评分覆盖、每日趋势与 Top CVE；点击 CVE 可查看关联产品、升级包、版本、证据与来源链接，支持严重度/产品/包类型筛选与 CVE/文件名/版本搜索。新增 `GET /api/cve/summary` 与 `GET /api/cve/list`，`rejected` CVE 不计入；采集数据页与采集器不变。新增 `nsfocus_cve_extract`（每 10 分钟增量）、`nsfocus_cve_extract_full`（每日 02:45 全量重扫）和 `nsfocus_cve_meta`（每 5 分钟）三个任务，独立于采集调度器；`nsfocus_cve_meta` 通过 NVD API 2.0 按 CVSS v4.0 → v3.1 → v3.0 → v2 补齐评分，无 key 每轮 5 条、`MONITOR_NVD_API_KEY` 每轮 20 条，403/429 结束本轮，`not_found` 7 天后重试、`error` 按 10/30/120/360/1440 分钟退避，失败不清空已有评分；API key 不写日志、不落库。`MONITOR_CVE_LOOKUP=off` 可关闭外部查询。每日清理新增 `snapshot_cve` / `cve_scan_state` 孤儿行删除。新增 `tests/test_cve_extract.py`、`tests/test_cve_meta.py`、`tests/test_cve_routes.py` 与仪表盘静态/runtime 断言；受影响子集 75 passed，ESLint 0 error。
 - **数据库写路径可观测（2026-11-13）**：`GET /api/metrics` 的 `database`（`write_stats()`）接入 Prometheus 与仪表盘。新增 gauge `nsfocus_db_write_operations`、`nsfocus_db_write_errors`、`nsfocus_db_write_timeouts{reason="python_lock"|"sqlite_busy"}`、`nsfocus_db_write_timeout_rate`、`nsfocus_db_write_wait_budget_seconds`、`nsfocus_db_write_samples{scope="count"|"limit"}` 与 `nsfocus_db_write_{lock_wait,sqlite,total}_ms{quantile="p50"|"p95"|"p99"}`（无样本输出 `NaN`），配好静态令牌后无需登录即可长期抓取锁等待趋势。仪表盘新增「🗄️ 数据库写」卡片，与「外部观测接入」同排：写操作 / 失败 / 队列超时 / SQLite 超时四个计数、等待预算与超时率，以及排队等待、SQL 执行、合计耗时的 p50/p95/p99；合计 p95 ≥ 1 秒标红，与后端 `db_write` 慢写告警同口径。计数自进程启动累计、分位数只覆盖最近 1024 次写，重启清零，不随全局时间窗变化。新增 `tests/test_metrics_api.py` 2 例、`tests/test_observability_page.py` 静态与 node runtime 断言，e2e 三档宽度增加卡片存在检查
 - **观测首页指标与操作收尾（2026-11-12）**：按最新要求移除独立「今日概览」，推送、产品更新和客户统计保留全局窗口联动；接口 `today` 保留给现有今日指标，产品按站点发布时间而非入库时间统计，排除未来时间并归一化混合时间格式。Session 总数包含污染状态，采集/发现活跃数沿用池选择口径，心跳异常标签不再误称时间过期。采集健康区恢复手动采集确认入口，区分服务运行时间和本轮耗时；采集完成经统一导航返回。观测网格允许列与卡片收缩，修复 390px 窄屏被投递表格撑出页面的横向溢出，表格仍可在卡片内滚动；补充三档宽度回归断言。
 - **观测刷新与重启修复（2026-11-12）**：指标/事件请求增加代际与挂载元素校验，筛选切换和切页后旧响应不再覆盖新内容；关闭事件弹窗取消在途写回，切页/登出同步关闭弹窗，单条确认失败显示错误。重启不再以 SIGTERM 假定 `Restart=on-failure` 会自动拉起，改为核验固定 systemd 单元 MainPID 后延迟提交重启；非受管实例返回 409、查询失败返回 503。测试只模拟命令与确认请求，未真实重启生产。

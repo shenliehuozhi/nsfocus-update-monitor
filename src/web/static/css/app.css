@@ -413,6 +413,7 @@ tr[data-sid]{cursor:pointer}
 .obs-alert.warn{background:rgba(240,140,0,0.1);border:1px solid rgba(240,140,0,0.4);color:var(--warn)}
 .obs-grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}
 .obs-grid2>.card{margin-bottom:0;min-width:0}
+.obs-span2{grid-column:1/-1}
 .obs-section-title{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin:0 0 8px 0}
 .obs-mini{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
 .obs-mini>div{background:var(--gray-bg);border-radius:8px;padding:9px 12px;min-width:0}
@@ -449,6 +450,85 @@ tr[data-sid]{cursor:pointer}
   .obs-grid2{grid-template-columns:minmax(0,1fr)}
   .obs-mini{grid-template-columns:repeat(2,1fr)}
   .obs-kv>b{text-align:left}
+}
+
+/* ── 仪表盘 CVE 卡片与聚合弹窗 ── */
+.cve-card-body{display:grid;grid-template-columns:minmax(0,1fr);gap:12px;align-items:start}
+.cve-stats{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.cve-stat{background:var(--gray-bg);border-radius:8px;padding:8px 10px;min-width:0}
+.cve-stat b{display:block;font-size:18px;line-height:1.25;font-variant-numeric:tabular-nums}
+.cve-stat span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.cve-stat-critical b{color:#b91c1c}
+.cve-stat-high b{color:var(--danger)}
+.cve-stat-medium b{color:#c27800}
+.cve-stat-unknown b{color:var(--gray-muted)}
+.cve-stat-coverage b{color:var(--primary-text)}
+.cve-spark-wrap{min-width:0}
+.cve-spark{display:flex;align-items:flex-end;gap:2px;height:48px;padding:0 2px;border-bottom:1px solid var(--border)}
+.cve-spark-bar{flex:1;min-width:2px;height:2%;border-radius:2px 2px 0 0;background:#cbd5e1;transition:height .25s ease}
+.cve-spark-critical{background:#b91c1c}
+.cve-spark-high{background:var(--danger)}
+.cve-spark-medium{background:var(--warn-mid)}
+.cve-spark-low{background:var(--primary)}
+.cve-spark-unknown{background:#cbd5e1}
+.cve-spark-empty{flex:1;align-self:center;text-align:center;font-size:11px;color:var(--muted)}
+.cve-spark-ft{display:flex;justify-content:space-between;font-size:10px;color:var(--muted);margin-top:3px}
+.cve-top{margin-top:12px;border-top:1px solid var(--border);padding-top:2px}
+.cve-top-row{display:block;padding:6px 2px;border-bottom:1px dashed var(--border);font-size:12px;min-width:0}
+.cve-top-row:last-child{border-bottom:none}
+.cve-top-line{display:flex;align-items:center;gap:10px;min-width:0}
+.cve-top-sub{display:flex;align-items:center;gap:10px;margin-top:2px;min-width:0}
+.cve-top-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:11px;color:var(--text)}
+.cve-top-name.pending{color:var(--muted);font-style:italic}
+.cve-top-id{font-family:'SF Mono','Consolas',monospace;font-weight:600;color:var(--primary-text);cursor:pointer;white-space:nowrap}
+.cve-top-id:hover{text-decoration:underline}
+.cve-top-score{font-variant-numeric:tabular-nums;font-weight:700;min-width:34px}
+.cve-top-meta{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.cve-top-links{margin-left:auto;color:var(--muted);white-space:nowrap}
+.cve-sev{display:inline-block;padding:1px 7px;border-radius:999px;font-size:10px;font-weight:600;line-height:1.6;white-space:nowrap}
+.cve-sev-critical{background:#b91c1c;color:#fff}
+.cve-sev-high{background:var(--danger-light);color:var(--danger)}
+.cve-sev-medium{background:var(--warn-light);color:#c27800}
+.cve-sev-low{background:var(--primary-light);color:var(--primary-text)}
+.cve-sev-unknown{background:#f1f3f4;color:var(--gray-muted)}
+.cve-score{font-variant-numeric:tabular-nums}
+.cve-score-critical{color:#b91c1c}
+.cve-score-high{color:var(--danger)}
+.cve-score-medium{color:#c27800}
+.cve-score-low{color:var(--primary-text)}
+.modal-card-cve{width:1080px;max-width:96vw;max-height:90vh;display:flex;flex-direction:column}
+.cve-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid var(--gray-border);background:var(--gray-bg)}
+.cve-filter-chips{display:flex;gap:4px;flex-wrap:wrap;margin-right:4px}
+.cve-filter-chip{border:1px solid var(--gray-border);background:#fff;color:var(--gray-muted);border-radius:999px;padding:3px 10px;font-size:11.5px;cursor:pointer;font-family:inherit;line-height:1.5}
+.cve-filter-chip:hover{border-color:var(--primary);color:var(--primary-text)}
+.cve-filter-chip.active{background:var(--primary-light);border-color:var(--primary);color:var(--primary-text);font-weight:600}
+.cve-filter-chip[data-cve-sev="critical"].active{background:var(--danger-light);border-color:var(--danger);color:var(--danger)}
+.cve-filter-chip[data-cve-sev="high"].active{background:var(--danger-light);border-color:#f0a3a5;color:var(--danger)}
+.cve-search{width:200px}
+.cve-modal-ft{display:flex;align-items:center;gap:8px;border-top:1px solid var(--gray-border);padding:8px 16px}
+.cve-table{width:100%;border-collapse:collapse;font-size:12px}
+.cve-table th{position:sticky;top:0;background:#fff;z-index:1;text-align:left;font-size:11px;color:var(--muted);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--gray-border);white-space:nowrap}
+.cve-table td{padding:8px 10px;border-bottom:1px solid var(--gray-border);vertical-align:top}
+.cve-table tbody tr:hover td{background:var(--gray-bg)}
+.cve-id{font-family:'SF Mono','Consolas',monospace;font-weight:600;font-size:12px;color:var(--primary-text);white-space:nowrap}
+.cve-name{margin-top:2px;font-size:11.5px;line-height:1.45;color:var(--text);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.cve-name.pending{color:var(--muted);font-style:italic}
+.cve-name-row{display:flex;align-items:flex-start;gap:6px;margin-top:2px}
+.cve-name-row .cve-name{margin-top:0;flex:1;min-width:0}
+.cve-cnvd{flex:0 0 auto;font-family:'SF Mono','Consolas',monospace;font-size:10px;line-height:1.7;padding:0 6px;border-radius:4px;background:var(--primary-light);color:var(--primary-text);text-decoration:none;white-space:nowrap}
+.cve-cnvd:hover{text-decoration:underline}
+.cve-evidence{max-width:320px;font-size:10.5px;color:var(--muted);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.cve-cell-sub{font-size:10.5px;color:var(--muted);margin-top:2px;line-height:1.4}
+.cve-conf{font-variant-numeric:tabular-nums}
+.cve-conf.low{color:var(--warn)}
+@media (max-width:900px){
+  .cve-card-body{grid-template-columns:minmax(0,1fr)}
+  .cve-stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cve-search{width:100%}
+}
+@media (max-width:640px){
+  .cve-stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cve-top-meta{display:none}
 }
 
 /* ── 弹窗 / 表单通用组件（收敛自 data-css）──────────────────── */

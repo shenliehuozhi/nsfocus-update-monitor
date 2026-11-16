@@ -659,6 +659,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _progress['products_done'] = len(existing_sources)
 
         if not all_items:
+            _merge_progress_errors(summary)
             summary['status'] = 'warning' if summary['errors'] else 'ok'
             summary['duration_s'] = int(time.time() - start)
             if mode == 'full':
@@ -795,6 +796,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         if zero_hashes_by_name:
             _build_zero_items_diag(summary, existing_sources, zero_hashes_by_name)
 
+        _merge_progress_errors(summary)
         summary['duration_s'] = int(time.time() - start)
         summary['finished_at'] = datetime.utcnow().isoformat()
         if mode == 'full':
@@ -838,6 +840,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         logger.error(f'Collection failed: {e}\n{traceback.format_exc()}')
         summary['status'] = 'error'
         summary['errors'].append(str(e)[:200])
+        _merge_progress_errors(summary)
         summary['duration_s'] = int(time.time() - start)
         summary['finished_at'] = datetime.utcnow().isoformat()
         with _progress_lock:
@@ -869,6 +872,42 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             _clear_collection_running()
         except Exception as e:
             logger.warning(f'Failed to clear collection_running in finally block: {e}')
+
+
+def _stats_snapshot(stats: dict) -> tuple:
+    return (
+        stats.get('fetches', 0),
+        stats.get('in_product_hits', 0),
+        stats.get('cross_sid_hits', 0),
+        stats.get('url_failures', 0),
+    )
+
+
+def _url_failure_detail(stats: dict, before: tuple) -> str:
+    """URL 大量失败时返回聚合说明，单条超时不重复上报。
+
+    只有真正影响数据完整性的情况才算失败：本轮一个页面都没成功，或失败
+    URL 不少于成功页面。失败行本身已由 collector 逐条 warning，这里只补
+    一条进入采集汇总，避免 errors_count=0 把不完整快照当成成功。
+    """
+    pages = (
+        (stats.get('fetches', 0) - before[0])
+        + (stats.get('in_product_hits', 0) - before[1])
+        + (stats.get('cross_sid_hits', 0) - before[2])
+    )
+    failures = stats.get('url_failures', 0) - before[3]
+    if failures and (pages == 0 or failures >= pages):
+        return f'{failures} 个 URL 请求失败（本轮成功 {pages} 个页面）'
+    return ''
+
+
+def _merge_progress_errors(summary: dict) -> None:
+    """把产品级/聚合失败从 _progress 并入采集汇总，汇总才能反映不完整采集。"""
+    with _progress_lock:
+        progress_errors = list(_progress.get('errors') or [])
+    for err in progress_errors:
+        if err not in summary['errors']:
+            summary['errors'].append(err)
 
 
 def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
@@ -904,7 +943,8 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
     # new value added by the shared_url_cache patch.
     shared_url_sids: dict = {}
 
-    cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0}
+    cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0,
+                   'urls_total': 0, 'url_failures': 0}
 
     # 2026-07-22 改动 3: 撤回通知 — 每个 sid 收集本次 cycle 被标 withdrawn 的行
     # 收集在 product 循环外,detector 再按 source_id 分发
@@ -916,6 +956,7 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
         if name not in existing_sources:
             continue
         src = existing_sources[name]
+        before_stats = _stats_snapshot(cycle_stats)
         try:
             # Quick mode: HEAD-check known URLs, GET only changed pages
             # 2026-07-22 改动 3: out_withdrawn 传给 collector 收集撤回行
@@ -929,6 +970,11 @@ def _collect_quick(existing_sources: dict, cookie: str, emit) -> list:
             all_items.extend(items)
             if per_src_withdrawn:
                 cycle_withdrawn_by_src.setdefault(src['id'], []).extend(per_src_withdrawn)
+            failure_detail = _url_failure_detail(cycle_stats, before_stats)
+            if failure_detail:
+                logger.warning(f'Quick {name}: {failure_detail}')
+                with _progress_lock:
+                    _progress['errors'].append(f'{name}: {failure_detail}')
             if items:
                 logger.info(f'Quick: {name} extracted {len(items)} items')
             elif zhash:
@@ -977,7 +1023,8 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
     # _collect_full delegates to _collect_quick — share the same cross-product cache.
     shared_url_cache: dict = {}
     shared_url_sids: dict = {}
-    cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0}
+    cycle_stats = {'fetches': 0, 'in_product_hits': 0, 'cross_sid_hits': 0,
+                   'urls_total': 0, 'url_failures': 0}
     cycle_withdrawn_by_src: dict = {}  # source_id -> [snap_dict, ...]
 
     for name, url in products:
@@ -988,6 +1035,7 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
         src = existing_sources[name]
         current_cookie = cookie
         session_idx = 0
+        before_stats = _stats_snapshot(cycle_stats)
         # Try each session in order on SessionExpiredError
         while session_idx < len(sessions):
             try:
@@ -1002,6 +1050,11 @@ def _collect_full(existing_sources: dict, sessions: list, cookie: str, emit) -> 
                 all_items.extend(items)
                 if per_src_withdrawn:
                     cycle_withdrawn_by_src.setdefault(src['id'], []).extend(per_src_withdrawn)
+                failure_detail = _url_failure_detail(cycle_stats, before_stats)
+                if failure_detail:
+                    logger.warning(f'Full {name}: {failure_detail}')
+                    with _progress_lock:
+                        _progress['errors'].append(f'{name}: {failure_detail}')
                 emit('collecting', product=name, items=len(items))
                 update_source_health(src['id'], 'ok', datetime.utcnow().isoformat())
                 touched_source_ids.append(src['id'])
@@ -1670,6 +1723,36 @@ def refresh_scheduler_jobs():
         logger.info('Database backup job added: daily 03:30 check')
     else:
         _scheduler.reschedule_job('nsfocus_db_backup', trigger='cron', hour=3, minute=30)
+    # CVE 情报独立于采集开关：只读现有快照并补齐外部评分，不依赖本轮采集
+    if not _scheduler.get_job('nsfocus_cve_extract'):
+        _scheduler.add_job(_run_cve_extract, 'interval', minutes=10,
+                           id='nsfocus_cve_extract', name='CVE Extraction',
+                           next_run_time=datetime.now() + timedelta(seconds=20))
+        logger.info('CVE extraction job added: every 10m')
+    else:
+        _scheduler.reschedule_job('nsfocus_cve_extract', trigger='interval', minutes=10)
+    if not _scheduler.get_job('nsfocus_cve_extract_full'):
+        _scheduler.add_job(_run_cve_extract_full, 'cron', hour=2, minute=45,
+                           id='nsfocus_cve_extract_full', name='CVE Extraction (full)')
+        logger.info('CVE full rescan job added: daily 02:45')
+    else:
+        _scheduler.reschedule_job('nsfocus_cve_extract_full', trigger='cron',
+                                  hour=2, minute=45)
+    if not _scheduler.get_job('nsfocus_cve_meta'):
+        _scheduler.add_job(_run_cve_meta_sync, 'interval', minutes=5,
+                           id='nsfocus_cve_meta', name='CVE Metadata Sync',
+                           next_run_time=datetime.now() + timedelta(seconds=45))
+        logger.info('CVE metadata sync job added: every 5m')
+    else:
+        _scheduler.reschedule_job('nsfocus_cve_meta', trigger='interval', minutes=5)
+    # CNVD/CNNVD 中文名称只读本地导出目录；目录不存在时任务直接跳过
+    if not _scheduler.get_job('nsfocus_cnvd_import'):
+        _scheduler.add_job(_run_cnvd_import, 'interval', minutes=60,
+                           id='nsfocus_cnvd_import', name='CNVD Import',
+                           next_run_time=datetime.now() + timedelta(seconds=60))
+        logger.info('CNVD import job added: every 60m')
+    else:
+        _scheduler.reschedule_job('nsfocus_cnvd_import', trigger='interval', minutes=60)
     logger.info(f'Scheduler jobs refreshed (enabled={enabled})')
 
 
@@ -2078,6 +2161,63 @@ def _run_db_backup():
         logger.error(f'[DB-BACKUP] run failed: {e}')
 
 
+# ── CVE extraction / metadata sync ───────────────────────────────────────────
+
+def _run_cve_extract():
+    """增量提取快照描述中的 CVE；描述未变的快照由 SQL 预过滤跳过。"""
+    try:
+        from src.core.cve_extract import scan_pending
+        result = scan_pending()
+        if result['scanned']:
+            logger.info('[CVE-EXTRACT] scanned=%d links=%d errors=%d',
+                        result['scanned'], result['cves'], result['errors'])
+    except Exception as e:
+        logger.error(f'[CVE-EXTRACT] scan failed: {e}')
+
+
+def _run_cve_extract_full():
+    """每日强制重扫：用于解析器升级或历史数据修正。"""
+    try:
+        from src.core.cve_extract import scan_pending
+        result = scan_pending(force=True)
+        logger.info('[CVE-EXTRACT] full rescan: scanned=%d links=%d errors=%d',
+                    result['scanned'], result['cves'], result['errors'])
+    except Exception as e:
+        logger.error(f'[CVE-EXTRACT] full rescan failed: {e}')
+
+
+def _run_cve_meta_sync():
+    """按 NVD 限速补齐缺失/到期的 CVE 评分。"""
+    try:
+        from src.core.cve_meta import sync_pending
+        result = sync_pending()
+        if result.get('skipped'):
+            logger.debug('[CVE-META] skipped: %s', result.get('reason'))
+        elif result.get('selected'):
+            logger.info('[CVE-META] candidates=%d selected=%d ok=%d not_found=%d '
+                        'rejected=%d errors=%d elapsed=%.2fs',
+                        result['candidates'], result['selected'], result['ok'],
+                        result['not_found'], result['rejected'], result['errors'],
+                        result['elapsed_s'])
+    except Exception as e:
+        logger.error(f'[CVE-META] sync failed: {e}')
+
+
+def _run_cnvd_import():
+    """导入本地 CNVD/CNNVD 导出文件，补充中文名称与 CNVD 编号。"""
+    try:
+        from src.core.cnvd_import import import_cnvd_files
+        result = import_cnvd_files()
+        if result.get('reason') == 'dir_missing':
+            logger.debug('[CNVD] import dir missing: %s', result.get('directory'))
+        elif result.get('imported_files'):
+            logger.info('[CNVD] imported files=%d records=%d cves=%d unmatched=%d errors=%d',
+                        result['imported_files'], result['records'], result['cves'],
+                        result['unmatched'], result['errors'])
+    except Exception as e:
+        logger.error(f'[CNVD] import failed: {e}')
+
+
 # ── Database cleanup ──────────────────────────────────────────────────────────
 
 def _next_cleanup_run():
@@ -2086,6 +2226,62 @@ def _next_cleanup_run():
     if tomorrow <= datetime.utcnow():
         tomorrow += timedelta(days=1)
     return tomorrow
+
+
+def _delete_snapshots_with_children(ids):
+    """按 id 删除快照，先删派生表。
+
+    snapshot_cve / cve_scan_state 的外键没有 ON DELETE CASCADE，直接删快照会被
+    FOREIGN KEY constraint 挡住，导致保留清理一条也删不掉。
+    """
+    from src.models.database import execute_rowcount
+    deleted = 0
+    ids = list(ids)
+    for start in range(0, len(ids), 500):
+        chunk = tuple(ids[start:start + 500])
+        marks = ','.join('?' * len(chunk))
+        execute_rowcount(f'DELETE FROM snapshot_cve WHERE snapshot_id IN ({marks})', chunk)
+        execute_rowcount(f'DELETE FROM cve_scan_state WHERE snapshot_id IN ({marks})', chunk)
+        deleted += execute_rowcount(f'DELETE FROM snapshots WHERE id IN ({marks})', chunk)
+    return deleted
+
+
+def cleanup_snapshots(per_group: Optional[int] = None) -> dict:
+    """按 (source_id, path_id, version_branch, package_type) 每组保留最新 N 条快照。
+
+    path_id 必须参与分组：NSFocus 多 chain（海光/飞腾/鲲鹏/…）共享同一升级文件，
+    同一文件按 path_id 存多条；漏掉 path_id 会把跨 chain 行合并成一组，误删后
+    下次采集重新入库形成 phantom-新增。
+    """
+    from src.models.database import query
+    if per_group is None:
+        cfg = query("SELECT value FROM system_settings WHERE key = 'snapshots_per_group'")
+        per_group = int(cfg[0]['value']) if cfg else 5
+    before = query("SELECT COUNT(*) AS c FROM snapshots")[0]['c']
+    rows = query("""
+        SELECT id FROM (
+            SELECT id,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY source_id, path_id, version_branch, package_type
+                       ORDER BY published_at DESC
+                   ) AS rn
+            FROM snapshots
+        ) ranked
+        WHERE rn > ?
+          AND id NOT IN (
+              SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
+          )
+          AND id NOT IN (
+              SELECT snapshot_id FROM digest_queue WHERE snapshot_id IS NOT NULL
+          )
+          AND id NOT IN (
+              SELECT snapshot_id FROM delayed_queue WHERE snapshot_id IS NOT NULL
+          )
+    """, (per_group,))
+    deleted = _delete_snapshots_with_children(r['id'] for r in rows)
+    after = query("SELECT COUNT(*) AS c FROM snapshots")[0]['c']
+    return {'before': before, 'deleted': deleted, 'after': after,
+            'per_group': per_group}
 
 
 def _run_db_cleanup():
@@ -2211,107 +2407,38 @@ def _run_db_cleanup():
     try:
         # 6. snapshots: 按 (source_id, path_id, version_branch, package_type) 分组，
         #    每组保留 N 条最新快照。
-        #    关键：必须把 path_id 加进 group 维度。
-        #    NSFocus 多 chain (海光/飞腾/鲲鹏/标准版/...) 共享同一升级文件，
-        #    同一文件在 DB 里按 path_id 存了多条。如果 group 不带 path_id，
-        #    这些跨 chain 行会被错误合并到一个组，每组数 > per_group 时
-        #    凌晨清理会 DELETE 老 path_id 的行，下次 collect 重新入库形成
-        #    phantom-新增（detector 误报为新包）。
-        from src.models.database import query as db_query
-        limit_cfg = db_query("SELECT value FROM system_settings WHERE key = 'snapshots_per_group'")
-        per_group = int(limit_cfg[0]['value']) if limit_cfg else 5
-
-        # 统计清理前
-        before = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
-
-        deleted = 0
-        # 对每个 source 分别处理（跨 source 的同组合并不合并）
-        # 找出所有需要清理的组（组内记录数 > per_group 且有非 rollback 记录）
-        groups = db_query("""
-            SELECT source_id, path_id, version_branch, package_type, COUNT(*) as cnt
-            FROM snapshots
-            WHERE path_id != ''
-            GROUP BY source_id, path_id, version_branch, package_type
-            HAVING COUNT(*) > ?
-        """, (per_group,))
-
-        for g in groups:
-            src_id, pid, ver, pkgtype, cnt = g['source_id'], g['path_id'], g['version_branch'], g['package_type'], g['cnt']
-            # 保留该组最新 per_group 条，其余删除。
-            # 2026-08-24: 加 AND id NOT IN (delivery_log) 跳过被推送历史引用的行,
-            # 避免 FK constraint failed (delivery_log.snapshot_id → snapshots.id)。
-            # 被引用的老 snap 保留: 它的 delivery_log 行 (>90 天) 由第 3 步先清,
-            # 下次 cleanup 时这里就不再被引用,自然能删。
-            deleted += execute_rowcount("""
-                DELETE FROM snapshots
-                WHERE source_id = ?
-                  AND path_id = ?
-                  AND version_branch = ?
-                  AND package_type = ?
-                  AND id NOT IN (
-                      SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
-                  )
-                  AND id NOT IN (
-                      SELECT snapshot_id FROM digest_queue WHERE snapshot_id IS NOT NULL
-                  )
-                  AND id NOT IN (
-                      SELECT id FROM snapshots
-                      WHERE source_id = ?
-                        AND path_id = ?
-                        AND version_branch = ?
-                        AND package_type = ?
-                      ORDER BY published_at DESC
-                      LIMIT ?
-                  )
-            """, (src_id, pid, ver, pkgtype, src_id, pid, ver, pkgtype, per_group))
-
-        # Cleanup fallback: 仍按旧的 (source_id, version_branch, package_type) 分组，
-        # 但只处理 path_id 为空的 snap（legacy rows，pre-path_id migration）。
-        # path_id 非空行已经在上面按 path_id 处理过了。
-        legacy_groups = db_query("""
-            SELECT source_id, version_branch, package_type, COUNT(*) as cnt
-            FROM snapshots
-            WHERE path_id = ''
-            GROUP BY source_id, version_branch, package_type
-            HAVING COUNT(*) > ?
-        """, (per_group,))
-        for g in legacy_groups:
-            src_id, ver, pkgtype, cnt = g['source_id'], g['version_branch'], g['package_type'], g['cnt']
-            deleted += execute_rowcount("""
-                DELETE FROM snapshots
-                WHERE source_id = ?
-                  AND version_branch = ?
-                  AND package_type = ?
-                  AND path_id = ''
-                  AND id NOT IN (
-                      SELECT snapshot_id FROM delivery_log WHERE snapshot_id IS NOT NULL
-                  )
-                  AND id NOT IN (
-                      SELECT snapshot_id FROM digest_queue WHERE snapshot_id IS NOT NULL
-                  )
-                  AND id NOT IN (
-                      SELECT id FROM snapshots
-                      WHERE source_id = ?
-                        AND version_branch = ?
-                        AND package_type = ?
-                        AND path_id = ''
-                        ORDER BY published_at DESC
-                      LIMIT ?
-                  )
-            """, (src_id, ver, pkgtype, src_id, ver, pkgtype, per_group))
-
-        after = db_query("SELECT COUNT(*) as c FROM snapshots")[0]['c']
+        stats = cleanup_snapshots()
         logger.info('snapshots 清理完成: 清理前 %d 条，删除 %d 条，保留 %d 条，每组上限 %d',
-                    before, deleted, after, per_group)
+                    stats['before'], stats['deleted'], stats['after'], stats['per_group'])
         _record_step('snapshots', True,
-                     f'清理前 {before} 条，删除 {deleted} 条，保留 {after} 条，每组上限 {per_group}',
-                     before=before,
-                     after=after,
-                     deleted=deleted, per_group=per_group)
+                     f"清理前 {stats['before']} 条，删除 {stats['deleted']} 条，"
+                     f"保留 {stats['after']} 条，每组上限 {stats['per_group']}",
+                     before=stats['before'],
+                     after=stats['after'],
+                     deleted=stats['deleted'], per_group=stats['per_group'])
     except Exception as e:
         logger.warning('snapshots 清理失败: %s', e)
         summary['errors'].append(f'snapshots: {e}')
         _record_step('snapshots', False, str(e))
+
+    try:
+        # 7. CVE 关联与扫描状态跟随快照：快照被分组清理后，孤儿行不能残留。
+        #    否则 snapshot_cve 会持续把已删快照里的 CVE 算进仪表盘候选。
+        orphan_links = execute_rowcount(
+            "DELETE FROM snapshot_cve "
+            "WHERE NOT EXISTS (SELECT 1 FROM snapshots s WHERE s.id = snapshot_id)")
+        orphan_scans = execute_rowcount(
+            "DELETE FROM cve_scan_state "
+            "WHERE NOT EXISTS (SELECT 1 FROM snapshots s WHERE s.id = snapshot_id)")
+        logger.info('CVE 孤儿数据清理完成: snapshot_cve %d 条，cve_scan_state %d 条',
+                    orphan_links, orphan_scans)
+        _record_step('cve_orphans', True,
+                     f'snapshot_cve {orphan_links} 条，cve_scan_state {orphan_scans} 条',
+                     deleted=orphan_links + orphan_scans)
+    except Exception as e:
+        logger.warning('CVE 孤儿数据清理失败: %s', e)
+        summary['errors'].append(f'cve_orphans: {e}')
+        _record_step('cve_orphans', False, str(e))
 
     # ── 发送清理汇总系统事件 ──
     try:

@@ -23,6 +23,9 @@ def init_all_tables():
     from src.models import snapshot
     snapshot.create_tables(db)
 
+    from src.models import cve
+    cve.create_tables(db)
+
     from src.models import subscription
     subscription.create_tables(db)
 

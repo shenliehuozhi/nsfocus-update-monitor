@@ -242,7 +242,7 @@ def _patch_digest_collaborators(monkeypatch, channel_type='wecom'):
     monkeypatch.setattr(router, '_throttle_im', lambda t: None)
 
 
-def test_digest_marks_failed_on_webhook_error(monkeypatch):
+def test_digest_marks_failed_on_webhook_error(fresh_db, monkeypatch):
     import requests
 
     import src.notifiers.router as router
@@ -269,7 +269,7 @@ def test_digest_marks_failed_on_webhook_error(monkeypatch):
     assert '45009' in logged[0]['error']
 
 
-def test_digest_skips_email_channel_without_logging_sent(monkeypatch):
+def test_digest_skips_email_channel_without_logging_sent(fresh_db, monkeypatch):
     import requests
 
     import src.notifiers.router as router

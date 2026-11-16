@@ -1,4 +1,5 @@
 """事件生命周期：open → acked → resolved、自愈 resolve、保留期清理。"""
+import json
 from datetime import datetime, timedelta
 
 import pytest
@@ -67,6 +68,26 @@ def _post(client, path, payload=None):
     return resp.get_json()
 
 
+def test_delete_session_resolves_expired_log_event(client):
+    from src.models import user_session
+    from src.models.database import execute
+
+    execute("INSERT INTO user_sessions (id, user_id, cookie_value) VALUES (15, 1, 'x')")
+    execute("INSERT INTO user_sessions (id, user_id, cookie_value) VALUES (16, 1, 'x')")
+    event_15 = _insert(
+        'WARNING', event_type='log_error',
+        message=json.dumps({'keyword': 'sid=15 过期'}, ensure_ascii=False))
+    event_16 = _insert(
+        'WARNING', event_type='log_error',
+        message=json.dumps({'keyword': 'sid=16 过期'}, ensure_ascii=False))
+
+    user_session.delete(15)
+
+    assert _row(event_15)['resolved_by'] == 'auto'
+    assert _row(event_15)['resolved_at'] is not None
+    assert _row(event_16)['resolved_at'] is None
+
+
 def test_state_filter_open_acked_resolved(client):
     open_id = _insert('ERROR')
     acked_id = _insert('WARNING', acked_at=datetime.utcnow().isoformat())
@@ -100,6 +121,8 @@ def test_resolved_events_are_not_unacked(client):
 
 
 def test_resolve_endpoint_marks_acked_and_resolved(client):
+    from src.core.timeutil import parse_ts, utc_now
+
     event_id = _insert('ERROR')
 
     body = _post(client, f'/api/system/events/{event_id}/resolve')
@@ -110,6 +133,11 @@ def test_resolve_endpoint_marks_acked_and_resolved(client):
     assert row['resolved_at'] is not None
     assert row['acked_at'] is not None, '已解决必须同时视为已读'
     assert row['resolved_by'] == 'user:1'
+
+    created = parse_ts(row['created_at'])
+    resolved = parse_ts(row['resolved_at'])
+    assert resolved >= created - timedelta(seconds=1), '解决时间不能早于创建时间'
+    assert abs((resolved - utc_now().replace(tzinfo=None)).total_seconds()) < 60
 
     # 幂等：再次 resolve 不重复计数
     assert _post(client, f'/api/system/events/{event_id}/resolve')['data']['resolved'] == 0
@@ -139,6 +167,20 @@ def test_resolve_all_respects_severity_and_time(client):
     assert _row(recent_error)['resolved_at'] is not None
     assert _row(old_error)['resolved_at'] is None
     assert _row(recent_warning)['resolved_at'] is None
+
+    from src.core.timeutil import parse_ts
+    resolved = parse_ts(_row(recent_error)['resolved_at'])
+    assert resolved >= parse_ts(_row(recent_error)['created_at']) - timedelta(seconds=1)
+
+
+def test_ack_all_uses_current_utc(client):
+    from src.core.timeutil import parse_ts
+
+    event_id = _insert('ERROR')
+    _post(client, '/api/system/events/ack-all', {'since_hours': 0})
+    row = _row(event_id)
+    assert row['acked_at'] is not None
+    assert parse_ts(row['acked_at']) >= parse_ts(row['created_at']) - timedelta(seconds=1)
 
 
 def test_resolve_all_skips_already_resolved(client):

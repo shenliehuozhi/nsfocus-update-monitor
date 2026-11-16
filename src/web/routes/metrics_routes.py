@@ -549,6 +549,10 @@ _SCHEDULER_JOB_IDS = (
     'nsfocus_site_check',
     'nsfocus_db_backup',
     'nsfocus_db_health',
+    'nsfocus_cve_extract',
+    'nsfocus_cve_extract_full',
+    'nsfocus_cve_meta',
+    'nsfocus_cnvd_import',
 )
 
 

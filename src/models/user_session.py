@@ -250,6 +250,14 @@ def delete(session_id: int) -> None:
     # Delete child table first (heartbeat_log -> user_sessions FK)
     execute("DELETE FROM heartbeat_log WHERE session_id = ?", (session_id,))
     execute("DELETE FROM user_sessions WHERE id = ?", (session_id,))
+    # Session 已不存在，对应的过期事件无法再处理，按自愈场景解决。
+    try:
+        from src.models.event_log import resolve_events
+        resolve_events(event_type='log_error',
+                       message_like=f'"sid={session_id} 过期"',
+                       resolved_by='auto')
+    except Exception:
+        pass
 
 
 def count_by_status(status: str) -> int:

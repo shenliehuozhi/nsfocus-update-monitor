@@ -2,6 +2,7 @@
 
 from src.core.logger import get_log_dir
 import glob
+import hashlib
 import json
 import os
 import re
@@ -567,12 +568,13 @@ def list_events():
 def ack_event(event_id):
     """标记单个事件已确认（已读不等于已解决）"""
     from src.models.database import execute
+    from src.core.timeutil import utc_now_str
     if not _ensure_event_lifecycle_columns():
         return {'code': 500, 'message': '数据库迁移失败'}, 500
     execute(
-        "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
+        "UPDATE system_event_log SET acked_at = ? "
         "WHERE id = ? AND acked_at IS NULL AND resolved_at IS NULL",
-        (event_id,)
+        (utc_now_str(), event_id)
     )
     return {'code': 0, 'data': {'acked_id': event_id}}
 
@@ -608,6 +610,7 @@ def ack_all_events():
     if not _ensure_event_lifecycle_columns():
         return {'code': 500, 'message': '数据库迁移失败'}, 500
 
+    from src.core.timeutil import utc_now_str
     where = ['acked_at IS NULL', 'resolved_at IS NULL']
     params = []
     if severity_filter:
@@ -618,9 +621,9 @@ def ack_all_events():
         params.append(f'-{since_hours}')
 
     execute(
-        "UPDATE system_event_log SET acked_at = datetime('now', 'utc') "
+        "UPDATE system_event_log SET acked_at = ? "
         "WHERE " + ' AND '.join(where),
-        tuple(params)
+        tuple([utc_now_str()] + params)
     )
     return {'code': 0, 'data': {
         'message': 'all acked',
@@ -2134,8 +2137,14 @@ def ingest_log_alert():
     context = body.get('context', '')
     line_number = body.get('line_number')
 
-    # Deduplicate: don't re-alert for same (file+type+keyword) within 5 min
-    key = (log_file, error_type, keyword)
+    # Deduplicate within 5 min. app.log 与 service_error.log 记录同一条 WARNING，
+    # 按 context 去重可避免同一错误在事件中心出现两遍；context 为空时退回按文件去重。
+    ctx = (context or '').strip()
+    if ctx:
+        ctx_key = hashlib.sha1(ctx.encode('utf-8', 'replace')).hexdigest()
+        key = (error_type, keyword, ctx_key)
+    else:
+        key = (log_file, error_type, keyword)
     now = datetime.utcnow().timestamp()
     with _dedup_lock:
         last_seen = _log_alert_dedup.get(key, 0)

@@ -39,7 +39,7 @@ def test_logout_and_navigation_clear_timers():
         assert marker in clear_all, f'登出未清理 {marker}'
 
     page_timers = CORE[CORE.index('function _clearPageTimers'):CORE.index('function _clearAllTimers')]
-    for marker in ('_logTimer', 'window._obsTimer'):
+    for marker in ('_logTimer', 'window._obsTimer', 'closeCveModal'):
         assert marker in page_timers, f'切页未清理 {marker}'
 
     show = CORE[CORE.index('function showPage('):]

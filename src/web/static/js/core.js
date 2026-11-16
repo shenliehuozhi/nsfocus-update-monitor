@@ -247,6 +247,7 @@ async function doLogin(){
 }
 function _clearPageTimers(page){
   if(typeof closeEventsCenterModal==='function')closeEventsCenterModal();
+  if(typeof closeCveModal==='function')closeCveModal();
   if(page==='logs'){
     if(_logTimer){clearInterval(_logTimer);_logTimer=null;}
   }else if(page==='observability'){

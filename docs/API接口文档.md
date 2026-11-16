@@ -856,6 +856,95 @@ data: {"processed": 3, "errors": 0}
 - `database` 是进程内 SQLite 写路径统计，不随 `hours` 变化：`operations` / `errors` / `timeouts` 自本次进程启动累计，重启清零；`timeouts` = `python_lock_timeouts`（进程内写队列等待超预算）+ `sqlite_busy_errors`（SQLite 报 locked/busy），`timeout_rate` = `timeouts / operations`，无写操作时为 `0.0`。`lock_wait_ms` / `sqlite_ms` / `total_ms` 分别是排队等待、SQL 执行、两者合计的毫秒分位数（最近 `sample_limit`=1024 次写的最近秩 p50/p95/p99），无样本时为 `null`（Prometheus 输出 `NaN`）。写队列与 SQLite `busy_timeout` 共用 `wait_budget_seconds`（默认 10 秒）预算，超时即失败返回，不再无限重试。Prometheus 对应 `nsfocus_db_write_operations`、`nsfocus_db_write_errors`、`nsfocus_db_write_timeouts{reason="python_lock"|"sqlite_busy"}`、`nsfocus_db_write_timeout_rate`、`nsfocus_db_write_wait_budget_seconds`、`nsfocus_db_write_samples{scope="count"|"limit"}`、`nsfocus_db_write_{lock_wait,sqlite,total}_ms{quantile="p50"|"p95"|"p99"}`。
 - `maintenance.enabled` 读取 `system_settings.maintenance_mode`；开启后所有订阅推送被抑制，采集照常。
 - `site` 为 `nsfocus_site_check` 每 5 分钟对 `https://update.nsfocus.com/` 的探测结果：HTTP `< 500` 视为 `up`，5xx/超时/连接错误为 `down`，从未探测为 `unknown`；`consecutive_failures` 连续失败次数，状态切换时写 `site_unavailable` / `site_recovered` 系统事件。`site.history` 为时间升序采样点 `{t, ms, s}`，`site.history_summary` 为 `{samples, failures, avg_ms, max_ms}`，`site.history_hours` 为窗口小时数；超过 180 个采样按时间桶平均，失败桶保留 `s=down` / `ms=null`。`format=prometheus` 时不返回历史，避免抓取响应体膨胀。
-- `scheduler_jobs` 始终返回已知任务（采集、心跳、汇总、投递队列、清理、渠道体检、站点可用性），`status` 为 `running` / `stopped` / `disabled`；任务未注册时 `next_run` / `seconds_until` 为 `null`。站点探测独立于采集调度器，采集关闭时仍可能为 `running`。
+- `scheduler_jobs` 始终返回已知任务（采集、心跳、汇总、投递队列、清理、渠道体检、站点可用性、数据库备份、数据库健康、CVE 提取、CVE 全量重扫、CVE 评分同步、CNVD 导入），`status` 为 `running` / `stopped` / `disabled`；任务未注册时 `next_run` / `seconds_until` 为 `null`。站点探测、数据库健康与 CVE 任务独立于采集调度器，采集关闭时仍可能为 `running`。
 - 网页端「仪表盘」页面消费同一接口，提供窗口切换、30 秒自动刷新和 Prometheus 抓取地址；页面不读取或展示 `MONITOR_METRICS_TOKEN`。
 - 「重启服务」调用 `POST /api/system/restart`（登录鉴权，Cookie 请求需 CSRF）。固定检查 `nsfocus-monitor.service` 的 MainPID 是否等于当前进程，非受管实例返回 HTTP 409 / code 409；systemd 查询或线程安排失败返回 HTTP 503 / code 503；成功返回 code 0，仅表示已安排延迟重启请求。使用 systemd restart 而非 SIGTERM，后者在 `Restart=on-failure` 下不会自动重启。
+
+---
+
+## 14. CVE 情报
+
+只统计 `status='active'` 快照的 `description_raw` 提取结果；时间窗口按 `snapshots.published_at`，为空回退 `first_seen_at`，按 UTC 比较。`cve_meta.status='rejected'` 的 CVE 不参与统计。「关联 CVE」表示描述中出现，不等同于该版本修复了这些漏洞。
+
+### GET /api/cve/summary
+
+参数：`days`（默认 30，范围 1–365）。返回按 CVE 聚合的窗口概览：
+
+```json
+{
+  "code": 0,
+  "data": {
+    "generated_at": "2026-11-14T07:10:00",
+    "window_days": 30,
+    "totals": {"links": 128, "snapshots": 42, "distinct_cves": 96,
+               "scored_cves": 61, "unscored_cves": 35, "cnvd_cves": 54},
+    "by_severity": {"critical": 3, "high": 18, "medium": 40,
+                    "low": 0, "unknown": 35},
+    "by_device": [{"product_name": "WAF", "cves": 52, "links": 68,
+                   "sys_links": 50, "rule_links": 18,
+                   "latest_at": "2026-11-13T16:20:00"}],
+    "by_package_type": [{"package_type": "系统升级包", "pkg_kind": "sys",
+                         "cves": 40, "links": 55}],
+    "top_cves": [{"cve_id": "CVE-2026-1234", "cvss_score": 9.8,
+                  "cvss_version": "3.1", "severity": "critical",
+                  "description": "Remote code execution in an example product.",
+                  "name_zh": "示例产品远程代码执行漏洞",
+                  "description_zh": "攻击者可构造请求执行任意命令。",
+                  "cnvd_id": "CNVD-2026-10001",
+                  "cnvd_url": "https://www.cnvd.org.cn/flaw/show/CNVD-2026-10001",
+                  "device_count": 2, "devices": ["WAF", "IPS"],
+                  "pkg_kinds": ["sys"], "links": 3,
+                  "latest_at": "2026-11-13T16:20:00"}],
+    "trend": [{"date": "2026-10-16", "critical": 0, "high": 1,
+               "medium": 2, "low": 0, "unknown": 3}]
+  }
+}
+```
+
+口径：同一 CVE 跨产品/升级包会出现多条 `snapshot_cve` 行，`totals.links` 为行数、`totals.distinct_cves` 为去重 CVE 数、`totals.cnvd_cves` 为已关联 CNVD 编号的去重 CVE 数；`by_device` 的 `sys_links` / `rule_links` 按包类型是否含「规则」/`rule` 划分；`top_cves` 最多 10 条，按严重度、CVSS 分数、最近出现时间排序；`trend` 覆盖窗口内每日去重 CVE 数。`description` 为 NVD 英文漏洞描述（`cve_meta.description_en`），`name_zh` / `description_zh` / `cnvd_id` 来自本地导入的 CNVD/CNNVD 数据，缺失时为空字符串；前端名称优先 `name_zh`，其次 `description_zh`，最后回退英文 `description`，CVE 编号始终为主标识。
+
+### GET /api/cve/list
+
+参数：`days`（默认 30）、`severity`（`critical|high|medium|low|unknown`）、`product`、`package_type`、`q`（匹配 CVE ID / CNVD 编号 / 中文名称 / 英文名称 / 文件名 / 包版本）、`page`（默认 1）、`limit`（默认 50，上限 200）。`severity` 非法返回 HTTP 400。
+
+```json
+{
+  "code": 0,
+  "data": {
+    "items": [{
+      "snapshot_id": 123, "cve_id": "CVE-2026-1234",
+      "description": "Remote code execution in an example product.",
+      "name_zh": "示例产品远程代码执行漏洞",
+      "description_zh": "攻击者可构造请求执行任意命令。",
+      "cnvd_id": "CNVD-2026-10001",
+      "cnvd_url": "https://www.cnvd.org.cn/flaw/show/CNVD-2026-10001",
+      "evidence": "修复 CVE-2026-1234 …", "confidence": 0.9,
+      "product_name": "WAF", "package_type": "系统升级包", "pkg_kind": "sys",
+      "version_branch": "V6.0", "file_name": "waf_v6.0.9.bin",
+      "package_version": "6.0.9", "source_url": "https://update.nsfocus.com/…",
+      "released_at": "2026-11-13T16:20:00", "severity": "critical",
+      "cvss_score": 9.8, "cvss_version": "3.1", "meta_status": "ok"
+    }],
+    "total": 128, "page": 1, "limit": 50, "days": 30
+  }
+}
+```
+
+`source_url` 可能为相对路径，前端展示时补 `https://update.nsfocus.com` 前缀。`meta_status` 为 `pending` / `ok` / `not_found` / `error` / `rejected`，由 `nsfocus_cve_meta` 任务异步补齐 CVSS 评分与英文 `description`；评分缺失时 `cvss_score` 为 `null`、`severity` 为 `unknown`。中文名称与 CNVD 编号由 `nsfocus_cnvd_import` 从本地导出文件补充，未导入时为空字符串。
+
+### 中文名称与 CNVD 导入
+
+CNVD 公开站点对非浏览器请求返回 HTTP 521 的 JS 挑战，批量数据仅向注册用户开放，全量接口只对技术组成员/兼容厂商开放；服务端不抓取网页、不绕过反爬。管理员将 CNVD「统计查询 → 共享数据」每周 XML（或 CNNVD 公开 XML、接口导出的 JSON/CSV）放入 `MONITOR_CNVD_DIR`（默认 `data/cnvd/`），`nsfocus_cnvd_import` 每 60 分钟增量导入：
+
+- 支持 `.xml` / `.json` / `.csv` 及其 `.gz` 压缩文件，字段名兼容中英文；单文件上限 32 MB。
+- 只补充 `cve_meta.name_zh` / `description_zh` / `cnvd_id` / `cnvd_url`，不覆盖 NVD 评分；同一 CVE 命中多条记录时保留 CNVD 编号更新、名称更完整的一条。
+- 同一文件大小与修改时间未变化时跳过；新增/变更文件才重新解析。CNVD 与 CVE 并非一一对应，缺失的 CVE 继续显示英文名称或「名称待同步」。
+
+### 评分同步
+
+- 调度：`nsfocus_cve_meta` 每 5 分钟同步一批，`nsfocus_cve_extract` 每 10 分钟增量提取，`nsfocus_cve_extract_full` 每日 02:45 全量重扫，`nsfocus_cnvd_import` 每 60 分钟导入本地中文数据。
+- 数据源：NVD API 2.0，优先级 CVSS v4.0 → v3.1 → v3.0 → v2，取 `Primary` 指标。
+- 限速：无 `MONITOR_NVD_API_KEY` 时每轮 5 条（5 次/30 秒），有 key 时每轮 20 条（50 次/30 秒）。403/429 立即结束本轮并 15 分钟后重试。
+- 退避：`not_found` 7 天后重试；`error` 按 10/30/120/360/1440 分钟递增。超时、连接错误、HTTP 5xx、无效 JSON 视为 NVD 临时故障，15 分钟后重试并结束本轮；失败只更新状态与退避字段，不清空已有评分。
+- 关闭：`MONITOR_CVE_LOOKUP=off|0|false|no|disabled`。
+- 清理：每日 03:00 删除已不存在快照的 `snapshot_cve` / `cve_scan_state` 孤儿行。

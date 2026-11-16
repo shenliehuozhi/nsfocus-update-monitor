@@ -1,6 +1,9 @@
 // 经典脚本，无构建；仪表盘页面（/api/metrics 的可视化层）
 let _obsHours = 24;
 let _obsRequestSeq = 0;
+let _cveSummary = null;
+let _cveModalSeq = 0;
+const _cveFilter = { severity: '', product: '', package_type: '', q: '', page: 1 };
 
 async function observability(){
   document.getElementById('app').innerHTML = `
@@ -53,22 +56,27 @@ async function obsRefresh(manual){
   const navSeq = _navSeq;
   const btn = document.getElementById('obsRefreshBtn');
   if (btn) { btn.disabled = true; btn.textContent = '刷新中…'; }
-  const r = await api('/metrics?hours=' + _obsHours);
+  const [r, cveR] = await Promise.all([
+    api('/metrics?hours=' + _obsHours),
+    api('/cve/summary?days=' + _obsWindowDays(_obsHours)),
+  ]);
   if (seq !== _obsRequestSeq || navStale(navSeq) || root !== document.getElementById('obs-root')) return;
   if (btn) { btn.disabled = false; btn.textContent = '↻ 刷新'; }
   if (r.code !== 0 || !r.data) {
     root.innerHTML = `<div class="empty">加载失败：${escHtml(r.message || '未知错误')}</div>`;
     return;
   }
-  root.innerHTML = _obsRender(r.data);
+  _cveSummary = (cveR && cveR.code === 0 && cveR.data) ? cveR.data : null;
+  root.innerHTML = _obsRender(r.data, _cveSummary);
   _applyPctBars(root);
+  _applyCveBars(root);
   _renderCustPushTable((r.data.customers || {}).items || [], _obsWindowDays(_obsHours), _obsWindowLabel());
   const meta = document.getElementById('obsMeta');
   if (meta) meta.textContent = '更新于 ' + _obsTime(r.data.generated_at) + ' · 30 秒自动刷新';
   if (manual) toast('观测数据已刷新');
 }
 
-function _obsRender(d){
+function _obsRender(d, cve){
   const del = d.delivery || {}, queues = d.queues || {};
   const dq = queues.delayed || {}, dg = queues.digest || {};
   const col = d.collection || {}, ev = d.events || {};
@@ -126,15 +134,18 @@ function _obsRender(d){
       ${_obsSiteCard(site)}
     </div>
     <div class="obs-grid2">
+      ${_obsCveCard(cve)}
       ${_obsProductsCard(updates)}
+    </div>
+    <div class="obs-grid2">
       ${_obsSessionCard(sess)}
+      ${_obsCollectionCard(col, rules, proc, mmOn)}
     </div>
     <div class="obs-grid2">
       ${_obsDeliveryCard(del)}
       ${_obsQueueCard(dq, dg)}
     </div>
     <div class="obs-grid2">
-      ${_obsCollectionCard(col, rules, proc, mmOn)}
       ${_obsCustomersCard()}
     </div>
     <div class="obs-grid2">
@@ -194,7 +205,7 @@ function _obsSessionCard(sess){
 }
 
 function _obsCustomersCard(){
-  return `<div class="card">
+  return `<div class="card obs-span2">
     <div class="card-hd">
       <span>📨 订阅规则执行 · 客户推送</span>
       <span class="obs-muted ml-auto fs115 fw400">${_obsWindowLabel()} · 跟随右上角时间</span>
@@ -204,6 +215,358 @@ function _obsCustomersCard(){
       <div class="obs-foot">点击客户行查看推送历史</div>
     </div>
   </div>`;
+}
+
+function _obsCveCard(cve){
+  const win = _cveWindowLabel();
+  const head = `<div class="card-hd">🛡️ CVE 情报
+      <span class="obs-muted ml8 fs115 fw400">${win} · 按升级包发布日期统计</span>
+      <button class="btn btn-xs btn-soft-primary ml-auto shrink0" data-on-click="openCveModal">查看全部 ↗</button>
+    </div>`;
+  if (!cve){
+    return `<div class="card">${head}
+      <div class="card-bd"><div class="empty">CVE 数据暂不可用，随仪表盘自动重试</div></div>
+    </div>`;
+  }
+  const t = cve.totals || {}, sev = cve.by_severity || {};
+  const total = t.distinct_cves || 0;
+  const scored = t.scored_cves || 0;
+  const unscored = t.unscored_cves || 0;
+  const cnvd = t.cnvd_cves || 0;
+  const coverage = total ? Math.round(scored / total * 100) : 0;
+  const stats = [
+    ['严重', sev.critical || 0, 'critical'],
+    ['高危', sev.high || 0, 'high'],
+    ['中危', sev.medium || 0, 'medium'],
+    ['未评分', unscored, 'unknown'],
+    ['评分覆盖', coverage + '%', 'coverage'],
+  ].map(item => `<div class="cve-stat cve-stat-${item[2]}">
+      <b>${item[1]}</b><span>${item[0]}</span>
+    </div>`).join('');
+
+  const trend = Array.isArray(cve.trend) ? cve.trend : [];
+  const dayTotal = p => (p.critical || 0) + (p.high || 0) + (p.medium || 0) + (p.low || 0) + (p.unknown || 0);
+  const peak = Math.max(1, ...trend.map(dayTotal));
+  const bars = trend.map(p => {
+    const n = dayTotal(p);
+    const tone = p.critical ? 'critical' : (p.high ? 'high' : (p.medium ? 'medium' : (p.low ? 'low' : 'unknown')));
+    const h = n ? Math.max(6, Math.round(n / peak * 100)) : 2;
+    const tip = p.date + ' · 严重 ' + (p.critical || 0) + ' · 高危 ' + (p.high || 0)
+      + ' · 中危 ' + (p.medium || 0) + ' · 低危 ' + (p.low || 0) + ' · 未评分 ' + (p.unknown || 0);
+    return `<span class="cve-spark-bar cve-spark-${tone}" data-h="${h}" title="${escHtml(tip)}"></span>`;
+  }).join('');
+
+  const top = (cve.top_cves || []).slice(0, 3).map(c => {
+    const kinds = (c.pkg_kinds || []).map(k => k === 'rule' ? '规则包' : '系统包').join(' + ');
+    const name = _cveName(c);
+    return `<div class="cve-top-row">
+      <div class="cve-top-line">
+        ${_cveSevBadge(c.severity)}
+        <span class="cve-top-id" data-on-click="cveOpenFor" data-args='${_dataArgs(c.cve_id)}' title="在弹窗中筛选 ${escHtml(c.cve_id)}">${escHtml(c.cve_id)}</span>
+        <span class="cve-top-score">${_cveScore(c.cvss_score)}</span>
+        <span class="cve-top-links">${c.links || 0} 条</span>
+      </div>
+      <div class="cve-top-sub">
+        ${_cveCnvdLink(c)}
+        <span class="cve-top-name${name ? '' : ' pending'}" title="${escHtml(_cveNameHint(c) || '名称待同步')}">${escHtml(name || '名称待同步')}</span>
+        <span class="cve-top-meta">${c.device_count || 0} 个产品${kinds ? ' · ' + escHtml(kinds) : ''} · 最近 ${_obsTime(c.latest_at)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div class="card">
+    ${head}
+    <div class="card-bd">
+      <div class="cve-card-body">
+        <div class="cve-stats">${stats}</div>
+        <div class="cve-spark-wrap">
+          <div class="cve-spark">${bars || '<div class="cve-spark-empty">窗口内暂无关联 CVE</div>'}</div>
+          <div class="cve-spark-ft"><span>${escHtml((trend[0] || {}).date || '')}</span><span>${escHtml((trend[trend.length - 1] || {}).date || '')}</span></div>
+        </div>
+      </div>
+      <div class="cve-top">${top || '<div class="empty">窗口内暂无关联 CVE</div>'}</div>
+      <div class="obs-foot">「关联 CVE」来自升级包描述与规则包历史覆盖，不等同于本次修复；评分由 NVD / CNA 补齐${unscored ? `，尚有 ${unscored} 个待评分` : ''}${cnvd ? `；已关联 CNVD ${cnvd} 个` : ''}。</div>
+    </div>
+  </div>`;
+}
+
+function _applyCveBars(root){
+  if (!root || !root.querySelectorAll) return;
+  root.querySelectorAll('[data-h]').forEach(el => {
+    el.style.height = el.getAttribute('data-h') + '%';
+  });
+}
+
+function _cveWindowLabel(){
+  const days = _obsWindowDays(_obsHours);
+  return days === 1 ? '最近 1 天' : '最近 ' + days + ' 天';
+}
+
+function _cveName(item){
+  if (!item) return '';
+  return _cveClean(item.name_zh) || _cveClean(item.description_zh) || _cveClean(item.description);
+}
+
+function _cveClean(value){
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function _cveNameHint(item){
+  const zh = _cveClean(item && item.name_zh);
+  const en = _cveClean(item && item.description);
+  const hint = (zh && en && zh !== en) ? zh + ' · ' + en : (zh || en);
+  return hint.slice(0, 300);
+}
+
+function _cveCnvdLink(item){
+  const id = _cveClean(item && item.cnvd_id).toUpperCase();
+  if (!/^CNVD-\d{4}-\d+$/.test(id)) return '';
+  const url = 'https://www.cnvd.org.cn/flaw/show/' + id;
+  return `<a class="cve-cnvd" href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" title="在 CNVD 查看 ${escHtml(id)}">${escHtml(id)}</a>`;
+}
+
+function _cveSevBadge(sev){
+  const map = {
+    critical: ['严重', 'critical'],
+    high: ['高危', 'high'],
+    medium: ['中危', 'medium'],
+    low: ['低危', 'low'],
+    unknown: ['未评分', 'unknown'],
+  };
+  const item = map[sev] || [sev || '未知', 'unknown'];
+  return `<span class="cve-sev cve-sev-${item[1]}">${escHtml(item[0])}</span>`;
+}
+
+function _cveScore(score){
+  if (score === null || score === undefined || isNaN(Number(score))) {
+    return '<span class="obs-muted">—</span>';
+  }
+  const v = Number(score);
+  const tone = v >= 9 ? 'critical' : (v >= 7 ? 'high' : (v >= 4 ? 'medium' : 'low'));
+  return `<b class="cve-score cve-score-${tone}">${v.toFixed(1)}</b>`;
+}
+
+function openCveModal(){
+  _cveFilter.severity = '';
+  _cveFilter.product = '';
+  _cveFilter.package_type = '';
+  _cveFilter.q = '';
+  _cveFilter.page = 1;
+  return _showCveModal();
+}
+
+function _showCveModal(){
+  let m = document.getElementById('cveModal');
+  if (!m){
+    m = document.createElement('div');
+    m.id = 'cveModal';
+    m.innerHTML = `
+      <div class="modal-overlay" data-on-click="closeCveModal" data-self>
+        <div class="card modal-card-cve">
+          <div class="card-hd flex items-center">
+            <span>🛡️ CVE 情报</span>
+            <span class="ml8 muted-11-400" id="cveModalCount"></span>
+            <span class="ml-auto pointer text-gray-muted fs18 lh1 px4" data-on-click="closeCveModal">×</span>
+          </div>
+          <div class="cve-toolbar">
+            <div class="cve-filter-chips">
+              <button class="cve-filter-chip" data-cve-sev="" data-on-click="cveSetSeverity" data-args='${_dataArgs('')}'>全部</button>
+              <button class="cve-filter-chip" data-cve-sev="critical" data-on-click="cveSetSeverity" data-args='${_dataArgs('critical')}'>严重</button>
+              <button class="cve-filter-chip" data-cve-sev="high" data-on-click="cveSetSeverity" data-args='${_dataArgs('high')}'>高危</button>
+              <button class="cve-filter-chip" data-cve-sev="medium" data-on-click="cveSetSeverity" data-args='${_dataArgs('medium')}'>中危</button>
+              <button class="cve-filter-chip" data-cve-sev="low" data-on-click="cveSetSeverity" data-args='${_dataArgs('low')}'>低危</button>
+              <button class="cve-filter-chip" data-cve-sev="unknown" data-on-click="cveSetSeverity" data-args='${_dataArgs('unknown')}'>未评分</button>
+            </div>
+            <select id="cveProduct" class="dd sel-sm" data-on-change="cveFilterChange" data-args='${_dataArgs('product', '$value')}'></select>
+            <select id="cvePackage" class="dd sel-sm" data-on-change="cveFilterChange" data-args='${_dataArgs('package_type', '$value')}'></select>
+            <input id="cveSearch" class="input-sm cve-search" placeholder="搜索 CVE / CNVD / 名称 / 文件 / 版本" data-on-keydown="cveSearchEnter" data-key="Enter">
+            <button class="btn btn-outline btn-sm shrink0" data-on-click="cveSearchEnter">搜索</button>
+            <button class="btn btn-outline btn-sm shrink0" data-on-click="cveResetFilters">重置</button>
+          </div>
+          <div class="card-bd flex-1 o-auto p0" id="cveModalBody"><div class="p40 ta-center muted-13">加载中…</div></div>
+          <div class="card-bd cve-modal-ft">
+            <span class="muted-11-400" id="cveModalPageInfo"></span>
+            <span class="ml-auto flex gap8 items-center">
+              <button class="btn btn-outline btn-sm" id="cvePrevBtn" data-on-click="cveGoPage" data-args='${_dataArgs(-1)}'>上一页</button>
+              <button class="btn btn-outline btn-sm" id="cveNextBtn" data-on-click="cveGoPage" data-args='${_dataArgs(1)}'>下一页</button>
+            </span>
+          </div>
+          <div class="card-bd evt-foot-end">
+            <button class="btn btn-outline" data-on-click="closeCveModal">关闭</button>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+  }
+  m.classList.remove('hidden');
+  _cveSyncControls();
+  return loadCveModal();
+}
+
+function closeCveModal(){
+  _cveModalSeq++;
+  const m = document.getElementById('cveModal');
+  if (m) m.classList.add('hidden');
+}
+
+function cveOpenFor(cveId){
+  _cveFilter.severity = '';
+  _cveFilter.product = '';
+  _cveFilter.package_type = '';
+  _cveFilter.q = cveId || '';
+  _cveFilter.page = 1;
+  return _showCveModal();
+}
+
+function _cveFillSelect(el, placeholder, items, current){
+  if (!el) return;
+  const values = (items || []).slice();
+  const opts = [`<option value="">${placeholder}</option>`];
+  values.forEach(v => opts.push(`<option value="${escHtml(v)}">${escHtml(v)}</option>`));
+  if (current && values.indexOf(current) < 0){
+    opts.push(`<option value="${escHtml(current)}">${escHtml(current)}</option>`);
+  }
+  el.innerHTML = opts.join('');
+  el.value = current || '';
+}
+
+function _cveSyncControls(){
+  document.querySelectorAll('#cveModal [data-cve-sev]').forEach(el => {
+    el.classList.toggle('active', el.getAttribute('data-cve-sev') === _cveFilter.severity);
+  });
+  const search = document.getElementById('cveSearch');
+  if (search) search.value = _cveFilter.q;
+  const devices = ((_cveSummary || {}).by_device || []).map(d => d.product_name);
+  const pkgs = ((_cveSummary || {}).by_package_type || []).map(p => p.package_type);
+  _cveFillSelect(document.getElementById('cveProduct'), '全部产品线', devices, _cveFilter.product);
+  _cveFillSelect(document.getElementById('cvePackage'), '全部升级包类型', pkgs, _cveFilter.package_type);
+}
+
+function cveSetSeverity(value){
+  _cveFilter.severity = value || '';
+  _cveFilter.page = 1;
+  _cveSyncControls();
+  return loadCveModal();
+}
+
+function cveFilterChange(key, value){
+  if (key !== 'product' && key !== 'package_type') return;
+  _cveFilter[key] = value || '';
+  _cveFilter.page = 1;
+  return loadCveModal();
+}
+
+function cveSearchEnter(){
+  const el = document.getElementById('cveSearch');
+  const q = el ? el.value.trim() : '';
+  if (q === _cveFilter.q) return;
+  _cveFilter.q = q;
+  _cveFilter.page = 1;
+  return loadCveModal();
+}
+
+function cveResetFilters(){
+  _cveFilter.severity = '';
+  _cveFilter.product = '';
+  _cveFilter.package_type = '';
+  _cveFilter.q = '';
+  _cveFilter.page = 1;
+  _cveSyncControls();
+  return loadCveModal();
+}
+
+function cveGoPage(delta){
+  const step = Number(delta) || 0;
+  const target = _cveFilter.page + step;
+  if (target < 1) return;
+  const btn = document.getElementById(step < 0 ? 'cvePrevBtn' : 'cveNextBtn');
+  if (btn && btn.disabled) return;
+  _cveFilter.page = target;
+  return loadCveModal();
+}
+
+function _cveUpdatePager(total, limit){
+  const size = Math.max(1, limit || 50);
+  const pages = Math.max(1, Math.ceil(total / size));
+  const page = Math.min(Math.max(1, _cveFilter.page), pages);
+  _cveFilter.page = page;
+  const info = document.getElementById('cveModalPageInfo');
+  if (info) info.textContent = total ? `共 ${total} 条 · 第 ${page} / ${pages} 页` : '暂无关联记录';
+  const prev = document.getElementById('cvePrevBtn');
+  const next = document.getElementById('cveNextBtn');
+  if (prev) prev.disabled = page <= 1;
+  if (next) next.disabled = !total || page >= pages;
+}
+
+function _cveSourceUrl(url){
+  if (!url) return '';
+  if (/^https?:\/\//i.test(url)) return url;
+  return 'https://update.nsfocus.com' + (url.charAt(0) === '/' ? '' : '/') + url;
+}
+
+function _cveTableHtml(items){
+  const rows = items.map(it => {
+    const kind = it.pkg_kind === 'rule' ? '规则包' : '系统包';
+    const meta = it.cvss_version ? 'CVSS ' + escHtml(it.cvss_version)
+      : (it.meta_status === 'pending' ? '待补评分' : '');
+    const confidence = Math.round((Number(it.confidence) || 0) * 100);
+    const name = _cveName(it);
+    const sourceUrl = _cveSourceUrl(it.source_url);
+    const file = it.file_name
+      ? (sourceUrl
+        ? `<a class="text-primary" href="${escHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escHtml(it.file_name)}</a>`
+        : escHtml(it.file_name))
+      : '—';
+    const version = escHtml(it.version_branch || it.package_version || '—');
+    return `<tr>
+      <td>
+        <div class="cve-id">${escHtml(it.cve_id)}</div>
+        <div class="cve-name-row">
+          <div class="cve-name${name ? '' : ' pending'}" title="${escHtml(_cveNameHint(it) || '名称待同步')}">${escHtml(name || '名称待同步')}</div>
+          ${_cveCnvdLink(it)}
+        </div>
+        <div class="cve-evidence" title="${escHtml(it.evidence || '')}">${escHtml(it.evidence || '')}</div>
+      </td>
+      <td class="cve-cell-score">${_cveScore(it.cvss_score)}
+        <div class="cve-cell-sub">${_cveSevBadge(it.severity)}${meta ? ' <span>' + meta + '</span>' : ''}</div>
+      </td>
+      <td>${escHtml(it.product_name || '—')}<div class="cve-cell-sub">${kind}</div></td>
+      <td>${escHtml(it.package_type || '—')}</td>
+      <td><div>${version}</div><div class="cve-cell-sub">${file}</div><div class="cve-cell-sub">${_obsTime(it.released_at)}</div></td>
+      <td class="ta-right"><span class="cve-conf${confidence < 60 ? ' low' : ''}">${confidence}%</span></td>
+    </tr>`;
+  }).join('');
+  return `<div class="obs-scroll"><table class="cve-table">
+    <thead><tr><th>CVE</th><th>评分 / 严重度</th><th>设备（产品线）</th><th>升级包类型</th><th>版本 / 发布</th><th class="ta-right">置信度</th></tr></thead>
+    <tbody>${rows || '<tr><td colspan="6" class="empty">当前筛选条件下没有关联 CVE</td></tr>'}</tbody>
+  </table></div>`;
+}
+
+async function loadCveModal(){
+  const body = document.getElementById('cveModalBody');
+  if (!body) return;
+  const seq = ++_cveModalSeq;
+  const navSeq = _navSeq;
+  const params = new URLSearchParams();
+  params.set('days', String(_obsWindowDays(_obsHours)));
+  if (_cveFilter.severity) params.set('severity', _cveFilter.severity);
+  if (_cveFilter.product) params.set('product', _cveFilter.product);
+  if (_cveFilter.package_type) params.set('package_type', _cveFilter.package_type);
+  if (_cveFilter.q) params.set('q', _cveFilter.q);
+  params.set('page', String(_cveFilter.page));
+  body.innerHTML = '<div class="p40 ta-center muted-13">加载中…</div>';
+  const r = await api('/cve/list?' + params.toString());
+  if (seq !== _cveModalSeq || navStale(navSeq) || body !== document.getElementById('cveModalBody')) return;
+  if (r.code !== 0 || !r.data){
+    body.innerHTML = `<div class="empty">加载失败：${escHtml(r.message || '未知错误')}</div>`;
+    _cveUpdatePager(0, 0);
+    return;
+  }
+  const d = r.data;
+  body.innerHTML = _cveTableHtml(d.items || []);
+  _cveUpdatePager(d.total || 0, d.limit || 50);
+  const count = document.getElementById('cveModalCount');
+  if (count) count.textContent = '关联 CVE · ' + _cveWindowLabel();
 }
 
 function _obsDeliveryCard(del){
@@ -561,6 +924,9 @@ function _obsJobLabel(id){
     nsfocus_site_check: '站点可用性',
     nsfocus_db_backup: '数据库备份',
     nsfocus_db_health: '数据库健康',
+    nsfocus_cve_extract: 'CVE 提取',
+    nsfocus_cve_extract_full: 'CVE 全量重扫',
+    nsfocus_cve_meta: 'CVE 评分同步',
   };
   return map[id] || id || '未命名任务';
 }

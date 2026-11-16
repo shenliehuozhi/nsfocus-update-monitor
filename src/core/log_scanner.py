@@ -159,6 +159,18 @@ _HB_LINE_RE = re.compile(
     r' \| (.+)'
 )
 
+# NVD 是外部依赖，单条 CVE 的超时/5xx/限流已由 cve_meta 自己退避重试，
+# 不应再生成「网络错误」日志事件；调度层真正的 sync failed 仍会进入扫描。
+IGNORED_LINE_PATTERNS = (
+    re.compile(r'monitor\.cve_meta: \[CVE-META\] .* fetch failed:'),
+    re.compile(r'monitor\.cve_meta: \[CVE-META\] NVD rate limited'),
+)
+
+
+def _is_ignored_line(line: str) -> bool:
+    return any(p.search(line) for p in IGNORED_LINE_PATTERNS)
+
+
 
 # ── Core Logic ────────────────────────────────────────────
 
@@ -217,6 +229,8 @@ def _scan_file(filepath: str) -> list:
             for i, line in enumerate(lines):
                 line = line.strip()
                 if not line:
+                    continue
+                if _is_ignored_line(line):
                     continue
                 
                 # Check each error pattern

@@ -504,14 +504,18 @@ class NsfocusCollector(BaseCollector):
         stats.setdefault('fetches', 0)
         stats.setdefault('in_product_hits', 0)
         stats.setdefault('cross_sid_hits', 0)
+        stats.setdefault('urls_total', 0)
+        stats.setdefault('url_failures', 0)
         # Snapshot at start so per-call log can show this call's delta without
         # confusing the running total.
         call_fetches = stats['fetches']
         call_in_product = stats['in_product_hits']
         call_cross_sid = stats['cross_sid_hits']
+        call_url_failures = stats['url_failures']
 
         for url, ver, pkg, chain in urls:
             checked += 1
+            stats['urls_total'] += 1
             # Prepend BASE_URL if url is a relative path; if url already has scheme (// or http://) use as-is
             if url.startswith('//') or url.startswith('http://') or url.startswith('https://'):
                 full_url = url
@@ -744,18 +748,21 @@ class NsfocusCollector(BaseCollector):
             except SessionExpiredError:
                 raise
             except Exception as e:
+                stats['url_failures'] += 1
                 logger.warning(f'Quick {product_name}: {full_url}: {e}')
 
         # Compute deltas since start of this call (for per-product log clarity).
         delta_fetches = stats['fetches'] - call_fetches
         delta_in_product = stats['in_product_hits'] - call_in_product
         delta_cross_sid = stats['cross_sid_hits'] - call_cross_sid
+        delta_url_failures = stats['url_failures'] - call_url_failures
 
         logger.info(f'Quick {product_name}: {len(items)} items extracted from {total} URLs '
                     f'(deduped to {len(url_cache)} unique URLs; '
                     f'this call: fetches={delta_fetches}, '
                     f'in_product_hits={delta_in_product}, '
-                    f'cross_sid_hits={delta_cross_sid}; '
+                    f'cross_sid_hits={delta_cross_sid}, '
+                    f'url_failures={delta_url_failures}; '
                     f'cycle total so far: fetches={stats["fetches"]}, '
                     f'cross_sid_hits={stats["cross_sid_hits"]})')
 

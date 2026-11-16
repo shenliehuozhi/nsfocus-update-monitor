@@ -18,6 +18,7 @@ def register_routes(app: Flask):
     from src.web.routes.system_routes import bp as bp_system
     from src.web.routes.diff_routes import bp_diff
     from src.web.routes.metrics_routes import bp as bp_metrics
+    from src.web.routes.cve_routes import bp as bp_cve
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(session_bp)
@@ -33,6 +34,7 @@ def register_routes(app: Flask):
     app.register_blueprint(bp_system)
     app.register_blueprint(bp_diff)
     app.register_blueprint(bp_metrics)
+    app.register_blueprint(bp_cve)
 
     # Serve SPA index
     templates_dir = os.path.join(os.path.dirname(__file__), '..', 'templates')

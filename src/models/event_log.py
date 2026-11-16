@@ -232,6 +232,8 @@ def _event_filters(event_type: str = None, event_types: list | None = None,
 def resolve_event(event_id: int, resolved_by: str = 'manual') -> int:
     """标记单个事件为已解决；已解决的事件不重复处理（幂等）。"""
     from src.models.database import query, execute
+    from src.core.timeutil import utc_now_str
+
     rows = query(
         "SELECT COUNT(*) AS c FROM system_event_log "
         "WHERE id = ? AND resolved_at IS NULL",
@@ -239,12 +241,13 @@ def resolve_event(event_id: int, resolved_by: str = 'manual') -> int:
     )
     count = rows[0]['c'] if rows else 0
     if count:
+        now = utc_now_str()
         execute(
             "UPDATE system_event_log SET "
-            "acked_at = COALESCE(acked_at, datetime('now', 'utc')), "
-            "resolved_at = datetime('now', 'utc'), resolved_by = ? "
+            "acked_at = COALESCE(acked_at, ?), "
+            "resolved_at = ?, resolved_by = ? "
             "WHERE id = ? AND resolved_at IS NULL",
-            (resolved_by, event_id),
+            (now, now, resolved_by, event_id),
         )
     return count
 
@@ -260,6 +263,8 @@ def resolve_events(event_type: str = None, event_types: list | None = None,
     人工操作传 'user:<id>'。
     """
     from src.models.database import query, execute
+    from src.core.timeutil import utc_now_str
+
     filters, params = _event_filters(
         event_type=event_type, event_types=event_types, source_url=source_url,
         product_name=product_name, severity=severity,
@@ -272,12 +277,13 @@ def resolve_events(event_type: str = None, event_types: list | None = None,
     )
     count = rows[0]['c'] if rows else 0
     if count:
+        now = utc_now_str()
         execute(
             "UPDATE system_event_log SET "
-            "acked_at = COALESCE(acked_at, datetime('now', 'utc')), "
-            "resolved_at = datetime('now', 'utc'), resolved_by = ? "
+            "acked_at = COALESCE(acked_at, ?), "
+            "resolved_at = ?, resolved_by = ? "
             f"WHERE {where_sql}",
-            tuple([resolved_by] + params),
+            tuple([now, now, resolved_by] + params),
         )
     return count
 
