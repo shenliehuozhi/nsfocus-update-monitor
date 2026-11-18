@@ -11,15 +11,15 @@ const SES_MODE={'standard':'标品','vm':'虚拟化'};
 // 环境(--bg:#f1f4f8)上能看出边界。disc/confirm/refresh-pkg 都是采集任务,
 // 用同主题色统一。样式见 app.css .float-log,显隐统一走 .hidden。
 function _createFloatLog(logId, title, opts){
-  // opts.bodyClass: 'class' (refresh-pkg 用) | undefined (默认 id=${logId}-body)
+  // opts.bodyClass: 'class' (refresh-pkg 用) | undefined
+  // 注意：class 必须和 json-pre 合并成一个属性。写成两个 class 属性时浏览器只保留
+  // 第一个，refresh-pkg 的 querySelector('.log-body') 会拿到 null，日志永远不显示。
   const bodyClass = opts && opts.bodyClass;
-  const bodyAttrs = bodyClass
-    ? `class="${bodyClass}"`
-    : `id="${logId}-body"`;
+  const cls = `json-pre${bodyClass ? ' ' + bodyClass : ''}`;
   const el = document.createElement('div');
   el.id = logId;
   el.className = 'float-log hidden';
-  el.innerHTML = `<div class="table-hd-row"><span class="flex-1">${title}</span><button class="btn-x-plain" data-on-click="_hideById" data-args='${_dataArgs(logId)}'>×</button></div><div class="json-pre" ${bodyAttrs}></div>`;
+  el.innerHTML = `<div class="table-hd-row"><span class="flex-1">${title}</span><button class="btn-x-plain" data-on-click="_hideById" data-args='${_dataArgs(logId)}'>×</button></div><div id="${logId}-body" class="${cls}"></div>`;
   return el;
 }
 

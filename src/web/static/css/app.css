@@ -1248,6 +1248,8 @@ table thead th{height:36px!important;min-height:0!important;max-height:36px!impo
 .log-lv-info{color:#7ee787}
 .log-lv-debug{color:var(--gray-muted)}
 .float-log{position:fixed;bottom:16px;right:16px;width:340px;background:#fff;border:1px solid #c4b5fd;border-radius:10px;box-shadow:0 8px 32px rgba(124,58,237,0.18);z-index:9999}
+/* 包类型刷新日志含目录树缩进和长 URL：保留换行、长串强制折行，避免撑破卡片 */
+.float-log .json-pre{white-space:pre-wrap;word-break:break-all;line-height:1.55;min-height:36px}
 .ch-type-option[data-selected="1"]{background:var(--primary-light)}
 .cond-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;background:var(--primary-light);border:1px solid var(--primary-light);border-radius:20px;font-size:12px;margin:0 4px 4px 0}
 

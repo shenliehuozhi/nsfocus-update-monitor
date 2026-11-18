@@ -180,7 +180,28 @@ function toggleSection(key){
   icon.textContent=open?'▸':'▾';
 }
 
-async function confirmToggleActive(id,active,rowId){await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});if(r.code===0){toast(active?'已禁用':'已启用');const row=document.getElementById('pr-'+id);if(row){row.classList.toggle('row-disabled',!active);const badgeEl=row.querySelector('.active-badge');if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.classList.toggle('text-success-text',active);badgeEl.classList.toggle('text-danger',!active);}const cb=row.querySelector('input[type="checkbox"]');if(cb)cb.checked=active;row.querySelectorAll('button[data-on-click]').forEach(b=>{b.disabled=!active;b.classList.toggle('btn-disabled-look',!active);});}else{await products();}}else{toast(r.message||'操作失败','error');}}, active?'⏸️':'▶️', active?'启用':'禁用');}
+async function confirmToggleActive(id,active,rowId){
+  await confirmAct(active?'确认要启用该产品？':'确认要禁用该产品？', async ()=>{
+    const r=await api(`/system/products/${id}`,{method:'PUT',body:JSON.stringify({is_active:active})});
+    if(r.code!==0){toast(r.message||'操作失败','error');return;}
+    const row=document.getElementById('pr-'+id);
+    if(row){
+      row.classList.toggle('row-disabled',!active);
+      const badgeEl=row.querySelector('.active-badge');
+      if(badgeEl){badgeEl.textContent=active?'● 启用':'● 禁用';badgeEl.classList.toggle('text-success-text',active);badgeEl.classList.toggle('text-danger',!active);}
+      const cb=row.querySelector('input[type="checkbox"]');
+      if(cb)cb.checked=active;
+      row.querySelectorAll('button[data-on-click]').forEach(b=>{b.disabled=!active;b.classList.toggle('btn-disabled-look',!active);});
+    }else{
+      await products();
+    }
+    // 包类型为空时采集匹配不到任何路径，启用后自动刷新一次
+    const prod=(window._allProducts||[]).find(p=>String(p.id)===String(id));
+    const needPkg=active&&prod&&!fmtPkgTypes(prod.package_type);
+    toast(active?(needPkg?'已启用，包类型为空，正在自动刷新…':'已启用'):'已禁用');
+    if(needPkg)refreshPkgType(id);
+  }, active?'⏸️':'▶️', active?'启用':'禁用');
+}
 function _updateBatchUI(){
   const cbs=document.querySelectorAll('.prod-cb');
   const checked=document.querySelectorAll('.prod-cb:checked');
@@ -207,7 +228,12 @@ async function batchAction(action){
   const label=action==='enable'?'启用':'禁用';
   await confirmAct(`确认要${label}选中的 ${ids.length} 个产品？`, async ()=>{
     const r=await api('/options/products/batch',{method:'POST',body:JSON.stringify({ids,action})});
-    if(r.code===0){toast(`已${label} ${ids.length} 个产品`);await products();}
+    if(r.code===0){
+      // 批量启用时只提示、不并发刷新，避免同时打满绿盟站点
+      const empty=action==='enable'?(window._allProducts||[]).filter(p=>ids.some(id=>String(id)===String(p.id))&&!fmtPkgTypes(p.package_type)).length:0;
+      toast(empty?`已启用 ${ids.length} 个产品；其中 ${empty} 个包类型为空，请点 🔄 刷新`:`已${label} ${ids.length} 个产品`,empty?'warn':'success');
+      await products();
+    }
     else toast(r.message||'操作失败','error');
   }, action==='enable'?'▶️':'⏸️', label);
 }
