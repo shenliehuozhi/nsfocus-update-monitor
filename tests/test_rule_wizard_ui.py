@@ -36,6 +36,9 @@ def test_disabled_rules_are_visually_distinct():
     assert "title=\"点击${r.enabled?'停用':'启用'}规则\"" in source
     assert 'class="rule-status-cell"' in source
     assert 'class="rule-actions-cell"' in source
+    # 状态列紧跟 ID 列
+    assert '<th class="w50">ID</th><th class="w60">状态</th>' in source
+    assert '<td class="muted-12-w50">${r.id}</td><td class="rule-status-cell">' in source
     assert '.rule-row-off td:not(.rule-status-cell):not(.rule-actions-cell)' in CSS
     assert '.rule-row-off td:first-child' in CSS
     assert '.rule-status-cell .badge-grey' in CSS
