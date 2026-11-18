@@ -127,6 +127,7 @@ systemctl restart nsfocus-monitor
 |------|------|
 | [INSTALL.md](INSTALL.md) | **Docker / docker-compose 部署**(推荐) + 4 个实战踩坑 + 升级流程 + PHPSESSID 配置 + 内网离线 + HTTPS 反代 |
 | [用户手册](docs/用户手册.md) | 功能说明 + 参数配置 + FAQ |
+| [用户手册·图文版](docs/用户手册-图文版.md) | 按界面逐页说明，含仪表盘、站点可用性、外部观测接入截图 |
 | [部署运维](docs/部署运维.md) | systemd 一键安装 + 故障处理 |
 | [需求说明](docs/需求说明.md) | 业务需求 |
 | [架构设计](docs/系统架构.md) | 系统架构 |
