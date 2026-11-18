@@ -13,6 +13,19 @@ def _rule_modal_source() -> str:
     return source[start:end]
 
 
+def test_first_collection_guard_blocks_rule_creation():
+    """首轮采集完成前建规则会把全部存量包当新增推送，列表与向导都要拦截。"""
+    source = js_source()
+    assert "api('/settings/scheduler')" in source
+    assert 'collection_baseline_ready===false' in source
+    assert '首次采集正在进行中' in source
+    assert '尚未完成首次采集' in source
+    assert 'data-on-click="showPage" data-args=\'${_dataArgs(\'data\')}\'' in source
+    open_modal = source[source.index('async function openRModal'):]
+    assert 'if(!id&&_subsNeedFirstCollect)' in open_modal
+    assert '请先在「采集数据」页完成一次全量采集' in open_modal
+
+
 def test_rule_list_shows_push_hits_and_drills_down():
     """订阅列表增加近 30 天命中计数，便于识别长期未命中的无效规则。"""
     source = js_source()

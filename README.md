@@ -59,6 +59,8 @@ bash start.sh
 
 见 [Releases](https://github.com/shenliehuozhi/nsfocus-update-monitor/releases) 下载 zip 解压即用。
 
+双击 `nsfocus-monitor.exe` 后会弹出控制台窗口，显示访问地址 `http://127.0.0.1:9999`（首次启动还会显示 `admin` 初始密码）。窗口关闭即停止服务。
+
 ## 首次登入必做
 
 ```bash
@@ -107,7 +109,8 @@ systemctl restart nsfocus-monitor
 
 - **79 产品监控**: 覆盖 WAF / IPS / IDS / RSAS / UTS 等 79 个绿盟产品线（默认全开,可在 UI 关停个别）
 - **4 渠道通知**: 企业微信 / 钉钉 / 飞书 / 邮件（支持附件）
-- **双模采集**: Quick 扫描（每小时~30s）+ Full 扫描（每24h~25min）
+- **双模采集**: Quick 扫描（每小时~30s）+ Full 扫描（每24h~25min），采集数据页可手动触发全量采集
+- **首采护栏**: 完成一轮采集前禁止创建/启用订阅规则，避免首轮存量包被当作新增批量误推
 - **撤回检测**: 全模式支持，最少2次确认，间隔24h
 - **灵活推送**: 即时/延迟/汇总/维度选择（规则/渠道/客户）
 - **客户管理**: 客户档案、持有产品/版本、邮箱覆盖

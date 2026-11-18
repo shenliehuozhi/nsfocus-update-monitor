@@ -79,9 +79,11 @@ def _first_run_setup():
     except Exception:
         pass
     # Print to stderr so it shows in console / exe popup window
+    port = int(os.getenv('MONITOR_PORT', '9999'))
     sys.stderr.write(f'\n{"="*60}\n')
     sys.stderr.write(f'  绿盟升级监控 — 初始化完成\n')
     sys.stderr.write(f'{"="*60}\n')
+    sys.stderr.write(f'  访问地址: http://127.0.0.1:{port}\n')
     sys.stderr.write(f'  用户名: admin\n')
     sys.stderr.write(f'  初始密码: {raw_password}\n')
     sys.stderr.write(f'  密码文件: {pwd_file}\n')
@@ -90,8 +92,27 @@ def _first_run_setup():
 
 _first_run_setup()
 
+
+def _print_startup_banner(host: str, port: int):
+    """打印访问地址 —— Windows exe 双击启动时用户只能看到这个控制台窗口。"""
+    shown_host = '127.0.0.1' if host in ('0.0.0.0', '::', '::0') else host
+    lines = [
+        '',
+        '=' * 60,
+        '  绿盟升级监控 已启动',
+        f'  访问地址: http://{shown_host}:{port}',
+        f'  数据目录: {DATA_DIR}',
+        '  停止运行: 按 Ctrl+C 或直接关闭此窗口',
+        '=' * 60,
+        '',
+    ]
+    for line in lines:
+        print(line, flush=True)
+
+
 if __name__ == '__main__':
     port  = int(os.getenv('MONITOR_PORT',  '9999'))
     host  = os.getenv('MONITOR_HOST',     '127.0.0.1')
     debug = os.getenv('MONITOR_DEBUG',    'false').lower() == 'true'
+    _print_startup_banner(host, port)
     app.run(host=host, port=port, debug=debug, threaded=True)

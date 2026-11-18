@@ -551,6 +551,25 @@ def get_new_since(since: str) -> list:
     return query("SELECT * FROM snapshots WHERE first_seen_at > ? AND status = 'active' ORDER BY first_seen_at DESC", (since,))
 
 
+def collection_baseline_ready(is_running: bool = False) -> bool:
+    """是否已有一轮完整采集可作订阅基线。
+
+    优先看 quick/full cycle 完成标记（只在整轮检测结束后写入）。
+    旧库没有完成标记时回退到「已有快照」，但采集进行中不认快照——
+    首轮采集会边采边写快照，此时建规则仍会把存量包当新增推送。
+    """
+    from src.models.database import query
+    markers = query(
+        "SELECT 1 FROM system_settings "
+        "WHERE key IN ('last_quick_scan_at', 'last_full_scan_at') AND value <> '' LIMIT 1"
+    )
+    if markers:
+        return True
+    if is_running:
+        return False
+    return bool(query("SELECT 1 FROM snapshots LIMIT 1"))
+
+
 def get_latest_by_product(source_id: int) -> list:
     """Get the latest snapshot for each product/version/package_type combo."""
     from src.models.database import query

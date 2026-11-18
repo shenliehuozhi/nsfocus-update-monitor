@@ -328,11 +328,19 @@ async function triggerCollect(){
   }catch(e){}
   confirmAct('确认立即触发一次增量采集？', startCollect, '🔄', '确认采集', false);
 }
-async function startCollect(){
+async function triggerFullCollect(){
+  if(_collectRunning){toast('⚠️ 采集正在进行中，请等待完成后再操作','warn');return;}
+  try{
+    const sR=await api('/settings/scheduler');
+    if(sR.data?.is_running){_collectRunning=true;toast('⚠️ 采集正在进行中，请等待完成后再操作','warn');return;}
+  }catch(e){}
+  confirmAct('确认立即触发一次全量采集？会重新抓取全部产品的全部升级包，耗时约 25 分钟，采集期间请勿重复触发。', ()=>startCollect('full'), '🔍', '开始全量采集', false);
+}
+async function startCollect(mode='quick'){
   // 2026-08-21: 改用底部悬浮 banner, 不用 dashRunningBar (已删除 DOM)
   // 立即显示 "launching" 状态, 后续由 pollProgress 持续更新
   _showCollectBanner({phase: 'init', products_done: 0, products_total: 0, started_at: new Date().toISOString().slice(0, 19)});
-  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode:'quick'})});
+  const r=await api('/system/collect',{method:'POST',body:JSON.stringify({mode})});
   if(r.code===409){toast('采集正在进行中','warn');location.reload();return;}
   if(r.code!==0){toast(r.message,'error');location.reload();return;}
   _collectRunning=true;

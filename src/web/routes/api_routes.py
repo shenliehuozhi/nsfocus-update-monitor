@@ -500,6 +500,27 @@ def delete_customer(cid: int):
 
 bp_subscriptions = Blueprint('subscriptions', __name__, url_prefix='/api/subscriptions')
 
+
+def _initial_collection_guard() -> str | None:
+    """创建/启用订阅规则前要求至少完成一轮采集。
+
+    首轮采集会把站点上全部存量包识别为「新增」；此时若规则已启用，
+    会一次性推送大量历史包。返回错误文案表示应拒绝本次操作。
+    """
+    from src.core.scheduler import get_status
+    from src.models.snapshot import collection_baseline_ready
+    try:
+        running = bool(get_status().get('is_running'))
+    except Exception:
+        running = False
+    if collection_baseline_ready(running):
+        return None
+    if running:
+        return '首次采集正在进行中，请等待本轮采集完成后再创建或启用订阅规则，否则会把全部存量包当作新增批量推送。'
+    return ('尚未完成首次采集：请先到「采集数据」页点击「全量采集」，完成后再创建或启用订阅规则，'
+            '否则首次采集到的全部包会被当作新增批量推送。')
+
+
 @bp_subscriptions.route('', methods=['GET'])
 @require_auth
 def list_subscriptions():
@@ -559,6 +580,9 @@ def subscription_push_summary():
 @bp_subscriptions.route('', methods=['POST'])
 @require_auth
 def create_subscription():
+    guard = _initial_collection_guard()
+    if guard:
+        return jsonify({'code': 409, 'message': guard}), 409
     data = request.get_json() or {}
     channels = data.pop('channels', [])
     customers = data.pop('customers', [])
@@ -593,7 +617,13 @@ def update_subscription(rid: int):
     data = request.get_json() or {}
     channels = data.pop('channels', None)
     customers = data.pop('customers', None)
-    from src.models.subscription import update_rule, bind_channel, unbind_channel
+    from src.models.subscription import get_rule, update_rule, bind_channel, unbind_channel
+    if 'enabled' in data and int(data.get('enabled') or 0):
+        current = get_rule(rid)
+        if current and not current.get('enabled'):
+            guard = _initial_collection_guard()
+            if guard:
+                return jsonify({'code': 409, 'message': guard}), 409
     update_rule(rid, **data)
     if channels is not None:
         unbind_channel(rid)
@@ -639,6 +669,10 @@ def toggle_subscription(rid: int):
     rule = get_rule(rid)
     if not rule:
         return jsonify({'code': 40400}), 404
+    if not rule.get('enabled'):
+        guard = _initial_collection_guard()
+        if guard:
+            return jsonify({'code': 409, 'message': guard}), 409
     update_rule(rid, enabled=0 if rule.get('enabled') else 1)
     new_status = not rule.get('enabled')
     _audit('subscription_toggle', {'id': rid, 'enabled': new_status})
@@ -1626,6 +1660,8 @@ def get_scheduler():
     # last_run = MAX(last_collected_at) from content_sources（不依赖内存，重启后仍准确）
     last_row = query("SELECT MAX(last_collected_at) as m FROM content_sources WHERE last_collected_at IS NOT NULL")
     status['last_run'] = last_row[0]['m'] if last_row and last_row[0]['m'] else None
+    from src.models.snapshot import collection_baseline_ready
+    status['collection_baseline_ready'] = collection_baseline_ready(bool(status.get('is_running')))
     return jsonify({'code': 0, 'data': status})
 
 

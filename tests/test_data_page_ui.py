@@ -20,6 +20,16 @@ def test_ellipsis_utilities_are_defined():
     assert '.flex-1{flex:1}' in CSS
 
 
+def test_data_page_has_manual_full_collect_button():
+    source = js_source()
+    assert 'data-on-click="triggerFullCollect"' in source
+    assert '🔍 全量采集' in source
+    assert "async function triggerFullCollect()" in source
+    assert "async function startCollect(mode='quick')" in source
+    assert "body:JSON.stringify({mode})" in source
+    assert '开始全量采集' in source
+
+
 def test_tree_path_labels_truncate_single_line():
     """长路径名（如「V6.0R04F04及以前（RSASNX3-X/...）」）不能把树行折成两行。"""
     source = js_source()

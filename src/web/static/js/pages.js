@@ -977,8 +977,12 @@ async function subscriptions(){
       _chainStaleCache = {};
     } catch (e) { /* fall through with empty _dataAll → all chains look stale, user can still edit */ }
   }
-  const[rR,cR,oR,custR,pushR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers'),api('/subscriptions/push-summary?days=30')]);
+  const[rR,cR,oR,custR,pushR,schR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers'),api('/subscriptions/push-summary?days=30'),api('/settings/scheduler').catch(()=>({}))]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
+  // 首采护栏：完成一轮采集前建规则，首轮的全部存量包会被当作新增批量推送
+  const sch=schR.data||{};
+  _subsCollectRunning=!!sch.is_running;
+  _subsNeedFirstCollect=sch.collection_baseline_ready===false;
   _rulePushStats=(pushR&&pushR.code===0&&pushR.data)?{}:null;
   if(_rulePushStats)((pushR.data.items)||[]).forEach(it=>{_rulePushStats[String(it.id)]=it;});
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
@@ -986,12 +990,20 @@ async function subscriptions(){
 
 let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span class="match-badge-sm ${isLeaf?'match-leaf':'match-sub'}">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${_rulePushCell(r.id)}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openRModal">+ 创建规则</button></div><div class="card-bd"><table class="table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w140">命中 / 最近（近30天）</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="11" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+  const firstCollectBanner=_subsNeedFirstCollect
+    ? `<div class="warn-banner"><span class="fs16">⚠️</span><div class="flex-1">${_subsCollectRunning
+        ? '首次采集正在进行中：请等本轮采集完成后再创建订阅规则，否则会把全部存量包当作新增批量推送。'
+        : '尚未完成首次采集：现在创建订阅规则，会把首轮采集到的全部存量包当作新增一次性推送。请先执行一次全量采集，等待完成后再创建规则。'}</div><button class="btn btn-xs btn-outline shrink0" data-on-click="showPage" data-args='${_dataArgs('data')}'>前往采集数据</button></div>`
+    : '';
+  document.getElementById('app').innerHTML=`${firstCollectBanner}<div class="card"><div class="card-hd">📋 订阅规则 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openRModal">+ 创建规则</button></div><div class="card-bd"><table class="table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w140">命中 / 最近（近30天）</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="11" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
 
 // 订阅规则命中统计：长期未命中通常意味着条件失效 / 客户已不再采购该产品
 let _rulePushStats=null;
+// 首采护栏状态（由 subscriptions() 从 /settings/scheduler 刷新）
+let _subsNeedFirstCollect=false;
+let _subsCollectRunning=false;
 function _rulePushAge(t){
   const ms=_parseServerMs(t);
   if(ms===null)return '';
@@ -1771,6 +1783,10 @@ async function loadCV(s,loadType){
 }
 
 async function openRModal(id){
+  if(!id&&_subsNeedFirstCollect){
+    toast(_subsCollectRunning?'首次采集进行中，请等待本轮采集完成后再创建规则':'请先在「采集数据」页完成一次全量采集，再创建订阅规则','warn');
+    return;
+  }
   // 新建规则时订阅条件默认跟随客户档案产品；编辑时保留已保存条件
   window._custAutoFill=!id;
   // Ensure we have channels and customers loaded

@@ -39,13 +39,15 @@ exe = EXE(
     a.binaries,
     [],
     name='nsfocus-monitor',
+    icon='assets/nsfocus-monitor.ico',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
     upx_exclude=[],
     disable_windowed_traceback=False,
-    console=False,
+    # 必须是控制台程序：首次启动要显示初始密码和访问地址
+    console=True,
     cee_applies=False,
 )
 

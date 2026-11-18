@@ -695,6 +695,7 @@ async function dataPage() {
         </select>
       </div>
       <div class="data-meta">
+        <button class="btn btn-xs btn-outline" data-on-click="triggerFullCollect" ${isRunning?'disabled':''} title="重新抓取全部产品的全部升级包，耗时较长（约 25 分钟）；采集期间请勿重复触发">${isRunning?'⏳ 采集中':'🔍 全量采集'}</button>
         <span class="data-count-badge">${totalActive} 个产品</span>
       </div>
     </div>
