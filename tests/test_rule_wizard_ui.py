@@ -26,6 +26,21 @@ def test_first_collection_guard_blocks_rule_creation():
     assert '请先在「采集数据」页完成一次全量采集' in open_modal
 
 
+def test_disabled_rules_are_visually_distinct():
+    """停用规则要和启用规则一眼区分：整行降噪 + 灰条 + 明确状态徽标。"""
+    source = js_source()
+    assert 'rule-row-off' in source
+    assert 'rule-off-chip' in source
+    assert '⏸ 已停用' in source
+    assert "badge ${r.enabled?'badge-ok':'badge-grey'}" in source
+    assert "title=\"点击${r.enabled?'停用':'启用'}规则\"" in source
+    assert 'class="rule-status-cell"' in source
+    assert 'class="rule-actions-cell"' in source
+    assert '.rule-row-off td:not(.rule-status-cell):not(.rule-actions-cell)' in CSS
+    assert '.rule-row-off td:first-child' in CSS
+    assert '.rule-status-cell .badge-grey' in CSS
+
+
 def test_large_scope_requires_second_confirmation():
     """订阅全部产品或超过 5 个产品时提示大量推送风险，保存需二次确认。"""
     source = js_source()

@@ -114,6 +114,15 @@ td{padding:8px 12px;border-bottom:1px solid var(--gray-border)}
 /* removed global tr:hover (causes per-pixel repaint on all table rows) */
 .badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10.5px;font-weight:600;line-height:1.4}
 .badge-ok{background:var(--success-light);color:var(--success)}.badge-warn{background:#fff8e6;color:#c27800}.badge-err{background:var(--danger-light);color:var(--danger)}.badge-blue{background:var(--primary-light);color:var(--primary-text)}.badge-grey{background:#f1f3f4;color:var(--gray-muted)}
+/* 订阅规则列表：停用行整体降噪 + 左侧灰条，和启用行拉开对比 */
+.rule-row-off td{background:#f7f8fa}
+.rule-row-off td:not(.rule-status-cell):not(.rule-actions-cell){opacity:.55}
+.rule-row-off:hover td:not(.rule-status-cell):not(.rule-actions-cell){opacity:.8}
+.rule-row-off .rule-actions-cell .btn-outline{background:#fff}
+.rule-row-off td:first-child{box-shadow:inset 3px 0 0 #b8bdc4}
+.rule-off-chip{display:inline-block;margin-right:6px;padding:1px 6px;border-radius:8px;background:#eceff1;color:#6b7280;font-size:10px;font-weight:600;line-height:1.5;vertical-align:1px}
+.rule-status-cell{opacity:1!important}
+.rule-status-cell .badge-grey{background:#e5e7eb;color:#4b5563}
 .btn{display:inline-flex;align-items:center;gap:5px;padding:7px 15px;border-radius:8px;font-size:12.5px;cursor:pointer;border:none;font-weight:500;transition:.12s}
 .btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{filter:brightness(1.08)}
 .btn-danger{background:var(--danger);color:#fff}.btn-success{background:var(--success);color:#fff}
