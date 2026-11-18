@@ -654,8 +654,11 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
         else:
             all_items, cycle_withdrawn_by_src = _collect_full(existing_sources, list(collect_sessions.values()), cookie, _emit)
 
+        # 进度只统计已启用产品：existing_sources 含已停用源，而采集循环只遍历
+        # _collector_products()，用全量 source 数会让进度出现 83/79 这种倒挂
+        enabled_names = set(_collector_products())
         with _progress_lock:
-            _progress['products_done'] = len(existing_sources)
+            _progress['products_done'] = sum(1 for n in existing_sources if n in enabled_names)
 
         if not all_items:
             _merge_progress_errors(summary)

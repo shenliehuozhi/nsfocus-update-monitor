@@ -38,6 +38,16 @@ def test_only_new_failures_since_snapshot_are_counted():
     assert detail == '2 个 URL 请求失败（本轮成功 0 个页面）'
 
 
+def test_progress_done_counts_only_enabled_sources():
+    """进度分母是已启用产品数，分子也不能把停用源算进去（否则 83/79 倒挂）。"""
+    from pathlib import Path
+    src = Path(__file__).resolve().parents[1] / 'src/core/scheduler.py'
+    text = src.read_text(encoding='utf-8')
+    assert "_progress['products_done'] = len(existing_sources)" not in text
+    assert 'enabled_names = set(_collector_products())' in text
+    assert "sum(1 for n in existing_sources if n in enabled_names)" in text
+
+
 def test_merge_progress_errors_dedupes(monkeypatch):
     monkeypatch.setattr(sched, '_progress', {'errors': ['A: x', 'B: y']})
     summary = {'errors': ['A: x']}
