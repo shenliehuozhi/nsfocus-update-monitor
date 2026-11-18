@@ -284,7 +284,6 @@ def create_app(config_path=None):
     app.config['LOG_DIR'] = os.getenv('MONITOR_LOG_DIR',
                                       os.path.join(os.path.dirname(__file__), '..', 'logs'))
     app.config['COLLECT_INTERVAL'] = int(os.getenv('MONITOR_COLLECT_INTERVAL', '4'))
-    app.config['ROLLBACK_CONFIRM'] = int(os.getenv('MONITOR_ROLLBACK_CONFIRM', '2'))
     app.config['ATTACHMENT_MAX_SIZE'] = int(os.getenv('MONITOR_ATTACHMENT_MAX_SIZE', '10485760'))
 
     # Ensure directories exist

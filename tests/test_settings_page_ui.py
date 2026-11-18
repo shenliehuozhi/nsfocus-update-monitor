@@ -11,8 +11,8 @@ CSS = (WEB / 'static' / 'css' / 'app.css').read_text(encoding='utf-8')
 def test_settings_page_uses_section_card_grid():
     source = js_source()
     assert '<div class="cfg-grid">' in source
-    # 8 个分区：开关/采集/存储/静默/高级/邮件限流/联系信息/系统事件
-    assert source.count('<div class="cfg-section">') == 8
+    # 9 个分区：开关/采集/存储/静默/高级/邮件限流/联系信息/系统事件/外部观测接入
+    assert source.count('<div class="cfg-section">') == 9
     assert '.cfg-grid{display:grid;grid-template-columns:1fr 1fr' in CSS
     assert '@media (max-width:900px){.cfg-grid{grid-template-columns:1fr}}' in CSS
 
@@ -35,3 +35,19 @@ def test_settings_tooltip_uses_body_overlay():
     # 长文案提示改走 core.js 追加到 body 的固定浮窗，避免 CSS 伪元素撑宽文档
     assert "closest('.pill-tip,.tp')" in source
     assert '.tp::after' not in CSS
+
+
+def test_settings_page_exposes_prometheus_scrape_address():
+    source = js_source()
+    assert '🔌 外部观测接入' in source
+    assert 'prometheusScrapeUrl()' in source
+    assert 'copyPrometheusUrl()' in source
+    assert "'/api/metrics?format=prometheus&hours=24'" in source
+    assert 'MONITOR_METRICS_TOKEN' in source
+
+
+def test_settings_page_drops_dead_rollback_confirm():
+    source = js_source()
+    assert 'cfg-rollback' not in source
+    assert '回退确认次数' not in source
+    assert 'rollback_confirm:' not in source

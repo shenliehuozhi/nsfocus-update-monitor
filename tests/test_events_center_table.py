@@ -56,6 +56,12 @@ def test_logs_menu_renamed_with_events_and_logs_tabs():
     assert 'id="logsPaneEvents"' in source
     assert 'id="logsPaneSys"' in source
     assert "loadEventsPage()" in source
+    # 单一页面标题 + 右上角分段开关，不再使用占满整行的两个页签
+    assert '<div class="seg ml-auto" role="tablist">' in source
+    assert 'id="logsTabEvents"' in source and 'id="logsTabSys"' in source
+    logs_src = source[source.index('async function logs()'):source.index('function _stopLogTimer()')]
+    assert 'push-tabs' not in logs_src
+    assert "evBtn.className=showEvents?'seg-btn-active':'tab-flat'" in source
 
 
 def test_events_page_and_dashboard_modal_share_filters():

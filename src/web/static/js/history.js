@@ -182,7 +182,6 @@ async function settings(){
       </div>
       <div class="cfg-row">
         <div class="form-group"><label>采集间隔 <span class="cfg-unit">(小时)</span></label><input id="cfg-interval" type="number" value="${cfg.collect_interval||4}" min="1" max="24"><p class="cfg-hint">快速采集周期，建议1-4小时；过短易被封IP</p></div>
-        <div class="form-group"><label>回退确认次数</label><input id="cfg-rollback" type="number" value="${cfg.rollback_confirm||2}" min="1" max="5"><p class="cfg-hint">包版本降低需连续N次确认才通知，防止误报</p></div>
       </div>
       <div class="cfg-row">
         <div class="form-group"><label>速率下限 <span class="cfg-unit">(秒)</span></label><input id="cfg-delay-min" type="number" value="${cfg.collect_delay_min||1.0}" min="0.1" max="10" step="0.1"><p class="cfg-hint">每次请求间隔随机下限，建议0.3-1秒</p></div>
@@ -323,10 +322,47 @@ async function settings(){
       </div>
     </div>
 
+    <div class="cfg-section">
+      <div class="cfg-section-hd">🔌 外部观测接入 <span class="ml-auto fw400 fs115 text-muted">Prometheus 抓取</span></div>
+      <p class="cfg-section-sub">用于 Prometheus 长期抓取运行指标；页面不读取、不保存、不展示抓取令牌。</p>
+      <div class="cfg-row">
+        <div class="form-group"><label>抓取地址</label>
+          <div class="obs-code">
+            <code id="promScrapeUrl">${escHtml(prometheusScrapeUrl())}</code>
+            <button class="btn btn-outline btn-xs shrink0" data-on-click="copyPrometheusUrl">复制地址</button>
+          </div>
+          <p class="cfg-hint">服务端设置 <code>MONITOR_METRICS_TOKEN</code> 后，Prometheus 使用 <code>X-Metrics-Token</code> 或 <code>Authorization: Bearer &lt;token&gt;</code> 抓取；未设置时仅接受登录 JWT。</p>
+        </div>
+      </div>
+    </div>
+
     </div>
     <p class="obs-foot mt12">维护模式与「API 仅限本机」为即时开关；其余配置点击右上角「保存配置」后生效，调度参数会自动重新调度。</p>
   </div></div>
 `;}
+
+function prometheusScrapeUrl(){
+  return location.origin + '/api/metrics?format=prometheus&hours=24';
+}
+
+function copyPrometheusUrl(){
+  const text = prometheusScrapeUrl();
+  const done = () => toast('Prometheus 地址已复制');
+  const fallback = () => {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand('copy'); done(); }
+    catch (e) { toast('复制失败，请手动选择地址', 'error'); }
+    ta.remove();
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(fallback);
+  } else fallback();
+}
 
 // 自动发现 banner — 仅在产品管理页面显示，支持手动关闭/重新打开
 // 由 products() 和 MutationObserver 触发

@@ -472,13 +472,16 @@ def _site(hours: int = 24, include_history: bool = True) -> dict:
     if include_history:
         points, summary = [], {'samples': 0, 'failures': 0, 'avg_ms': None,
                                'max_ms': None}
+        changes = []
         try:
-            from src.models.site_probe import history
+            from src.models.site_probe import history, transitions
             points, summary = history(hours)
+            changes = transitions(hours)
         except Exception as e:
             logger.debug(f'metrics: site history unavailable: {e}')
         site['history'] = points
         site['history_summary'] = summary
+        site['changes'] = changes
         site['history_hours'] = hours
     return site
 

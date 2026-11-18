@@ -125,3 +125,16 @@ def test_service_report_rejects_bad_month_and_missing_customer(client):
     assert _report(client, '2026-13').status_code == 400
     assert _report(client, '2026-1').status_code == 400
     assert _report(client, '2026-11', customer_id=999).status_code == 404
+
+
+def test_push_summary_aggregates_per_customer(client):
+    """客户列表的推送统计列数据源：days=0 时统计全部历史。"""
+    resp = client.get('/api/customers/push-summary?days=0',
+                      headers={'Authorization': f'Bearer {_token()}'})
+    assert resp.status_code == 200
+    data = resp.get_json()['data']
+    item = next(i for i in data['items'] if i['id'] == 1)
+    assert (item['total'], item['success'], item['failed']) == (4, 3, 1)
+    assert item['last_sent_at']
+    assert item['last_product'] == 'IPS'
+    assert client.get('/api/customers/push-summary?days=0').status_code == 401

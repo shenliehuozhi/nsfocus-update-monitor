@@ -59,17 +59,11 @@ function _eventsFooterHtml(scope){
 }
 
 function eventsPageHtml(){
-  return `<div class="card">
-    <div class="card-hd">🔔 事件与告警
-      <span class="ml8 muted-11-400" id="eventsPageCount"></span>
-      <span class="ml-auto muted-12 fw400">未读口径：CRITICAL / ERROR / WARNING</span>
-    </div>
-    ${_eventsToolbarHtml(EVENTS_SCOPE_PAGE)}
+  return `${_eventsToolbarHtml(EVENTS_SCOPE_PAGE)}
     <div class="card-bd p0" id="eventsPageBody">
       <div class="p40 ta-center muted-13">加载中…</div>
     </div>
-    ${_eventsFooterHtml(EVENTS_SCOPE_PAGE)}
-  </div>`;
+    ${_eventsFooterHtml(EVENTS_SCOPE_PAGE)}`;
 }
 
 async function _ackEventAndReload(id, scope){

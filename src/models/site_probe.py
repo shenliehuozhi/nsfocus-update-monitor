@@ -77,6 +77,37 @@ def _summary(rows: list) -> dict:
     }
 
 
+def transitions(hours: int, limit: int = 12) -> list[dict]:
+    """Return recent UP/DOWN runs, oldest first (last ``limit`` segments)."""
+    from src.models.database import query
+    hours = max(1, int(hours))
+    limit = max(1, int(limit))
+    now = datetime.now(timezone.utc)
+    rows = query(
+        "SELECT checked_at, status FROM site_probe_history "
+        "WHERE datetime(checked_at) >= datetime(?) "
+        "ORDER BY datetime(checked_at), id",
+        (_iso(now - timedelta(hours=hours)),),
+    )
+    segs: list[dict] = []
+    for r in rows:
+        state = 'up' if r['status'] == 'up' else 'down'
+        checked = r['checked_at']
+        if not segs or segs[-1]['state'] != state:
+            if segs:
+                segs[-1]['end'] = checked
+            segs.append({'state': state, 'start': checked, 'end': checked, 'ongoing': False})
+        else:
+            segs[-1]['end'] = checked
+    if segs:
+        segs[-1]['ongoing'] = True
+    for seg in segs:
+        start = _parse_ts(seg['start'])
+        end = now if seg['ongoing'] else _parse_ts(seg['end'])
+        seg['duration_s'] = int((end - start).total_seconds()) if start and end else 0
+    return segs[-limit:]
+
+
 def history(hours: int, max_points: int = DEFAULT_MAX_POINTS) -> tuple[list, dict]:
     """Return ``(points, summary)`` for the trailing window.
 

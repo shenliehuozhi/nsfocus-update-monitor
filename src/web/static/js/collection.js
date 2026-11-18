@@ -235,7 +235,7 @@ async function handleSchedulerToggle(cb){
 
 async function forceStopAndSave(){
   if(!confirm('采集将被迫停止，是否继续？')) return;
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
     pkg_track_limit:document.getElementById('cfg-pkg-track').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     backup_interval_days:document.getElementById('cfg-backup-days').value,
@@ -298,7 +298,7 @@ function lockHeartbeatUrl(){
 }
 
 async function saveSettings(){
-  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,rollback_confirm:document.getElementById('cfg-rollback').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
+  const d={scheduler_enabled:document.getElementById('cfg-scheduler-enabled').checked?'1':'0',collect_interval:document.getElementById('cfg-interval').value,collect_delay_min:document.getElementById('cfg-delay-min').value,collect_delay_max:document.getElementById('cfg-delay-max').value,attachment_max_mb:document.getElementById('cfg-attach').value,quiet_hours_enabled:document.getElementById('cfg-quiet-enabled').checked?'1':'0',quiet_hours_start:document.getElementById('cfg-quiet-start').value,quiet_hours_end:document.getElementById('cfg-quiet-end').value,heartbeat_enabled:document.getElementById('cfg-heartbeat-enabled').checked?'1':'0',heartbeat_interval:document.getElementById('cfg-heartbeat').value,heartbeat_url:document.getElementById('cfg-heartbeat-url').value.trim()||'/update/listBvsV6/v/bvssys',channel_health_enabled:document.getElementById('cfg-channel-health').checked?'1':'0',
     pkg_track_limit:document.getElementById('cfg-pkg-track').value,
     snapshots_per_group:document.getElementById('cfg-snapshots-per-group').value,
     backup_interval_days:document.getElementById('cfg-backup-days').value,
@@ -474,28 +474,36 @@ async function logs(){
   if(navStale(_seq))return;
   _eventsState('eventsPage').offset=0;
   document.getElementById('app').innerHTML=`
-    <div class="push-tabs">
-      <div class="push-tab-active" id="logsTabEvents" data-on-click="logsSwitchTab" data-args='${_dataArgs("events")}'>🔔 事件与告警</div>
-      <div class="push-tab" id="logsTabSys" data-on-click="logsSwitchTab" data-args='${_dataArgs("syslog")}'>📋 系统日志</div>
-    </div>
-    <div id="logsPaneEvents">${eventsPageHtml()}</div>
-    <div id="logsPaneSys" class="hidden">
-      <div class="card"><div class="card-hd">📋 系统日志
-        <span class="ml-auto muted-12 fw400">
-          当前级别: <span class="badge badge-${curLevel==='DEBUG'?'warn':'ok'}">${curLevel}</span>
-          <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'}" data-on-click="toggleDebug">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
-        </span>
-      </div><div class="card-bd">
-        <div class="flex wrap items-end gap8 mb12">
-          <div class="form-group mb0 min-w180"><label>日志文件</label><select id="logFile" class="dd">${fOpts}</select></div>
-          <div class="form-group mb0 min-w120"><label>级别</label><select id="logLevel" class="dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select></div>
-          <div class="form-group mb0 min-w80"><label>行数</label><select id="logLines" class="dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select></div>
-          <div class="form-group mb0"><label>&nbsp;</label><div class="flex gap6"><button class="btn btn-sm btn-primary" data-on-click="loadLogs">查询</button><button class="btn btn-sm btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button></div></div>
+    <div class="card">
+      <div class="card-hd">🗂 事件与日志
+        <span class="ml8 muted-11-400" id="eventsPageCount"></span>
+        <span class="muted-12 fw400" id="logsEventsNote">未读口径：CRITICAL / ERROR / WARNING</span>
+        <div class="seg ml-auto" role="tablist">
+          <button class="seg-btn-active" id="logsTabEvents" data-on-click="logsSwitchTab" data-args='${_dataArgs("events")}'>🔔 事件与告警</button>
+          <button class="tab-flat" id="logsTabSys" data-on-click="logsSwitchTab" data-args='${_dataArgs("syslog")}'>📋 系统日志</button>
         </div>
-        <div class="log-dark" id="logContent">
-          点击「查询」加载日志...
+      </div>
+      <div id="logsPaneEvents">${eventsPageHtml()}</div>
+      <div id="logsPaneSys" class="hidden">
+        <div class="evt-tools-bar">
+          <span class="text-muted">文件</span>
+          <select id="logFile" class="sel-sm dd">${fOpts}</select>
+          <span class="text-muted">级别</span>
+          <select id="logLevel" class="sel-sm dd"><option value="">全部</option><option value="DEBUG">DEBUG</option><option value="INFO" selected>INFO</option><option value="WARNING">WARNING</option><option value="ERROR">ERROR</option></select>
+          <span class="text-muted">行数</span>
+          <select id="logLines" class="sel-sm dd"><option value="100">100</option><option value="200" selected>200</option><option value="500">500</option><option value="1000">1000</option></select>
+          <button class="btn btn-xs btn-primary" data-on-click="loadLogs">查询</button>
+          <button class="btn btn-xs btn-outline" id="logAutoBtn" data-on-click="toggleAutoRefresh">自动刷新</button>
+          <span class="ml-auto muted-12 fw400">当前级别: <span class="badge badge-${curLevel==='DEBUG'?'warn':'ok'}">${curLevel}</span>
+            <button class="btn btn-xs ${curLevel==='DEBUG'?'btn-danger':'btn-outline'} ml4" data-on-click="toggleDebug">${curLevel==='DEBUG'?'关闭调试':'开启调试'}</button>
+          </span>
         </div>
-      </div></div>
+        <div class="card-bd">
+          <div class="log-dark" id="logContent">
+            点击「查询」加载日志...
+          </div>
+        </div>
+      </div>
     </div>`;
 
   loadEventsPage();
@@ -506,8 +514,12 @@ function logsSwitchTab(tab){
   const evPane=document.getElementById('logsPaneEvents'),sysPane=document.getElementById('logsPaneSys');
   if(!evBtn||!sysBtn||!evPane||!sysPane)return;
   const showEvents=tab!=='syslog';
-  evBtn.className=showEvents?'push-tab-active':'push-tab';
-  sysBtn.className=showEvents?'push-tab':'push-tab-active';
+  evBtn.className=showEvents?'seg-btn-active':'tab-flat';
+  sysBtn.className=showEvents?'tab-flat':'seg-btn-active';
+  const note=document.getElementById('logsEventsNote');
+  if(note)note.classList.toggle('hidden',!showEvents);
+  const count=document.getElementById('eventsPageCount');
+  if(count)count.classList.toggle('hidden',!showEvents);
   evPane.classList.toggle('hidden',!showEvents);
   sysPane.classList.toggle('hidden',showEvents);
   if(showEvents){_stopLogTimer();loadEventsPage();}

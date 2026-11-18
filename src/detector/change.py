@@ -2,7 +2,7 @@
 
 Compares collected items against the snapshot database to identify:
   - NEW packages (never seen before)
-  - ROLLBACK packages (disappeared for N consecutive checks)
+  - WITHDRAWN packages (reported by the collector as removed)
   - UNCHANGED packages (still present)
 
 Also manages the delayed push queue.
@@ -32,7 +32,6 @@ class DetectionResult:
 
 
 def run_detection(source_id: int, items: list[UnifiedContentItem],
-                  rollback_confirm: int = 2, check_rollback: bool = True,
                   seen_ids: set = None,
                   withdrawn_items: list = None) -> DetectionResult:
     """Main detection entry point.
@@ -41,12 +40,8 @@ def run_detection(source_id: int, items: list[UnifiedContentItem],
     2. 按 first_seen == last_seen 判 NEW / UNCHANGED
     3. collector 报的撤回行进 result.rollback_items → scheduler 推 ⚠️ 撤回通知
 
-    2026-07-22 改动 3: withdrawn_items 是 collector 报告的"刚被标 withdrawn 的行",
-    这些行需要进 result.rollback_items 让 scheduler 推 ⚠️ 撤回通知。
-
-    ⚠️ rollback_confirm / check_rollback 是 2026-07-27 删掉"连续 N 次确认回退"路径后
-    留下的死参数,函数体从不读取 —— 但设置页「回退确认次数」仍把值传进来,
-    改了那个数字不会有任何效果。要恢复该语义需重新实现,或直接摘掉 UI 开关。
+    撤回不做连续 N 次确认：collector 判定包从页面消失即标 withdrawn，
+    由 withdrawn_items 当场带入本轮回退通知。
     """
     result = DetectionResult(source_id=source_id)
 

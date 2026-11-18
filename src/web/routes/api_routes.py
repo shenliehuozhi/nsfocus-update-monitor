@@ -507,6 +507,55 @@ def list_subscriptions():
     rows = list_rules(g.user_id)
     return jsonify({'code': 0, 'data': rows})
 
+
+@bp_subscriptions.route('/push-summary', methods=['GET'])
+@require_auth
+def subscription_push_summary():
+    """按订阅规则聚合近 N 天命中/投递，用于识别长期未命中的无效规则。
+
+    Query: ?days=N（默认 30，0 = 全部）
+    `packages` 为去重后的快照数，失败投递也计入命中；`last_at` 优先 created_at。
+    """
+    from src.models.database import query
+
+    days = max(0, min(request.args.get('days', 30, type=int), 3650))
+    window = (
+        ''
+        if days <= 0
+        else f"AND datetime(COALESCE(NULLIF(dl.created_at, ''), dl.sent_at)) "
+             f">= datetime('now', '-{days} days')"
+    )
+    where = ''
+    params = ()
+    if g.user_id:
+        where = 'WHERE r.user_id = ?'
+        params = (g.user_id,)
+    rows = query(
+        f"""SELECT r.id,
+                   COUNT(DISTINCT dl.snapshot_id) AS packages,
+                   COUNT(dl.id) AS deliveries,
+                   SUM(CASE WHEN dl.delivery_status='sent' THEN 1 ELSE 0 END) AS sent,
+                   SUM(CASE WHEN dl.delivery_status='failed' THEN 1 ELSE 0 END) AS failed,
+                   MAX(COALESCE(NULLIF(dl.created_at, ''), dl.sent_at)) AS last_at
+            FROM subscription_rules r
+            LEFT JOIN delivery_log dl ON dl.rule_id = r.id {window}
+            {where}
+            GROUP BY r.id""",
+        params,
+    )
+    items = [
+        {
+            'id': r['id'],
+            'packages': r['packages'] or 0,
+            'deliveries': r['deliveries'] or 0,
+            'sent': r['sent'] or 0,
+            'failed': r['failed'] or 0,
+            'last_at': r['last_at'] or '',
+        }
+        for r in rows
+    ]
+    return jsonify({'code': 0, 'data': {'days': days, 'items': items}})
+
 @bp_subscriptions.route('', methods=['POST'])
 @require_auth
 def create_subscription():

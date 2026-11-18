@@ -357,7 +357,6 @@ def _check_concurrent_stale() -> bool:
 
 
 COLLECT_INTERVAL = int(_get_setting('collect_interval', '4'))
-ROLLBACK_CONFIRM = int(_get_setting('rollback_confirm', '2'))
 FULL_SCAN_INTERVAL = int(_get_setting('full_scan_interval', '24'))  # hours, default 1 day
 HEALTH_URL = _get_setting('heartbeat_url', '/update/listBvsV6/v/bvssys')
 
@@ -703,8 +702,7 @@ def run_now(mode: str = 'delta', progress_callback=None) -> dict:
             before_files = {s['file_name'] for s in before_snaps}
             before_by_fname = {s['file_name']: s['md5_hash'] for s in before_snaps}
 
-            result = run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
-                                  check_rollback=True,
+            result = run_detection(src['id'], src_items,
                                   seen_ids={s['id'] for s in before_snaps},
                                   withdrawn_items=cycle_withdrawn_by_src.get(src['id']))
             push_items = result.new_chain_items or result.new_items
@@ -1216,8 +1214,7 @@ def run_for_source(source_id: int, mode: str = 'quick', progress_callback=None) 
                    WHERE source_id=? AND status = 'active'""",
                 (source_id,)
             )
-            result = run_detection(source_id, items, ROLLBACK_CONFIRM,
-                                  check_rollback=True,
+            result = run_detection(source_id, items,
                                   seen_ids={s['id'] for s in before_snaps},
                                   withdrawn_items=cycle_withdrawn_by_src.get(source_id))
             push_items = result.new_chain_items or result.new_items

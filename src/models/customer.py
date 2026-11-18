@@ -35,7 +35,8 @@ def normalize_assets(raw) -> list:
       - JSON 字符串 / list
       - 旧格式字符串 "WEB应用防护系统(WAF)" 或 "WAF:V6.0.9"
       - 新格式 dict {'product': ..., 'version': ...}
-    空产品名丢弃;同一产品重复出现时保留第一条非空版本。
+    空产品名丢弃; 同一 (产品, 版本) 去重; 同一产品可保留多个不同版本,
+    仅当该产品存在带版本条目时丢弃同产品的空版本条目。
     """
     import json
     if raw is None or raw == '':
@@ -47,7 +48,7 @@ def normalize_assets(raw) -> list:
             raw = [raw]
     if not isinstance(raw, list):
         return []
-    out, seen = [], {}
+    out, seen = [], set()
     for item in raw:
         if isinstance(item, dict):
             product = str(item.get('product') or '').strip()
@@ -58,14 +59,13 @@ def normalize_assets(raw) -> list:
             product, version = product.strip(), version.strip()
         if not product:
             continue
-        if product in seen:
-            if not seen[product].get('version') and version:
-                seen[product]['version'] = version
+        key = (product, version)
+        if key in seen:
             continue
-        entry = {'product': product, 'version': version}
-        seen[product] = entry
-        out.append(entry)
-    return out
+        seen.add(key)
+        out.append({'product': product, 'version': version})
+    versioned = {a['product'] for a in out if a['version']}
+    return [a for a in out if a['version'] or a['product'] not in versioned]
 
 
 def _dump_assets(raw) -> str:

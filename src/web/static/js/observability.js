@@ -129,7 +129,7 @@ function _obsRender(d, cve){
         `采集 ${sess.collect_active || 0} · 发现 ${sess.discover_active || 0}`,
         sessionTint)}
     </div>
-    <div class="obs-grid2">
+    <div class="obs-grid2 obs-grid-stretch">
       ${_obsSchedulerCard(d.scheduler_jobs || [])}
       ${_obsSiteCard(site)}
     </div>
@@ -139,22 +139,19 @@ function _obsRender(d, cve){
     </div>
     <div class="obs-grid2">
       ${_obsSessionCard(sess)}
-      ${_obsCollectionCard(col, rules, proc, mmOn)}
-    </div>
-    <div class="obs-grid2">
-      ${_obsDeliveryCard(del)}
-      ${_obsQueueCard(dq, dg)}
-    </div>
-    <div class="obs-grid2">
-      ${_obsCustomersCard()}
-    </div>
-    <div class="obs-grid2">
-      ${_obsEventsCard(ev)}
       ${_obsStorageCard(st)}
     </div>
     <div class="obs-grid2">
+      ${_obsCollectionCard(col, rules, proc, mmOn)}
+      ${_obsEventsCard(ev)}
+    </div>
+    <div class="obs-grid2">
+      ${_obsDeliveryCard(del)}
+      ${_obsCustomersCard()}
+    </div>
+    <div class="obs-grid2">
+      ${_obsQueueCard(dq, dg)}
       ${_obsDatabaseCard(d.database || {})}
-      ${_obsPromCard()}
     </div>`;
 }
 
@@ -205,7 +202,7 @@ function _obsSessionCard(sess){
 }
 
 function _obsCustomersCard(){
-  return `<div class="card obs-span2">
+  return `<div class="card">
     <div class="card-hd">
       <span>📨 订阅规则执行 · 客户推送</span>
       <span class="obs-muted ml-auto fs115 fw400">${_obsWindowLabel()} · 跟随右上角时间</span>
@@ -791,6 +788,7 @@ function _obsSiteCard(site){
         <span>最近可用</span><b>${_obsTime(site.last_ok_at)}</b>
       </div>
       ${_obsSiteChart(site)}
+      ${_obsSiteChanges(site)}
       ${down ? `<div class="obs-foot text-danger">${escHtml(site.error || '连接失败')}</div>` : ''}
       ${status === 'unknown' ? '<div class="obs-foot">等待首次检测，调度器每 5 分钟探测一次。</div>' : ''}
     </div>
@@ -805,7 +803,8 @@ function _obsSiteChart(site){
     return `<div class="obs-site-chart">${head}<div class="obs-site-empty">暂无历史采样，等待下一轮探测…</div></div>`;
   }
 
-  const W = 600, H = 90, P = 6;
+  const W = 600, H = 120, L = 34, P = 6;
+  const plotW = W - L - P;
   const f = n => Math.round(n * 10) / 10;
   const times = points.map(p => _obsParseTime(p.t));
   const known = times.filter(t => t !== null);
@@ -814,14 +813,20 @@ function _obsSiteChart(site){
   const byIndex = first === null || last === null || last - first < 1000;
   const span = byIndex ? 0 : last - first;
   const xAt = (t, i) => {
-    if (byIndex) return points.length === 1 ? W / 2 : P + (i / (points.length - 1)) * (W - 2 * P);
-    return P + ((t - first) / span) * (W - 2 * P);
+    if (byIndex) return points.length === 1 ? L + plotW / 2 : L + (i / (points.length - 1)) * plotW;
+    return L + ((t - first) / span) * plotW;
   };
 
   const ups = points.filter(p => p.s !== 'down' && p.ms !== null && p.ms !== undefined && isFinite(Number(p.ms)));
   const peak = Math.max(1, ...ups.map(p => Number(p.ms)));
   const top = Math.max(10, Math.ceil(peak / 10) * 10);
   const yAt = ms => H - P - (Math.max(0, Math.min(top, Number(ms))) / top) * (H - 2 * P);
+  const grid = [0, top / 2, top].map(v => {
+    const y = f(yAt(v));
+    const label = v === top ? `${Math.round(v)}ms` : String(Math.round(v));
+    return `<line class="site-spark-grid" x1="${L}" x2="${W - P}" y1="${y}" y2="${y}"></line>` +
+      `<text class="site-spark-axis" x="${L - 4}" y="${f(Number(y) + 3)}" text-anchor="end">${label}</text>`;
+  }).join('');
 
   const marks = [];
   points.forEach((p, i) => {
@@ -858,10 +863,11 @@ function _obsSiteChart(site){
   return `<div class="obs-site-chart">
     ${head}
     <svg class="site-spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="站点延时曲线">
-      <line class="site-spark-base" x1="${P}" y1="${H - P}" x2="${W - P}" y2="${H - P}"></line>
+      ${grid}
+      <line class="site-spark-base" x1="${L}" y1="${H - P}" x2="${W - P}" y2="${H - P}"></line>
       ${marks.join('')}${shapes.join('')}
     </svg>
-    <div class="obs-site-chart-ft"><span>${_obsTime(points[0].t)}</span><span>${_obsTime(points[points.length - 1].t)}</span></div>
+    <div class="obs-site-chart-ft"><span>${_obsTime(points[0].t)}</span><span>${_obsTime(points[Math.floor((points.length - 1) / 2)].t)}</span><span>${_obsTime(points[points.length - 1].t)}</span></div>
   </div>`;
 }
 
@@ -874,17 +880,37 @@ function _obsSiteMeta(sum){
   return parts.join(' · ') || '暂无采样';
 }
 
-function _obsPromCard(){
-  return `<div class="card">
-    <div class="card-hd">🔌 外部观测接入</div>
-    <div class="card-bd">
-      <div class="obs-code">
-        <code id="obsPromUrl">${escHtml(obsPrometheusUrl())}</code>
-        <button class="btn btn-outline btn-xs shrink0" data-on-click="obsCopyProm">复制地址</button>
-      </div>
-      <div class="obs-foot">抓取鉴权：设置 <code>MONITOR_METRICS_TOKEN</code> 后使用 <code>X-Metrics-Token</code> 或 <code>Authorization: Bearer &lt;token&gt;</code>。</div>
-    </div>
-  </div>`;
+function _obsDuration(sec){
+  sec = Math.max(0, Number(sec) || 0);
+  if (sec < 60) return '少于 1 分钟';
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  if (d) return `${d} 天${h ? ` ${h} 小时` : ''}`;
+  if (h) return `${h} 小时${m ? ` ${m} 分钟` : ''}`;
+  return `${m} 分钟`;
+}
+
+function _obsSiteChanges(site){
+  const list = (Array.isArray(site.changes) ? site.changes : []).slice(-6).reverse();
+  if (!list.length) return '';
+  const short = t => {
+    const s = _obsTime(t);
+    return s && s.length > 10 ? s.slice(5) : s;
+  };
+  const rows = list.map(c => {
+    const up = c.state === 'up';
+    const span = c.ongoing
+      ? `${short(c.start)} → 至今`
+      : `${short(c.start)} → ${short(c.end)}`;
+    return `<div class="obs-site-change">
+      <span class="sched-dot ${up ? 'sched-ready' : 'sched-off'}"></span>
+      <b class="${up ? 'text-success-text' : 'text-danger'}">${up ? 'UP' : 'DOWN'}</b>
+      <span class="obs-site-change-span">${span}</span>
+      <span class="obs-site-change-dur">${c.ongoing ? '持续 ' : ''}${_obsDuration(c.duration_s)}</span>
+    </div>`;
+  }).join('');
+  return `<div class="obs-site-changes"><div class="obs-site-changes-hd">状态变化 · 最近 ${list.length} 段</div>${rows}</div>`;
 }
 
 function _obsSevBadge(sev){
@@ -1012,27 +1038,4 @@ function _obsCountdown(seconds){
   if (v < 60) return v + ' 秒';
   if (v < 3600) return Math.floor(v / 60) + ' 分 ' + (v % 60) + ' 秒';
   return Math.floor(v / 3600) + ' 小时 ' + Math.floor((v % 3600) / 60) + ' 分';
-}
-
-function obsPrometheusUrl(){
-  return location.origin + '/api/metrics?format=prometheus&hours=' + _obsHours;
-}
-
-function obsCopyProm(){
-  const text = obsPrometheusUrl();
-  const done = () => toast('Prometheus 地址已复制');
-  const fallback = () => {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.opacity = '0';
-    document.body.appendChild(ta);
-    ta.select();
-    try { document.execCommand('copy'); done(); }
-    catch (e) { toast('复制失败，请手动选择地址', 'error'); }
-    ta.remove();
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(fallback);
-  } else fallback();
 }

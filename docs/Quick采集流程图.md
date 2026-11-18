@@ -1,15 +1,17 @@
 # Quick 采集详细流程图
 
+> 注：第 1、10 节的时序图仍保留 2026-07 之前的 `rollback_pending` 画法，仅作历史参考；现行撤回检测以第 5、9 节与 `docs/modules/06-采集数据.md` 为准。
+
 ## 目录
 1. [整体架构](#1-整体架构)
 2. [Scheduler.run_now() 完整步骤](#2-schedulerrun_now-完整步骤)
 3. [_collect_quick 详细流程](#3-_collect_quick-详细流程)
 4. [run_detection 详细流程](#4-run_detection-详细流程)
-5. [mark_rollback_pending 详细流程](#5-mark_rollback_pending-详细流程)
+5. [撤回检测与 seen_ids](#5-撤回检测与-seen_ids)
 6. [save_snapshot 匹配逻辑](#6-save_snapshot-匹配逻辑)
 7. [包级别 diff 日志生成逻辑](#7-包级别-diff-日志生成逻辑)
 8. [Session 轮换与失效处理](#8-session-轮换与失效处理)
-9. [ROLLBACK_CONFIRM 防抖动机制](#9-rollback_confirm-防抖动机制)
+9. [撤回检测（无跨轮确认）](#9-撤回检测无跨轮确认)
 10. [完整数据流时序图](#10-完整数据流时序图)
 
 ---
@@ -123,11 +125,12 @@ Step 4: 按 source_id 分组，执行变更检测
 ─────────────────────────────────────────────────────────────
   for each (name, src) in existing_sources:
       4a. 按 source_id 过滤 items
-      4b. 读取 before_snaps（所有 status in ('active','rollback','rollback_pending')）
+      4b. 读取 before_snaps（所有 status='active'）
           SQL: SELECT id, file_name, md5_hash FROM snapshots
-               WHERE source_id=? AND status IN ('active','rollback','rollback_pending')
-      4c. 调用 run_detection(src['id'], src_items, ROLLBACK_CONFIRM,
-                             seen_ids={s['id'] for s in before_snaps})
+               WHERE source_id=? AND status='active'
+      4c. 调用 run_detection(src['id'], src_items,
+                             seen_ids={s['id'] for s in before_snaps},
+                             withdrawn_items=本 cycle 被标 withdrawn 的行)
       4d. 汇总日志：【产品】采集完成：本次提取 N 个 | 新增 M | 回滚 K
       4e. _progress 更新：total_new, total_rollback
 
@@ -301,9 +304,8 @@ Step 3: 汇总返回
 输入：
   source_id      # 产品 ID
   items           # List[UnifiedContentItem]，采集到的包
-  rollback_confirm # ROLLBACK_CONFIRM（默认2）
-  check_rollback  # True
   seen_ids        # set[int]，所有已知快照 ID（来自 scheduler 传入的 before_snaps）
+  withdrawn_items # collector 现场识别、刚被标 withdrawn 的行
 
 输出：DetectionResult(source_id, new_items, rollback_items, unchanged_items, unchanged_count, errors)
 
@@ -346,22 +348,14 @@ Step 3: 遍历 items，调用 save_snapshot 写入 DB
               result.unchanged_items.append((sid, snap))
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Step 4: mark_rollback_pending（防误标保护）
+Step 4: 撤回通知（collector 现场识别，无跨轮确认）
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if check_rollback:
-      snap_db.mark_rollback_pending(seen_ids, source_id)
+  if withdrawn_items:
+      result.rollback_items.extend([(d['id'], d) for d in withdrawn_items])
 
-  作用：active 快照不在 seen_ids → rollback_pending
-        （seen_ids = 采集到的 + before_snaps 预填充）
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Step 5: _confirm_rollbacks（确认回滚）
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  if check_rollback:
-      confirmed = _confirm_rollbacks(source_id, rollback_confirm)
-      result.rollback_items = confirmed
-
-  条件：rollback_cycles >= ROLLBACK_CONFIRM（默认2个周期才确认）
+  作用：collector 已把页面消失且非被新版取代的行标 withdrawn，
+        本 cycle 直接进入回退通知；不再有 rollback_pending / rollback
+        状态，也不做连续 N 次确认。
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Step 6: 返回结果
@@ -378,46 +372,24 @@ Step 6: 返回结果
 
 ---
 
-## 5. mark_rollback_pending 详细流程
+## 5. 撤回检测与 seen_ids
 
 ```
-输入：seen_ids: set[int], source_id: int
+输入：items（本轮解析结果）, seen_ids, withdrawn_items
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-分支一：active 快照不在 seen_ids 中
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  查询：SELECT id FROM snapshots WHERE source_id=? AND status='active'
-  for row in active:
-      if row['id'] not in seen_ids:
-          UPDATE snapshots
-          SET status='rollback_pending', rollback_cycles=1
-          WHERE id=?
-          → 首次出现：rollback_cycles=1
+collector 逐路径比较 (file_name, path_id, md5_hash)：
+  - 老行不在本轮 key 中且发布时间早于任一新包 → superseded
+  - 老行不在本轮 key 中且发布时间不早于任何新包 → withdrawn
+  - 缺发布时间数据 → 保守按 superseded
+  - 滑出跟踪窗口但仍在页面上的老包 → 保持 active
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-分支二：已在 rollback_pending 的快照仍不在 seen_ids
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  查询：SELECT id FROM snapshots WHERE source_id=? AND status='rollback_pending'
-  for row in pending:
-      if row['id'] not in seen_ids:
-          UPDATE snapshots
-          SET rollback_cycles = rollback_cycles + 1
-          WHERE id=?
-          → 每多缺席一个周期，cycles += 1
+seen_ids 的构成：
+  ① Scheduler 传入的 before_snaps（status='active'）
+  ② SAME / CHANGE 路径中反查 DB 重建的 active 快照 ID
+  ③ 本轮 save_snapshot 写入后加入的 id
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-关键：seen_ids 的构成
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  seen_ids 由以下三部分构成：
-    ① Scheduler 传入的 before_snaps（所有 active/rollback/rollback_pending ID）
-       SQL: SELECT id FROM snapshots
-            WHERE source_id=? AND status IN ('active','rollback','rollback_pending')
-    ② _collect_quick SAME path 中，反查 DB 重建的 active 快照 ID
-       seen_ids.add(s['id'])  ← 在 SAME path 内
-    ③ _collect_quick CHANGE path 中，_extract_table_items 返回的 item 们
-       → 最终由 save_snapshot 写入后 add 到 seen_ids
-
-  结果：正常采集的快照，三重保护下绝不会进入 rollback_pending
+撤回不做跨轮确认：collector 现场标 withdrawn 的行通过
+withdrawn_items 在同一 cycle 直接进入回退通知。
 ```
 
 ---
@@ -577,47 +549,17 @@ Step 3: 请求延迟
 
 ---
 
-## 9. ROLLBACK_CONFIRM 防抖动机制
+## 9. 撤回检测（无跨轮确认）
 
 ```
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-快照状态机
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+快照状态：
+  active                  → 被新版取代 → superseded
+  active                  → 主动撤回/下架 → withdrawn
+  withdrawn / superseded  → 重新出现且 md5 匹配 → active
 
-    ┌──────────────────────────────────────────────────────────────┐
-    │                                                              │
-    │  ┌─────────┐   hash变了+     ┌──────────────────┐            │
-    │  │ active  │   items里没它   │ rollback_pending │            │
-    │  │         │ ─────────────▶ │ cycles=1          │            │
-    │  │         │   (首次缺席)    └────────┬─────────┘            │
-    │  │         │                           │ cycles++            │
-    │  │         │                           │ (连续缺席)           │
-    │  │         │                           ▼                     │
-    │  │         │   ┌──────────────────────────────┐             │
-    │  └─────────┘   │ cycles >= ROLLBACK_CONFIRM   │             │
-    │     ▲          │     (默认2个周期)              │             │
-    │     │          └──────────────┬───────────────┘             │
-    │     │                         │ 确认回滚                     │
-    │     │                         ▼                             │
-    │     │               ┌──────────────────┐                    │
-    │     │               │     rollback     │                    │
-    │     │               │ (标记为消失)      │                    │
-    │     │               └──────────────────┘                    │
-    │     │                                                        │
-    │     │  (hash 恢复/快照重新出现)                               │
-    │     │  save_snapshot 匹配到相同的 md5_hash                    │
-    │     │  → UPDATE status='active', rollback_cycles=0          │
-    └─────┴────────────────────────────────────────────────────────┘
-
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-ROLLBACK_CONFIRM = 2（默认值，可配置）
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  周期 1：快照消失 → rollback_pending, cycles=1
-  周期 2：快照仍消失 → cycles=2，cycles >= 2 → confirm → rollback
-  周期 3+：快照仍消失 → 保持 rollback，不再重复 confirm
-
-  优点：防止网络抖动、单次页面临时无数据导致的误判
-  配置项：MONITOR_ROLLBACK_CONFIRM（DB system_settings 表）
+撤回通知：collector 判定 withdrawn 的同一轮即进入 rollback_items，
+由 scheduler 对开启「包回退通知」的规则即时发送；不存在
+rollback_pending / rollback 状态，也不再读取任何确认次数配置。
 ```
 
 ---
@@ -741,6 +683,5 @@ ROLLBACK_CONFIRM = 2（默认值，可配置）
 |--------|------|--------|------|
 | MONITOR_COLLECT_INTERVAL | DB / env | 4（分钟） | Quick 采集间隔 |
 | MONITOR_FULL_SCAN_INTERVAL | DB / env | 24（小时） | Full Scan 间隔 |
-| MONITOR_ROLLBACK_CONFIRM | DB / env | 2（周期） | 回滚确认阈值 |
 | MONITOR_DELAY | DB / env | 0.5（秒） | 请求间隔基础值 |
 | MONITOR_HEARTBEAT_URL | DB / env | /update/listBvsV6/v/bvssys | Session 预检 URL |

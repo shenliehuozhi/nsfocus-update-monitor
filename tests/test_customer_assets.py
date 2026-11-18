@@ -27,9 +27,26 @@ def test_normalize_new_dict_entries():
     ]
 
 
-def test_normalize_dedup_keeps_first_non_empty_version():
+def test_normalize_drops_blank_version_when_product_has_versions():
     raw = [{'product': 'WAF', 'version': ''}, {'product': 'WAF', 'version': 'V6.0.9'}]
     assert normalize_assets(raw) == [{'product': 'WAF', 'version': 'V6.0.9'}]
+
+
+def test_normalize_keeps_multiple_versions_of_same_product():
+    raw = [
+        {'product': 'WAF', 'version': 'V6.0.9'},
+        {'product': 'WAF', 'version': 'V6.0.8'},
+        {'product': 'WAF', 'version': 'V6.0.9'},
+    ]
+    assert normalize_assets(raw) == [
+        {'product': 'WAF', 'version': 'V6.0.9'},
+        {'product': 'WAF', 'version': 'V6.0.8'},
+    ]
+    # 旧字符串格式同样允许同产品多版本
+    assert normalize_assets(['WAF:V6.0.9', 'WAF:V6.0.8']) == [
+        {'product': 'WAF', 'version': 'V6.0.9'},
+        {'product': 'WAF', 'version': 'V6.0.8'},
+    ]
 
 
 def test_normalize_skips_empty_and_bad_input():

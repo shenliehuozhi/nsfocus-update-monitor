@@ -11,6 +11,26 @@ def test_customer_page_no_standalone_upgrade_advice():
     assert '_adviceHtml' not in source
 
 
+def test_customer_add_button_matches_session_and_rule_layout():
+    """「+ 添加客户」放在卡片头部右侧，与 Session、订阅规则页一致。"""
+    source = js_source()
+    assert ('👥 客户 <button class="btn btn-primary ml-auto px5-14 fs12" '
+            'data-on-click="openCModal">+ 添加客户</button>') in source
+    assert 'data-on-click="openCModal">+ 添加客户</button><table class="mt16">' not in source
+
+
+def test_customer_list_shows_push_stats_and_drills_down():
+    """客户列表增加近 30 天推送统计列，点击进入该客户推送历史。"""
+    source = js_source()
+    assert "api('/customers/push-summary?days=30')" in source
+    assert '推送 / 成功率（近30天）' in source
+    assert 'function _custPushCell' in source
+    assert 'if(_custPushStats===null)' in source
+    assert "data-on-click=\"_gotoHistoryDays\" data-args='${_dataArgs(30,cid)}'" in source
+    assert '近30天无推送' in source
+    assert 'colspan="8"' in source
+
+
 def test_customer_modal_uses_path_chips():
     """客户资产与订阅规则一致：一个「+ 添加路径」入口，已选路径以标签展示。"""
     source = js_source()
@@ -68,14 +88,16 @@ def test_customer_modal_is_wide_enough_for_path_chips():
     assert '.cver-pop{' not in CSS
 
 
-def test_customer_assets_keep_legacy_and_dedup_by_product():
+def test_customer_assets_keep_legacy_and_dedup_by_product_version():
     source = js_source()
     assert 'function _cvarNormalize' in source
     assert "typeof a==='string'" in source
     assert "const [pp,vv]=a.split(':')" in source
-    assert 'seen.has(p)' in source
-    # 路径选择按产品去重：同一产品的新路径替换旧路径
-    assert '_cvarRows.findIndex(r=>r.product===product)' in source
+    # 同一产品允许多个版本：按 (product, version) 去重
+    assert "const key=p+'\\u0000'+v;" in source
+    assert 'if(seen.has(key))return;' in source
+    assert 'const versioned=new Set(out.filter(a=>a.version).map(a=>a.product));' in source
+    assert '_cvarRows.findIndex(r=>r.product===product&&(r.version||\'\')===(version||\'\'))' in source
     assert 'if(i>=0)_cvarRows[i]=row;else _cvarRows.push(row);' in source
 
 
@@ -88,13 +110,15 @@ def test_customer_path_picker_reuses_subscription_tree():
     assert 'plain:true' in source
     assert 'onConfirm:chains=>' in source
     assert 'const product=String(chain[0]||\'\').trim();' in source
-    assert 'version:cverVersionFromChain(chain)' in source
+    assert 'const version=cverVersionFromChain(chain);' in source
     # 弹窗按模式调整标题/提示/右侧列表，并执行确认回调
     assert 'window._chainSelConfirm = opt.onConfirm || null;' in source
     assert 'window._chainSelPlain = !!opt.plain;' in source
     assert 'if (cb) cb(chains);' in source
     assert 'renderChainSelList(chains, window._chainSelPlain)' in source
-    assert "选中路径即确定产品与当前版本，同一产品只保留一条" in source
+    assert "可多选；选中路径即确定产品与当前版本，同一产品可添加多个版本" in source
+    # plain 模式复用 subscription 的多选与父子冲突逻辑，不再按产品替换
+    assert 'c.chain[0] !== root' not in source
 
 
 def test_new_rule_defaults_to_customer_products():
@@ -115,6 +139,8 @@ def test_new_rule_defaults_to_customer_products():
     # 客户版本精确落到版本分支，匹配方式随完整路径长度决定
     assert 'cverVersionFromChain(chain)===version' in source
     assert "match:chosen.length<full.length?'subtree':'leaf'" in source
+    # 同产品多版本各自成链；重复路径只生成一次
+    assert 'const key=JSON.stringify(o.chain);' in source
 
 
 def test_cver_version_from_chain_uses_path_label():

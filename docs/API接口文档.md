@@ -857,7 +857,7 @@ data: {"processed": 3, "errors": 0}
 - `maintenance.enabled` 读取 `system_settings.maintenance_mode`；开启后所有订阅推送被抑制，采集照常。
 - `site` 为 `nsfocus_site_check` 每 5 分钟对 `https://update.nsfocus.com/` 的探测结果：HTTP `< 500` 视为 `up`，5xx/超时/连接错误为 `down`，从未探测为 `unknown`；`consecutive_failures` 连续失败次数，状态切换时写 `site_unavailable` / `site_recovered` 系统事件。`site.history` 为时间升序采样点 `{t, ms, s}`，`site.history_summary` 为 `{samples, failures, avg_ms, max_ms}`，`site.history_hours` 为窗口小时数；超过 180 个采样按时间桶平均，失败桶保留 `s=down` / `ms=null`。`format=prometheus` 时不返回历史，避免抓取响应体膨胀。
 - `scheduler_jobs` 始终返回已知任务（采集、心跳、汇总、投递队列、清理、渠道体检、站点可用性、数据库备份、数据库健康、CVE 提取、CVE 全量重扫、CVE 评分同步、CNVD 导入），`status` 为 `running` / `stopped` / `disabled`；任务未注册时 `next_run` / `seconds_until` 为 `null`。站点探测、数据库健康与 CVE 任务独立于采集调度器，采集关闭时仍可能为 `running`。
-- 网页端「仪表盘」页面消费同一接口，提供窗口切换、30 秒自动刷新和 Prometheus 抓取地址；页面不读取或展示 `MONITOR_METRICS_TOKEN`。
+- 网页端「仪表盘」页面消费同一接口，提供窗口切换与 30 秒自动刷新；Prometheus 抓取地址与鉴权说明在「系统配置 → 外部观测接入」展示，页面不读取或展示 `MONITOR_METRICS_TOKEN`。
 - 「重启服务」调用 `POST /api/system/restart`（登录鉴权，Cookie 请求需 CSRF）。固定检查 `nsfocus-monitor.service` 的 MainPID 是否等于当前进程，非受管实例返回 HTTP 409 / code 409；systemd 查询或线程安排失败返回 HTTP 503 / code 503；成功返回 code 0，仅表示已安排延迟重启请求。使用 systemd restart 而非 SIGTERM，后者在 `Restart=on-failure` 下不会自动重启。
 
 ---

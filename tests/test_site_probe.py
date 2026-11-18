@@ -100,3 +100,25 @@ def test_record_prunes_rows_older_than_retention(db):
     rows = query("SELECT checked_at FROM site_probe_history")
     assert len(rows) == 1
     assert rows[0]['checked_at'] != old
+
+
+def test_transitions_group_consecutive_states(db):
+    from src.models.site_probe import transitions
+
+    _record('up', hours=5)
+    _record('up', hours=4)
+    _record('down', 500, 503, hours=3)
+    _record('down', 500, 503, hours=2)
+    _record('up', hours=1)
+
+    segs = transitions(24)
+    assert [s['state'] for s in segs] == ['up', 'down', 'up']
+    assert [s['ongoing'] for s in segs] == [False, False, True]
+    # 相邻段首尾相接，持续时间按相邻采样差计算
+    assert segs[0]['end'] == segs[1]['start']
+    assert segs[1]['end'] == segs[2]['start']
+    # 每条样例各自取 now()，秒级截断会带来 ±1s 抖动
+    assert 7198 <= segs[0]['duration_s'] <= 7202
+    assert 7198 <= segs[1]['duration_s'] <= 7202
+    # 当前段持续到查询时刻
+    assert segs[2]['duration_s'] >= 3600

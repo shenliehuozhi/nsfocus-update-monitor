@@ -425,14 +425,24 @@ tr[data-sid]{cursor:pointer}
 .obs-site-chart{margin-top:12px;padding-top:10px;border-top:1px solid var(--border)}
 .obs-site-chart-hd{display:flex;align-items:baseline;justify-content:space-between;gap:8px;font-size:11px;color:var(--muted);margin-bottom:6px}
 .obs-site-chart-hd>span:last-child{text-align:right}
-.site-spark{display:block;width:100%;height:auto;aspect-ratio:600/90}
+.site-spark{display:block;width:100%;height:auto;aspect-ratio:600/120}
 .site-spark-base{stroke:var(--border);stroke-width:1}
+.site-spark-grid{stroke:var(--border);stroke-width:.8;opacity:.65}
+.site-spark-axis{fill:var(--muted);font-size:9px;font-variant-numeric:tabular-nums}
 .site-spark-area{fill:rgba(12,166,120,.1)}
 .site-spark-line{fill:none;stroke:var(--success);stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .site-spark-fail{stroke:var(--danger);stroke-width:1;stroke-dasharray:3 3;opacity:.75}
 .site-spark-dot{fill:var(--success);stroke:#fff;stroke-width:1.5}
 .obs-site-empty{height:64px;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--muted);background:var(--gray-bg);border-radius:8px}
 .obs-site-chart-ft{display:flex;justify-content:space-between;font-size:10.5px;color:var(--muted);margin-top:4px}
+.obs-grid2.obs-grid-stretch{align-items:stretch}
+.obs-grid2.obs-grid-stretch>.card{display:flex;flex-direction:column}
+.obs-grid2.obs-grid-stretch>.card>.card-bd{flex:1}
+.obs-site-changes{margin-top:10px;padding-top:8px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:4px}
+.obs-site-changes-hd{font-size:11px;color:var(--muted)}
+.obs-site-change{display:flex;align-items:center;gap:6px;font-size:11.5px;min-width:0}
+.obs-site-change-span{color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.obs-site-change-dur{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--muted);white-space:nowrap}
 .obs-rate{display:flex;align-items:center;gap:8px;min-width:130px}
 .obs-rate>span{width:38px;text-align:right;font-variant-numeric:tabular-nums;font-size:12px}
 .obs-bar{flex:1;height:6px;background:#eef1f5;border-radius:999px;overflow:hidden}

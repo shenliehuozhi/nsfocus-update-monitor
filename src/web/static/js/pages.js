@@ -597,11 +597,32 @@ async function delCh(id){await confirmAct('删除此渠道？', async ()=>{const
 // ── Customers ──
 async function customers(){
   const _seq=_navSeq;
-  const r=await api('/customers');const list=r.data||[];
+  const [r,p]=await Promise.all([
+    api('/customers'),
+    api('/customers/push-summary?days=30')
+  ]);
+  const list=r.data||[];
+  _custPushStats=(p&&p.code===0&&p.data)?{}:null;
+  if(_custPushStats)((p.data.items)||[]).forEach(it=>{_custPushStats[String(it.id)]=it;});
 
-  let rows=list.map(c=>`<tr><td class="muted-12-w50">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td class="fs11">${escHtml((c.owned_products||[]).map(_assetLabel).join(', '))}</td><td>${c.attachment_max_mb?'<span class="muted-11">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" data-on-click="openSvcReport" data-args='${_dataArgs(c.id, c.name)}'>报告</button> <button class="btn btn-xs btn-outline" data-on-click="openCModal" data-args='${_dataArgs(c.id, c.name, c.company||'', c.email||'', c.phone||'', c.owned_products||[], c.attachment_max_mb||0)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delC" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`).join('');
+  let rows=list.map(c=>`<tr><td class="muted-12-w50">${c.id}</td><td>${esc(c.name)}</td><td>${esc(c.company||'')}</td><td>${esc(c.email||'')}</td><td class="fs11">${escHtml((c.owned_products||[]).map(_assetLabel).join(', '))}</td><td class="nowrap-11">${_custPushCell(c.id)}</td><td>${c.attachment_max_mb?'<span class="muted-11">附件≤'+c.attachment_max_mb+'MB</span>':''}</td><td><button class="btn btn-xs btn-outline" data-on-click="openSvcReport" data-args='${_dataArgs(c.id, c.name)}'>报告</button> <button class="btn btn-xs btn-outline" data-on-click="openCModal" data-args='${_dataArgs(c.id, c.name, c.company||'', c.email||'', c.phone||'', c.owned_products||[], c.attachment_max_mb||0)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delC" data-args='${_dataArgs(c.id)}'>删除</button></td></tr>`).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户</div><div class="card-bd"><button class="btn btn-primary btn-sm" data-on-click="openCModal">+ 添加客户</button><table class="mt16"><tr><th class="w50">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品 / 版本</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="7" class="empty">暂无</td></tr>'}</table></div></div>`;}
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">👥 客户 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openCModal">+ 添加客户</button></div><div class="card-bd"><table><tr><th class="w50">ID</th><th>名称</th><th>公司</th><th>邮箱</th><th>产品 / 版本</th><th>推送 / 成功率（近30天）</th><th>附件</th><th>操作</th></tr>${rows||'<tr><td colspan="8" class="empty">暂无</td></tr>'}</table></div></div>`;}
+
+let _custPushStats=null;
+function _custPushCell(cid){
+  if(_custPushStats===null)return '<span class="disabled-11">—</span>';
+  const p=_custPushStats[String(cid)];
+  if(!p||!p.total)return '<span class="disabled-11">近30天无推送</span>';
+  const total=p.total||0,success=p.success||0,failed=p.failed||0;
+  const rate=Math.round(success/total*1000)/10;
+  const cls=failed>0?(rate>=80?'text-warn':'text-danger'):'text-success-text';
+  const tip=[`近30天推送 ${total} 次`,`成功 ${success} · 失败 ${failed}`,
+    p.last_sent_at?`最近 ${fmtTZ(p.last_sent_at,true)}`:'',
+    p.last_product?`最近产品 ${p.last_product}`:'',
+    '点击查看推送历史'].filter(Boolean).join('\n');
+  return `<span class="pointer ${cls}" title="${escHtml(tip)}" data-on-click="_gotoHistoryDays" data-args='${_dataArgs(30,cid)}'>${total} 次 · ${rate}%</span>`;
+}
 
 function _assetLabel(a){return a&&a.product?(a.version?`${a.product}@${a.version}`:a.product):'';}
 
@@ -647,6 +668,7 @@ async function _svcLoad(){
 let _cvarRows=[];
 
 // 客户资产：统一成 [{product,version}]，兼容旧 "产品" / "产品:版本" 字符串
+// 同一产品可保留多个不同版本；仅当该产品有带版本条目时丢弃空版本条目
 function _cvarNormalize(pr){
   const out=[],seen=new Set();
   (Array.isArray(pr)?pr:[pr]).forEach(a=>{
@@ -655,10 +677,13 @@ function _cvarNormalize(pr){
     if(typeof a==='string'){const [pp,vv]=a.split(':');p=pp||'';v=vv||'';}
     else{p=a.product||'';v=a.version||'';}
     p=String(p).trim();v=String(v).trim();
-    if(!p||seen.has(p))return;
-    seen.add(p);out.push({product:p,version:v});
+    if(!p)return;
+    const key=p+'\u0000'+v;
+    if(seen.has(key))return;
+    seen.add(key);out.push({product:p,version:v});
   });
-  return out;
+  const versioned=new Set(out.filter(a=>a.version).map(a=>a.product));
+  return out.filter(a=>a.version||!versioned.has(a.product));
 }
 
 function renderCVars(){
@@ -687,8 +712,9 @@ function openCVarPicker(){
         const chain=(c&&c.chain)||[];
         const product=String(chain[0]||'').trim();
         if(!product)return;
-        const row={product,version:cverVersionFromChain(chain),chain:chain.slice()};
-        const i=_cvarRows.findIndex(r=>r.product===product);
+        const version=cverVersionFromChain(chain);
+        const row={product,version,chain:chain.slice()};
+        const i=_cvarRows.findIndex(r=>r.product===product&&(r.version||'')===(version||''));
         if(i>=0)_cvarRows[i]=row;else _cvarRows.push(row);
       });
       renderCVars();
@@ -812,7 +838,14 @@ async function customerAssetChains(c){
     }
     out.push({chain:chosen,match:chosen.length<full.length?'subtree':'leaf'});
   });
-  return out;
+  // 同一产品多个版本各保留一条；相同路径只生成一次
+  const seen=new Set();
+  return out.filter(o=>{
+    const key=JSON.stringify(o.chain);
+    if(seen.has(key))return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 // 仅在新建规则且用户尚未手动改过路径时自动填入；编辑规则保留已保存条件
@@ -944,16 +977,44 @@ async function subscriptions(){
       _chainStaleCache = {};
     } catch (e) { /* fall through with empty _dataAll → all chains look stale, user can still edit */ }
   }
-  const[rR,cR,oR,custR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers')]);
+  const[rR,cR,oR,custR,pushR]=await Promise.all([api('/subscriptions'),api('/channels'),api('/options/products'),api('/customers'),api('/subscriptions/push-summary?days=30')]);
   const rules=rR.data||[],channels=cR.data||[],list=custR.data||[];
+  _rulePushStats=(pushR&&pushR.code===0&&pushR.data)?{}:null;
+  if(_rulePushStats)((pushR.data.items)||[]).forEach(it=>{_rulePushStats[String(it.id)]=it;});
   PROD=(oR.data||[]);if(!PROD.length)PROD=['WEB应用防护系统(WAF)','网络入侵防护系统(IPS)','网络入侵检测系统(IDS)','远程安全评估系统(RSAS)','下一代防火墙(NF/SG)','绿盟综合威胁探针(UTS)'];
   let chOpts=channels.map(c=>`<option value="${c.id}">${escHtml(c.name)} (${escHtml(c.type)})</option>`).join('');
 
-let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span class="match-badge-sm ${isLeaf?'match-leaf':'match-sub'}">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
+let rows=rules.map(r=>{let f=r.filter_conditions||{};let digestLabel={'weekly':'每周','monthly':'每月','quarterly':'每季'}[r.digest_mode]||'即时';let rb=r.notify_rollback!==0?'📢':'';let chains=f.chains||[];let isAll=!chains.length&&!(f.products||[]).length&&!(f.versions||[]).length&&!(f.package_types||[]).length;let condHtml=isAll?'<span class="text-primary fw600">📡 全部产品</span>':(chains.length>0?chains.map(c=>{let pathStr=c.chain.join(' › ');let isLeaf=c.match!=='subtree';let staleBadge=isChainStale(c.chain, c.match)?chainWarnBadge(c.chain, c.match):'';return `<span class="pill-tip" data-tip="${escHtml(pathStr)}\n匹配: ${isLeaf ? 'leaf (精确到该节点)' : 'subtree (含子节点)'}">${staleBadge}<span class="cond-pill tree-tag"><span class="tree-label">${escHtml(pathStr)}</span><span class="match-badge-sm ${isLeaf?'match-leaf':'match-sub'}">${isLeaf?'leaf':'sub'}</span></span></span>`;}).join(''):`<span class="text-muted">—</span>`);let cust=list.find(c=>c.id==r.customer_id);let custName=cust?escHtml(cust.name):'<span class="text-muted">—</span>';let custEmail=cust&&cust.email?'<span class="muted-11 d-block ellipsis" title="'+escHtml(cust.email)+'">'+escHtml(cust.email)+'</span>':'<span class="muted-11">—</span>';return `<tr><td class="muted-12-w50">${r.id}</td><td class="max-w140 ellipsis">${rb} ${escHtml(r.name)}</td><td class="max-w130 ellipsis fs11"><div class="ellipsis" title="${custName}">${custName}</div>${custEmail}</td><td class="max-w320 fs11 lh15">${(r.notification_groups&&r.notification_groups.length?r.notification_groups:[{type_label:"",recipients:[],customer_name:"",attachment_max_mb:0}]).map(g=>{const rc=(g.recipients&&g.recipients.length)?g.recipients.join(", "):"";const custTag=g.customer_name?` (${escHtml(g.customer_name)})`:"";const mb=g.attachment_max_mb>0?` <span class="text-muted">(${g.attachment_max_mb}MB)</span>`:"";const titleParts=[g.type_label, g.channel_name, ...(g.recipients||[]), g.customer_name].filter(Boolean).join(" | ");return `<div class="ellipsis" title="${escHtml(titleParts)}">${chTypeChip(g.channel_type||'').replace(/企业微信/g,'企微')}${rc?escHtml(rc):`<span class="text-muted">—</span>`}${custTag}${mb}</div>`;}).join("")||`<span class="text-muted">—</span>`}</td><td class="fs11 max-w200 overflow-visible">${condHtml}</td><td class="nowrap-11">${_rulePushCell(r.id)}</td><td class="nowrap-11">${digestLabel}</td><td class="nowrap-11">${renderRuleTemplateSummary(r,channels)}</td><td class="nowrap-11">${escHtml(r.valid_until||'—')}</td><td><span class="badge badge-${r.enabled?'ok':'err'} pointer" data-on-click="toggleRule" data-args='${_dataArgs(r.id)}'>${r.enabled?'启用':'停用'}</span></td><td><button class="btn btn-xs btn-outline" data-on-click="openRModal" data-args='${_dataArgs(r.id)}'>编辑</button> <button class="btn btn-danger btn-xs" data-on-click="delRule" data-args='${_dataArgs(r.id)}'>删除</button></td></tr>`;}).join('');
   if(navStale(_seq))return;
-  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openRModal">+ 创建规则</button></div><div class="card-bd"><table class="table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="10" class="empty">暂无规则</td></tr>'}</table></div></div>`;
+  document.getElementById('app').innerHTML=`<div class="card"><div class="card-hd">📋 订阅规则 <button class="btn btn-primary ml-auto px5-14 fs12" data-on-click="openRModal">+ 创建规则</button></div><div class="card-bd"><table class="table-fixed w-full"><tr><th class="w50">ID</th><th class="w150">名称</th><th class="w130">客户 / 收件人</th><th class="w320">通知对象</th><th class="w220">订阅条件</th><th class="w140">命中 / 最近（近30天）</th><th class="w70">推送</th><th class="w90">通知模板</th><th class="w100">有效期</th><th class="w60">状态</th><th class="w100">操作</th></tr>${rows||'<tr><td colspan="11" class="empty">暂无规则</td></tr>'}</table></div></div>`;
 
   window._custs=list;window._chOpts=chOpts;window._chData=channels;}
+
+// 订阅规则命中统计：长期未命中通常意味着条件失效 / 客户已不再采购该产品
+let _rulePushStats=null;
+function _rulePushAge(t){
+  const ms=_parseServerMs(t);
+  if(ms===null)return '';
+  const diff=Math.max(0,Date.now()-ms);
+  const d=Math.floor(diff/86400000);
+  if(d>0)return d+'天前';
+  const h=Math.floor(diff/3600000);
+  return h>0?h+'小时前':'刚刚';
+}
+function _rulePushCell(rid){
+  if(_rulePushStats===null)return '<span class="disabled-11">—</span>';
+  const p=_rulePushStats[String(rid)];
+  if(!p||!p.packages)return '<span class="text-warn" title="近30天没有匹配到推送包，可检查订阅条件、客户产品或规则有效期">未命中</span>';
+  const tip=[`近30天匹配 ${p.packages} 个包 / 投递 ${p.deliveries} 次`,
+    `成功 ${p.sent||0} · 失败 ${p.failed||0}`,
+    p.last_at?`最近命中 ${fmtTZ(p.last_at,true)}`:'',
+    '点击查看推送历史'].filter(Boolean).join('\n');
+  return `<span class="pointer" title="${escHtml(tip)}" data-on-click="_gotoRuleHistoryDays" data-args='${_dataArgs(30,rid)}'>${p.packages} 包 · ${_rulePushAge(p.last_at)}</span>`;
+}
+function _gotoRuleHistoryDays(days,rid){
+  location.hash=`history?days=${days}&rule=${rid}`;
+  setTimeout(()=>showPage('history'),0);
+}
 
 function onCustChange(){
   let cid=document.getElementById('rcust').value;
@@ -1076,7 +1137,7 @@ async function openChainSelectorModal(existingChains, opts) {
 
   modal.innerHTML = `
   <div class="card modal-card-860-col" >
-    <div class="card-hd">${escHtml(opt.title || '选择订阅路径')} <span class="muted-12 fw400 ml8">${window._chainSelPlain ? '选中路径即确定产品与当前版本，同一产品只保留一条' : '点击路径节点添加到右侧列表'}</span>
+    <div class="card-hd">${escHtml(opt.title || '选择订阅路径')} <span class="muted-12 fw400 ml8">${window._chainSelPlain ? '可多选；选中路径即确定产品与当前版本，同一产品可添加多个版本' : '点击路径节点添加到右侧列表'}</span>
       <button data-on-click="_removeClosest" data-args='${_dataArgs('#chainSelModal')}' class="icon-btn">×</button>
     </div>
     <div class="split-body">
@@ -1130,34 +1191,6 @@ function csTreeNodeClick(nodeEl) {
   const match = isLeafNode ? 'leaf' : 'subtree';
   const chainKey = JSON.stringify(chain);
 
-  if (window._chainSelPlain) {
-    // 客户路径：同一产品只保留一条，点新的版本分支直接替换旧的
-    const idx = window._chainSelChains.findIndex(c => JSON.stringify(c.chain) === chainKey);
-    if (idx >= 0) {
-      window._chainSelChains.splice(idx, 1);
-      nodeEl.setAttribute('data-sel', '0');
-      nodeEl.classList.remove('tree-node-selected');
-    } else {
-      const root = chain[0];
-      window._chainSelChains = window._chainSelChains.filter(c => c.chain[0] !== root);
-      window._chainSelChains.push({ chain, match });
-      document.querySelectorAll('#chainTreeBody .tree-node-selected').forEach(el => {
-        const c = JSON.parse(el.getAttribute('data-chain') || '[]');
-        if (c[0] === root && JSON.stringify(c) !== chainKey) {
-          el.setAttribute('data-sel', '0');
-          el.classList.remove('tree-node-selected');
-        }
-      });
-      nodeEl.setAttribute('data-sel', '1');
-      nodeEl.classList.add('tree-node-selected');
-    }
-    const rightDiv = document.getElementById('chainSelRight');
-    if (rightDiv) {
-      rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._chainSelChains.length}）</div>` + renderChainSelList(window._chainSelChains, true);
-    }
-    return;
-  }
-
   // 冲突检测：检查新 chain 与已选项是否有父子重叠
   for (const existing of window._chainSelChains) {
     const existKey = JSON.stringify(existing.chain);
@@ -1190,7 +1223,7 @@ function csTreeNodeClick(nodeEl) {
   }
   const rightDiv = document.getElementById('chainSelRight');
   if (rightDiv) {
-    rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._chainSelChains.length}）</div>` + renderChainSelList(window._chainSelChains);
+    rightDiv.innerHTML = `<div class="subtitle">已选路径（${window._chainSelChains.length}）</div>` + renderChainSelList(window._chainSelChains, window._chainSelPlain);
   }
 }
 

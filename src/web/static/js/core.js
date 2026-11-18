@@ -310,7 +310,7 @@ function _showTip(target){
   _tipEl.style.opacity='1';
 }
 function _hideTip(){if(_tipEl)_tipEl.style.opacity='0';}
-document.addEventListener('mouseover',e=>{const t=e.target.closest('.pill-tip,.tp');if(t)_showTip(t)});
+document.addEventListener('mouseover',e=>{const t=e.target.closest('.pill-tip,.tp');if(t)_showTip(t);else _hideTip();});
 document.addEventListener('mouseout',e=>{const t=e.target.closest('.pill-tip,.tp');if(t)_hideTip()});
 
 /* ── 自定义下拉浮层(渐进增强) ──────────────────────────────────────────
@@ -418,6 +418,8 @@ function _pageRenderError(page,err){
   toast(`页面加载失败：${(err&&err.message)||err}`,'error');
 }
 function showPage(n){
+  // 全局 tooltip 挂在 body 上；行被切页移除时 mouseout 不会触发，需主动收起
+  _hideTip();
   document.querySelectorAll('.nav a').forEach(a=>a.classList.remove('active'));
   const l=document.querySelector(`.nav a[data-page="${n}"]`);if(l)l.classList.add('active');
   // 页面级轮询只在该页存活：切走即停，避免离开后仍每 N 秒请求并写已卸载的 DOM

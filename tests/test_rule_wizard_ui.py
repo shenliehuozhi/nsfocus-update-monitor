@@ -13,6 +13,18 @@ def _rule_modal_source() -> str:
     return source[start:end]
 
 
+def test_rule_list_shows_push_hits_and_drills_down():
+    """订阅列表增加近 30 天命中计数，便于识别长期未命中的无效规则。"""
+    source = js_source()
+    assert "api('/subscriptions/push-summary?days=30')" in source
+    assert '命中 / 最近（近30天）' in source
+    assert 'function _rulePushCell' in source
+    assert 'if(_rulePushStats===null)' in source
+    assert '近30天没有匹配到推送包' in source
+    assert "data-on-click=\"_gotoRuleHistoryDays\" data-args='${_dataArgs(30,rid)}'" in source
+    assert 'colspan="11"' in source
+
+
 def _step_bodies() -> list[str]:
     block = _rule_modal_source()
     parts = re.split(r'<div class="rstep(?: hidden)?" data-step="\d">', block)

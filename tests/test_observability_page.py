@@ -32,12 +32,14 @@ def test_page_renders_observability_sections():
     source = (WEB / 'static/js/observability.js').read_text(encoding='utf-8')
     for marker in ('/metrics?hours=', '投递成功率', '队列积压', '采集健康',
                    '事件与告警', '存储与数据量', '调度任务',
-                   'scheduler_jobs', 'format=prometheus', 'MONITOR_METRICS_TOKEN',
+                   'scheduler_jobs',
                    'updates', 'customers', 'sessions', 'process',
                    '已运行时间', '产品更新', '调度器', 'obs-alert', 'obsRestartService',
                    '运行中', '已停止', '未启用',
                    '站点可用性', 'nsfocus_site_check', '维护模式', 'maintenance',
                    'site-spark', '延时曲线', 'history_summary', '_obsSiteChart',
+                   'site-spark-axis', 'site-spark-grid', '_obsSiteChanges',
+                   '_obsDuration', '状态变化 · 最近', 'obs-grid-stretch',
                    'openEventsCenterModal', '_obsWindowLabel',
                    '_obsDatabaseCard', '数据库写', '_obsMs', '写入耗时',
                    "'lock_wait', 'Python 队列'", "'sqlite', 'SQLite 执行'", "'total', '合计'",
@@ -56,13 +58,16 @@ def test_page_renders_observability_sections():
     # 规则名/渠道名来自数据库，渲染时必须转义
     assert '${escHtml(r.rule_name' in source
     assert '${escHtml(_obsChannel(ch.channel_type))}' in source
-    # 数据库写卡片与外部观测接入同排，半宽下复制按钮不能被压缩
-    assert re.search(r'_obsDatabaseCard\(d\.database \|\| \{\}\)\}\s*\$\{_obsPromCard\(\)\}', source)
-    assert re.search(r'btn-xs shrink0" data-on-click="obsCopyProm"', source)
-    # 调度任务与站点可用性同排；Session 与采集健康同排；客户推送通栏，避免半格空白
+    # 外部观测接入已移入系统配置；观测页只保留数据库写
+    assert '_obsPromCard' not in source
+    assert 'obsCopyProm' not in source
+    # 调度任务与站点可用性同排；Session 与存储同排；采集健康与事件同排；投递成功率与客户推送同排；队列与数据库同排
     assert re.search(r'_obsSchedulerCard\(d\.scheduler_jobs \|\| \[\]\)\}\s*\$\{_obsSiteCard\(site\)\}', source)
-    assert re.search(r'_obsSessionCard\(sess\)\}\s*\$\{_obsCollectionCard\(col, rules, proc, mmOn\)\}', source)
-    assert re.search(r'<div class="card obs-span2">\s*<div class="card-hd">\s*<span>📨 订阅规则执行', source)
+    assert re.search(r'_obsSessionCard\(sess\)\}\s*\$\{_obsStorageCard\(st\)\}', source)
+    assert re.search(r'_obsCollectionCard\(col, rules, proc, mmOn\)\}\s*\$\{_obsEventsCard\(ev\)\}', source)
+    assert re.search(r'_obsDeliveryCard\(del\)\}\s*\$\{_obsCustomersCard\(\)\}', source)
+    assert re.search(r'_obsQueueCard\(dq, dg\)\}\s*\$\{_obsDatabaseCard\(d\.database \|\| \{\}\)\}', source)
+    assert '<div class="card obs-span2">\n    <div class="card-hd">\n      <span>📨 订阅规则执行' not in source
 
 
 def test_observability_grid_contains_wide_tables():
@@ -72,6 +77,11 @@ def test_observability_grid_contains_wide_tables():
     assert re.search(r'\.obs-grid2>\.card\s*\{[^}]*min-width:0', css)
     assert re.search(r'\.obs-scroll\s*\{[^}]*overflow-x:auto', css)
     assert re.search(r'\.obs-span2\s*\{[^}]*grid-column:1/-1', css)
+    # 调度任务与站点可用性同排时等高对齐，站点图有 Y 轴刻度
+    assert re.search(r'\.obs-grid2\.obs-grid-stretch\s*\{[^}]*align-items:stretch', css)
+    assert '.site-spark-axis{' in css and '.site-spark-grid{' in css
+    assert 'aspect-ratio:600/120' in css
+    assert '.obs-site-changes{' in css and '.obs-site-change-dur{' in css
 
 
 def test_auto_refresh_stops_when_leaving_page():

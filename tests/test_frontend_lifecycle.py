@@ -45,6 +45,9 @@ def test_logout_and_navigation_clear_timers():
     show = CORE[CORE.index('function showPage('):]
     assert '_clearPageTimers(_currentPage)' in show
     assert '_navSeq++' in show
+    # 全局 tooltip 挂在 body 上，切页时行已移除、mouseout 不会触发，必须主动收起
+    assert '_hideTip();' in show
+    assert "if(t)_showTip(t);else _hideTip();" in CORE
     # 页面渲染异常不能静默：async 页面函数的 rejection 要转成用户可见提示
     assert 'function _pageRenderError(' in CORE
     assert '_pageRenderError(n,' in show

@@ -132,3 +132,12 @@ def test_leaf_subscription_uses_chain_from_chain_event(base_snap):
     )
 
     assert result == [(100, snap, chain_b)]
+
+
+def test_run_detection_drops_dead_rollback_params():
+    """回退确认次数已移除：不再保留 rollback_confirm / check_rollback 死参数。"""
+    import inspect
+
+    params = inspect.signature(change.run_detection).parameters
+    assert 'rollback_confirm' not in params
+    assert 'check_rollback' not in params
