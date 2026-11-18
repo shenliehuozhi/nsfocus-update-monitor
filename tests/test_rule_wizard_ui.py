@@ -26,6 +26,24 @@ def test_first_collection_guard_blocks_rule_creation():
     assert '请先在「采集数据」页完成一次全量采集' in open_modal
 
 
+def test_large_scope_requires_second_confirmation():
+    """订阅全部产品或超过 5 个产品时提示大量推送风险，保存需二次确认。"""
+    source = js_source()
+    assert 'id="rscopeWarn"' in source
+    assert 'function _ruleScopeStats' in source
+    assert 'function updateRuleScopeWarning' in source
+    assert 'count>5' in source
+    assert '可能存在大量推送' in source
+    assert '保存时需要二次确认' in source
+    assert 'async function saveRule(skipMassWarn=false)' in source
+    assert "()=>saveRule(true)" in source
+    assert "scope.isAll?'全部产品':`${scope.count} 个产品`" in source
+    # 勾选/取消「全部产品」和路径变化都要即时刷新提示
+    toggle = source[source.index('function toggleAllMode'):source.index('function _ruleScopeStats')]
+    assert 'updateRuleScopeWarning()' in toggle
+    assert source.count('updateRuleScopeWarning();') >= 3
+
+
 def test_rule_list_shows_push_hits_and_drills_down():
     """订阅列表增加近 30 天命中计数，便于识别长期未命中的无效规则。"""
     source = js_source()

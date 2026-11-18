@@ -1083,6 +1083,31 @@ function toggleAllMode(){
     // 取消「全部产品」时回到客户档案默认产品
     applyCustomerPaths(window._currentCustomer);
   }
+  updateRuleScopeWarning();
+}
+
+function _ruleScopeStats(){
+  const isAll=!!document.getElementById('rall')?.checked;
+  const products=new Set();
+  (window._condChains||[]).forEach(c=>{
+    const p=(c.chain||[])[0];
+    if(p)products.add(p);
+  });
+  return {isAll,count:products.size};
+}
+
+function updateRuleScopeWarning(){
+  const box=document.getElementById('rscopeWarn');
+  if(!box)return;
+  const {isAll,count}=_ruleScopeStats();
+  let msg='';
+  if(isAll){
+    msg='⚠️ 已选择「全部产品」，该规则会匹配所有产品的新包，可能存在大量推送。保存时需要二次确认。';
+  }else if(count>5){
+    msg=`⚠️ 当前订阅覆盖 ${count} 个产品，可能存在大量推送。保存时需要二次确认。`;
+  }
+  box.textContent=msg;
+  box.classList.toggle('hidden',!msg);
 }
 
 // ── 订阅条件：链路径选择器 ─────────────────────────────────────────────────
@@ -1433,6 +1458,7 @@ function renderCondPills() {
   if (chains.length === 0) {
     if (empty) empty.classList.remove('hidden');
     container.querySelectorAll('.cond-pill').forEach(el => el.remove());
+    updateRuleScopeWarning();
     return;
   }
   if (empty) empty.classList.add('hidden');
@@ -1450,6 +1476,7 @@ function renderCondPills() {
       <button class="btn-x-plain-14" data-on-click="removeCondPill" data-args='${_dataArgs(i)}'>×</button>`;
     container.appendChild(pill);
   });
+  updateRuleScopeWarning();
 }
 
 // 移除主表单中的路径标签
@@ -1828,6 +1855,7 @@ async function openRModal(id){
     <div class="rstep hidden" data-step="2"><div class="form-section">
     <label class="check-row"><input class="m0" type="checkbox" id="rall" data-on-change="toggleAllMode"> 📡 订阅全部产品与类型，不设筛选条件</label>
     <div id="rcondsWrap"><div class="min-h32" id="rconds"><div class="muted-12 mb6" id="rcondsEmpty">未选择路径</div></div><button class="btn btn-xs btn-outline mt8" data-on-click="openRuleChainSelector">+ 添加路径</button></div>
+    <div id="rscopeWarn" class="warn-banner mt10 hidden"></div>
     <div class="muted-11 mt10">选择客户后会默认带出客户档案中的产品与版本，可继续手动增删。</div>
     </div></div>
 
@@ -2122,7 +2150,7 @@ function validateRuleConf(){
     if(!winStart||!winEnd){return {valid:false,message:'窗口策略必须配置时间段',type:'block'};}
   }
   return {valid:true};
-}async function saveRule(){
+}async function saveRule(skipMassWarn=false){
   let id=document.getElementById('rid').value;
   const name=document.getElementById('rnm').value.trim();
   if(!name){toast('请输入规则名称','error');_ruleShowStep(1);return;}
@@ -2174,6 +2202,13 @@ function validateRuleConf(){
     const start=document.getElementById('winStart').value;
     const end=document.getElementById('winEnd').value;
     d.window_config={start,end}; // 汇总模式：只限制时间段
+  }
+  // 全部产品 / 超过 5 个产品：可能产生大量推送，保存前二次确认
+  const scope=_ruleScopeStats();
+  if(!skipMassWarn && (scope.isAll || scope.count>5)){
+    const scopeLabel=scope.isAll?'全部产品':`${scope.count} 个产品`;
+    confirmAct(`当前规则将订阅${scopeLabel}，可能存在大量推送。确认${id?'保存':'创建'}这条规则？`, ()=>saveRule(true), '⚠️', id?'确认保存':'确认创建', true);
+    return;
   }
   let r=id?await api('/subscriptions/'+id,{method:'PUT',body:JSON.stringify(d)}):await api('/subscriptions',{method:'POST',body:JSON.stringify(d)});
   if(r.code===0){toast('已保存');document.getElementById('rModalWrap')?.remove();subscriptions();}else toast(r.message,'error');
